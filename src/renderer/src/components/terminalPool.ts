@@ -33,6 +33,7 @@ import {
   terminalAutomationBlock,
   type TerminalAutomationBlock,
 } from './terminalAutomation';
+import { sanitizeTerminalSelection } from './terminalSelection';
 import '@xterm/xterm/css/xterm.css';
 
 export interface TerminalEntry {
@@ -216,7 +217,13 @@ export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14):
   //   right-click                 → copy the selection, else paste (console style)
   const copySelection = (): boolean => {
     if (!term.hasSelection()) return false;
-    void window.cth.copyToClipboard(term.getSelection());
+    // Selections come off the character GRID, so any gutter the CLI painted
+    // there (Claude Code renders a blockquote as `▎ text`) is part of the
+    // copied cells. Strip it — see terminalSelection.ts.
+    const text = sanitizeTerminalSelection(term.getSelection());
+    // Still `true` when a rail-only selection sanitizes to nothing: the gesture
+    // was a copy and must stay one, or right-click would fall through to paste.
+    if (text) void window.cth.copyToClipboard(text);
     return true;
   };
   const pasteClipboard = (): void => {
