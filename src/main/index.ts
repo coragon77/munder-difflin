@@ -2846,13 +2846,19 @@ ipcMain.handle('dialog:chooseFolder', async (evt) => {
 ipcMain.handle('terminal:openAtFolder', async (_evt, cwd: unknown) => {
   if (typeof cwd !== 'string' || cwd.length === 0) return { ok: false, error: 'invalid cwd' };
   return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    const p = spawn('open', ['-a', 'Terminal', cwd]);
+    // macOS: `open -a Terminal` (open a *folder* in Terminal.app). Linux: no
+    // xdg-open route for terminals — spawn the DE's terminal at the folder
+    // (xdg-terminal-exec spec when present, else the common DE terminals).
+    let bin = 'gnome-terminal'; let args: string[] = ['--working-directory', cwd];
+    if (process.platform === 'darwin') { bin = 'open'; args = ['-a', 'Terminal', cwd]; }
+    else if (process.env.XDG_TERMINAL_EXEC) { bin = process.env.XDG_TERMINAL_EXEC; args = [cwd]; }
+    const p = spawn(bin, args);
     let err = '';
     p.stderr.on('data', (d) => { err += d.toString(); });
     p.on('error', (e) => resolve({ ok: false, error: e.message }));
     p.on('close', (code) => {
       if (code === 0) resolve({ ok: true });
-      else resolve({ ok: false, error: err.trim() || `open exited ${code}` });
+      else resolve({ ok: false, error: err.trim() || `${bin} exited ${code}` });
     });
   });
 });
