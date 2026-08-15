@@ -8,6 +8,7 @@ dist/
 .env
 .env.local
 .env.signing
+.env.telegram
 .gstack/
 
 # signing / notarization secrets — NEVER commit these
