@@ -1951,6 +1951,72 @@ export class HiveManager {
  *  the SAME source as the UI "commands" tab so they never drift. Leads with the
  *  orchestrator note: slash = own session only, cli = shell/fleet; monitor
  *  siblings via fleet.json (claude agents does NOT see them). */
+/** The '## HIRING AGENTS' section appended to COMMANDS.md — the two spawn
+ *  paths: ephemeral spawn-requests workers (god-runnable from Bash) vs
+ *  human-only persistent hires (Add Agent modal / voice verb). */
+const HIRING_AGENTS_MD = `## HIRING AGENTS
+
+> Generated from \`COMMANDS_MD\` in the harness source — manual edits to this file are wiped on the next bootstrap.
+
+There are TWO spawn paths. Headline: **ephemeral workers god can mint from Bash**
+vs **persistent named agents, which are human-only surfaces**.
+
+### Path 1 — Ephemeral worker (god-runnable from Bash) ✅
+
+Drop a spawn-request JSON into \`$HIVE_ROOT/spawn-requests/\` (one file = one worker;
+atomically archived to \`.done/\` or \`.failed/\` once consumed):
+
+\`\`\`bash
+cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/spawn-requests/my-task.json" <<'EOF'
+{
+  "id": "fix-diva-42",
+  "objective": "Fix DIVA ticket 42: <one-paragraph contract for the worker>",
+  "cwd": "/opt/django/projects/diva",
+  "name": "Diva Worker",
+  "command": "claude",
+  "provider": "claude",
+  "model": null,
+  "isolate": true,
+  "tokenCap": 0,
+  "slack": null
+}
+EOF
+\`\`\`
+
+- **Required:** \`objective\` (string), \`cwd\` (absolute path that exists; \`~\` expanded).
+- **Optional:** \`id\` (defaults to filename), \`name\` (default \`Worker <id>\`), \`command\`
+  (engine CLI; default = config \`defaultCommand\`), \`provider\`, \`model\` (Claude
+  \`--model\`), \`isolate\` (default \`true\` = fresh git worktree on \`agent/<id>\`),
+  \`tokenCap\`, \`slack\` \`{channel, thread_ts}\` (reply target + failure surfacing).
+- **What happens** (main process, poll every 1.5s, cap = config \`maxConcurrentWorkers\`
+  default 4): validates → spawns \`worker-<id>\` via the shared core (\`ensureAgent\` →
+  \`registry.json\` entry + \`agents/worker-<id>/\` + \`hive: register\` commit → PTY boots
+  the CLI in \`cwd\`) → dispatches \`objective\` to its inbox \`from: god\`. Bad request /
+  missing CLI → fast-fail, archived to \`.failed/\`, notice lands in god's inbox.
+- **Lifecycle (ephemeral!):** reaped when it sends an outbox message \`act: "done"\` to
+  god, or after ~20 min idle (config \`workerIdleTimeoutMinutes\`). Committed branch
+  work is preserved for god to integrate. NOT a persistent named hire.
+
+### Path 2 — Persistent named agent (human-only) 🔒
+
+Andy/Dwayne-style agents (\`andy-msudcy80\`, id = name-slug + base36 timestamp,
+\`uniqueId()\` in \`AddAgentModal.tsx\`) can ONLY be minted through human surfaces:
+
+1. **Add Agent modal** (office UI): human fills identity/workspace/engine/briefing →
+   IPC \`pty:spawn\` → \`spawnAgentCore\` → \`ensureAgent\` (registry entry + workspace +
+   commit) → terminal boots the engine CLI in the chosen cwd.
+2. **Voice "spawn" verb** (voice-Michael, \`realtimeActions.ts\`): destructive tier —
+   requires verbal echo-back + distinct confirm word ("spawn"), hard-allowlist gated;
+   still a human speaking into the mic, and the spec usually comes from the UI flow.
+
+Respawning an existing registry agent after restart = the UI "restore team" flow
+(same \`ensureAgent\`, resumes the recorded session id).
+
+**Smallest possible extension (proposed, NOT built):** accept \`"persistent": true\`
+in a spawn-request and skip the \`liveWorkers\` registration + done/idle reaping in
+\`processSpawnRequest\` (~10 lines in \`src/main/index.ts\`) — god's Bash path would
+then mint persistent named agents directly.`;
+
 function renderCommandsMd(): string {
   const lines: string[] = [
     '# Claude Code commands',
@@ -1969,6 +2035,7 @@ function renderCommandsMd(): string {
     }
     lines.push('');
   }
+  lines.push(HIRING_AGENTS_MD);
   return lines.join('\n');
 }
 const COMMANDS_MD = renderCommandsMd();
