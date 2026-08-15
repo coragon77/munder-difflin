@@ -754,6 +754,8 @@ export class HiveManager {
     );
 
     // Keep the churny/ephemeral live files out of the hive git repo.
+    // cost-ledger.jsonl rides the list too (upstream ebd6a07): it rewrites on
+    // every usage sample — a second-per-minute churn no history wants.
     const gitignore = join(root, '.gitignore');
     const want = [
       'fleet.json',
@@ -761,6 +763,7 @@ export class HiveManager {
       'restart-window.json',
       'restart-window.json.*',
       'restart-merge.log',
+      'cost-ledger.jsonl',
       '.DS_Store',
     ];
     let lines: string[] = [];
@@ -3343,10 +3346,39 @@ export class HiveManager {
     return { ok: res.status === 0, out: res.stdout ?? '', err: res.stderr ?? '' };
   }
 
+  /** Has the one-time cost-ledger untrack pass run in this process yet? */
+  private untrackedCostLedger = false;
+
+  /**
+   * Stop versioning the cost ledger.
+   *
+   * `cost-ledger.jsonl` is append-only and gains a row per usage sample, so a
+   * repo that tracks it stores a fresh copy of the WHOLE file on every hive
+   * commit — and the hive commits constantly. A quarter-gigabyte ledger with a
+   * few thousand commits behind it is several hundred gigabytes of blob that
+   * git has to walk, which is what turns a routine `gc` into a multi-gigabyte
+   * `pack-objects` run. The ignore line in ensureHive keeps new copies out;
+   * this drops the one already in the index, because git keeps recording a
+   * file it is already tracking no matter what .gitignore says — so the ignore
+   * line alone reads as a fix while the repo goes on growing. The ledger stays
+   * on disk, so the cost history the app reads is untouched.
+   */
+  private untrackCostLedger(root: string): void {
+    if (this.untrackedCostLedger) return;
+    this.untrackedCostLedger = true;
+    // Probe before mutating: `rm --cached` on a repo that never tracked it
+    // would still rewrite the index on every launch, inside the retry path.
+    const tracked = this.git(['ls-files', '--', 'cost-ledger.jsonl'], root);
+    if (!tracked.ok || !tracked.out.trim()) return;
+    this.git(['rm', '--cached', '-q', '--ignore-unmatch', '--', 'cost-ledger.jsonl'], root);
+    console.warn('[hive] untracked the cost ledger from the hive repo');
+  }
+
   /** Commit all hive changes. No-op if there is nothing staged. */
   commit(message: string): void {
     const root = this.root();
     if (!root || !existsSync(join(root, '.git'))) return;
+    this.untrackCostLedger(root);
     for (let attempt = 0; attempt < 5; attempt++) {
       this.clearStaleLock(root);
       const add = this.git(['add', '-A'], root);
