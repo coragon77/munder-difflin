@@ -1591,6 +1591,25 @@ export class HiveManager {
       const extDir = join(home, 'extensions');
       mkdirSync(extDir, { recursive: true });
       writeFileSync(join(extDir, 'hive-bridge.ts'), PI_EXTENSION, 'utf8');
+      // Share the user's pi login (same pattern as Codex): symlink ~/.pi/agent/
+      // auth.json into the isolated home, fallback copy. Only when the dest is
+      // absent or EMPTY — pi writes an empty auth.json at startup, so replace
+      // that; a non-empty per-agent auth.json means a separate login, keep it.
+      // (BYOK env keys remain a second path; auth.json wins per pi precedence.)
+      const authSrc = join(homedir(), '.pi', 'agent', 'auth.json');
+      const authDest = join(home, 'auth.json');
+      try {
+        let destEmpty = true;
+        try {
+          const cur = readFileSync(authDest, 'utf8').trim();
+          destEmpty = cur === '' || cur === '{}';
+        } catch { /* absent → empty */ }
+        if (existsSync(authSrc) && destEmpty) {
+          rmSync(authDest, { force: true });
+          try { symlinkSync(authSrc, authDest); }
+          catch { try { copyFileSync(authSrc, authDest); } catch { /* best-effort */ } }
+        }
+      } catch { /* best-effort: auth stays absent → BYOK env path */ }
     } catch (e) { console.error('[hive] installPiHooks failed:', e); }
     return home;
   }
