@@ -86,9 +86,11 @@ export async function startKittySatellite(): Promise<void> {
   const child = spawn(kitty, [
     '--listen-on', `unix:${socket}`,
     // Socket-only remote control matches the user's own kitty.conf posture.
-    '--override', 'allow_remote_control=socket-only',
-    // Quiet first window: an idle shell, titled so the user knows what it is.
-    '--override', 'enabled_layouts=splits',
+    // NOTE: --override takes 'key value' (config-file syntax), NOT 'key=value' —
+    // the '=' form is an invalid line → kitty's "error parsing configuration"
+    // dialog at startup (seen live, kitty 0.48). 
+    '--override', 'allow_remote_control socket-only',
+    '--override', 'enabled_layouts splits',
     '--title', 'MD satellite'
   ], {
     detached: true, stdio: 'ignore',
