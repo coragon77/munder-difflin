@@ -19,7 +19,7 @@
  */
 import {
   existsSync, mkdirSync, readFileSync, writeFileSync, renameSync,
-  readdirSync, statSync, rmSync, appendFileSync, symlinkSync, copyFileSync, chmodSync
+  readdirSync, statSync, rmSync, appendFileSync, symlinkSync, copyFileSync, chmodSync, cpSync
 } from 'node:fs';
 import { join, dirname, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
@@ -1585,18 +1585,50 @@ export class HiveManager {
   private installPiHooks(dir: string): string {
     const home = join(dir, '.pi-agent');
     try {
-      // Pi discovers extensions under its agent dir (PI_CODING_AGENT_DIR overrides
-      // the default ~/.pi/agent). Auto-discovery is TS-only: extensions/*.ts with an
-      // ESM default export — verified against pi 0.84 docs. No manifest needed.
+      const userPi = join(homedir(), '.pi', 'agent');
+      // SHARE THE WHOLE SETUP: symlink every entry of the user's ~/.pi/agent into
+      // the per-agent dir, so scoped models, skills, packages, git packages, npm,
+      // bin, themes, missions, trust — and anything added later — ride along
+      // automatically. Carve-outs below keep only what must stay per-agent.
+      // Fallback copy where symlinks need privilege (Windows).
+      const EXCLUDE = new Set([
+        'sessions', 'tmp', 'staging', // per-agent runtime state
+        'settings.json', // generated (filtered) below
+        'extensions', // merged dir below
+        'telegram.json', // pi-telegram state — its poller would 409 the hive's own bot
+        'pi-crash.log'
+      ]);
+      if (existsSync(userPi)) {
+        for (const name of readdirSync(userPi)) {
+          if (EXCLUDE.has(name)) continue;
+          const src = join(userPi, name);
+          const dest = join(home, name);
+          if (existsSync(dest) || existsSync(dest + '.bak')) { /* keep per-agent */ continue; }
+          try {
+            symlinkSync(src, dest);
+          } catch {
+            try { cpSync(src, dest, { recursive: true }); } catch { /* best-effort */ }
+          }
+        }
+      }
+      // EXTENSIONS: a real per-agent dir holding the hive bridge PLUS symlinks to
+      // the user's extensions — merged, so nothing is written into ~/.pi/agent.
+      // pi-telegram's extension is skipped (its package is filtered from settings
+      // and needs the excluded telegram.json).
       const extDir = join(home, 'extensions');
       mkdirSync(extDir, { recursive: true });
       writeFileSync(join(extDir, 'hive-bridge.ts'), PI_EXTENSION, 'utf8');
-      // Share the user's pi login (same pattern as Codex): symlink ~/.pi/agent/
-      // auth.json into the isolated home, fallback copy. Only when the dest is
-      // absent or EMPTY — pi writes an empty auth.json at startup, so replace
-      // that; a non-empty per-agent auth.json means a separate login, keep it.
-      // (BYOK env keys remain a second path; auth.json wins per pi precedence.)
-      const authSrc = join(homedir(), '.pi', 'agent', 'auth.json');
+      const userExt = join(userPi, 'extensions');
+      if (existsSync(userExt)) {
+        for (const f of readdirSync(userExt)) {
+          if (f === 'telegram-notify.ts') continue;
+          const dest = join(extDir, f);
+          if (existsSync(dest)) continue;
+          try { symlinkSync(join(userExt, f), dest); } catch { /* best-effort */ }
+        }
+      }
+      // Replace pi's empty placeholder auth.json (if any) with the shared symlink.
+      const authSrc = join(userPi, 'auth.json');
       const authDest = join(home, 'auth.json');
       try {
         let destEmpty = true;
@@ -1610,6 +1642,20 @@ export class HiveManager {
           catch { try { copyFileSync(authSrc, authDest); } catch { /* best-effort */ } }
         }
       } catch { /* best-effort: auth stays absent → BYOK env path */ }
+      // SETTINGS: filtered copy of the user's — same defaults (theme, …) minus the
+      // pi-telegram package (one poller per bot: the hive's trigger owns it).
+      const settingsDest = join(home, 'settings.json');
+      if (existsSync(join(userPi, 'settings.json')) && !existsSync(settingsDest)) {
+        try {
+          const s = JSON.parse(readFileSync(join(userPi, 'settings.json'), 'utf8')) as { packages?: unknown[] };
+          if (Array.isArray(s.packages)) {
+            s.packages = s.packages.filter((p: unknown) =>
+              typeof p === 'string' ? !p.includes('pi-telegram')
+                : !(p && typeof p === 'object' && JSON.stringify(p).includes('pi-telegram')));
+          }
+          writeFileSync(settingsDest, JSON.stringify(s, null, 2));
+        } catch { /* malformed user settings → pi defaults */ }
+      }
     } catch (e) { console.error('[hive] installPiHooks failed:', e); }
     return home;
   }
