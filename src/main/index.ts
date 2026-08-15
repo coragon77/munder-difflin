@@ -3281,6 +3281,7 @@ ipcMain.handle('history:search', (_evt, query: unknown, limit: unknown) =>
 /** Tear the harness down and quit. Shared by the hard "kill all & quit" path
  *  and the closing-time conclusion (after the god confirmed the floor saved). */
 function teardownAndQuit(): void {
+  console.log('[quit] teardownAndQuit: start');
   allowQuit = true;
   // Each teardown step is best-effort: a throw here (e.g. a dying child or a
   // half-torn-down socket) must never abort the quit or pop a crash dialog.
@@ -3298,10 +3299,14 @@ function teardownAndQuit(): void {
   try { reflector.stop(); } catch (e) { console.error('[quit] reflector.stop:', e); }
   try { persist.close(); } catch (e) { console.error('[quit] persist.close:', e); }
   try { hive.stopAllProxyBridges(); } catch (e) { console.error('[quit] stopAllProxyBridges:', e); }
+  console.log('[quit] pre-killAll, ptys:', ptyManager.list().length);
   try { ptyManager.killAll(); } catch (e) { console.error('[quit] killAll:', e); }
+  console.log('[quit] post-killAll, calling app.quit()');
   app.quit();
+  console.log('[quit] app.quit() returned');
 }
 ipcMain.handle('app:confirmClose', () => {
+  console.log('[quit] confirmClose received');
   closingTime.cancel(); // a hard quit overrides a closing time in progress
   teardownAndQuit();
 });
@@ -4678,6 +4683,7 @@ app.whenReady().then(() => {
 // before-quit covers Cmd-Q / dock-quit; the per-window close handler covers
 // the red close button. Both routes hit the same warning UX.
 app.on('before-quit', (e) => {
+  console.log('[quit] before-quit, allowQuit=', allowQuit, 'ptys=', ptyManager.list().length);
   if (allowQuit) return;
   const count = ptyManager.list().length;
   if (count === 0) return;
@@ -4689,6 +4695,7 @@ app.on('before-quit', (e) => {
 });
 
 app.on('window-all-closed', () => {
+  console.log('[quit] window-all-closed, platform=', process.platform);
   if (process.platform !== 'darwin') {
     ptyManager.killAll();
     app.quit();
@@ -4700,11 +4707,16 @@ app.on('window-all-closed', () => {
 // against a short timeout, then re-enter quit with the latch set.
 let analyticsFlushed = false;
 app.on('will-quit', (e) => {
+  console.log('[quit] will-quit, analyticsFlushed=', analyticsFlushed);
   stopTelegramServer();
   if (analyticsFlushed) return;
   analyticsFlushed = true;
   e.preventDefault();
-  const finish = (): void => app.quit();
+  // HARD EXIT from the flush callback: a re-entrant app.quit() while the quit
+  // state is mid-flight is silently swallowed on Linux (observed live: 'flush
+  // done, re-quit' logged, before-quit never re-fired, process slept in poll
+  // forever with unreaped zygote children). Everything is torn down by now.
+  const finish = (): void => { console.log('[quit] flush done, hard exit'); process.exit(0); };
   Promise.race([
     analytics.endSession(),
     new Promise<void>((r) => setTimeout(r, 1200))
