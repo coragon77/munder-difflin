@@ -35,7 +35,8 @@ export function kittySocketPath(): string {
   return join(tmpdir(), `md-kitty-${process.getuid?.() ?? 'u'}.sock`);
 }
 
-function kittyBin(): string | null {
+/** Kitty binary path or null — exported for the openInKitty IPC (tab-in-satellite). */
+export function kittyBinPath(): string | null {
   const candidates = [
     join(homedir(), '.local/bin/kitty'),
     '/usr/local/bin/kitty',
@@ -44,6 +45,8 @@ function kittyBin(): string | null {
   for (const c of candidates) if (existsSync(c)) return c;
   return null;
 }
+
+const kittyBin = kittyBinPath;
 
 /** `kitty @ ls` the socket, return the first window id (as a string — kitty
  *  ids exceed Number.MAX_SAFE_INTEGER, and the skills interpolate the value

@@ -34,7 +34,7 @@ import { readAgentUsage, readContextTokens, seedSessionTranscript, resolveSessio
 import { listIssues, listCIRuns } from './github';
 import { SlackWebhookServer, SlackReplyServer, postSlackReply, type SlackEventFile } from './slack';
 import { TelegramTrigger } from './telegram';
-import { startKittySatellite } from './kittySatellite';
+import { startKittySatellite, kittySocketPath, kittyBinPath } from './kittySatellite';
 import {
   WebhookServer,
   type WebhookDispatch, type WebhookEndpointRef, type WebhookInbound, type WebhookTaskStatus
@@ -2880,15 +2880,25 @@ ipcMain.handle('terminal:openAtFolder', async (_evt, cwd: unknown) => {
   });
 });
 
-/** Open the folder in Kitty (kitty --directory). Kitty is GUI-launched and
- *  exits 0 immediately after forking its server process. */
+/** Open the folder in Kitty — as a NEW TAB in the satellite when its socket is
+ *  alive (so all harness terminals gather in one window), else (re)start the
+ *  satellite first, then open the tab. `kitty @ launch --type=tab` lands in every
+ *  os-window of the instance — single satellite → exactly one tab. */
 ipcMain.handle('terminal:openInKitty', async (_evt, cwd: unknown) => {
   if (typeof cwd !== 'string' || cwd.length === 0) return { ok: false, error: 'invalid cwd' };
-  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-    const p = spawn('kitty', ['--directory', cwd], { detached: true, stdio: 'ignore' });
+  const kitty = kittyBinPath();
+  if (!kitty) return { ok: false, error: 'kitty not found' };
+  const runLaunch = (): Promise<{ ok: boolean; error?: string }> => new Promise((resolve) => {
+    const p = spawn(kitty, ['@', '--to', `unix:${kittySocketPath()}`, 'launch', '--type=tab', `--cwd=${cwd}`], { stdio: 'ignore' });
     p.on('error', (e) => resolve({ ok: false, error: e.message }));
-    p.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: `kitty exited ${code}` }));
+    p.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: `kitty @ launch exited ${code}` }));
   });
+  // Socket present → straight into the satellite.
+  if (existsSync(kittySocketPath())) return runLaunch();
+  // No satellite (none spawned yet, or it died) → bring it up, then tab.
+  await startKittySatellite();
+  if (existsSync(kittySocketPath())) return runLaunch();
+  return { ok: false, error: 'satellite did not come up' };
 });
 
 // ─── IPC: integrations (Phase 2 registry — backend for Ryan's Settings UI) ────
