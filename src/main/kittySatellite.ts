@@ -27,9 +27,6 @@ import { join } from 'node:path';
 
 const log = (...a: unknown[]) => console.log('[kitty-satellite]', ...a);
 
-/** One-shot guard — the satellite starts at most once per app run. */
-let started = false;
-
 /** Path of the satellite's remote-control socket (deterministic per user). */
 export function kittySocketPath(): string {
   return join(tmpdir(), `md-kitty-${process.getuid?.() ?? 'u'}.sock`);
@@ -79,8 +76,10 @@ async function firstWindowId(socket: string, kitty: string): Promise<string | nu
 export async function startKittySatellite(): Promise<void> {
   // Respect an explicit opt-out and headless sessions.
   if (process.env.MD_DISABLE_KITTY_SATELLITE === '1' || !process.env.DISPLAY) return;
-  if (started) return;
-  started = true;
+  // One-shot per SATELLITE LIFETIME, not per app run: if the socket is gone
+  // (user closed the satellite window mid-run), allow a restart. The window-id
+  // poll below re-exports the env over the (possibly new) id.
+  if (existsSync(kittySocketPath())) return; // already alive — nothing to do
   const kitty = kittyBin();
   if (!kitty) return;
   const socket = kittySocketPath();
