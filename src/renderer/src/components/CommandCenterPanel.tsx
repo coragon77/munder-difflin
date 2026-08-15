@@ -202,6 +202,9 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
               <Icon name="code" /> IDE
             </span>
           </PixelButton>
+          {/* Same kitty access as the worker agents get — opens the satellite,
+            whose first tab is Michael's own co-terminal. Self-probing. */}
+          <GodKittyButton />
         </div>
       </div>
 
@@ -849,13 +852,6 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
       </Section>
 
       <ArchivedSection />
-
-      <Section title="KITTY">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div style={{ flex: 1, fontSize: 12, color: 'var(--cth-ink-500)' }}>Open the satellite window — Michael's co-terminal plus one tab per agent folder.</div>
-          <GodKittyButton />
-        </div>
-      </Section>
 
       <Section title="DIRECTORIES">
         {repos.length === 0 && <Muted>No registered repos.</Muted>}
