@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PixelPanel } from './PixelPanel';
 import { PixelBadge } from './PixelBadge';
 import { PixelButton } from './PixelButton';
@@ -39,6 +39,31 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
   const isFullscreenedHere = fullscreenAgentId === agent.id;
 
   const onPtyStream = usePtyParser(agent.id);
+
+  // Kitty button only renders when kitty is installed (probed once, cached).
+  const [kittyAvailable, setKittyAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    void window.cth.isKittyAvailable().then(setKittyAvailable).catch(() => setKittyAvailable(false));
+  }, []);
+  const openKitty = async () => {
+    setOpenTerminalState('opening');
+    setOpenTerminalError(undefined);
+    try {
+      const result = await window.cth.openInKitty(agent.cwd);
+      if (result.ok) {
+        setOpenTerminalState('ok');
+        setTimeout(() => setOpenTerminalState('idle'), 1500);
+      } else {
+        setOpenTerminalState('error');
+        setOpenTerminalError(result.error ?? 'unknown error');
+        setTimeout(() => setOpenTerminalState('idle'), 4000);
+      }
+    } catch (e) {
+      setOpenTerminalState('error');
+      setOpenTerminalError(e instanceof Error ? e.message : String(e));
+      setTimeout(() => setOpenTerminalState('idle'), 4000);
+    }
+  };
 
   // Michael gets the full command-center dashboard instead of the plain panel.
   if (agent.isGod) return <CommandCenterPanel agent={agent} />;
@@ -130,6 +155,14 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
             {openTerminalState === 'opening' ? '...' : openTerminalState === 'ok' ? 'ok' : openTerminalState === 'error' ? 'err' : 'open'}
           </span>
         </PixelButton>
+        {kittyAvailable === true && (
+          <PixelButton variant="secondary" size="sm" onClick={openKitty} disabled={openTerminalState === 'opening'}>
+            <span title={`open Kitty at ${agent.cwd}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              🐱
+              {openTerminalState === 'opening' ? '...' : 'kitty'}
+            </span>
+          </PixelButton>
+        )}
         {isReal && (
           <PixelButton variant="destructive" size="sm" onClick={onKill}>
             <Icon name="x" />

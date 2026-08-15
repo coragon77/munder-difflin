@@ -2843,6 +2843,18 @@ ipcMain.handle('dialog:chooseFolder', async (evt) => {
 });
 
 // ─── IPC: Terminal.app at a folder ──────────────────────────────────────────
+/** Kitty detected once at boot (it's on PATH or it isn't — no point re-scanning
+ *  per click). `null` = not installed → the renderer hides the Kitty button. */
+let kittyAvailable: boolean | null = null;
+ipcMain.handle('system:isKittyAvailable', () => {
+  if (kittyAvailable === null) {
+    const home = process.env.HOME ?? '';
+    kittyAvailable = [`${home}/.local/bin/kitty`, '/usr/local/bin/kitty', '/usr/bin/kitty']
+      .some((p) => existsSync(p));
+  }
+  return kittyAvailable;
+});
+
 ipcMain.handle('terminal:openAtFolder', async (_evt, cwd: unknown) => {
   if (typeof cwd !== 'string' || cwd.length === 0) return { ok: false, error: 'invalid cwd' };
   return new Promise<{ ok: boolean; error?: string }>((resolve) => {
@@ -2860,6 +2872,17 @@ ipcMain.handle('terminal:openAtFolder', async (_evt, cwd: unknown) => {
       if (code === 0) resolve({ ok: true });
       else resolve({ ok: false, error: err.trim() || `${bin} exited ${code}` });
     });
+  });
+});
+
+/** Open the folder in Kitty (kitty --directory). Kitty is GUI-launched and
+ *  exits 0 immediately after forking its server process. */
+ipcMain.handle('terminal:openInKitty', async (_evt, cwd: unknown) => {
+  if (typeof cwd !== 'string' || cwd.length === 0) return { ok: false, error: 'invalid cwd' };
+  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    const p = spawn('kitty', ['--directory', cwd], { detached: true, stdio: 'ignore' });
+    p.on('error', (e) => resolve({ ok: false, error: e.message }));
+    p.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: `kitty exited ${code}` }));
   });
 });
 

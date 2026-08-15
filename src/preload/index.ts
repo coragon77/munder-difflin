@@ -611,6 +611,11 @@ const api = {
   // ─── Terminal.app ────────────────────────────────────────────────────────
   openTerminalAt: (cwd: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('terminal:openAtFolder', cwd),
+  /** Open the folder in Kitty (button hidden when main reports kitty absent). */
+  openInKitty: (cwd: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('terminal:openInKitty', cwd),
+  /** One-shot availability probe (cached main-side). */
+  isKittyAvailable: (): Promise<boolean> => ipcRenderer.invoke('system:isKittyAvailable'),
 
   // ─── Clipboard ─────────────────────────────────────────────────────────────
   copyToClipboard: (text: string): Promise<{ ok: boolean; error?: string }> =>
