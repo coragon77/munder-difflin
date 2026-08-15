@@ -669,13 +669,14 @@ export class HiveManager {
             }
             else if (desc.shim === 'pi') {
               // Pi (earendil-works) has a rich pi.on(event) lifecycle. We drop a
-              // bundled extension into a PER-AGENT PI_CODING_AGENT_DIR (so the user's
+              // bundled TS extension into a PER-AGENT PI_CODING_AGENT_DIR (so the user's
               // global ~/.pi is never touched) that posts cth-hook-shaped payloads to
-              // HIVE_SOCK on tool_call/agent_end and auto-approves tools when the floor
-              // is in auto mode. HIVE_AUTO_APPROVE (set in spawnAgentCore from
-              // config.autoMode) gates the auto-allow — Pam guardrail #5.
-              // LIVE-UNVERIFIED: the exact extension API surface needs BYOK keys to
-              // prove; the renderer idle inbox-wake nudge is the guaranteed drain.
+              // HIVE_SOCK on tool_call/tool_result/agent_settled. Pi auto-approves
+              // tools in non-interactive runs, so autonomy is governed by the spawn
+              // flags, not the extension. NOTE: the isolated agent dir also hides
+              // ~/.pi/agent/auth.json — provider keys must come via BYOK spawn env.
+              // LIVE-VERIFIED 2026-08-15 against pi 0.84: TS auto-discovery, event
+              // shapes, and Stop-on-settled confirmed end-to-end.
               env.PI_CODING_AGENT_DIR = this.installPiHooks(dir);
             }
             else if (desc.shim === 'opencode') {
@@ -1584,15 +1585,12 @@ export class HiveManager {
   private installPiHooks(dir: string): string {
     const home = join(dir, '.pi-agent');
     try {
-      // Pi discovers extensions under its agent dir; we write to the documented
-      // `extensions/` location (and keep it isolated per agent).
+      // Pi discovers extensions under its agent dir (PI_CODING_AGENT_DIR overrides
+      // the default ~/.pi/agent). Auto-discovery is TS-only: extensions/*.ts with an
+      // ESM default export — verified against pi 0.84 docs. No manifest needed.
       const extDir = join(home, 'extensions');
       mkdirSync(extDir, { recursive: true });
-      writeFileSync(join(extDir, 'hive-bridge.js'), PI_EXTENSION, 'utf8');
-      // A manifest so Pi auto-loads the extension on start (best-effort; harmless if
-      // Pi ignores it). Kept minimal and hive-authored.
-      const manifest = { name: 'munder-hive-bridge', version: '0.3.1', main: 'extensions/hive-bridge.js', auto: true };
-      writeFileSync(join(home, 'extensions.json'), JSON.stringify(manifest, null, 2), 'utf8');
+      writeFileSync(join(extDir, 'hive-bridge.ts'), PI_EXTENSION, 'utf8');
     } catch (e) { console.error('[hive] installPiHooks failed:', e); }
     return home;
   }
@@ -2118,36 +2116,35 @@ process.stdin.on('end', () => {
 // agent_end→Stop keeps the harness status in step (→ idle) so the renderer idle
 // inbox-wake nudge can deliver mail. Fully wrapped so a wrong API guess can never
 // break the spawn. LIVE-UNVERIFIED (Pi's exact extension surface needs BYOK keys).
-const PI_EXTENSION = `'use strict';
-var net = require('node:net');
-var SOCK = process.env.HIVE_SOCK;
-var AGENT = process.env.AGENT_ID || null;
-var AUTO = process.env.HIVE_AUTO_APPROVE === '1';
-function post(payload) {
+const PI_EXTENSION = `import net from 'node:net';
+const SOCK = process.env.HIVE_SOCK;
+const AGENT = process.env.AGENT_ID ?? null;
+// Pi auto-approves tools in non-interactive runs unless an extension blocks, so
+// HIVE_AUTO_APPROVE needs no enforcement here — the floor's auto-state only gates
+// whether the hive spawns pi with autonomy flags at all (agentProvider.ts).
+function post(payload: Record<string, unknown>): void {
   try {
     if (!SOCK) return;
-    payload.agent_id = payload.agent_id || AGENT;
-    var c = net.createConnection(SOCK, function () { try { c.end(JSON.stringify(payload) + '\\n'); } catch (e) {} });
-    c.on('error', function () {});
-  } catch (e) {}
+    payload.agent_id = payload.agent_id ?? AGENT;
+    const c = net.createConnection(SOCK, () => { try { c.end(JSON.stringify(payload) + '\\n'); } catch {} });
+    c.on('error', () => {});
+  } catch {}
 }
-function register(pi) {
-  if (!pi || typeof pi.on !== 'function') return false;
-  try {
-    pi.on('tool_call', function (ev) {
-      post({ hook_event_name: 'PreToolUse', tool_name: ev && (ev.name || (ev.tool && ev.tool.name)), tool_input: ev && (ev.args || ev.input) });
-      if (AUTO) { try { if (ev && typeof ev.approve === 'function') ev.approve(); } catch (e) {} return { approve: true }; }
-      return undefined;
-    });
-    pi.on('tool_result', function (ev) { post({ hook_event_name: 'PostToolUse', tool_name: ev && (ev.name || (ev.tool && ev.tool.name)) }); });
-    pi.on('agent_end', function () { post({ hook_event_name: 'Stop' }); });
-    return true;
-  } catch (e) { return false; }
+// Pi extension shape (pi 0.84): ESM default export, structural ExtensionAPI.
+export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => any) => void }) {
+  pi.on('tool_call', (event) => {
+    post({ hook_event_name: 'PreToolUse', tool_name: event?.toolName, tool_input: event?.input });
+  });
+  pi.on('tool_result', (event) => {
+    post({ hook_event_name: 'PostToolUse', tool_name: event?.toolName });
+  });
+  // agent_settled, not agent_end: agent_end fires per low-level run (retries,
+  // auto-compact) — settled means pi will not continue on its own. That is the
+  // hive's Stop = "terminal went idle, deliver mail".
+  pi.on('agent_settled', () => {
+    post({ hook_event_name: 'Stop' });
+  });
 }
-try { if (typeof globalThis !== 'undefined' && globalThis.pi) register(globalThis.pi); } catch (e) {}
-module.exports = function (pi) { return register(pi); };
-module.exports.activate = function (pi) { return register(pi); };
-module.exports.default = module.exports;
 `;
 
 // ─── opencode bridge plugin (written to <agentDir>/.opencode/plugin/) ────────
