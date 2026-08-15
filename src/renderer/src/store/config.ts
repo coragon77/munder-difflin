@@ -331,7 +331,8 @@ export const GROK_MODELS: ModelOption[] = [
   // harness's `config.defaultModel`; the pickers mark that one separately, and
   // labelling both "default" is what made the two impossible to tell apart.
   { id: undefined, label: 'CLI default' },
-  { id: 'grok-4.5', label: 'Grok 4.5' },
+  { id: 'grok-4.6', label: 'Grok 4.6' },
+  { id: 'grok-4.5', label: 'Grok 4.5' }
 ];
 
 /** Managed Kimi Code aliases accepted by `kimi --model <alias>`. */
