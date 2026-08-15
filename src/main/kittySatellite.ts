@@ -80,11 +80,17 @@ export function godCommand(): { file: string; args: string[]; cwd: string | null
     );
     if (!existsSync(cfgPath)) return { file: 'bash', args: [], cwd: null };
     const cfg = JSON.parse(readFileSync(cfgPath, 'utf8')) as {
-      defaultCommand?: string; harnessHome?: string | null;
+      defaultCommand?: string; harnessHome?: string | null; autoMode?: boolean;
     };
     const cmd = (cfg.defaultCommand ?? '').trim() || 'bash';
     const parts = cmd.split(/\s+/);
     const hive = cfg.harnessHome ?? null;
+    // God co-terminal runs in auto mode like the in-app god (autoMode config →
+    // Claude's bypassPermissions). He is an unattended orchestrator: permission
+    // prompts in the satellite window answer nobody.
+    if (cfg.autoMode && parts[0] === 'claude' && !parts.includes('--permission-mode')) {
+      parts.push('--permission-mode', 'bypassPermissions');
+    }
     // Claude at the hive root finds the god's memory/board/inbox via its cwd.
     const godCwd = hive ? join(hive, 'agents', 'god') : null;
     return { file: parts[0], args: parts.slice(1), cwd: godCwd && existsSync(godCwd) ? godCwd : hive };
