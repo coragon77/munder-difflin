@@ -34,7 +34,7 @@ import { readAgentUsage, readContextTokens, seedSessionTranscript, resolveSessio
 import { listIssues, listCIRuns } from './github';
 import { SlackWebhookServer, SlackReplyServer, postSlackReply, type SlackEventFile } from './slack';
 import { TelegramTrigger } from './telegram';
-import { startKittySatellite, kittySocketPath, kittyBinPath } from './kittySatellite';
+import { startKittySatellite, kittySocketPath, kittyBinPath, godCommand } from './kittySatellite';
 import {
   WebhookServer,
   type WebhookDispatch, type WebhookEndpointRef, type WebhookInbound, type WebhookTaskStatus
@@ -2885,11 +2885,14 @@ ipcMain.handle('terminal:openAtFolder', async (_evt, cwd: unknown) => {
  *  satellite first, then open the tab. `kitty @ launch --type=tab` lands in every
  *  os-window of the instance — single satellite → exactly one tab. */
 ipcMain.handle('terminal:openInKitty', async (_evt, cwd: unknown) => {
-  if (typeof cwd !== 'string' || cwd.length === 0) return { ok: false, error: 'invalid cwd' };
+  // Empty cwd (god panel button) = the satellite itself is Michael's terminal —
+  // if it's already up just focus/no-op; if not, start it (first tab = god).
+  const godCwd = godCommand().cwd ?? process.cwd();
+  const target = typeof cwd === 'string' && cwd.length > 0 ? cwd : godCwd;
   const kitty = kittyBinPath();
   if (!kitty) return { ok: false, error: 'kitty not found' };
   const runLaunch = (): Promise<{ ok: boolean; error?: string }> => new Promise((resolve) => {
-    const p = spawn(kitty, ['@', '--to', `unix:${kittySocketPath()}`, 'launch', '--type=tab', `--cwd=${cwd}`], { stdio: 'ignore' });
+    const p = spawn(kitty, ['@', '--to', `unix:${kittySocketPath()}`, 'launch', '--type=tab', `--cwd=${target}`], { stdio: 'ignore' });
     p.on('error', (e) => resolve({ ok: false, error: e.message }));
     p.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: `kitty @ launch exited ${code}` }));
   });

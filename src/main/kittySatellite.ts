@@ -21,7 +21,7 @@
  * app re-establishes everything.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -68,6 +68,31 @@ async function firstWindowId(socket: string, kitty: string): Promise<string | nu
   return null;
 }
 
+/** The satellite's FIRST window is the god's co-terminal: the configured
+ *  default engine (e.g. `claude`) in the hive cwd. Same memory/inbox/roster
+ *  files as the in-app god session — a second process, not a shared transcript.
+ *  Falls back to a plain shell when no engine/hive is configured. */
+export function godCommand(): { file: string; args: string[]; cwd: string | null } {
+  try {
+    const cfgPath = join(
+      (process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config')),
+      'munder-difflin', 'config.json'
+    );
+    if (!existsSync(cfgPath)) return { file: 'bash', args: [], cwd: null };
+    const cfg = JSON.parse(readFileSync(cfgPath, 'utf8')) as {
+      defaultCommand?: string; harnessHome?: string | null;
+    };
+    const cmd = (cfg.defaultCommand ?? '').trim() || 'bash';
+    const parts = cmd.split(/\s+/);
+    const hive = cfg.harnessHome ?? null;
+    // Claude at the hive root finds the god's memory/board/inbox via its cwd.
+    const godCwd = hive ? join(hive, 'agents', 'god') : null;
+    return { file: parts[0], args: parts.slice(1), cwd: godCwd && existsSync(godCwd) ? godCwd : hive };
+  } catch {
+    return { file: 'bash', args: [], cwd: null };
+  }
+}
+
 /** Start the satellite and export the handoff env. No-op (and env-clean) when
  *  kitty is missing or the socket never comes up. LAZY: called from the first
  *  agent spawn, not app boot — the user sees no Kitty window until an agent
@@ -98,14 +123,41 @@ export async function startKittySatellite(): Promise<void> {
     detached: true, stdio: 'ignore',
     // Inherit DISPLAY so the window opens on the user's desktop.
     env: { ...process.env }
-  });
+  }, );
   child.unref();
   const winId = await firstWindowId(socket, kitty);
   if (!winId) {
     log('kitty started but no window id — leaving handoff env unset');
     return;
   }
+  // The initial window is a plain shell (kitty launched bare). Replace it with
+  // the god co-terminal: launch his engine in a new tab of the SAME window, then
+  // close the shell tab's window only after Michael's tab exists. NOTE: closing
+  // by window id would close Michael too — the shell is tab 1 of the same
+  // os-window, so close by TAB, not window (close-tab --match state:older).
+  const god = godCommand();
+  try {
+    const tabCwd = god.cwd ?? process.cwd();
+    await new Promise<void>((resolve) => {
+      const p = spawn(kitty, [
+        '@', '--to', `unix:${socket}`, 'launch', '--type=tab',
+        `--match=window_id:${winId}`, `--cwd=${tabCwd}`,
+        '--title', 'Michael',
+        '--hold',
+        god.file, ...god.args
+      ], { stdio: 'ignore' });
+      p.on('error', () => resolve());
+      p.on('close', () => resolve());
+    });
+    // Close the initial bare-shell TAB (kitty numbers tabs; the shell is the
+    // only pre-existing tab — close by title match on the satellite window).
+    await new Promise<void>((resolve) => {
+      const p = spawn(kitty, ['@', '--to', `unix:${socket}`, 'close-tab', '--match', `window_id:${winId}`, '--match', 'state:older'], { stdio: 'ignore' });
+      p.on('error', () => resolve());
+      p.on('close', () => resolve());
+    });
+  } catch { /* best-effort: satellite with a shell is still fine */ }
   process.env.KITTY_LISTEN_ON = `unix:${socket}`;
   process.env.KITTY_WINDOW_ID = winId;
-  log('handoff env exported:', process.env.KITTY_LISTEN_ON, 'window', winId);
+  log('handoff env exported:', process.env.KITTY_LISTEN_ON, 'window', winId, '(Michael tab:', god.file, ')');
 }

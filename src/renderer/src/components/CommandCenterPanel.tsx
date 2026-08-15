@@ -850,6 +850,12 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
 
       <ArchivedSection />
 
+      <Section title="KITTY">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ flex: 1, fontSize: 12, color: 'var(--cth-ink-500)' }}>Open the satellite window — Michael's co-terminal plus one tab per agent folder.</div>
+          <GodKittyButton />
+        </div>
+      </Section>
 
       <Section title="DIRECTORIES">
         {repos.length === 0 && <Muted>No registered repos.</Muted>}
@@ -922,6 +928,24 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
 }
 
 // ─── Archived agents — retained + flagged, kept off the floor ────────────────
+
+/** Kitty opener for the god panel — cwd omitted: main opens the satellite
+ *  (which IS Michael's co-terminal) or a tab at the hive root. Self-probing so
+ *  it can render from any scope (FloorTab has no agent/config props). */
+function GodKittyButton() {
+  const [available, setAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    void window.cth.isKittyAvailable().then(setAvailable).catch(() => setAvailable(false));
+  }, []);
+  if (available !== true) return null;
+  return (
+    <PixelButton variant="secondary" size="sm" onClick={() => { void window.cth.openInKitty(''); }}>
+      <span title="open the satellite (Michael's terminal)" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        🐱 kitty
+      </span>
+    </PixelButton>
+  );
+}
 
 function ArchivedSection() {
   const archivedAgents = useStore((s) => s.archivedAgents);
