@@ -124,7 +124,12 @@ export async function startKittySatellite(): Promise<void> {
     // dialog at startup (seen live, kitty 0.48). 
     '--override', 'allow_remote_control socket-only',
     '--override', 'enabled_layouts splits',
-    '--title', 'MD satellite'
+    '--title', 'MD satellite',
+    // The initial window is a THROWAWAY shell whose tab title we set via an OSC
+    // escape (bash rcfiles would otherwise rewrite it to user@host:cwd — verified
+    // live). `--noprofile --norc` keeps our title; close-tab later matches it.
+    '--', 'bash', '--noprofile', '--norc', '-c',
+    'printf "\\e]2;md-shell-placeholder\\a"; exec bash --noprofile --norc'
   ], {
     detached: true, stdio: 'ignore',
     // Inherit DISPLAY so the window opens on the user's desktop.
@@ -155,17 +160,14 @@ export async function startKittySatellite(): Promise<void> {
       p.on('error', () => resolve());
       p.on('close', () => resolve());
     });
-    // Close the initial bare-shell tab — matched by TITLE scoped to our window.
-    // Kitty names a tab after its running command, so the bare shell tab is
-    // 'bash' (or the user's shell). Michael's tab is titled 'Michael', agent
-    // tabs carry their folders — a title regex anchored to the shell name can't
-    // hit them. If the match fails (exotic shell title), the tab stays — cosmetic.
-    const shellName = god.file === 'bash' || god.file === 'zsh' || god.file === 'sh' ? god.file : 'bash';
+    // Close the initial throwaway shell tab, matched by its distinctive title
+    // (set via OSC escape at launch — see above; verified live against kitty
+    // 0.48: user rcfiles rewrite tab titles, --noprofile --norc keeps ours).
     await new Promise<void>((resolve) => {
       const p = spawn(kitty, [
         '@', '--to', `unix:${socket}`, 'close-tab',
         '--match', `window_id:${winId}`,
-        '--match', `title:^(${shellName}|sh)$`
+        '--match', 'title:md-shell-placeholder'
       ], { stdio: 'ignore' });
       p.on('error', () => resolve());
       p.on('close', () => resolve());
