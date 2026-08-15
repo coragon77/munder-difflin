@@ -151,6 +151,7 @@ export class TelegramTrigger {
       return;
     }
     if (chat !== this.chatId) return; // silent drop — no enumeration signal
+    log('inbound from owner chat:', text.slice(0, 80));
     void Promise.resolve(this.opts.onMessage({ chatId: chat, text })).catch((e) => log('onMessage failed:', e));
   }
 
