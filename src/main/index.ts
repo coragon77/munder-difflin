@@ -4707,13 +4707,28 @@ app.whenReady().then(() => {
 // the red close button. Both routes hit the same warning UX.
 app.on('before-quit', (e) => {
   console.log('[quit] before-quit, allowQuit=', allowQuit, 'ptys=', ptyManager.list().length);
-  if (allowQuit) return;
+  // FINAL backstop: once a quit is sanctioned (allowQuit) nothing may re-block
+  // it — a wedged modal or dying renderer must not strand a windowless process.
+  if (allowQuit) {
+    setTimeout(() => { console.log('[quit] before-quit allowQuit grace expired, hard exit'); process.exit(0); }, 4000);
+    return;
+  }
   const count = ptyManager.list().length;
-  if (count === 0) return;
+  if (count === 0) {
+    // No PTYs to warn about, but a dead renderer can still wedge the dialog
+    // path — time-box this route too.
+    setTimeout(() => { console.log('[quit] before-quit no-ptys grace expired, hard exit'); process.exit(0); }, 4000);
+    return;
+  }
   e.preventDefault();
   if (mainWindow) {
     mainWindow.focus();
     mainWindow.webContents.send('app:closeRequested', { ptyCount: count });
+    // If the renderer is dead (blank window), the closeRequested modal never
+    // answers — fall through to a hard exit so "Beenden" always works.
+    setTimeout(() => {
+      if (!allowQuit) { console.log('[quit] close-dialog unanswered (dead renderer?), hard exit'); process.exit(0); }
+    }, 6000);
   }
 });
 
@@ -4722,6 +4737,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     ptyManager.killAll();
     app.quit();
+    // Belt-and-braces: if the quit sequence wedges anywhere downstream (e.g. a
+    // modal waiting on a dead renderer — the blank-window case), the LAST window
+    // being gone means the user is done. Hard exit after a short grace period.
+    setTimeout(() => { console.log('[quit] window-all-closed grace expired, hard exit'); process.exit(0); }, 4000);
   }
 });
 
