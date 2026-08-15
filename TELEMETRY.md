@@ -25,7 +25,7 @@ The events:
 | `first_run` | — | Once, the first time the app ever starts |
 | `app_launched` | — | Each app start |
 | `agent_spawned` | `provider` (CLI engine name, e.g. `claude`, `codex`) | An agent terminal is spawned |
-| `feature_used` | `feature` — one of `slack_trigger`, `webhook_trigger`, `hire_install`, `voice_dictation` | At most once per feature per app session |
+| `feature_used` | `feature` — one of `slack_trigger`, `telegram_trigger`, `webhook_trigger`, `hire_install`, `voice_dictation` | At most once per feature per app session |
 | `session_ended` | `duration_bucket` — one of `<5m`, `5-30m`, `30m-2h`, `2-8h`, `8h+` | On quit (coarse bucket, never raw duration) |
 
 ## What is never sent

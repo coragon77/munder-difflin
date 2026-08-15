@@ -1030,6 +1030,13 @@ const api = {
     ipcRenderer.on('slack:incomingMessage', listener);
     return () => ipcRenderer.removeListener('slack:incomingMessage', listener);
   },
+  // ─── Telegram integration (Telegram message → Michael's queue) ────────────
+  /** Register a listener for inbound Telegram messages; returns unsubscribe. */
+  onTelegramMessage: (cb: (msg: { text: string; autonomyPreamble?: string }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, msg: { text: string; autonomyPreamble?: string }) => cb(msg);
+    ipcRenderer.on('telegram:incomingMessage', listener);
+    return () => ipcRenderer.removeListener('telegram:incomingMessage', listener);
+  },
   /** Start the Slack webhook server; returns the public tunnel URL to paste into
    *  the Slack app's Event Subscriptions → Request URL. */
   slackStart: (): Promise<{ ok: boolean; url?: string; error?: string }> =>

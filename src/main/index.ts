@@ -33,6 +33,7 @@ import { PersistStore } from './db';
 import { readAgentUsage, readContextTokens, seedSessionTranscript, resolveSessionCwd } from './transcript';
 import { listIssues, listCIRuns } from './github';
 import { SlackWebhookServer, SlackReplyServer, postSlackReply, type SlackEventFile } from './slack';
+import { TelegramTrigger } from './telegram';
 import {
   WebhookServer,
   type WebhookDispatch, type WebhookEndpointRef, type WebhookInbound, type WebhookTaskStatus
@@ -1562,6 +1563,72 @@ function stopSlackServer(): void {
   slackReplyServer = null;
   stopSlackDoneObserver();
   try { if (existsSync(slackReplyConfigPath())) unlinkSync(slackReplyConfigPath()); } catch { /* noop */ }
+}
+
+// ─── Telegram trigger (phone → Michael's queue; no Slack, no tunnel) ─────────
+/** The single Telegram trigger instance, or null when not running. */
+let telegramTrigger: TelegramTrigger | null = null;
+
+/** Env file with the bot token (dev: repo root; packaged: userData). The file's
+ *  presence IS the on/off switch — no config row, no UI toggle for v1. */
+function telegramEnvFile(): string {
+  return app.isPackaged ? join(app.getPath('userData'), '.env.telegram') : join(app.getAppPath(), '.env.telegram');
+}
+
+/** userData path of the reply-endpoint discovery file for md-telegram-reply.cjs. */
+function telegramReplyConfigPath(): string {
+  return join(app.getPath('userData'), 'telegram-reply.json');
+}
+
+/** Absolute path of the bundled `md-telegram-reply.cjs` helper (same resolution
+ *  as slackReplyScriptPath). */
+function telegramReplyScriptPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'md-telegram-reply.cjs')
+    : join(app.getAppPath(), 'resources', 'md-telegram-reply.cjs');
+}
+
+/** Telegram flavour of buildAutonomousRequestProtocol: same autonomy policy,
+ *  reply handle points at the Telegram helper (single owned chat, no threads). */
+function buildTelegramProtocol(helperPath: string): string {
+  return `[AUTONOMOUS REQUEST PROTOCOL — this request arrived via Telegram; no interactive human is watching] Handle it under this protocol:
+1. ROUTE FAST — triage and hand this to the single most-relevant agent right away. CHECK THE LIVE ROSTER FIRST (active agents in registry.json + their state in fleet.json) and prefer an EXISTING agent that fits — especially when the request names one ("ask Pam…", "have Jim…"): route to that agent and only spawn a new one if none is a sensible fit. Decompose only if it genuinely needs several. Don't sit on it.
+2. DELEGATE WITH THE REPLY HANDLE — tell that agent to do the work autonomously AND to post its result back to the Telegram chat itself when done, using exactly: "$HIVE_NODE" "${helperPath}" --text "<substantive result>" ($HIVE_NODE is the harness's bundled Node, injected into every agent's env — bare "node" is not on the hook/agent PATH on many machines.)
+3. AUTONOMOUS EXECUTION — no interactive questions. PAUSE/ask ONLY for high-severity actions: pushing to main or any remote; buying or spawning infrastructure or paid services; deleting an existing repo, file, or folder it did not create. Stay READ-ONLY at critical infrastructure and git-push-type changes unless explicitly approved.
+4. DIRECT, SUBSTANTIVE REPLY — the agent posts a real answer (short bold headline + the actual outcome/specifics), NEVER a bare "done".
+5. REPORT TO GOD — the agent then tells you (Michael) what it did.
+6. ASYNC QUESTIONS — if a decision is genuinely needed, don't block: post the question + numbered OPTIONS to the chat via that reply command.
+The user's message starts now: `;
+}
+
+/** Start the Telegram trigger (token file present) and pipe inbound text into
+ *  Michael's queue via the renderer, mirroring the Slack ingestion path. */
+async function startTelegramServer(): Promise<{ ok: boolean; error?: string }> {
+  stopTelegramServer();
+  const trig = new TelegramTrigger({
+    envFile: telegramEnvFile(),
+    replyConfigFile: telegramReplyConfigPath(),
+    onMessage: (m) => {
+      // Ack immediately in-chat (main-side; no renderer round-trip needed).
+      void trig.sendText('📨 Received. Queued for Michael — the team will reply here when done.');
+      try {
+        liveWebContents()?.send('telegram:incomingMessage', {
+          text: m.text,
+          autonomyPreamble: buildTelegramProtocol(telegramReplyScriptPath())
+        });
+      } catch { /* window torn down */ }
+    }
+  });
+  const res = await trig.start();
+  if (!res.ok) return res;
+  telegramTrigger = trig;
+  analytics.trackFeature('telegram_trigger');
+  return res;
+}
+
+function stopTelegramServer(): void {
+  try { telegramTrigger?.stop(); } catch (e) { console.error('[telegram] stop failed:', e); }
+  telegramTrigger = null;
 }
 
 // ─── Generic inbound webhook + status API (multi-endpoint) ───────────────────
@@ -4545,6 +4612,9 @@ app.whenReady().then(() => {
   // server is running; the FILE only exists while it is, so the helper degrades
   // to "endpoint not running" cleanly. NO secret is in the env — only the path.
   process.env.MD_SLACK_REPLY_CONFIG = slackReplyConfigPath();
+  // Same for the Telegram reply helper: stable path, no secret, file only exists
+  // while the endpoint runs (absent → helper degrades to "not running").
+  process.env.MD_TELEGRAM_REPLY_CONFIG = telegramReplyConfigPath();
   // Open the durable store first — createWindow() reads the saved window bounds.
   // Guarded: a DB failure (e.g. a bad native build) must degrade to defaults,
   // never block app startup.
@@ -4579,6 +4649,12 @@ app.whenReady().then(() => {
       else console.log('[slack] webhook listening', r.url ? `(tunnel: ${r.url})` : '(no tunnel)');
     });
   }
+  // Auto-start the Telegram trigger when .env.telegram exists (the file IS the
+  // switch). Best-effort: offline/errors are logged by the poll loop's backoff.
+  void startTelegramServer().then((r) => {
+    if (!r.ok && r.error && !r.error.includes('no TELEGRAM_BOT_TOKEN')) console.error('[telegram] auto-start failed:', r.error);
+    else if (r.ok) console.log('[telegram] trigger polling');
+  });
   // Auto-start the generic webhook only for endpoints the user has explicitly
   // enabled (each with its own secret) — never a default-on public surface.
   // Opt-in, like Slack; an install with no enabled endpoint opens no tunnel.
@@ -4618,6 +4694,7 @@ app.on('window-all-closed', () => {
 // against a short timeout, then re-enter quit with the latch set.
 let analyticsFlushed = false;
 app.on('will-quit', (e) => {
+  stopTelegramServer();
   if (analyticsFlushed) return;
   analyticsFlushed = true;
   e.preventDefault();

@@ -42,6 +42,9 @@ files:
 extraResources:
   - from: resources/md-slack-reply.cjs
     to: md-slack-reply.cjs
+  # Same loopback-reply pattern for the Telegram trigger (see telegram.ts).
+  - from: resources/md-telegram-reply.cjs
+    to: md-telegram-reply.cjs
   # Knowledge Graph agent CLI + its pure-JS core. Agents invoke `node
   # <resources>/kg.cjs` out-of-process; kg-core.cjs ships beside it so the CLI's
   # `require('./kg-core.cjs')` resolves outside the asar.

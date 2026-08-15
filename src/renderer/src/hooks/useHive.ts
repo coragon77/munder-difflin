@@ -851,6 +851,21 @@ export function useHive(config: HarnessConfig | null): void {
     });
   }, [config?.onboardingComplete]);
 
+  // 5t) Pipe inbound Telegram messages into Michael's queue — same shape as the
+  //     Slack effect above, minus threads/files: one owned chat, text only. The
+  //     ack is sent main-side before the IPC push, so here we just enqueue. The
+  //     autonomy preamble (reply handle = md-telegram-reply.cjs) rides in the
+  //     instruction, keeping the kanban card title human-readable.
+  useEffect(() => {
+    if (!config?.onboardingComplete) return;
+    return window.cth.onTelegramMessage?.((msg) => {
+      const text = msg?.text?.trim();
+      if (!text) return;
+      const instruction = msg.autonomyPreamble ? `${msg.autonomyPreamble}${text}` : undefined;
+      useStore.getState().enqueueMessage(GOD_ID, text, { instruction });
+    });
+  }, [config?.onboardingComplete]);
+
   // 5b) Pipe hive tasks addressed to non-Claude agents (e.g. Codex) into their
   //     terminal queues. When main routes a message to a non-claude provider it
   //     emits 'hive:enqueueToAgent' instead of bouncing; we enqueue the raw
