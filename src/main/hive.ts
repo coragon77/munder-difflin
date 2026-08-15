@@ -2074,27 +2074,108 @@ process.stdin.on('end', () => {
   const sock = process.env.HIVE_SOCK;
   if (isStatus) {
     // Status-line mode: Claude Code pipes the session status JSON (incl.
-    // context_window.total_input_tokens / .context_window_size) after every
-    // response. Print the in-terminal gauge IMMEDIATELY (the TUI is waiting),
-    // then forward the payload to the harness fire-and-forget so the agent
-    // card's context gauge updates push-based, with the EXACT window size.
+    // context_window.total_input_tokens / .context_window_size and
+    // model.display_name) after every response. Print the in-terminal line
+    // IMMEDIATELY (the TUI is waiting), then forward the payload to the
+    // harness fire-and-forget so the agent card's context gauge updates
+    // push-based, with the EXACT window size.
+    // Line: ctx 12k/200k (6%) · Sonnet · D 7% · W 15%   (usage via the shared
+    // ccstatusline cache — ONE upstream call per 180s across ALL agents, never
+    // one per status tick; the endpoint is rate-limited).
+    let refreshDone = null; // Promise set below when a refresh is in flight
     payload.hook_event_name = 'Status';
     const cw = payload.context_window || {};
     const used = cw.total_input_tokens, size = cw.context_window_size;
+    let line = '';
     if (typeof used === 'number' && typeof size === 'number' && size > 0) {
       const pct = Math.round((used / size) * 100);
-      process.stdout.write('ctx ' + Math.round(used / 1000) + 'k/' + Math.round(size / 1000) + 'k (' + pct + '%)');
+      line += 'ctx ' + Math.round(used / 1000) + 'k/' + Math.round(size / 1000) + 'k (' + pct + '%)';
     }
+    const m = payload.model && payload.model.display_name;
+    if (m) line += (line ? ' · ' : '') + String(m);
+    // ── usage: read the shared cache (written below, TTL 180s) ──
+    try {
+      const fs = require('fs'), os = require('os'), path = require('path');
+      const cacheFile = path.join(os.homedir(), '.cache', 'ccstatusline', 'usage.json');
+      const u = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+      const fresh = u.fetchedAtMs && (Date.now() - u.fetchedAtMs < 10 * 60 * 1000); // 10min staleness ceiling
+      if (fresh) {
+        // Cache stores BOTH shapes: ccstatusline's flattened keys (its own runs
+        // rewrite the file) and our normalized ones. Read whichever is present.
+        const d = typeof u.sessionUsage === 'number' ? u.sessionUsage
+          : typeof u.fh === 'number' ? u.fh : null;
+        const w = typeof u.weeklyUsage === 'number' ? u.weeklyUsage
+          : typeof u.wd === 'number' ? u.wd : null;
+        if (d !== null) line += ' · D ' + d + '%';
+        if (w !== null) line += ' · W ' + w + '%';
+      }
+    } catch (_) { /* no cache → skip usage segments */ }
+    if (line) process.stdout.write(line);
+    // ── cache refresh: at most one agent per TTL window hits the API ──
+    try {
+      const fs = require('fs'), os = require('os'), path = require('path');
+      const dir = path.join(os.homedir(), '.cache', 'ccstatusline');
+      const cacheFile = path.join(dir, 'usage.json');
+      const lockFile = path.join(dir, 'usage.lock');
+      fs.mkdirSync(dir, { recursive: true });
+      let stale = true;
+      try {
+        const u = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+        if (u.fetchedAtMs && (Date.now() - u.fetchedAtMs < 180000)) stale = false;
+      } catch (_) {}
+      if (stale) {
+        // Lock: whoever creates/owns it refreshes; others just use the old cache
+        // this tick (ccstatusline's own protocol — we share its cache file).
+        let locked = false;
+        try {
+          const st = fs.statSync(lockFile);
+          // A lock older than 30s is abandoned (crashed holder) — take it over.
+          if (Date.now() - st.mtimeMs > 30000) fs.unlinkSync(lockFile);
+        } catch (_) {}
+        try { fs.writeFileSync(lockFile, String(process.pid), { flag: 'wx' }); locked = true; } catch (_) {}
+        if (locked) {
+          const credFile = path.join(os.homedir(), '.claude', '.credentials.json');
+          const token = JSON.parse(fs.readFileSync(credFile, 'utf8')).claudeAiOauth.accessToken;
+          refreshDone = new Promise((resolve) => {
+            fetch('https://api.anthropic.com/api/oauth/usage', { headers: { authorization: 'Bearer ' + token } })
+              .then((r) => r.json())
+              .then((j) => {
+                // Anthropic's /api/oauth/usage shape: { five_hour: { utilization },
+                // seven_day: { utilization } } (verified live 2026-08). ccstatusline
+                // flattens to sessionUsage/weeklyUsage in ITS cache writes; we
+                // store normalized fh/wd and let the reader accept both shapes.
+                try {
+                  const cur = { fetchedAtMs: Date.now() };
+                  const fh = j && j.five_hour && j.five_hour.utilization;
+                  const wd = j && j.seven_day && j.seven_day.utilization;
+                  if (typeof fh === 'number') cur.fh = fh;
+                  if (typeof wd === 'number') cur.wd = wd;
+                  fs.writeFileSync(cacheFile, JSON.stringify(cur));
+                  fs.unlinkSync(lockFile);
+                } catch (_) {}
+                resolve();
+              })
+              .catch(() => { try { fs.unlinkSync(lockFile); } catch (_) {} resolve(); });
+          });
+        }
+      }
+    } catch (_) { /* usage refresh is best-effort, never blocks the line */ }
+    // Exit when BOTH the socket forward and the (best-effort) usage refresh
+    // settle — or 8s, whichever first. A flat 1.5s timer killed the fetch
+    // before it resolved (endpoint latency ~2-5s), so usage never landed.
+    let pending = 1; // the socket forward below
+    const maybeExit = () => { if (--pending <= 0) process.exit(0); };
+    if (refreshDone) { pending++; refreshDone.then(maybeExit); }
     if (sock) {
       try {
         const c = net.createConnection(sock, () => { c.end(JSON.stringify(payload) + '\\n'); });
-        c.on('error', () => {});
-        c.on('close', () => process.exit(0));
-      } catch (_) { process.exit(0); }
+        c.on('error', maybeExit);
+        c.on('close', maybeExit);
+      } catch (_) { maybeExit(); }
     } else {
-      process.exit(0);
+      maybeExit();
     }
-    setTimeout(() => process.exit(0), 1500).unref();
+    setTimeout(() => process.exit(0), 8000).unref();
     return;
   }
   if (!sock) { process.exit(0); }
