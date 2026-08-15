@@ -34,6 +34,7 @@ import { readAgentUsage, readContextTokens, seedSessionTranscript, resolveSessio
 import { listIssues, listCIRuns } from './github';
 import { SlackWebhookServer, SlackReplyServer, postSlackReply, type SlackEventFile } from './slack';
 import { TelegramTrigger } from './telegram';
+import { startKittySatellite } from './kittySatellite';
 import {
   WebhookServer,
   type WebhookDispatch, type WebhookEndpointRef, type WebhookInbound, type WebhookTaskStatus
@@ -2775,6 +2776,10 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   if (provider === 'codex' && opts.hive?.id) {
     await enableCodexRemoteForSpawn(opts, opts.hive.id);
   }
+  // Satellite Kitty (lazy): the FIRST agent spawn brings it up and exports the
+  // handoff env before this PTY is created, so even agent #1 sees both vars.
+  // Awaits ≤5s (window-id poll) once per app run; later spawns are a no-op.
+  try { await startKittySatellite(); } catch { /* best-effort */ }
   const res = ptyManager.spawn(opts, owner);
   if (res.ok) analytics.track('agent_spawned', { provider });
   syncKeepAwake(); // arm the power-save blocker while ≥1 agent PTY is alive (#18)
@@ -4649,6 +4654,10 @@ app.whenReady().then(() => {
   // Same for the Telegram reply helper: stable path, no secret, file only exists
   // while the endpoint runs (absent → helper degrades to "not running").
   process.env.MD_TELEGRAM_REPLY_CONFIG = telegramReplyConfigPath();
+  // Satellite Kitty: export KITTY_LISTEN_ON + KITTY_WINDOW_ID so the user's
+  // handoff skills (pi-handoff/claude-handoff) work inside agent PTYs exactly
+  // as they do in a real Kitty pane — splits land in the satellite window.
+  // Started LAZILY at the first agent spawn (spawnAgentCore → kittySatellite.ts).
   // Open the durable store first — createWindow() reads the saved window bounds.
   // Guarded: a DB failure (e.g. a bad native build) must degrade to defaults,
   // never block app startup.
