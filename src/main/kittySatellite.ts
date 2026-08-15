@@ -155,10 +155,18 @@ export async function startKittySatellite(): Promise<void> {
       p.on('error', () => resolve());
       p.on('close', () => resolve());
     });
-    // Close the initial bare-shell TAB (kitty numbers tabs; the shell is the
-    // only pre-existing tab — close by title match on the satellite window).
+    // Close the initial bare-shell tab — matched by TITLE scoped to our window.
+    // Kitty names a tab after its running command, so the bare shell tab is
+    // 'bash' (or the user's shell). Michael's tab is titled 'Michael', agent
+    // tabs carry their folders — a title regex anchored to the shell name can't
+    // hit them. If the match fails (exotic shell title), the tab stays — cosmetic.
+    const shellName = god.file === 'bash' || god.file === 'zsh' || god.file === 'sh' ? god.file : 'bash';
     await new Promise<void>((resolve) => {
-      const p = spawn(kitty, ['@', '--to', `unix:${socket}`, 'close-tab', '--match', `window_id:${winId}`, '--match', 'state:older'], { stdio: 'ignore' });
+      const p = spawn(kitty, [
+        '@', '--to', `unix:${socket}`, 'close-tab',
+        '--match', `window_id:${winId}`,
+        '--match', `title:^(${shellName}|sh)$`
+      ], { stdio: 'ignore' });
       p.on('error', () => resolve());
       p.on('close', () => resolve());
     });
