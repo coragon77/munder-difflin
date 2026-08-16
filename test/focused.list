@@ -53,3 +53,4 @@ test/worktree-adopt.test.cjs
 test/vacation-floor-watcher.test.cjs
 test/spawn-identity.test.cjs
 test/office-departures.test.cjs
+test/xterm-webgl-pair.test.cjs
