@@ -3332,11 +3332,18 @@ ipcMain.handle('hive:setArchived', (_evt, id: unknown, archived: unknown) => {
 });
 // The UI's park/recall/end-vacation buttons run the SAME functions god's
 // vacation-requests do — one code path, so the rules can't drift between them.
-ipcMain.handle('hive:park', (_e, id: string, reason?: string) => parkAgent(id, reason));
-ipcMain.handle('hive:recall', (_e, id: string) => recallAgent(id));
+ipcMain.handle('hive:park', (_e, id: unknown, reason: unknown) => {
+  if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
+  return parkAgent(id, typeof reason === 'string' ? reason : undefined);
+});
+ipcMain.handle('hive:recall', (_e, id: unknown) => {
+  if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
+  return recallAgent(id);
+});
 // Ending a vacation demotes to plain ARCHIVED — the first half of the two-step
 // deletion. It never respawns; that is what recall is for.
-ipcMain.handle('hive:endVacation', (_e, id: string) => {
+ipcMain.handle('hive:endVacation', (_e, id: unknown) => {
+  if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
   if (!hive.enabled()) return { ok: false, error: 'hive disabled' };
   hive.setVacation(id, false);
   return { ok: true };
@@ -4634,6 +4641,10 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
   const entry = hive.registry().agents[agentId];
   if (!entry) return { ok: false, error: `no agent "${agentId}" in the registry` };
   if (entry.retired) return { ok: false, error: `"${agentId}" was fired — reinstate them first` };
+  // Only ever true for a non-god, non-intern, non-retired agent (parkAgent's own
+  // guards) — so this one check transitively covers everything parkAgent defends
+  // against, without repeating each rule here.
+  if (!hive.isOnVacation(agentId)) return { ok: false, error: `"${agentId}" is not on vacation — nothing to recall` };
   if (ptyForAgent(agentId)) return { ok: false, error: `"${agentId}" is already on the floor` };
   const recipe = rosterRecipe(agentId);
   let command = recipe.command ?? readConfig().defaultCommand ?? 'claude';
@@ -4648,12 +4659,17 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
   if (!ptyManager.isCommandAvailable(bin)) return { ok: false, error: `engine CLI "${bin}" is not installed` };
   const cwd = recipe.cwd ?? entry.cwd;
   if (!cwd || !existsSync(cwd)) return { ok: false, error: `cwd missing or not found (${cwd || 'unset'})` };
-  const res = await spawnAgentCore({
-    id: agentId, cwd, command, cols: 120, rows: 32,
-    args: recipe.model ? ['--model', recipe.model] : [],
-    hive: { id: agentId, name: entry.name, provider, role: entry.role, cwd },
-    isolate: false, provider
-  }, liveWebContents());
+  let res: { ok: boolean; error?: string; worktreePath?: string };
+  try {
+    res = await spawnAgentCore({
+      id: agentId, cwd, command, cols: 120, rows: 32,
+      args: recipe.model ? ['--model', recipe.model] : [],
+      hive: { id: agentId, name: entry.name, provider, role: entry.role, cwd },
+      isolate: false, provider
+    }, liveWebContents());
+  } catch (e) {
+    res = { ok: false, error: String(e) };
+  }
   if (!res.ok) return { ok: false, error: res.error ?? 'spawn failed' };
   try {
     liveWebContents()?.send('hive:agentSpawned', {
@@ -4705,7 +4721,15 @@ async function processVacationRequest(filePath: string): Promise<void> {
   const agentId = (typeof raw.agentId === 'string' ? raw.agentId : typeof raw.id === 'string' ? raw.id : '').trim();
   if (!agentId) { fail('missing "agentId"'); return; }
   const recall = String(raw.action ?? 'park').toLowerCase() === 'recall';
-  const res = recall ? await recallAgent(agentId) : parkAgent(agentId, raw.reason);
+  // Belt-and-suspenders on top of recallAgent's own try/catch: neither verb may
+  // ever throw past this point, or the request is reprocessed on every tick
+  // forever instead of archiving to .failed.
+  let res: { ok: boolean; error?: string };
+  try {
+    res = recall ? await recallAgent(agentId) : parkAgent(agentId, raw.reason);
+  } catch (e) {
+    res = { ok: false, error: String(e) };
+  }
   if (!res.ok) { fail(res.error ?? 'unknown error'); return; }
   informGod(
     recall ? `[recalled] ${agentId}` : `[on vacation] ${agentId}`,
