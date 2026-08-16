@@ -17,7 +17,7 @@ import { usePtyParser } from '@/hooks/usePtyParser';
 import { useRestoreTeam } from '@/hooks/useRestoreTeam';
 import { useTerminalFontSize } from './terminalFontSize';
 import { useHasTerminalDraft } from './terminalPool';
-import { useAppTheme, toggleAppTheme } from '@/design/theme';
+import { useTerminalTheme, toggleTerminalTheme } from '@/design/theme';
 import type { HarnessConfig } from '@/store/config';
 
 /** Roster rail width. A fixed 232px is right on a 14" laptop but reads as a
@@ -157,7 +157,7 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
   // The floor strip (and with it the restore button) is hidden behind the
   // overlay, so the roster carries restore too.
   const { restoring, autoRestoring, restoreTeam } = useRestoreTeam(config);
-  const appThemeNow = useAppTheme();
+  const termThemeNow = useTerminalTheme();
 
   const agent = agents.find(a => a.id === fullscreenAgentId);
   const parser = usePtyParser(agent?.id ?? '__none__');
@@ -278,13 +278,16 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
         {/* Same top-right controls as the main title bar — fullscreen covers
             it, so theme / exit-fullscreen / IDE must live here too. */}
         <div className="cth-titlebar-nodrag" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Fullscreen shows (almost) nothing but the terminal, so this ☾
+              flips the TERMINAL palette — the decoupled one — not the app
+              chrome. The Claude session theme mirror rides along. */}
           <button
             onClick={() => {
-              const next = toggleAppTheme();
+              const next = toggleTerminalTheme();
               void window.cth.updateConfig({ terminalTheme: next });
             }}
-            title={appThemeNow === 'dark' ? 'Switch to the light theme' : 'Switch to the dark theme'}
-            aria-label="Toggle dark mode"
+            title={termThemeNow === 'dark' ? 'Switch the terminal to the light palette' : 'Switch the terminal to the dark palette'}
+            aria-label="Toggle terminal palette"
             style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, padding: 0,
@@ -294,7 +297,7 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
               color: 'var(--cth-ink-900)', fontSize: 13, lineHeight: 1
             }}
           >
-            {appThemeNow === 'dark' ? '☀' : '☾'}
+            {termThemeNow === 'dark' ? '☀' : '☾'}
           </button>
           <button
             onClick={toggleRoster}

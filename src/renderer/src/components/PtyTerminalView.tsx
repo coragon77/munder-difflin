@@ -11,7 +11,7 @@ import {
   setTerminalFontSize,
   useTerminalFontSize
 } from './terminalFontSize';
-import { useAppTheme } from '@/design/theme';
+import { useTerminalTheme } from '@/design/theme';
 
 // Zoom lives in ./terminalFontSize so anything outside the terminal (the message
 // composer) can scale with it too; these aliases keep the call sites below short.
@@ -127,7 +127,7 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
   onUserPromptRef.current = onUserPrompt;
   const fontSize = useTerminalFontSize();
   const fontSizeRef = useRef(fontSize);
-  const ptyTheme: PtyTheme = useAppTheme();
+  const ptyTheme: PtyTheme = useTerminalTheme();
   const ptyThemeRef = useRef(ptyTheme);
   ptyThemeRef.current = ptyTheme;
 

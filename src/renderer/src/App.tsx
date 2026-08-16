@@ -16,7 +16,7 @@ import { QuitWarningModal, type ClosingTimeState } from '@/components/QuitWarnin
 import { CompletionToast } from '@/realtime/CompletionToast';
 import { UpdateToast } from '@/components/UpdateToast';
 import { UpdateBadge } from '@/components/UpdateBadge';
-import { useAppTheme, toggleAppTheme } from '@/design/theme';
+import { useAppTheme, toggleAppTheme, useTerminalTheme, toggleTerminalTheme } from '@/design/theme';
 import { SettingsModal, type Section as SettingsSection } from '@/components/SettingsModal';
 import { PixelPanel } from '@/components/PixelPanel';
 import { PixelButton } from '@/components/PixelButton';
@@ -279,18 +279,13 @@ export function App() {
           {config.autoMode ? 'auto mode on' : 'auto mode off'}
         </span>
         {/* v0.3.4: theme + fullscreen live HERE (top right), not buried in the
-            terminal header — and the theme darkens the whole app, terminals
-            included (design/theme.ts + tokens.css dark block). */}
+            terminal header. The ☾ swaps the whole app chrome (tokens.css dark
+            block). The terminal button next to it flips ONLY the agent
+            terminals' palette — decoupled, so the chrome can stay light while
+            claude/pi render dark. */}
         <button
           className="cth-titlebar-nodrag"
-          onClick={() => {
-            const next = toggleAppTheme();
-            // Mirror into the harness config: every agent (re)spawned from now
-            // on gets the matching `theme` in its per-session Claude settings,
-            // so the TUI's truecolor palette fits the terminal. Scoped to
-            // harness agents — the user's global Claude theme is never touched.
-            void window.cth.updateConfig({ terminalTheme: next });
-          }}
+          onClick={toggleAppTheme}
           title={appThemeNow === 'dark' ? 'Switch to the light theme' : 'Switch to the dark theme'}
           aria-label="Toggle dark mode"
           style={{
@@ -304,6 +299,32 @@ export function App() {
           }}
         >
           {appThemeNow === 'dark' ? '☀' : '☾'}
+        </button>
+        <button
+          className="cth-titlebar-nodrag"
+          onClick={() => {
+            const next = toggleTerminalTheme();
+            // Mirror into the harness config: every agent (re)spawned from now
+            // on gets the matching `theme` in its per-session Claude settings,
+            // so the TUI's truecolor palette fits the terminal. Scoped to
+            // harness agents — the user's global Claude theme is never touched.
+            void window.cth.updateConfig({ terminalTheme: next });
+          }}
+          title={useTerminalTheme() === 'dark'
+            ? 'Terminal palette: dark — click for light (app chrome unchanged)'
+            : 'Terminal palette: light — click for dark (app chrome unchanged)'}
+          aria-label="Toggle terminal palette"
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 28, height: 28, padding: 0,
+            background: useTerminalTheme() === 'dark' ? 'var(--cth-ink-900)' : 'var(--cth-paper-100)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+            border: 'none', borderRadius: 2, cursor: 'pointer',
+            color: useTerminalTheme() === 'dark' ? 'var(--cth-paper-100)' : 'var(--cth-ink-900)',
+            fontSize: 13, lineHeight: 1
+          }}
+        >
+          ▤
         </button>
         <button
           className="cth-titlebar-nodrag"

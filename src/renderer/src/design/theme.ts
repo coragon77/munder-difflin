@@ -62,3 +62,49 @@ export function useAppTheme(): AppTheme {
     () => theme
   );
 }
+
+// ─── terminal-only palette (decoupled from the app chrome) ───────────────────
+// The agent terminals (xterm palette + Claude's per-session TUI theme) follow
+// THIS state, not the app theme — so the chrome can stay light while the
+// terminals run dark (or vice versa). `null` = follow the app theme (the
+// v0.3.4 coupled behavior), which is the default until first toggled. Same
+// legacy key the pre-0.3.4 terminal theme used, so an old pinned value is
+// honored again.
+const TERM_LS_KEY = LEGACY_LS_KEY; // 'cth.ptyTheme'
+
+function loadTerm(): AppTheme | null {
+  try {
+    const v = window.localStorage.getItem(TERM_LS_KEY);
+    if (v === 'dark' || v === 'light') return v;
+  } catch { /* noop */ }
+  return null;
+}
+
+let termTheme: AppTheme | null = loadTerm();
+
+export function terminalTheme(): AppTheme {
+  return termTheme ?? theme;
+}
+
+export function setTerminalTheme(next: AppTheme): void {
+  if (next === termTheme) return;
+  termTheme = next;
+  try { window.localStorage.setItem(TERM_LS_KEY, next); } catch { /* noop */ }
+  subscribers.forEach((fn) => fn());
+}
+
+export function toggleTerminalTheme(): AppTheme {
+  const next: AppTheme = terminalTheme() === 'dark' ? 'light' : 'dark';
+  setTerminalTheme(next);
+  return next;
+}
+
+export function useTerminalTheme(): AppTheme {
+  return useSyncExternalStore(
+    (onChange) => {
+      subscribers.add(onChange);
+      return () => subscribers.delete(onChange);
+    },
+    () => termTheme ?? theme
+  );
+}
