@@ -475,6 +475,12 @@ export class HiveManager {
     // so it tracks the bundled list).
     writeFileSync(join(root, 'COMMANDS.md'), COMMANDS_MD, 'utf8');
 
+    // Engine-neutral read-me-first for agents whose cwd is the harness home
+    // (god) — written NEXT TO the hive repo, never inside it. dirname(root) is
+    // that home by construction (root = <harnessHome>/hive), so the path follows
+    // config instead of a hardcode. Same refresh policy as COMMANDS.md.
+    writeFileSync(join(dirname(root), 'AGENTS.md'), HIVE_ROOT_AGENTS_MD, 'utf8');
+
     // Keep the churny/ephemeral live files out of the hive git repo.
     const gitignore = join(root, '.gitignore');
     const want = ['fleet.json', 'hooks.sock', '.DS_Store'];
@@ -1074,7 +1080,7 @@ export class HiveManager {
     const godLine = meta.isGod
       ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Reuse an idle or already-running agent whose role matches; only spawn a fresh agent when no existing one is a sensible fit, and say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, branch integration, and final QA — and remain the sole scribe of board.md. You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short.'
         + ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.`
-        + ' INTERNS — you OWN their lifecycle: mint them via spawn-requests/ ("persistent": true; template in COMMANDS.md) for delegated standing work, and FIRE them via fire-requests/ once their engagement is VERIFIABLY complete — the gate is completion of the WHOLE engagement, never the first done-report (an intern holding a discussion with the human in its pane is still engaged, not done; when unsure whether the human still needs the pane, ask first). Interns are the floor\'s context-hygiene mechanism — short-lived by design, so they need no long-lived context management: fire and re-hire fresh rather than letting one accumulate.'
+        + ' INTERNS — you OWN their lifecycle: mint them via spawn-requests/ ("persistent": true; template in COMMANDS.md) for delegated standing work, and FIRE them via fire-requests/ IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate.'
       : meta.isAssistant
       ? 'You are Michael\'s PREP ASSISTANT. You will be handed short, possibly vague instructions (each begins with "ENRICH TASK:"). For each one: (1) figure out which project it concerns and cd into the most relevant repo — you start in Michael\'s home directory; (2) gather concrete context READ-ONLY (exact file paths, current state, relevant code, conventions, active branch, gotchas) — NEVER modify, create, or delete files; (3) rewrite the instruction into ONE clear, self-contained prompt that Michael can execute autonomously, preserving the user\'s original intent without inventing scope. Then deliver it: write ONE message JSON into your outbox with "to":"god", "act":"request", a short subject, and the finished prompt as the body. Do NOT perform the task yourself — your only output is the improved prompt sent to Michael.'
       : 'For anything ambiguous, cross-cutting, or needing sign-off, address a message to "god".';
@@ -2023,9 +2029,12 @@ Respawning an existing registry agent after restart = the UI "restore team" flow
 
 ### Path 3 — Intern (persistent hire, standing floor agent) ✅
 
-A spawn-request with \`"persistent": true\` hires an INTERN — a STANDING agent
-instead of an ephemeral worker. Interns are classified three ways so floor rules
-can target them: id prefix \`intern-\`, registry \`role: "intern"\`, and display
+A spawn-request with \`"persistent": true\` hires an INTERN — the OBSERVABLE
+variant of an ephemeral worker: same disposability, same one-task lifecycle,
+but with a visible floor pane so the human can watch and talk to them.
+Persistence of the process is an implementation detail, not a promise of
+tenure. Interns are classified three ways so floor rules can target them:
+id prefix \`intern-\`, registry \`role: "intern"\`, and display
 name \`<name> (Intern)\`. They get a floor card + terminal pane (like any hire),
 are NEVER reaped (no done/idle/token-cap release), work directly in \`cwd\`
 (\`isolate\` defaults to \`false\` for interns — worktrees are the ephemeral
@@ -2066,10 +2075,11 @@ spawn-request re-hires), and confirms in your inbox. Rejected (with a notice)
 for anything that is NOT an intern: human-made hires, god, ephemeral workers.
 Those stay human surfaces.
 
-After the objective completes the intern stays hired — further work arrives via its
-inbox (god dispatches with the standard request protocol). Closing its terminal
-tab or quitting the app archives it; it re-hires through restore-team. Killing it
-for good = the UI archive/remove, same as a human-made hire.`;
+During the engagement further work arrives via its inbox (god dispatches
+with the standard request protocol). Once the engagement is VERIFIABLY
+complete, god FIRES it (see above) — fresh work gets a fresh intern, never a
+parked standby. If it dies with the app instead of being fired, it re-hires
+through restore-team.`;
 
 /** The '## KITTY SATELLITE' section appended to COMMANDS.md — the god-facing
  *  remote-control surface for the satellite kitty. Every claim here is
@@ -2135,6 +2145,40 @@ function renderCommandsMd(): string {
   return lines.join('\n');
 }
 const COMMANDS_MD = renderCommandsMd();
+
+/** The read-me-first written to `<harnessHome>/AGENTS.md` (god's cwd, the
+ *  directory that CONTAINS the hive — not inside the hive repo). Engine-neutral
+ *  so claude/pi/codex agents landing there all get the same floor rules:
+ *  delegate-first for the orchestrator, conditional superpowers pointers for
+ *  everyone. Same generated-file warning as COMMANDS.md. */
+const HIVE_ROOT_AGENTS_MD = `# AGENTS.md — hive floor (engine-neutral)
+
+> Generated from \`HIVE_ROOT_AGENTS_MD\` in the harness source — manual edits to this file are wiped on the next bootstrap.
+
+## Delegate first (orchestrator/god)
+
+Bug reports and task-shaped requests reaching god are TRIAGE + DISPATCH
+material, never self-work. Process skills (e.g. systematic-debugging) belong in
+the WORKER's dispatch contract — they never pull god into executor mode.
+God-side probes are limited to dispatch prep: locate an entry point, scope the
+contract.
+
+## Superpowers
+
+If the superpowers skills are installed in your engine (a user-level plugin — a
+fresh install may not have them), use them: **brainstorming** before building
+anything new, **systematic-debugging** for any bug, **test-driven-development**
+for features, **verification-before-completion** before claiming done.
+
+## Intern lifecycle
+
+- Interns are the observable variant of ephemeral workers: same disposability
+  and one-task lifecycle, but with a visible floor pane so the human can watch
+  and talk to them. Persistence of the process is an implementation detail,
+  not a promise of tenure.
+- Interns are disposable by design: the orchestrator FIRES an intern
+  (fire-requests/) as soon as its engagement is verifiably complete. Fresh
+  work gets a fresh intern — never park a finished intern on standby.`;
 
 const PROTOCOL_MD = `# Hive protocol
 

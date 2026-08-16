@@ -19,13 +19,23 @@ npm run test:focused   # node --test suite in test/ (CONTRIBUTING.md predates it
 npm run build      # production build — must work before any PR
 ```
 
+## Process pointers
+
+- If the **superpowers** skills are installed in the running engine (a user-level
+  plugin — a fresh install may not have them), use them: **brainstorming** before
+  building anything new, **systematic-debugging** for any bug,
+  **test-driven-development** for features, **verification-before-completion**
+  before claiming done. Superpowers ships a pi adaptation
+  (`references/pi-tools.md` inside its using-superpowers skill).
+
 ## Architecture in one screen
 
 Two data planes (see `SPEC.md`):
 
 - **Event plane** — Claude Code hooks POST JSON to a Unix socket the main
   process owns (`src/main/hooks.ts`); drives avatar movement.
-- **Terminal plane** — tmux `pipe-pane` bytes → xterm.js view (`src/main/pty.ts`).
+- **Terminal plane** — node-pty processes stream bytes to an xterm.js view
+  (`src/main/pty.ts`).
 
 Hive layer (`HIVE.md`, code in `src/main/hive.ts`, `memory.ts`, `roster.ts`):
 agents live as files under `<harnessHome>/hive/` — `registry.json`, `board.md`,

@@ -676,6 +676,10 @@ export const useStore = create<State>((set) => ({
       const target = s.agents.find((a) => a.id === id);
       if (!target) return wasRestorable ? { restorableAgents } : s;
       const agents = s.agents.filter((a) => a.id !== id);
+      // Interns are disposable by design: no archived copy, no re-hire surface,
+      // no clutter — they drop off entirely. The registry entry + hive git log
+      // keep the record; only the UI forgets.
+      const intern = agentClassOf(target) === 'intern';
       // Retain a flagged copy; the PTY is gone, so clear all live run-state.
       const archivedEntry: Agent = {
         ...target,
@@ -686,7 +690,9 @@ export const useStore = create<State>((set) => ({
         carrying: undefined,
         currentStation: undefined
       };
-      const archivedAgents = [...s.archivedAgents.filter((a) => a.id !== id), archivedEntry];
+      const archivedAgents = intern
+        ? s.archivedAgents.filter((a) => a.id !== id)
+        : [...s.archivedAgents.filter((a) => a.id !== id), archivedEntry];
       const { [id]: _feedGone, ...feeds } = s.feeds;
       const { [id]: _queueGone, ...messageQueues } = s.messageQueues;
       const selectedId = s.selectedId === id ? (agents[0]?.id ?? null) : s.selectedId;
