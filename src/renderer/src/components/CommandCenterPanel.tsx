@@ -1017,17 +1017,42 @@ function VacationSection() {
   const vacationers = useMemo(() => archived.filter((a) => a.vacation), [archived]);
   const endVacationAgent = useStore((s) => s.endVacationAgent);
   const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | undefined>();
   if (vacationers.length === 0) return null;
+  // Recall's success path needs no local mutation — main broadcasts
+  // hive:agentSpawned and effect 5b in useHive builds the floor card from
+  // that. This is purely about surfacing an IPC failure (e.g. hive disabled).
   const recall = async (id: string) => {
     setBusy(id);
-    try { await window.cth.hiveRecall(id); } finally { setBusy(null); }
+    setError(undefined);
+    try {
+      const res = await window.cth.hiveRecall(id);
+      if (!res.ok) setError(res.error ?? 'could not recall this agent');
+    } finally { setBusy(null); }
   };
+  // Only clear the local flag when main confirms the vacation actually ended —
+  // mutating unconditionally would desync the renderer from the registry (the
+  // authority) the moment hiveEndVacation fails, with the card silently
+  // claiming a state main never granted.
   const end = async (id: string) => {
     setBusy(id);
-    try { await window.cth.hiveEndVacation(id); endVacationAgent(id); } finally { setBusy(null); }
+    setError(undefined);
+    try {
+      const res = await window.cth.hiveEndVacation(id);
+      if (res.ok) endVacationAgent(id);
+      else setError(res.error ?? 'could not end this vacation');
+    } finally { setBusy(null); }
   };
   return (
     <Section title={`VACATION (${vacationers.length})`}>
+      {error && (
+        <div style={{
+          fontSize: 12, color: 'var(--cth-coral)',
+          padding: '2px 8px', marginBottom: 6,
+          background: 'var(--cth-coral-light)',
+          wordBreak: 'break-word'
+        }}>{error}</div>
+      )}
       {vacationers.map((a) => (
         <div key={a.id} style={{
           display: 'flex', alignItems: 'center', gap: 8,

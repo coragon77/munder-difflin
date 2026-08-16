@@ -79,11 +79,23 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
     // parked pool back onto the floor — the resurrection class of bug `retired`
     // was given its own flag to stop (445d135). The registry is the authority;
     // the renderer's own copy can be stale after a crash mid-park.
-    let parked = new Set<string>();
+    //
+    // This is the SOLE defense — spawnAgentCore refuses `retired` ids but has
+    // no vacation check of its own — so a registry read failure must fail
+    // SAFE, not open. Spawning everyone when we can't tell who's parked would
+    // silently resurrect the parked pool, and that risk peaks right here:
+    // restore-team also runs unattended at boot, exactly when a startup IPC
+    // race is most likely. A visible no-op beats an invisible revival.
+    let parked: Set<string>;
     try {
       const reg = await window.cth.hiveRegistry();
       parked = new Set(Object.entries(reg.agents).filter(([, a]) => a.vacation).map(([id]) => id));
-    } catch { /* registry unreadable — fall through, the spawn door still refuses nothing */ }
+    } catch {
+      restoring = false;
+      note = "couldn't verify vacation status — restore skipped, try again";
+      emit();
+      return;
+    }
     const restorableAgents = useStore.getState().restorableAgents.filter((a) => !parked.has(a.id));
     // Tally every agent's outcome so the run ALWAYS leaves a visible trace — the
     // original bug was that every failure path was console-only, so a click that
