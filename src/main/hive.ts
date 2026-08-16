@@ -2040,6 +2040,23 @@ EOF
 → agent id \`intern-docs-writer\`, floor name **Dwayne (Intern)**. Give the request
 a \`"name"\` so it reads as a person; without one it shows as \`Intern <id>\`.
 
+**Permissions:** interns inherit the floor's autoMode like human hires — when
+auto mode is on, the harness appends the engine's bypass flag itself. You do NOT
+need to write \`--permission-mode bypassPermissions\` into \`command\`.
+
+**Firing an intern** (god-runnable, interns only):
+
+\`\`\`bash
+cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/fire-requests/docs-writer.json" <<'EOF'
+{ "id": "intern-docs-writer" }
+EOF
+\`\`\`
+
+Closes the terminal, archives the agent (retained — restore-team or a fresh
+spawn-request re-hires), and confirms in your inbox. Rejected (with a notice)
+for anything that is NOT an intern: human-made hires, god, ephemeral workers.
+Those stay human surfaces.
+
 After the objective completes the intern stays hired — further work arrives via its
 inbox (god dispatches with the standard request protocol). Closing its terminal
 tab or quitting the app archives it; it re-hires through restore-team. Killing it

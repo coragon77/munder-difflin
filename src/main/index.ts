@@ -4132,19 +4132,32 @@ function spawnRequestsDir(): string | null {
   return root ? join(root, 'spawn-requests') : null;
 }
 
-/** Move a processed request out of the queue so it's never reprocessed. */
-function archiveRequest(filePath: string, sub: '.done' | '.failed'): void {
-  const queue = spawnRequestsDir();
+/** HIVE_ROOT/fire-requests — the queue dir god drops intern-release requests
+ *  into (see processFireRequest; mirrors spawn-requests, incl. the archive
+ *  subdirs). */
+function fireRequestsDir(): string | null {
+  const root = hive.root();
+  return root ? join(root, 'fire-requests') : null;
+}
+
+/** Move a processed request out of the queue so it's never reprocessed. Works
+ *  for BOTH queue dirs (fire requests archive beside themselves). */
+function archiveRequestIn(queueDir: string | null, filePath: string, sub: '.done' | '.failed'): void {
   try {
-    if (!queue) throw new Error('no hive root');
-    const dir = join(queue, sub);
+    if (!queueDir) throw new Error('no hive root');
+    const dir = join(queueDir, sub);
     mkdirSync(dir, { recursive: true });
     renameSync(filePath, join(dir, basename(filePath)));
   } catch (e) {
     // Last resort: delete it so a poison file can't loop forever.
     try { unlinkSync(filePath); } catch { /* noop */ }
-    console.error('[worker] archiveRequest failed:', e);
+    console.error('[worker] archiving request failed (deleted):', filePath, e);
   }
+}
+
+/** Move a processed request out of the queue so it's never reprocessed. */
+function archiveRequest(filePath: string, sub: '.done' | '.failed'): void {
+  archiveRequestIn(spawnRequestsDir(), filePath, sub);
 }
 
 /** Did this worker post a terminal `act:"done"` yet? Scans its own outbox AND
@@ -4226,7 +4239,20 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   const cwd = typeof raw.cwd === 'string' && raw.cwd.trim() ? expandTilde(raw.cwd) : '';
   if (!cwd || !existsSync(cwd)) { fail(`"cwd" missing or not found (${cwd || 'unset'})`); return; }
 
-  const command = typeof raw.command === 'string' && raw.command.trim() ? raw.command.trim() : (readConfig().defaultCommand ?? 'claude');
+  let command = typeof raw.command === 'string' && raw.command.trim() ? raw.command.trim() : (readConfig().defaultCommand ?? 'claude');
+  // AutoMode parity with human hires: the renderer's spawn builder appends the
+  // provider's autoFlag (config.ts) when the floor runs in auto mode, but this
+  // path took `command` literally — so god-hired workers/interns spawned WITHOUT
+  // bypass permissions and stalled on their first Bash/Edit prompt (observed
+  // live: Creed, no --permission-mode flag). Apply the same rule here, from the
+  // SHARED preset table (not a renderer import). Idempotent: an explicit flag
+  // god wrote into raw.command is respected, never doubled.
+  {
+    const preset = providerPreset(inferAgentProvider(command, raw.provider));
+    if (readConfig().autoMode && preset.autoFlag && !command.includes(preset.autoFlag)) {
+      command = `${command} ${preset.autoFlag}`;
+    }
+  }
   const bin = command.split(/\s+/)[0] || command;
   // Missing-CLI → FAIL FAST. A headless worker has no human to watch an installer,
   // so we never run the cc49e1e install banner here — we reject and tell god.
@@ -4328,6 +4354,58 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     } catch { /* window torn down */ }
   }
   archiveRequest(filePath, '.done');
+}
+
+/** Fire-request — god releasing an INTERN (see HIRING_AGENTS_MD). JSON:
+ *  `{ "id": "intern-<reqId>" }` (bare `<reqId>` also accepted — prefixed).
+ *  STRICTLY gated to interns: the registry role must be 'intern'. Human-made
+ *  hires, ephemeral workers (they already self-release), and god itself are NOT
+ *  fireable from Bash — closing those terminals stays a human surface. Every
+ *  outcome archives the request (.done/.failed) and informs god's inbox. */
+function processFireRequest(filePath: string): void {
+  let raw: { id?: string };
+  try {
+    raw = JSON.parse(readFileSync(filePath, 'utf8')) as { id?: string };
+  } catch (e) {
+    console.error('[worker] unparseable fire-request:', filePath, e);
+    informGod('[fire rejected] unparseable request', `Could not parse fire-request ${basename(filePath)} — ${String(e)}`);
+    archiveRequestIn(fireRequestsDir(), filePath, '.failed');
+    return;
+  }
+  const fail = (reason: string): void => {
+    informGod('[fire rejected]', `Fire-request ${basename(filePath)} rejected: ${reason}.`);
+    archiveRequestIn(fireRequestsDir(), filePath, '.failed');
+  };
+
+  const rawId = typeof raw.id === 'string' ? raw.id.trim() : '';
+  if (!rawId) { fail('missing "id" (the intern agent id, e.g. "intern-docs-writer")'); return; }
+  const agentId = rawId.startsWith('intern-') ? rawId : `intern-${rawId}`;
+
+  if (!hive.enabled()) { fail('hive disabled'); return; }
+  const reg = hive.registry();
+  const entry = reg.agents[agentId];
+  if (!entry) { fail(`no agent "${agentId}" in the registry`); return; }
+  if (entry.role !== 'intern') { fail(`"${agentId}" is a ${entry.role ?? 'plain hire'}, not an intern — only god-hired interns are fireable from Bash`); return; }
+
+  if (entry.archived) {
+    informGod(`[fired] ${agentId} (already archived)`, `Intern ${entry.name} was already archived; nothing to tear down. Request consumed.`);
+    archiveRequestIn(fireRequestsDir(), filePath, '.done');
+    return;
+  }
+
+  // Live PTY → the standard kill/teardown (archives + broadcasts to the floor).
+  const ptyId = ptyForAgent(agentId);
+  if (ptyId) {
+    try { ptyManager.kill(ptyId); } catch { /* already gone — teardown is idempotent */ }
+    teardownPty(ptyId);
+  } else {
+    // No live terminal (app restarted since): just archive the registry entry.
+    hive.setArchived(agentId, true);
+    try { liveWebContents()?.send('hive:agentArchived', { id: agentId }); } catch { /* window gone */ }
+  }
+  informGod(`[fired] ${agentId}`, `Intern ${entry.name} was fired: terminal closed, agent archived (retained in the registry — re-hire via restore-team or a fresh spawn-request).`);
+  console.log(`[worker] fired intern ${agentId}`);
+  archiveRequestIn(fireRequestsDir(), filePath, '.done');
 }
 
 /** Total tokens (input+output+cache) a worker has burned so far, from the usage
@@ -4453,6 +4531,15 @@ async function ephemeralWorkerTick(): Promise<void> {
         if (liveWorkers.size >= maxWorkers) break;
         await processSpawnRequest(join(dir, f));
       }
+    }
+
+    // (2b) Fire requests — god releasing an INTERN (they hired them). Human-made
+    //      hires and god itself are NOT fireable from Bash; the role check is the gate.
+    const fdir = fireRequestsDir();
+    if (fdir && existsSync(fdir)) {
+      let files: string[] = [];
+      try { files = readdirSync(fdir).filter(f => f.endsWith('.json')).sort(); } catch { /* dir vanished */ }
+      for (const f of files) await processFireRequest(join(fdir, f));
     }
 
     // (3) GC preserved worktrees whose work has since integrated. Throttled to
