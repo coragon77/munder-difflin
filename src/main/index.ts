@@ -25,6 +25,7 @@ import {
 import { HiveManager, deriveSpawnLabel, type AgentMeta, type HiveMessage, type HiveTask } from './hive';
 import { startSessionRequestWatcher } from './sessionRequests';
 import { startCardSessionWatcher } from './cardSessions';
+import type { CardSessionMarker } from '../shared/cardSessions';
 import { HookServer } from './hooks';
 import { CircuitBreaker, type BreakerInput } from './breaker';
 import type { UsageProvider } from './usage';
@@ -5116,12 +5117,13 @@ function bootstrapHiveServices(): void {
   // PTY write from MAIN.
   // Shared broadcast for pane-steering commands (session-requests + card
   // sessions): rides the existing realtime:enqueue channel into the renderer's
-  // queue gates — never a direct PTY write from MAIN.
-  const paneCommandEmit = (agentId: string, text: string): boolean => {
+  // queue gates — never a direct PTY write from MAIN. cardFor rides along so
+  // the queue-drain can stale-drop at delivery (like the inbox nudge).
+  const paneCommandEmit = (agentId: string, text: string, cardFor?: CardSessionMarker): boolean => {
     try {
       const wc = liveWebContents();
       if (!wc) return false;
-      wc.send('realtime:enqueue', { agentId, text });
+      wc.send('realtime:enqueue', { agentId, text, ...(cardFor ? { cardFor } : {}) });
       return true;
     } catch { return false; }
   };
@@ -5142,6 +5144,7 @@ function bootstrapHiveServices(): void {
     root: () => hive.root(),
     registry: () => hive.registry(),
     emit: paneCommandEmit,
+    stampCard: (cardId, sessionId) => hive.stampCard(cardId, sessionId),
     informGod
   });
   // Phase 2: the loopback secret broker. Bind it BEFORE workers spawn so each spawn can

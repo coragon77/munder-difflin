@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import type { AgentProvider, HirePermissionMode } from '../shared/agentProvider';
+import type { CardSessionMarker } from '../shared/cardSessions';
 import type { HireManifest } from '../shared/hire';
 export type { HireManifest } from '../shared/hire';
 import type { IntegrationRecord, IntegrationTemplate } from '../shared/integrations';
@@ -1304,9 +1305,10 @@ const api = {
     return () => ipcRenderer.removeListener('realtime:floorDelta', listener);
   },
   /** v0.3.4: main-staged queue insertions (voice clear_context) — the renderer
-   *  enqueues so delivery rides every existing safety gate. */
-  onRealtimeEnqueue: (cb: (evt: { agentId: string; text: string }) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: { agentId: string; text: string }) => cb(payload);
+   *  enqueues so delivery rides every existing safety gate. cardFor marks
+   *  card-session pane actions for delivery-time stale-drop. */
+  onRealtimeEnqueue: (cb: (evt: { agentId: string; text: string; cardFor?: CardSessionMarker }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: { agentId: string; text: string; cardFor?: CardSessionMarker }) => cb(payload);
     ipcRenderer.on('realtime:enqueue', listener);
     return () => ipcRenderer.removeListener('realtime:enqueue', listener);
   },

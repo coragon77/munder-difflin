@@ -25,6 +25,7 @@ const path = require('node:path');
 const loadTs = require('./load-ts.cjs');
 
 const { cardSessionDecisions, cardSessionTick } = loadTs('src/main/cardSessions.ts');
+const { cardSessionActionStillValid } = loadTs('src/shared/cardSessions.ts');
 const { HiveManager } = loadTs('src/main/hive.ts');
 
 const CARD = (over = {}) => ({
@@ -97,6 +98,83 @@ test('card without assignee never steers anything', () => {
   assert.equal(actions.length, 0);
 });
 
+// ——— stale-drop at DELIVERY (card-session-stamp-never-fires-20260816) ————
+// A queued card action may park for a long time in a BUSY pane's queue; the
+// card state it was decided against can change underneath it (god flip-flops
+// blocked/done, reassigns, or the stamp lands). The queue-drain revalidates at
+// delivery through the same rules the nudge uses for inboxFor.
+
+test('validity: card gone / not doing / reassigned → stale', () => {
+  const m = { cardId: 'card-1', agentId: 'dwight', kind: 'clear' };
+  assert.equal(cardSessionActionStillValid(undefined, m), false);
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'blocked', assignee: 'dwight' }, m), false);
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'done', assignee: 'dwight' }, m), false);
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'kevin' }, m), false);
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight' }, m), true);
+});
+
+test('validity: a clear whose card gained a sessionId is stale — a conversation already started; a late clear would wipe it', () => {
+  const m = { cardId: 'card-1', agentId: 'dwight', kind: 'clear' };
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 's' }, m), false);
+});
+
+test('validity: a resume is stale when the card re-stamped to a different session; unset or matching stays valid', () => {
+  const m = { cardId: 'card-1', agentId: 'dwight', kind: 'resume', session: 'orig' };
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'other' }, m), false);
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'orig' }, m), true);
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight' }, m), true);
+});
+
+test('validity: an adopt lead is stale when the card re-stamped elsewhere; unstamped stays valid', () => {
+  const m = { cardId: 'card-1', agentId: 'dwight', kind: 'adopt', session: 'young' };
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'other' }, m), false);
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight' }, m), true);
+  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'young' }, m), true);
+});
+
+// ——— adopt: the manual-clear race (the 22:05 wipe) ————————————————
+// God can clear an agent's pane for this card's work 30s BEFORE flipping the
+// card to doing (card blocked at clear time → the stamp correctly did not
+// fire). The watcher must not queue ANOTHER clear for a conversation that is
+// demonstrably fresh — it adopts it (lead only + stamp) instead of wiping it.
+
+test('adopt: doing-flip with a YOUNG live session → lead only (no clear) + stamp the card', () => {
+  const now = 1_000_000;
+  const actions = cardSessionDecisions(
+    [CARD()],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 'fresh-conversation' },
+    { dwight: 'claude' },
+    { dwight: now - 25_000 }, // session started 25s ago (god's manual clear)
+    now
+  );
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].kind, 'adopt');
+  assert.equal(actions[0].command, ''); // nothing typed as the command — lead only
+  assert.equal(actions[0].session, 'fresh-conversation');
+});
+
+test('adopt: an OLD live session still gets the clear (the standing-engagement case the feature exists for)', () => {
+  const now = 1_000_000;
+  const actions = cardSessionDecisions(
+    [CARD()],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 'old-engagement' },
+    { dwight: 'claude' },
+    { dwight: now - 30 * 60_000 }, // 30min old
+    now
+  );
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].kind, 'clear');
+});
+
+test('adopt: unknown session age (pre-upgrade registry) behaves like the old clear path', () => {
+  const actions = cardSessionDecisions(
+    [CARD()], { 'card-1': { status: 'todo' } }, { dwight: 's' }, { dwight: 'claude' }
+  );
+  assert.equal(actions[0].kind, 'clear');
+});
+
 // ——— the tick: ordering, retries, snapshot updates ————————————————————
 
 function tmpHive() {
@@ -108,14 +186,16 @@ function tmpHive() {
 function fakeDeps(tmp, agents = {}, emitResult = true) {
   const emitted = [];
   const informs = [];
+  const stamped = [];
   return {
     deps: {
       root: () => tmp,
       registry: () => ({ agents }),
-      emit: (agentId, text) => { emitted.push({ agentId, text }); return emitResult; },
-      informGod: (s, b) => informs.push({ subject: s, body: b })
+      emit: (agentId, text, marker) => { emitted.push({ agentId, text, marker }); return emitResult; },
+      informGod: (s, b) => informs.push({ subject: s, body: b }),
+      stampCard: (cardId, sessionId) => stamped.push({ cardId, sessionId })
     },
-    emitted, informs
+    emitted, informs, stamped
   };
 }
 
@@ -135,9 +215,30 @@ test('tick: clear then lead are emitted in order; god is informed; snapshot adva
   assert.deepEqual(emitted.map((e) => e.text), ['/clear',
     'Card "Vacation state implementation" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.']);
   assert.equal(emitted[0].agentId, 'dwight');
+  // Both the command and the lead carry the cardFor marker so the queue-drain
+  // can stale-drop them at delivery (card-session-stamp-never-fires-20260816).
+  assert.deepEqual(emitted.map((e) => e.marker && e.marker.cardId), ['card-1', 'card-1']);
+  assert.equal(emitted[0].marker.kind, 'clear');
   assert.ok(informs.some((i) => /clear queued for dwight/.test(i.subject)));
   cardSessionTick(deps, seen); // steady state: nothing new
   assert.equal(emitted.length, 2);
+});
+
+test('tick: adopt stamps the card through deps and emits ONLY the lead, with the adopt marker', () => {
+  const tmp = tmpHive();
+  setCards(tmp, [CARD({ status: 'todo' })]);
+  const { deps, emitted, informs, stamped } = fakeDeps(tmp,
+    { dwight: { sessionId: 'fresh', sessionStartedAt: Date.now() - 10_000, provider: 'claude' } });
+  const seen = {};
+  cardSessionTick(deps, seen); // snapshot
+  setCards(tmp, [CARD()]); // → doing while a young conversation is live
+  cardSessionTick(deps, seen);
+  assert.equal(emitted.length, 1); // the lead, NOT a clear
+  assert.ok(emitted[0].text.startsWith('Card "Vacation state implementation"'));
+  assert.equal(emitted[0].marker.kind, 'adopt');
+  assert.equal(emitted[0].marker.session, 'fresh');
+  assert.deepEqual(stamped, [{ cardId: 'card-1', sessionId: 'fresh' }]);
+  assert.ok(informs.some((i) => /adopt queued for dwight/.test(i.subject)));
 });
 
 test('tick: failed emit leaves the card unseen → retries next tick; others still advance', () => {
@@ -185,7 +286,26 @@ test('stamp: a session change lands on the agent’s active doing card (and only
   assert.equal(tasks.find((t) => t.id === 'active').sessionId, 'new-conversation');
   assert.equal(tasks.find((t) => t.id === 'paused').sessionId, 'paused-session'); // untouched
   assert.equal(tasks.find((t) => t.id === 'other-guy').sessionId, undefined); // other agent untouched
+  // The session START time lands too — the watcher's adopt rule (young-session
+  // check) needs to know when the current conversation began.
+  const reg = JSON.parse(fs.readFileSync(path.join(root, 'registry.json'), 'utf8'));
+  assert.equal(typeof reg.agents.dwight.sessionStartedAt, 'number');
   // Unchanged session → no rewrite (idempotent no-op path).
   hive.recordSession('dwight', 'new-conversation');
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks.find((t) => t.id === 'active').sessionId, 'new-conversation');
+});
+
+test('stampCard: stamps exactly the named card (the watcher’s adopt path)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'stampcard-'));
+  const root = path.join(tmp, 'hive');
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(path.join(root, 'registry.json'), JSON.stringify({ godId: 'god', agents: {} }));
+  fs.writeFileSync(path.join(root, 'tasks.json'), JSON.stringify({ tasks: [
+    CARD({ id: 'a', status: 'doing' }), CARD({ id: 'b', status: 'todo' })
+  ] }));
+  const hive = new HiveManager(() => tmp);
+  hive.stampCard('a', 'adopted-session');
+  const tasks = JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks;
+  assert.equal(tasks.find((t) => t.id === 'a').sessionId, 'adopted-session');
+  assert.equal(tasks.find((t) => t.id === 'b').sessionId, undefined);
 });

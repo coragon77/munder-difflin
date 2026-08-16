@@ -20,6 +20,7 @@ import { DEFAULT_CONTEXT_TRIGGER, type ContextRule } from '../../../shared/trigg
 import type { AgentProvider } from '../../../shared/agentProvider';
 import { acquireTerminal, resetTerminal, isTerminalAutomationSafe } from '@/components/terminalPool';
 import { deliverWithAcknowledgement } from './queueDelivery';
+import { cardSessionActionStillValid, type CardSnapshotLike } from '../../../shared/cardSessions';
 import { OFFICE_CAST, DEFAULT_CHARACTER } from '@/scene/office/cast';
 
 const GOD_ID = 'god';
@@ -772,6 +773,24 @@ export function useHive(config: HarnessConfig | null): void {
           return { sent: false };
         }
       }
+      // A card-session action (clear / resume / adopt lead) may have parked for
+      // a LONG time in a busy pane's queue — the card it was decided against can
+      // flip blocked/done/reassign underneath it (god flips constantly).
+      // Re-validate the card's CURRENT state before typing anything: a stale
+      // clear is not a no-op, it WIPES the working conversation. Drop silently —
+      // the watcher re-fires on the next transition if steering is still needed.
+      // Fail-open on a fetch error so a hiccup can never strand a live card.
+      if (next.cardFor) {
+        const data = await window.cth.hiveTasks().catch(() => null);
+        const card = data && typeof data === 'object' && Array.isArray((data as { tasks?: unknown[] }).tasks)
+          ? ((data as { tasks: Array<Record<string, unknown> | undefined> }).tasks
+              .find((t) => t?.id === next.cardFor!.cardId) as CardSnapshotLike | undefined)
+          : undefined;
+        if (!cardSessionActionStillValid(card, next.cardFor)) {
+          removeQueuedMessage(srcId, next.id);
+          return { sent: false };
+        }
+      }
       inFlight.add(flightKey);
       lastFlush.current[target.id] = now;
       try {
@@ -1003,7 +1022,7 @@ export function useHive(config: HarnessConfig | null): void {
       if (!evt?.agentId || typeof evt.text !== 'string' || !evt.text.trim()) return;
       const { agents, enqueueMessage } = useStore.getState();
       if (!agents.some((a) => a.id === evt.agentId)) return;
-      enqueueMessage(evt.agentId, evt.text.trim());
+      enqueueMessage(evt.agentId, evt.text.trim(), evt.cardFor ? { cardFor: evt.cardFor } : undefined);
     });
   }, [config?.onboardingComplete]);
 

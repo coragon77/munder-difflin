@@ -4,6 +4,7 @@ import type { OfficeCharacterName } from '@/scene/office/cast';
 import type { ThemeId } from '@/scene/office/themeRegistry';
 import type { StatusKind } from '@/components/PixelBadge';
 import type { AgentProvider, HirePermissionMode } from '@shared/agentProvider';
+import type { CardSessionMarker } from '@shared/cardSessions';
 import type { HireManifest } from '@shared/hire';
 import { DEFAULT_ORG_TRIGGER, type OrgTriggerConfig, type WebhookTrigger } from '@shared/triggers';
 import { isCompactionCommand } from '@shared/providerAutomation';
@@ -157,6 +158,11 @@ export interface QueuedMessage {
    *  goes idle — the mail may be handled (moved to inbox/.done) in between, so the
    *  drain re-validates that this id is still in the inbox before typing. */
   inboxFor?: string;
+  /** Card-session pane action ONLY (clear/resume/adopt lead): what the watcher
+   *  knew when it queued this. A BUSY pane can park it for a long time; the card
+   *  may flip blocked/done/reassign underneath — the drain re-validates the
+   *  card's CURRENT state before typing (card-session-stamp-never-fires). */
+  cardFor?: CardSessionMarker;
 }
 
 // 'files' retired in v0.3.4 (the per-agent IDE button superseded it) — a
@@ -291,7 +297,7 @@ interface State {
   /** Park a message for an agent. Returns nothing; the flush loop delivers it.
    *  `meta.instruction`, when set, is what gets typed into the PTY instead of
    *  `text` (UI/card surfaces still show `text`). */
-  enqueueMessage: (agentId: string, text: string, meta?: { slack?: { channel: string; thread_ts: string }; instruction?: string; inboxFor?: string }) => void;
+  enqueueMessage: (agentId: string, text: string, meta?: { slack?: { channel: string; thread_ts: string }; instruction?: string; inboxFor?: string; cardFor?: CardSessionMarker }) => void;
   /** Drop a single queued message (user removed it, or it was just delivered). */
   removeQueuedMessage: (agentId: string, messageId: string) => void;
   /** "Send now" while floor auto-delivery is paused: marks the message manual
@@ -823,7 +829,8 @@ export const useStore = create<State>((set) => ({
         id: newQueuedId(), text: trimmed, ts: Date.now(),
         ...(meta?.slack ? { slack: meta.slack } : {}),
         ...(meta?.instruction ? { instruction: meta.instruction } : {}),
-        ...(meta?.inboxFor ? { inboxFor: meta.inboxFor } : {})
+        ...(meta?.inboxFor ? { inboxFor: meta.inboxFor } : {}),
+        ...(meta?.cardFor ? { cardFor: meta.cardFor } : {})
       };
       const messageQueues = { ...s.messageQueues, [agentId]: [...(s.messageQueues[agentId] ?? []), msg] };
       persistQueues(messageQueues);

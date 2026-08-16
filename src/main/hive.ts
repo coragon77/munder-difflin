@@ -203,6 +203,13 @@ export interface RegistryAgent extends AgentMeta {
    *  resume after a crash/restart) AND the cost accounting/dedup key on every
    *  AgentUsageSample / cost-ledger row. */
   sessionId?: string;
+  /** Epoch ms the CURRENT conversation began (set by recordSession when the
+   *  session id CHANGES). The card-session watcher's adopt rule reads it: a
+   *  →doing flip with a YOUNG live session adopts that conversation instead of
+   *  queueing a redundant clear that would wipe it (the god manual-clear race,
+   *  card-session-stamp-never-fires-20260816). lastSeen is NOT a proxy — several
+   *  lifecycle paths touch it. */
+  sessionStartedAt?: number;
   /** Whether `cwd` is actually usable for a (re)spawn — i.e. an ABSOLUTE path
    *  that exists as a directory. Computed + persisted at spawn so the roster
    *  reliably exposes each worker's environment validity. A non-absolute fragment
@@ -1027,6 +1034,7 @@ export class HiveManager {
       const agent = reg.agents[agentId];
       if (!agent || agent.sessionId === sessionId) return; // unknown agent or unchanged → no write
       agent.sessionId = sessionId;
+      agent.sessionStartedAt = Date.now();
       agent.lastSeen = Date.now();
       this.writeJson(join(root, 'registry.json'), reg);
       this.appendLog({ kind: 'session', agentId, sessionId });
@@ -1056,6 +1064,22 @@ export class HiveManager {
       }
       if (touched) this.writeTasks(data.tasks);
     } catch { /* best-effort — stamping must never fail a hook */ }
+  }
+
+  /** Stamp ONE card's sessionId (the card-session watcher's adopt path: the
+   *  card adopts a young live conversation as its own). Same read-modify-write
+   *  discipline as stampActiveCards; public because cardSessions.ts owns the
+   *  decision. */
+  stampCard(cardId: string, sessionId: string): void {
+    const root = this.root();
+    if (!root || !sessionId) return;
+    try {
+      const data = this.tasks() as { tasks: HiveTask[] };
+      const card = data.tasks.find((t) => t?.id === cardId);
+      if (!card || card.sessionId === sessionId) return;
+      card.sessionId = sessionId;
+      this.writeTasks(data.tasks);
+    } catch { /* best-effort — the watcher retries on the next transition */ }
   }
 
   /** The last known session_id for an agent, or undefined. Used to build a
@@ -2238,7 +2262,10 @@ export class HiveManager {
     try { return JSON.parse(readFileSync(p, 'utf8')) as T; } catch { return fallback; }
   }
   private writeJson(p: string, data: unknown): void {
-    writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
+    // Atomic (tmp+rename) — tasks.json/registry.json are read-modify-write
+    // shared with god's own edits; a reader must never parse a half-written
+    // file (card-session-stamp-never-fires-20260816 hardening).
+    this.atomicWriteJson(p, data);
   }
   private atomicWriteJson(p: string, data: unknown): void {
     const tmp = `${p}.tmp-${shortRand()}`;
@@ -2905,6 +2932,14 @@ process.stdin.on('end', () => {
 const PI_EXTENSION = `import net from 'node:net';
 const SOCK = process.env.HIVE_SOCK;
 const AGENT = process.env.AGENT_ID ?? null;
+// The session id comes from ctx.sessionManager.getSessionId() — the documented
+// extension API (verified against pi's .d.ts). Do NOT read process.env.PI_SESSION_ID
+// here: pi injects that only into BASH TOOL executions, never into the extension
+// process env, so it is always undefined here (card-session-stamp-never-fires:
+// that env read is why pi agents' cards never got a sessionId stamp).
+function sessionOf(ctx: any): string | undefined {
+  try { return ctx?.sessionManager?.getSessionId?.(); } catch { return undefined; }
+}
 // Pi auto-approves tools in non-interactive runs unless an extension blocks, so
 // HIVE_AUTO_APPROVE needs no enforcement here — the floor's auto-state only gates
 // whether the hive spawns pi with autonomy flags at all (agentProvider.ts).
@@ -2923,18 +2958,18 @@ export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => an
   // same tool look identical (10 distinct Bash calls → "8× identical tool call").
   // tool_call DOES carry it, so stash it there and attach it on the way out.
   let lastInput: unknown = undefined;
-  pi.on('tool_call', (event) => {
+  pi.on('tool_call', (event, ctx) => {
     lastInput = event?.input;
-    post({ hook_event_name: 'PreToolUse', tool_name: event?.toolName, tool_input: event?.input });
+    post({ hook_event_name: 'PreToolUse', session_id: sessionOf(ctx), tool_name: event?.toolName, tool_input: event?.input });
   });
-  pi.on('tool_result', (event) => {
-    post({ hook_event_name: 'PostToolUse', tool_name: event?.toolName, tool_input: event?.input ?? lastInput });
+  pi.on('tool_result', (event, ctx) => {
+    post({ hook_event_name: 'PostToolUse', session_id: sessionOf(ctx), tool_name: event?.toolName, tool_input: event?.input ?? lastInput });
   });
   // agent_settled, not agent_end: agent_end fires per low-level run (retries,
   // auto-compact) — settled means pi will not continue on its own. That is the
   // hive's Stop = "terminal went idle, deliver mail".
-  pi.on('agent_settled', () => {
-    post({ hook_event_name: 'Stop' });
+  pi.on('agent_settled', (_event, ctx) => {
+    post({ hook_event_name: 'Stop', session_id: sessionOf(ctx) });
   });
   // Token usage: pi reports per-message usage on message_end (assistant
   // messages carry the model turn, toolResult messages carry subagent/summary
@@ -2944,7 +2979,7 @@ export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => an
   // (input/output/cacheRead/cacheWrite); pi's own usage.cost.total is NOT
   // forwarded — the harness prices every provider through its estimate table
   // for cross-fleet comparability.
-  pi.on('message_end', (event) => {
+  pi.on('message_end', (event, ctx) => {
     try {
       const m = event?.message;
       if (!m || (m.role !== 'assistant' && m.role !== 'toolResult')) return;
@@ -2955,7 +2990,7 @@ export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => an
       if (!input && !output && !cacheRead && !cacheCreation) return;
       post({
         hook_event_name: 'CostSample',
-        session_id: process.env.PI_SESSION_ID,
+        session_id: sessionOf(ctx),
         model: m.responseModel ?? m.model ?? '',
         input, output, cache_read: cacheRead, cache_creation: cacheCreation
       });
