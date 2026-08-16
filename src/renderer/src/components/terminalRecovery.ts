@@ -73,3 +73,48 @@ export function scheduleWebglRecovery(
   }));
   return true;
 }
+
+/** The minimum a canvas has to offer for its GPU context to be handed back.
+ *  Typed structurally so the tests can pass plain objects. */
+export interface ReleasableCanvas {
+  isConnected: boolean;
+  getContext(type: string): { getExtension(name: string): unknown } | null;
+}
+
+/** Hand the GPU contexts of released WebGL canvases back to the browser.
+ *
+ *  `addon.dispose()` does NOT do this. @xterm/addon-webgl never calls
+ *  WEBGL_lose_context, and on xterm 5.5.0 its teardown throws before it can
+ *  restore the DOM renderer (it dereferences `_terminal._core._store`, which
+ *  5.5.0 does not have), so the terminal's render service keeps pointing at the
+ *  disposed WebGL renderer — which keeps its canvas, which keeps a LIVE GL
+ *  context — for as long as the pooled terminal exists. Chromium caps live
+ *  contexts at ~16 and silently EVICTS THE OLDEST when a new one pushes past
+ *  the cap; the office floor's Pixi canvas is built at startup, so it is always
+ *  the oldest. That is why clicking an agent card — which leases a context for
+ *  the newly selected terminal — SOMETIMES blacks out the floor and rebuilds
+ *  it: the click that crossed the cap.
+ *
+ *  Only canvases the addon has already unparented are touched; one still in the
+ *  document belongs to a terminal that legitimately owns it. Returns how many
+ *  contexts were released. */
+export function releaseWebglContexts(canvases: readonly ReleasableCanvas[]): number {
+  let released = 0;
+  for (const canvas of canvases) {
+    if (canvas.isConnected) continue;
+    try {
+      // Never mint a context: getContext('webgl2') returns null for a canvas
+      // that already holds a 2D one, and every canvas xterm leaves behind holds
+      // one or the other.
+      const lose = canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context') as
+        { loseContext(): void } | null | undefined;
+      if (!lose) continue;
+      lose.loseContext();
+      released += 1;
+    } catch {
+      // A canvas that cannot give its context back must not stop the others —
+      // the leak is cumulative, so a skipped one costs a later floor reset.
+    }
+  }
+  return released;
+}
