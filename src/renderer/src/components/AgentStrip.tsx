@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AgentCard } from './AgentCard';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import { useStore, type Agent, agentClassTag, displayAgentName } from '@/store/store';
+import { useStore, type Agent, agentClassOf, displayAgentName } from '@/store/store';
 import { type HarnessConfig } from '@/store/config';
 import { useRestoreTeam } from '@/hooks/useRestoreTeam';
 
@@ -128,7 +128,7 @@ export function AgentStrip({ config }: AgentStripProps) {
         >
           <AgentCard
             draggable
-            name={agentClassTag(a) + displayAgentName(a)}
+            name={displayAgentName(a)}
             character={a.character}
             accent={a.accent}
             status={a.status}
@@ -140,6 +140,7 @@ export function AgentStrip({ config }: AgentStripProps) {
             contextLimit={a.contextLimit}
             selected={a.id === selectedId}
             isGod={a.isGod}
+            isIntern={agentClassOf(a) === 'intern'}
             onClick={() => select(a.id)}
             doingCount={doingByAgent[a.id]?.length ?? 0}
             onTaskNoteClick={() => {

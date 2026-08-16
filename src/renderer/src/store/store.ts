@@ -96,15 +96,14 @@ export interface Agent {
 
 /** Roster class for display: 'god' (Michael), 'intern' (god-hired persistent
  *  worker — the id prefix `intern-` is the machine-readable marker), 'human'
- *  (everything else: hires made from the UI). Drives the (G)/(I)/(H) tags on
- *  cards and the detail header — display only, the registry is untouched. */
+ *  (everything else: hires made from the UI). Interns get an INT chip on cards
+ *  and the detail header; humans are the unmarked default; the god keeps its
+ *  BOSS chip. Display only, the registry is untouched. */
 export type AgentClass = 'god' | 'intern' | 'human';
 export const agentClassOf = (a: Pick<Agent, 'id' | 'isGod'>): AgentClass =>
   a.isGod ? 'god' : a.id.startsWith('intern-') ? 'intern' : 'human';
-export const agentClassTag = (a: Pick<Agent, 'id' | 'isGod'>): string =>
-  a.isGod ? '(G) ' : a.id.startsWith('intern-') ? '(I) ' : '(H) ';
 /** Interns are registered as "<name> (Intern)" so every surface can tell them
- *  apart; on cards and the detail header the (I) tag says it more concisely, so
+ *  apart; on cards and the detail header the INT chip says it more concisely, so
  *  the suffix is dropped there and only there. */
 export const displayAgentName = (a: Pick<Agent, 'name' | 'id' | 'isGod'>): string =>
   agentClassOf(a) === 'intern' ? a.name.replace(/\s*\(intern\)$/i, '') : a.name;

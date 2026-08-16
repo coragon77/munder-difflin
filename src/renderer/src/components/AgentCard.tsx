@@ -29,6 +29,9 @@ export interface AgentCardProps {
   /** Your clone — gets a persistent accent frame + BOSS tag so it stands out.
    *  (`isGod` / the `god` agent id stay as-is internally; this is display only.) */
   isGod?: boolean;
+  /** God-hired intern — gets an INT tag next to the name instead. Humans are
+   *  the unmarked default; `agentClassOf` keeps the two flags mutually exclusive. */
+  isIntern?: boolean;
   onClick?: () => void;
   /** Number of ledger tasks this agent is actively DOING — rendered as a blue
    *  sticky note stuck to the card. Clicking it opens the first task's detail. */
@@ -52,7 +55,7 @@ const fmtK = (n: number): string => `${Math.round(n / 1000)}k`;
  */
 export function AgentCard({
   name, character, accent, status, ptyId, project, action, progress = 0,
-  contextTokens, contextLimit, selected, isGod, onClick,
+  contextTokens, contextLimit, selected, isGod, isIntern, onClick,
   doingCount = 0, onTaskNoteClick, draggable, note, onEditNote
 }: AgentCardProps) {
   const [hover, setHover] = useState(false);
@@ -138,7 +141,7 @@ export function AgentCard({
           </div>
 
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            {/* Identity row: name (+ BOSS tag) + status. */}
+            {/* Identity row: name (+ BOSS/INT tag) + status. */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between', minWidth: 0 }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
                 <span style={{
@@ -148,12 +151,15 @@ export function AgentCard({
                   color: 'var(--cth-ink-900)',
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
                 }}>{name.toUpperCase()}</span>
-                {isGod && (
+                {/* Class tag OUTSIDE the ellipsized name span, so it never
+                    eats name chars — the lesson of the rejected (G)/(I)/(H)
+                    text prefixes. */}
+                {(isGod || isIntern) && (
                   <span style={{
                     fontFamily: 'var(--cth-font-display)', fontSize: 7, lineHeight: '11px',
                     background: `var(--cth-${accent})`, color: 'var(--cth-ink-900)',
                     padding: '1px 4px 0', flexShrink: 0
-                  }}>BOSS</span>
+                  }}>{isGod ? 'BOSS' : 'INT'}</span>
                 )}
               </span>
               <PixelBadge status={typing ? 'typing' : status} />

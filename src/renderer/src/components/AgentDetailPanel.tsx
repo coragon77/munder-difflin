@@ -14,7 +14,7 @@ import { ToolWaterfall } from './ToolWaterfall';
 import { AgentControlStrip } from './AgentControlStrip';
 import { GitTab } from './GitTab';
 import { Icon } from './Icon';
-import { useStore, type Agent, agentClassTag, displayAgentName } from '@/store/store';
+import { useStore, type Agent, agentClassOf, displayAgentName } from '@/store/store';
 import { usePtyParser } from '@/hooks/usePtyParser';
 
 export interface AgentDetailPanelProps {
@@ -126,12 +126,25 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
           <SpritePortrait character={agent.character} scale={1} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{
-            fontFamily: 'var(--cth-font-display)',
-            fontSize: 10, lineHeight: '14px',
-            color: 'var(--cth-ink-900)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-          }}>{agentClassTag(agent)}{displayAgentName(agent).toUpperCase()}</div>
+          {/* Name + INT chip for interns, mirroring the card's tag so both
+              surfaces read the same. The chip sits OUTSIDE the ellipsized span
+              (as on the card) so it never truncates the name. Humans — the
+              default — and the god (own command center) show nothing here. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+            <span style={{
+              fontFamily: 'var(--cth-font-display)',
+              fontSize: 10, lineHeight: '14px',
+              color: 'var(--cth-ink-900)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+            }}>{displayAgentName(agent).toUpperCase()}</span>
+            {agentClassOf(agent) === 'intern' && (
+              <span style={{
+                fontFamily: 'var(--cth-font-display)', fontSize: 7, lineHeight: '11px',
+                background: `var(--cth-${agent.accent})`, color: 'var(--cth-ink-900)',
+                padding: '1px 4px 0', flexShrink: 0
+              }}>INT</span>
+            )}
+          </div>
           <div style={{
             display: 'flex', gap: 6, alignItems: 'center', marginTop: 1
           }}>
