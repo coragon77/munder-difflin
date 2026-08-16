@@ -64,6 +64,10 @@ export interface HarnessConfig {
   recentHives?: string[];
   registeredRepos: string[];
   autoMode: boolean;
+  /** Operator authorization for Agent-tool subagents in skill-driven plan
+   *  execution (superpowers SDD). Default ON; mirrors main's config field
+   *  (card sdd-authorization-switch-20260816). */
+  sddSubagentsAuthorized?: boolean;
   /** When true, fresh god spawns run /remote-control Michael (Claude mobile
    *  link). Mirrors main's config field — default ON. */
   godRemoteControl?: boolean;

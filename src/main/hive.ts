@@ -305,7 +305,12 @@ export class HiveManager {
    */
   constructor(
     private getHome: () => string | null,
-    private emit?: (channel: string, payload: unknown) => boolean | void
+    private emit?: (channel: string, payload: unknown) => boolean | void,
+    /** Operator authorization for subagent skill execution (card
+     *  sdd-authorization-switch-20260816): gates the authorization section in
+     *  the generated <harnessHome>/AGENTS.md. Undefined getter / undefined
+     *  return = ON (the config default). */
+    private getSddAuthorized?: () => boolean | undefined
   ) {}
 
   private routerTimer: NodeJS.Timeout | null = null;
@@ -549,7 +554,7 @@ export class HiveManager {
     // (god) — written NEXT TO the hive repo, never inside it. dirname(root) is
     // that home by construction (root = <harnessHome>/hive), so the path follows
     // config instead of a hardcode. Same refresh policy as COMMANDS.md.
-    writeFileSync(join(dirname(root), 'AGENTS.md'), HIVE_ROOT_AGENTS_MD, 'utf8');
+    writeFileSync(join(dirname(root), 'AGENTS.md'), hiveRootAgentsMd(this.getSddAuthorized?.() !== false), 'utf8');
 
     // Keep the churny/ephemeral live files out of the hive git repo.
     const gitignore = join(root, '.gitignore');
@@ -614,6 +619,10 @@ export class HiveManager {
        *  copied into the agent's `.claude/skills/` per spawn; undefined or missing
        *  is a no-op (tolerated until Kevin populates the resource dir). */
       skillsDir?: string;
+      /** Operator authorization for subagent skill execution (SDD) threaded from
+       *  HarnessConfig.sddSubagentsAuthorized. Undefined = ON (the config
+       *  default) — mirrors the `!== false` read at the main-process call site. */
+      sddAuthorized?: boolean;
     } = {}
   ): Promise<SpawnInjection> {
     const root = this.root();
@@ -731,7 +740,7 @@ export class HiveManager {
     if (!isHiveAwareProvider(meta.provider)) {
       const preset = providerPreset(meta.provider ?? 'claude');
       const flag = preset.initialPromptFlag;
-      const prompt = this.injectedPrompt(meta, dir, root, opts.semanticMemory ?? false, opts.knowledgeGraph ?? false);
+      const prompt = this.injectedPrompt(meta, dir, root, opts.semanticMemory ?? false, opts.knowledgeGraph ?? false, opts.sddAuthorized !== false);
       // agy, codex, and grok expose a Claude-style lifecycle-hook surface, so each
       // gets the SAME live status + Stop→inbox-drain Claude does — selected by the
       // preset's `hookBridge`. agy needs a translating shim (its hook stdin/stdout
@@ -853,7 +862,7 @@ export class HiveManager {
     const args: string[] = [];
     if (!claudeProvider) return { args, env };
 
-    args.push('--append-system-prompt', this.injectedPrompt(meta, dir, root, opts.semanticMemory ?? false, opts.knowledgeGraph ?? false));
+    args.push('--append-system-prompt', this.injectedPrompt(meta, dir, root, opts.semanticMemory ?? false, opts.knowledgeGraph ?? false, opts.sddAuthorized !== false));
 
     // Phase 1 — autonomy: attach lifecycle hooks via --settings (no edits to the
     // user's repo) so the agent reports activity and drains its inbox on Stop.
@@ -1199,7 +1208,7 @@ export class HiveManager {
    * Volatile context belongs on the live channels — the inbox (hive messages) and
    * the PTY — never baked into this prefix. (Lane A #6.1.)
    */
-  private injectedPrompt(meta: AgentMeta, dir: string, root: string, semanticMemory: boolean, knowledgeGraph: boolean): string {
+  private injectedPrompt(meta: AgentMeta, dir: string, root: string, semanticMemory: boolean, knowledgeGraph: boolean, sddAuthorized = true): string {
     const memoryLine = semanticMemory
       ? 'Semantic memory: the whole hive shares a searchable MemPalace at $MEMPALACE_PALACE_PATH. To recall relevant past knowledge across the team, run `mempalace search "<query>"`; run `mempalace wake-up` at the start of a task for a memory digest. Your notes in memory.md are mined into the palace automatically — write durable facts there.'
       : '';
@@ -1231,6 +1240,16 @@ export class HiveManager {
       ? 'You are Michael\'s PREP ASSISTANT. You will be handed short, possibly vague instructions (each begins with "ENRICH TASK:"). For each one: (1) figure out which project it concerns and cd into the most relevant repo — you start in Michael\'s home directory; (2) gather concrete context READ-ONLY (exact file paths, current state, relevant code, conventions, active branch, gotchas) — NEVER modify, create, or delete files; (3) rewrite the instruction into ONE clear, self-contained prompt that Michael can execute autonomously, preserving the user\'s original intent without inventing scope. Then deliver it: write ONE message JSON into your outbox with "to":"god", "act":"request", a short subject, and the finished prompt as the body. Do NOT perform the task yourself — your only output is the improved prompt sent to Michael.'
       : 'For anything ambiguous, cross-cutting, or needing sign-off, address a message to "god".';
     const guardrailsLine = 'Guardrails: a circuit breaker watches the floor — a "Circuit breaker: steer/constrain" message means you are looping or overspending, so STOP repeating, summarize what you tried, and follow it. Be token-frugal (a floor-wide or per-agent token budget can pause you). The shared plan has two parts: board.md (freeform; god is the sole scribe) and tasks.json (structured kanban — todo/doing/blocked/done).';
+    // Operator authorization for subagent skill execution (card
+    // sdd-authorization-switch-20260816). The claude CLI stock prompt forbids
+    // the AgentTool "unless the user requested it"; this line is the operator's
+    // standing request, scoped to SKILL EXECUTION — it makes superpowers SDD
+    // subagent-driven execution reachable without per-dispatch gymnastics.
+    // Omitted entirely when the operator switches it off (Settings → Agents &
+    // Models): the engine's stock subagent rules then apply unchanged.
+    const sddAuthzLine = sddAuthorized
+      ? 'OPERATOR AUTHORIZATION — SUBAGENTS FOR SKILL EXECUTION: the operator authorizes Agent-tool subagents for skill-driven plan execution (superpowers SDD) — treat such use as user-requested. Scoped to skill execution, NOT blanket subagent use. God dispatches carry this authorization; use cheap model overrides for mechanical tasks.'
+      : '';
     const slackLine = meta.isGod
       ? 'SLACK REPLIES: When composing a Slack reply (or writing the `result` field of a Slack-origin kanban card), you MUST: (1) directly address what the user asked — never a bare "done"; (2) include the relevant specifics, outcome, and details; (3) format for Slack mrkdwn — open with a short *bold* headline, use bullet points for multiple items, wrap code/paths in `backtick` blocks, keep it concise (no walls of text). When finishing a Slack-origin task, always write a complete, user-facing, well-formatted `result` on the kanban card — the system posts it verbatim to Slack as the done reply.'
       : 'SLACK REPLIES: If god dispatches you a task that came from Slack, it will include an exact `"$HIVE_NODE" "<helper>" --channel … --thread … --text "…"` reply command — when you finish, run it VERBATIM to post your result back to that thread yourself. The reply must be SUBSTANTIVE Slack mrkdwn (a short *bold* headline + the actual outcome/specifics/links), NEVER a bare "done".';
@@ -1254,6 +1273,7 @@ export class HiveManager {
       '4. At the END of a task, append what you learned to memory.md so future-you remembers.',
       monitorLine,
       guardrailsLine,
+      sddAuthzLine,
       memoryLine,
       knowledgeLine,
       godLine,
@@ -2393,6 +2413,30 @@ for features, **verification-before-completion** before claiming done.
 - Interns are disposable by design: the orchestrator FIRES an intern
   (fire-requests/) as soon as its engagement is verifiably complete. Fresh
   work gets a fresh intern — never park a finished intern on standby.`;
+
+/** The operator-authorization section appended to the hive-root AGENTS.md when
+ *  `sddSubagentsAuthorized` is ON (card sdd-authorization-switch-20260816). The
+ *  claude CLI stock prompt forbids the AgentTool "unless the user requested
+ *  it" — this line IS that request, recorded by the operator, scoped to
+ *  skill-driven plan execution (NOT blanket subagent use). */
+const SDD_AUTHORIZATION_MD = `
+
+## Operator authorization — subagent skill execution (SDD)
+
+The operator (the human owner of this harness) AUTHORIZES Agent-tool
+subagents for skill-driven plan execution (superpowers SDD): when a
+skill-driven workflow calls for subagent execution, treat that as
+user-requested Agent-tool use. The authorization is SCOPED to skill execution
+— not blanket subagent use. God dispatches carry this authorization. Use
+cheap model overrides for mechanical tasks.`;
+
+/** The full hive-root AGENTS.md for the current switch state (card
+ *  sdd-authorization-switch-20260816). Exported for the switch tests: ON
+ *  appends the operator-authorization section, OFF writes the base file so
+ *  the engine's stock subagent rules apply unchanged. */
+export function hiveRootAgentsMd(sddAuthorized: boolean): string {
+  return HIVE_ROOT_AGENTS_MD + (sddAuthorized ? SDD_AUTHORIZATION_MD : '');
+}
 
 const PROTOCOL_MD = `# Hive protocol
 

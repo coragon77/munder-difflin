@@ -260,6 +260,10 @@ export interface HarnessConfig {
   recentHives?: string[];
   registeredRepos: string[];
   autoMode: boolean;
+  /** Operator authorization for Agent-tool subagents in skill-driven plan
+   *  execution (superpowers SDD). Default ON; mirrors main + renderer config
+   *  (card sdd-authorization-switch-20260816). */
+  sddSubagentsAuthorized?: boolean;
   defaultCommand: string;
   defaultModel?: string;
   /** Which provider+model powers the GOD orchestrator ("Michael"). Default

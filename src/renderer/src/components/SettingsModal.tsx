@@ -208,6 +208,16 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
     try { await window.cth.updateConfig({ autoMode: next } as Partial<HarnessConfig>); }
     catch { setAutoModeOn(!next); }
   };
+  // SDD subagent authorization (card sdd-authorization-switch-20260816): ON
+  // writes the operator-authorization line (scoped to skill execution) into the
+  // generated AGENTS.md + agent briefings; main regenerates AGENTS.md on flip.
+  const [sddAuthz, setSddAuthz] = useState<boolean>(cfgX.sddSubagentsAuthorized !== false);
+  const toggleSddAuthz = async () => {
+    const next = !sddAuthz;
+    setSddAuthz(next);
+    try { await window.cth.updateConfig({ sddSubagentsAuthorized: next } as Partial<HarnessConfig>); }
+    catch { setSddAuthz(!next); }
+  };
   const [godRemote, setGodRemote] = useState<boolean>(cfgX.godRemoteControl !== false);
   const toggleGodRemote = async () => {
     const next = !godRemote;
@@ -467,6 +477,7 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       setSlackPort(String(cc.slackPort ?? 3847));
       setSlackProactivePosting(cc.slackProactivePosting ?? false);
       setTgEnabled((cc as HarnessConfig).telegramEnabled ?? true);
+      setSddAuthz((cc as HarnessConfig).sddSubagentsAuthorized !== false);
       const kgOn = (cc as { knowledgeGraph?: { enabled?: boolean } }).knowledgeGraph?.enabled === true;
       setKgEnabled(kgOn);
       setFreeflowEnabled(cc.freeflowEnabled !== false);
@@ -1180,6 +1191,22 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                             {autoModeOn ? 'autonomous' : 'ask-first'}
                           </PixelButton>
                         </div>
+                      </div>
+
+                      {/* Subagent skill execution (SDD) authorization — scoped to
+                           skill execution, NOT blanket subagent use. */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>
+                            {sddAuthz ? 'Subagent skill execution authorized' : 'Subagent skill execution off'}
+                          </span>
+                          <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
+                            Agents may spawn Agent-tool subagents for skill-driven plan execution (superpowers SDD) — scoped to skill execution, not blanket subagent use. Applies to new briefings; the hive AGENTS.md regenerates immediately.
+                          </span>
+                        </div>
+                        <PixelButton variant={sddAuthz ? 'primary' : 'secondary'} size="sm" onClick={toggleSddAuthz}>
+                          {sddAuthz ? 'authorized' : 'stock'}
+                        </PixelButton>
                       </div>
 
                       {/* God remote-control link (phone supervision of Michael) */}

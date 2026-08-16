@@ -229,7 +229,13 @@ const hive = new HiveManager(
     const wc = liveWebContents();
     if (!wc) return false;
     try { wc.send(channel, payload); return true; } catch { return false; }
-  }
+  },
+  // SDD subagent authorization (card sdd-authorization-switch-20260816):
+  // gates the operator-authorization section in the generated AGENTS.md.
+  // Read lazily — ensureHive rewrites the file on every spawn/bootstrap, so a
+  // Settings flip takes effect at the next rewrite (forced immediately below
+  // in config:update).
+  () => readConfig().sddSubagentsAuthorized
 );
 // #7C — operator control state (pause/gate/steer/halt), read by the HookServer
 // when deciding hook returns.
@@ -2691,7 +2697,8 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
           theme: readConfig().terminalTheme ?? 'light',
           // W3 — default-MCP consent state + the bundled skills source dir.
           mcpDefaults: readConfig().mcpDefaults,
-          skillsDir: skillsResourceDir()
+          skillsDir: skillsResourceDir(),
+          sddAuthorized: readConfig().sddSubagentsAuthorized !== false
         }
       );
       opts.args = [...(opts.args ?? []), ...inj.args];
@@ -3093,6 +3100,11 @@ ipcMain.handle('config:update', (_evt, patch: Partial<HarnessConfig>) => {
   const next = writeConfig(patch);
   // Live opt-in/out from Settings → Privacy (TELEMETRY.md).
   if (typeof patch?.telemetryEnabled === 'boolean') analytics.setEnabled(patch.telemetryEnabled);
+  // SDD switch flip → regenerate <harnessHome>/AGENTS.md immediately (it
+  // otherwise refreshes on the next spawn/bootstrap via ensureHive).
+  if (typeof patch?.sddSubagentsAuthorized === 'boolean') {
+    try { hive.ensureHive(); } catch (e) { console.error('[hive] AGENTS.md regen failed:', e); }
+  }
   return next;
 });
 ipcMain.handle('config:ensureHome', (_evt, path: unknown) => {

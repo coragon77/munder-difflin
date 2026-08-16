@@ -188,6 +188,16 @@ export interface HarnessConfig {
   registeredRepos: string[];
   /** When true, new agents are spawned with the provider's permission-bypass flag (claude: --dangerously-skip-permissions). */
   autoMode: boolean;
+  /** Operator authorization for Agent-tool SUBAGENTS in skill-driven plan
+   *  execution (superpowers SDD) — card sdd-authorization-switch-20260816.
+   *  The claude CLI's stock prompt forbids AgentTool "unless the user
+   *  requested it"; when this is ON (default — Stefan's stated preference)
+   *  the harness-generated AGENTS.md and every agent briefing carry the
+   *  operator-authorization line scoped to SKILL EXECUTION (subagent-driven
+   *  default, cheap model overrides for mechanical tasks), which satisfies the
+   *  stock prompt's own escape clause. OFF = the line is omitted and the
+   *  engine's stock subagent rules apply unchanged. NOT blanket subagent use. */
+  sddSubagentsAuthorized?: boolean;
   /** When true, the god agent's fresh spawns run `/remote-control Michael`,
    *  linking his session to the Claude mobile app (phone-side supervision of a
    *  bypassPermissions orchestrator — the only remote view into what he DOES,
@@ -422,6 +432,7 @@ const DEFAULTS: HarnessConfig = {
   recentHives: [],
   registeredRepos: [],
   autoMode: true,
+  sddSubagentsAuthorized: true,
   godRemoteControl: true,
   defaultCommand: 'claude',
   godProvider: 'claude',
