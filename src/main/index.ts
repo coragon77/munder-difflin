@@ -58,6 +58,7 @@ import { analytics } from './analytics';
 import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
 import { validateBaseUrl, buildAuthHeaders, resolveUpstreamUrl, secretRefFor, INTEGRATION_TEMPLATES } from '../shared/integrations';
+import { SYSTEM_SENDERS, isFyiMail } from '../shared/hiveMail';
 import { RosterStore } from './roster';
 import { ControlRegistry } from './control';
 import { fetchHireManifest, readHireManifestFile } from './hire';
@@ -1038,14 +1039,10 @@ function buildHeartbeatDigest(quietMs: number, actionable = 0): string {
   ].join('\n');
 }
 
-/** Senders whose mail is the scheduler's OWN noise (heartbeat beats, ops-standup
- *  via 'scheduler', breaker steers, generic 'system') — never a reason to wake
- *  god. Everything else (a worker agent id, 'webhook', a human reply) is real
- *  mail god must act on. Kept narrow so any future real sender counts by default. */
-const SYSTEM_SENDERS = new Set(['heartbeat', 'scheduler', 'breaker', 'system']);
-
 /** Count of UNREAD actionable messages in god's inbox — real agent/human mail,
- *  excluding the scheduler's own beats. Drives an inbox-aware re-engage so a
+ *  excluding the scheduler's own beats AND pure FYI mail (ephemeral-worker
+ *  spawn/fire informs and similar), which waits for god's next natural drain
+ *  instead of triggering a re-engage. Drives an inbox-aware re-engage so a
  *  worker's reply (or a human answer) doesn't sit unread while the floor is busy:
  *  the floor-quiet gate alone misses that case — any active agent keeps the floor
  *  "loud", so god was never re-engaged until everything else went idle. */
@@ -1053,7 +1050,7 @@ function godActionableInboxCount(): number {
   try {
     const godId = hive.registry().godId;
     if (!godId) return 0;
-    return hive.inbox(godId).filter((m) => !SYSTEM_SENDERS.has(m.from)).length;
+    return hive.inbox(godId).filter((m) => !SYSTEM_SENDERS.has(m.from) && !isFyiMail(m)).length;
   } catch { return 0; }
 }
 

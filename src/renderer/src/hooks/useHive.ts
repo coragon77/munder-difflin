@@ -14,6 +14,7 @@ import {
   remoteControlCommandForProvider,
   terminalReadyToReceive
 } from '../../../shared/providerAutomation';
+import { isFyiMail } from '../../../shared/hiveMail';
 import { DEFAULT_CONTEXT_TRIGGER, type ContextRule } from '../../../shared/triggers';
 import type { AgentProvider } from '../../../shared/agentProvider';
 import { acquireTerminal, resetTerminal, isTerminalAutomationSafe } from '@/components/terminalPool';
@@ -607,7 +608,11 @@ export function useHive(config: HarnessConfig | null): void {
       const agents = useStore.getState().agents.filter((a) => a.ptyId);
       for (const a of agents) {
         try {
-          const inbox = await window.cth.hiveInbox(a.id);
+          // FYI mail (act 'inform' from system senders — ephemeral-worker
+          // spawn/fire notices, scheduler/heartbeat informs…) must NEVER wake
+          // anyone: it waits for the next natural inbox drain. Requests from
+          // system senders (scheduler standups, breaker steers) still wake.
+          const inbox = (await window.cth.hiveInbox(a.id)).filter((m) => !isFyiMail(m));
           // Dedup by the newest message id, not the count — a count can oscillate
           // as messages drain and re-arrive, which would re-nudge for the same set.
           const newest = inbox.length
