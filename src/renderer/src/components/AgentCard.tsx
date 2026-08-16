@@ -29,8 +29,8 @@ export interface AgentCardProps {
   /** Your clone — gets a persistent accent frame + BOSS tag so it stands out.
    *  (`isGod` / the `god` agent id stay as-is internally; this is display only.) */
   isGod?: boolean;
-  /** God-hired intern — gets an INT tag next to the name instead. Humans are
-   *  the unmarked default; `agentClassOf` keeps the two flags mutually exclusive. */
+  /** God-hired intern — gets an INT tag on the note row instead. Humans
+   *  are the unmarked default; `agentClassOf` keeps the flags mutually exclusive. */
   isIntern?: boolean;
   onClick?: () => void;
   /** Number of ledger tasks this agent is actively DOING — rendered as a blue
@@ -83,6 +83,16 @@ export function AgentCard({
   // One context line: what it's DOING while working, WHERE it lives while idle.
   const infoLine = (status !== 'idle' && action) ? action : project;
   const noteFirstLine = (note ?? '').split('\n').find((l) => l.trim()) ?? '';
+
+  // Class chip: BOSS for your clone, INT for god-hired interns. Sits at the
+  // RIGHT edge of the third row — same column as the status badge above.
+  const classChip = (isGod || isIntern) && (
+    <span style={{
+      fontFamily: 'var(--cth-font-display)', fontSize: 7, lineHeight: '11px',
+      background: `var(--cth-${accent})`, color: 'var(--cth-ink-900)',
+      padding: '1px 4px 0', flexShrink: 0, marginLeft: 'auto'
+    }}>{isGod ? 'BOSS' : 'INT'}</span>
+  );
 
   return (
     <button
@@ -141,42 +151,40 @@ export function AgentCard({
           </div>
 
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            {/* Identity row: name (+ BOSS/INT tag) + status. */}
+            {/* Identity row: name + status only — the card's scarcest horizontal
+                space, so the class tag must never take width here (lesson of the
+                2026-08-16 floor review: `MIC…` next to BOSS). */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between', minWidth: 0 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                <span style={{
-                  fontFamily: 'var(--cth-font-display)',
-                  fontSize: 'var(--cth-text-display-sm)',
-                  lineHeight: 'var(--cth-lh-display-sm)',
-                  color: 'var(--cth-ink-900)',
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                }}>{name.toUpperCase()}</span>
-                {/* Class tag OUTSIDE the ellipsized name span, so it never
-                    eats name chars — the lesson of the rejected (G)/(I)/(H)
-                    text prefixes. */}
-                {(isGod || isIntern) && (
-                  <span style={{
-                    fontFamily: 'var(--cth-font-display)', fontSize: 7, lineHeight: '11px',
-                    background: `var(--cth-${accent})`, color: 'var(--cth-ink-900)',
-                    padding: '1px 4px 0', flexShrink: 0
-                  }}>{isGod ? 'BOSS' : 'INT'}</span>
-                )}
-              </span>
+              <span style={{
+                fontFamily: 'var(--cth-font-display)',
+                fontSize: 'var(--cth-text-display-sm)',
+                lineHeight: 'var(--cth-lh-display-sm)',
+                color: 'var(--cth-ink-900)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                minWidth: 0
+              }}>{name.toUpperCase()}</span>
               <PixelBadge status={typing ? 'typing' : status} />
             </div>
 
-            {/* Context line: action while working, repo while idle. */}
+            {/* Context line: pure info — what it's DOING while working, WHERE
+                it lives while idle. Ellipsized; full text in the tooltip. */}
             <div
               title={`${project}${action && status !== 'idle' ? ` — ${action}` : ''}`}
-              style={{
-                fontSize: 11, lineHeight: '14px',
-                color: 'var(--cth-ink-500)',
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-              }}
-            >{infoLine}</div>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}
+            >
+              <span
+                style={{
+                  flex: 1, minWidth: 0, fontSize: 11, lineHeight: '14px',
+                  color: 'var(--cth-ink-500)',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                }}
+              >{infoLine}</span>
+            </div>
 
-            {/* God: voice on its own compact row. Workers: the private note row.
-                Both sit ABOVE the gauge, so it is never covered. */}
+            {/* God: voice row. Workers: the private-note row with its ✎ edit
+                affordance. Both carry the class chip at the right edge, in the
+                status-badge column; both sit ABOVE the gauge, so it is never
+                covered. */}
             {isGod ? (
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}
@@ -184,6 +192,7 @@ export function AgentCard({
               >
                 <RealtimeMichaelToggle />
                 <CostHud compact />
+                {classChip}
               </div>
             ) : (
               <div
@@ -219,6 +228,7 @@ export function AgentCard({
                     }}
                   >✎</span>
                 )}
+                {classChip}
               </div>
             )}
 
