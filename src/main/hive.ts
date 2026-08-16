@@ -818,6 +818,11 @@ export class HiveManager {
     return { args, env };
   }
 
+  /** Called whenever the set of ACTIVE agents changes (an archive flip), so the
+   *  owner can rebuild `fleet.json` immediately rather than on its next beat.
+   *  Set by main; unset in tests and headless use, where it is simply a no-op. */
+  onRosterChange: (() => void) | null = null;
+
   /**
    * Flip an agent's archived flag and persist the registry. Closing a terminal
    * tab archives the agent (retained + flagged, NOT deleted); a (re)spawn clears
@@ -836,6 +841,12 @@ export class HiveManager {
       this.writeJson(join(root, 'registry.json'), reg);
       this.appendLog({ kind: 'archive', agentId: id, archived });
       this.commit(`hive: ${archived ? 'archive' : 'unarchive'} ${id}`);
+      // fleet.json is what god's LIVE ROSTER injection reads, and it is otherwise
+      // only rebuilt on an 8s timer — so between a fire and the next tick the
+      // roster still swears the fired agent is ACTIVE, and god routes work to a
+      // dead inbox. Worse after a suspend, where the interval is frozen. Push the
+      // snapshot on the flip instead of waiting for the beat.
+      try { this.onRosterChange?.(); } catch { /* snapshot is best-effort */ }
     } catch { /* best-effort — never crash a lifecycle handler */ }
   }
 

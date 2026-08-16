@@ -4743,6 +4743,9 @@ function bootstrapHiveServices(): void {
  *  powerMonitor resume can't stack duplicate timers — these are setInterval
  *  handles that freeze during true system sleep and must be re-armed on wake. */
 function armAlwaysOnBeats(): void {
+  // An archive flip changes the ACTIVE roster; don't make god wait up to a full
+  // beat (longer across a suspend) to stop seeing a fired agent as live.
+  hive.onRosterChange = writeFleetSnapshot;
   if (fleetTimer) clearInterval(fleetTimer);
   writeFleetSnapshot();
   fleetTimer = setInterval(writeFleetSnapshot, 8_000);
