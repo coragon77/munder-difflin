@@ -21,6 +21,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import {
   createTerminalRecoveryState,
   normalizePtyChunk,
+  releaseWebglContexts,
   requestInitialPtyRedraw,
   scheduleWebglRecovery,
   type TerminalRecoveryState
@@ -483,7 +484,12 @@ function releaseWebglRenderer(entry: TerminalEntry): void {
   const webgl = entry.webgl;
   if (!webgl) return;
   entry.webgl = undefined;
+  // Snapshot BEFORE dispose: dispose unparents the addon's canvas, and an
+  // unparented canvas can no longer be found from the host.
+  const canvases = Array.from(entry.host.querySelectorAll('canvas'));
   try { webgl.dispose(); } catch { /* noop */ }
+  // dispose() alone leaves the GPU context alive — see releaseWebglContexts.
+  releaseWebglContexts(canvases);
   // The DOM renderer that takes over inherits xterm's cached cell metrics, which
   // may be stale by the time this terminal is shown again.
   entry.needsRendererRepaint = true;
@@ -628,7 +634,9 @@ export function disposeTerminal(ptyId: string): void {
   const entry = pool.get(ptyId);
   if (!entry) return;
   entry.unsub.forEach((u) => { try { u(); } catch { /* noop */ } });
-  try { entry.webgl?.dispose(); } catch { /* noop */ }
+  // Same release path as a detach — a fired agent's terminal must hand its GPU
+  // context back too, or the floor still pays for it later.
+  releaseWebglRenderer(entry);
   try { entry.term.dispose(); } catch { /* noop */ }
   entry.host.remove();
   pool.delete(ptyId);
