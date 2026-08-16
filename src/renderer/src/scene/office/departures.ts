@@ -28,7 +28,7 @@ export const DEPARTURE_THOUGHTS: Record<DepartureKind, readonly string[]> = {
   fired: [
     'I hope they hire me for real next time',
     'does this count as work experience?',
-    'cleaning out my desk… it was never mine',
+    'Never again',
     "I'll put this on my résumé",
   ],
   archive: [
