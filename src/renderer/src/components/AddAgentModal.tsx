@@ -537,6 +537,7 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
                     }}
                   >
                     <span style={{ fontSize: 12 }}>⚠️ flags this hire appends to the command:</span>
+                    {/* biome-ignore-start lint/suspicious/noArrayIndexKey: static flag chips, rendered once and never reordered */}
                     {hireMeta.commandFlags.map((f, i) => (
                       <code
                         key={`${f}-${i}`}
@@ -552,6 +553,7 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
                         {f}
                       </code>
                     ))}
+                    {/* biome-ignore-end lint/suspicious/noArrayIndexKey: end static flag chips */}
                   </span>
                 )}
                 {hireMeta.skills && hireMeta.skills.length > 0 && (

@@ -54,24 +54,24 @@
       "style": {
         "noNonNullAssertion": "off",
         "useTemplate": "off",
-        "useNodejsImportProtocol": "warn"
+        "useNodejsImportProtocol": "error"
       },
       "complexity": {
         "useOptionalChain": "off",
         "useLiteralKeys": "off"
       },
       "correctness": {
-        "useExhaustiveDependencies": "warn",
+        "useExhaustiveDependencies": "error",
         "noVoidTypeReturn": "off",
-        "noUnusedVariables": "warn",
-        "noUnusedPrivateClassMembers": "warn",
-        "noUnusedImports": "warn"
+        "noUnusedVariables": "error",
+        "noUnusedPrivateClassMembers": "error",
+        "noUnusedImports": "error"
       },
       "suspicious": {
-        "noExplicitAny": "warn",
-        "noGlobalIsFinite": "warn",
-        "noGlobalIsNan": "warn",
-        "noArrayIndexKey": "warn",
+        "noExplicitAny": "error",
+        "noGlobalIsFinite": "error",
+        "noGlobalIsNan": "error",
+        "noArrayIndexKey": "error",
         "useIterableCallbackReturn": "off",
         "noAssignInExpressions": "off",
         "noControlCharactersInRegex": "off"

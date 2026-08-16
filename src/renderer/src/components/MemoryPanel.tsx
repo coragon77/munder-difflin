@@ -40,6 +40,7 @@ export function MemoryPanel() {
       /* ignore */
     }
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once status fetch; later refreshes go through setModel
   useEffect(() => {
     refreshStatus();
   }, []);

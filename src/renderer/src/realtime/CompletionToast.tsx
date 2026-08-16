@@ -55,6 +55,7 @@ export function CompletionToast(): JSX.Element | null {
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once subscription; dismiss goes through refs + functional setState
   useEffect(() => {
     const subscribe = window.cth?.onRealtimeCompletion;
     if (!subscribe) return;
@@ -77,7 +78,6 @@ export function CompletionToast(): JSX.Element | null {
     };
     // Mount-once: the subscription + dismissal use refs + functional setState, so they
     // never need to re-bind on re-render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (toasts.length === 0) return null;

@@ -104,6 +104,7 @@ export function MemoryGraphPanel({
     [graph],
   );
   const pinnedKey = useMemo(() => JSON.stringify(pinned), [pinned]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: layout must NOT recompute on every graph poll — structKey/pinnedKey are deliberate identity proxies for graph/pinned
   const layout: Positions = useMemo(() => {
     const lnodes = graph.nodes.map((n) => ({
       id: n.id,

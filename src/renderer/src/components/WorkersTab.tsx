@@ -13,7 +13,6 @@ import { PixelButton } from './PixelButton';
 // (declared in preload/index.d.ts) — derived here so there's no cross-package import.
 type WorkersData = Awaited<ReturnType<typeof window.cth.listWorkers>>;
 type WorkerSnapshot = WorkersData['live'][number];
-type PreservedWorktreeSnapshot = WorkersData['preserved'][number];
 
 const POLL_MS = 2000;
 

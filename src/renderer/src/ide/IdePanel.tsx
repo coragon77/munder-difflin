@@ -287,6 +287,22 @@ export function IdePanel() {
     );
   }, []);
 
+  // ─── Git status (changed files) ───────────────────────────────────────────
+  const refreshStatus = useCallback(async () => {
+    if (!root) {
+      setIsRepo(false);
+      return;
+    }
+    const repo = await window.cth.gitIsRepo(root);
+    setIsRepo(repo);
+    if (!repo) {
+      setStatus(null);
+      return;
+    }
+    const s = await window.cth.gitStatus(root);
+    if (!('error' in s)) setStatus(s as GitStatusT);
+  }, [root]);
+
   const save = useCallback(
     async (rel: string) => {
       if (!root) return;
@@ -320,26 +336,10 @@ export function IdePanel() {
           [rel]: { ...p[rel], saveState: 'error', error: res.error },
         }));
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      void refreshStatus();
     },
-    [root],
+    [root, refreshStatus],
   );
-
-  // ─── Git status (changed files) ───────────────────────────────────────────
-  const refreshStatus = useCallback(async () => {
-    if (!root) {
-      setIsRepo(false);
-      return;
-    }
-    const repo = await window.cth.gitIsRepo(root);
-    setIsRepo(repo);
-    if (!repo) {
-      setStatus(null);
-      return;
-    }
-    const s = await window.cth.gitStatus(root);
-    if (!('error' in s)) setStatus(s as GitStatusT);
-  }, [root]);
 
   useEffect(() => {
     refreshStatus();

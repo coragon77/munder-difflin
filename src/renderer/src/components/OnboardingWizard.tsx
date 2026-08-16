@@ -152,14 +152,15 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   };
 
   // Default-suggest a sensible harness home on first render
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run-once default suggestion on first mount
   useEffect(() => {
     if (!home) {
-      const homeDir = (window as any).process?.env?.HOME ?? '';
+      const homeDir =
+        (window as unknown as { process?: { env?: { HOME?: string } } }).process?.env?.HOME ?? '';
       // Without a HOME env in the renderer sandbox we fall back to a hint;
       // user can still pick whatever they want.
       setHome(homeDir ? `${homeDir}/HarnessAgents` : '');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pickHome = async () => {

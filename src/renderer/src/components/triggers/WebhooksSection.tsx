@@ -184,12 +184,12 @@ function WebhookRow({
     setConfirmDelete(false);
   }, [open]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seed only when the schema editor opens — hook.schema refreshes from the server mid-edit, re-seeding would wipe the draft
   useEffect(() => {
     if (!schemaOpen) return;
     setSchemaText(hook.schema);
     setSchemaError(null);
     setSchemaSaved(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schemaOpen]);
 
   useEffect(

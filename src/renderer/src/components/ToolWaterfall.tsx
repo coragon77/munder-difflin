@@ -73,11 +73,14 @@ export function ToolWaterfall({ agentId }: { agentId: string }) {
             duration.
           </div>
         )}
-        {recent.map((s, i) => {
+        {recent.map((s) => {
           const pct = Math.max(2, Math.round((s.durationMs / maxDur) * 100));
           const ok = s.success && s.tool !== 'api_error';
           return (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+            <div
+              key={`${s.ts}-${s.tool}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}
+            >
               <span
                 style={{
                   width: 88,

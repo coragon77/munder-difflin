@@ -52,7 +52,6 @@ export function App() {
   const sidebarWidth = useStore((s) => s.sidebarWidth);
   const setSidebarWidth = useStore((s) => s.setSidebarWidth);
   const ideOpen = useStore((s) => s.ideOpen);
-  const setIdeOpen = useStore((s) => s.setIdeOpen);
 
   const [config, setConfig] = useState<HarnessConfig | null>(null);
   // Whether the user has passed the launch-time hive picker this session. Starts

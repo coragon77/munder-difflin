@@ -24,7 +24,6 @@ import {
   mkdirSync,
   renameSync,
   createWriteStream,
-  copyFileSync,
   lstatSync,
   readlinkSync,
   symlinkSync,

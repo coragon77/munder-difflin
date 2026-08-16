@@ -624,6 +624,7 @@ function QueuedMessageRow({
 
   // Measure against the CLAMPED box, so the toggle survives being expanded (the
   // expanded box never overflows and would otherwise report clipped = false).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: message.text is a deliberate re-measure trigger — new content changes clipped-ness without a resize event
   useLayoutEffect(() => {
     const el = bodyRef.current;
     if (!el) return;

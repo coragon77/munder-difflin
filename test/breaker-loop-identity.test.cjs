@@ -49,22 +49,7 @@ function makeBreaker(over = {}) {
   }));
 }
 
-function sample(agentId, ts, output, input = 1000) {
-  return {
-    agentId,
-    sessionId: 's1',
-    ts,
-    input,
-    output,
-    cacheRead: 0,
-    cacheCreation: 0,
-    model: 'm',
-    usd: 0,
-  };
-}
-
 const T0 = 1_000_000_000_000;
-const BEAT = 30_000;
 
 function beat(b, id, s, progressing, now, hasOpenWork) {
   return b.tick([{ agentId: id, sample: s, progressing, hasOpenWork }], now)[0];

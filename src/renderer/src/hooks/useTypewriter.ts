@@ -20,6 +20,7 @@ export function useTypewriter(
   const [shown, setShown] = useState('');
   const [done, setDone] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seed is a documented API — changing it deliberately restarts the typewriter for identical text
   useEffect(() => {
     setShown('');
     setDone(false);

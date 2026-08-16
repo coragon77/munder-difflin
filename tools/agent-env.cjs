@@ -35,8 +35,8 @@
  * Exit code 2 if a named agent is not found / no hive located; else 0. Never
  * throws on bad/missing input (a corrupt registry/fleet degrades to empty).
  */
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 function resolveHiveRoot(argv) {
   const i = argv.indexOf('--hive');

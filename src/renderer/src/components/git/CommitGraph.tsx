@@ -149,7 +149,7 @@ export function CommitGraph({ commits, currentBranch, onCommitClick }: CommitGra
         ))}
       </svg>
 
-      {commits.map((c, i) => {
+      {commits.map((c) => {
         const refs = cleanRefs(c.refs);
         const head = refs[0];
         const isCurrent = !!head && !!currentBranch && head.endsWith(currentBranch);

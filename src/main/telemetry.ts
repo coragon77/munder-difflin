@@ -214,7 +214,7 @@ export class TelemetryCollector {
     // Hook-plane rows first, OTLP overlaid on top: an agent with BOTH sources
     // (a Claude agent whose hooks also fire) must report its real OTLP totals,
     // not the activity-only hook row.
-    for (const [agentId, h] of this.hookUsage) usage.push({ ...h });
+    for (const [, h] of this.hookUsage) usage.push({ ...h });
     const byId = new Map(usage.map((u) => [u.agentId, u]));
     for (const agentId of this.agentSessions.keys()) {
       const s = this.aggregateLive(agentId);

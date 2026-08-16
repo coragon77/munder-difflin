@@ -26,12 +26,6 @@ export interface FileTreeProps {
   onCopyPath: (rel: string) => void;
 }
 
-function fmtSize(n: number): string {
-  if (n < 1024) return `${n}B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}K`;
-  return `${(n / 1024 / 1024).toFixed(1)}M`;
-}
-
 const HIDE_PATTERNS = [/^\.git$/, /^node_modules$/, /^out$/, /^dist$/];
 
 export function FileTree({ root, activeRel, onOpenFile, onCopyPath }: FileTreeProps) {

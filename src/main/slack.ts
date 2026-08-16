@@ -111,7 +111,6 @@ const TUNNEL_START_TIMEOUT_MS = 10_000;
 
 export class SlackWebhookServer {
   private server: Server | null = null;
-  private tunnelUrl: string | null = null;
   private readonly port: number;
   private readonly signingSecret: string;
   private readonly channelId?: string;
@@ -154,7 +153,6 @@ export class SlackWebhookServer {
     try {
       const url = await this.openTunnel();
       if (!url) throw new Error('tunnelmole returned empty URL');
-      this.tunnelUrl = url;
       // tunnelmole runs in the background; there is no close handle to wire here.
       return { ok: true, url };
     } catch (e) {
@@ -166,7 +164,6 @@ export class SlackWebhookServer {
   /** Close the HTTP server. Idempotent and best-effort.
    *  Note: tunnelmole has no documented close handle; teardown is best-effort. */
   stop(): void {
-    this.tunnelUrl = null;
     try {
       this.server?.close();
     } catch {

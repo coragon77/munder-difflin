@@ -47,7 +47,7 @@ export function normalizeRealtimeUsage(u: RealtimeUsage | null | undefined): {
   outputTokens: number;
 } {
   const n = (v: number | undefined): number =>
-    typeof v === 'number' && isFinite(v) && v > 0 ? v : 0;
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
   return {
     inputTokens: n(u?.inputTokens) || n(u?.input_tokens),
     outputTokens: n(u?.outputTokens) || n(u?.output_tokens),
@@ -69,7 +69,7 @@ export function computeRealtimeUsd(u: RealtimeUsage | null | undefined): number 
 
 /** Compact USD formatter: <$1 shows cents (e.g. $0.42), else 2dp (e.g. $12.30). */
 export function formatUsd(n: number): string {
-  if (!isFinite(n) || n <= 0) return '$0.00';
+  if (!Number.isFinite(n) || n <= 0) return '$0.00';
   if (n < 0.01) return '<$0.01';
   return `$${n.toFixed(2)}`;
 }

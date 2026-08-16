@@ -8,9 +8,7 @@ import {
 } from '@/store/store';
 import {
   buildSpawnCommand,
-  ASSISTANT_MODEL,
   inferAgentProvider,
-  isClaudeProvider,
   tokenizeCommand,
   type HarnessConfig,
 } from '@/store/config';
@@ -147,14 +145,6 @@ function submitToPty(
 
 /** Wrap a user message as an enrich task for the assistant. The assistant's
  *  system prompt has the full instructions; this just frames the one task. */
-function enrichTaskPrompt(text: string): string {
-  return [
-    `ENRICH TASK: ${text}`,
-    '',
-    '(Identify the relevant project, cd in, gather READ-ONLY context, then send the improved,',
-    'self-contained prompt to Michael via an outbox message with "to":"god". Do not do the task yourself.)',
-  ].join('\n');
-}
 
 function terminalWorkOrderPrompt(msg: {
   id: string;
@@ -284,13 +274,6 @@ export function useHive(config: HarnessConfig | null): void {
   // 'working' (there's a short window where it still reads 'idle' right after we
   // type into it). One message per cooldown keeps delivery strictly one-by-one.
   const lastFlush = useRef<Record<string, number>>({});
-  // Queue-drain delivery tracking (#36): a message now stays IN the queue until
-  // its PTY write chain resolves, so `inFlightSends` (message ids mid-write)
-  // stops a store-update burst from double-sending the head, and `sendFailures`
-  // bounds retries — after MAX_SEND_ATTEMPTS failed writes the message is
-  // dropped WITH a console.warn instead of being silently destroyed.
-  const inFlightSends = useRef<Set<string>>(new Set());
-  const sendFailures = useRef<Record<string, number>>({});
   // In-flight spawn guard so a re-render / StrictMode double-mount can't spawn
   // Michael twice (the window between the listPtys check and spawnPty is racy).
   const godSpawning = useRef(false);
@@ -307,14 +290,13 @@ export function useHive(config: HarnessConfig | null): void {
   // mid-revive) within REVIVE_DEBOUNCE_MS is skipped. Set BEFORE the async spawn
   // so a re-entrant event can't race a second respawn for the same id.
   const reviving = useRef<Record<string, number>>({});
-  // Reactive so the assistant bootstrap (effect #1b) re-runs once Michael is ready.
-  const godStatus = useStore((s) => s.godStatus);
   // #5C/#7C.4 — latest circuit-breaker level per agent. When 'constrained'/
   // 'stopped' the avatar is pinned to 'looping' and hook events must NOT flip it
   // back to 'working' (the flicker the spec calls out); only a genuine Stop clears it.
   const breakerLevel = useRef<Record<string, string>>({});
 
   // 1) Bootstrap the god agent (source of truth = live PTYs, to dodge restarts).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: spawn-once effect — only onboarding-complete + harnessHome may (re)trigger; godProvider/godModel/godRemoteControl are captured at spawn time by design
   useEffect(() => {
     if (!config?.onboardingComplete || !config.harnessHome) return;
     let cancelled = false;
@@ -956,7 +938,6 @@ export function useHive(config: HarnessConfig | null): void {
 
     const flush = () => {
       const { agents, messageQueues } = useStore.getState();
-      const byId = (id: string) => agents.find((a) => a.id === id);
 
       for (const a of agents) {
         if (!a.ptyId || a.status !== 'idle') continue;

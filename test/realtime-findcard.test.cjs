@@ -20,7 +20,7 @@
  * Run: node test/realtime-findcard.test.cjs   (exit 0 = all pass)
  */
 
-const assert = require('assert');
+const assert = require('node:assert');
 
 // ── matcher under test (mirror of realtimeActions.ts findCard) ───────────────
 const normMatch = (s) =>

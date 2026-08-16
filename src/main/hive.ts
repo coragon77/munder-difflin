@@ -2012,7 +2012,7 @@ export class HiveManager {
     out.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
     if (wantId) return out.slice(0, 1);
     const lim =
-      typeof opts.limit === 'number' && isFinite(opts.limit)
+      typeof opts.limit === 'number' && Number.isFinite(opts.limit)
         ? Math.max(1, Math.min(40, Math.round(opts.limit)))
         : 12;
     return out.slice(0, lim);

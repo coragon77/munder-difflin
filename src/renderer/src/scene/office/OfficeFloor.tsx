@@ -173,9 +173,20 @@ function firstWords(prompt: string | undefined, maxWords = 6, maxChars = 42): st
   return out;
 }
 
+/** Teardown handles stashed on the Pixi app so the unmount cleanup can find
+ *  them without threading five refs through the init closure. */
+interface AppWithHandles extends Application {
+  __glRecovery?: () => void;
+  __resize?: ResizeObserver;
+  __unsub?: () => void;
+  __offMessage?: () => void;
+  __taskBoardPoll?: ReturnType<typeof setInterval>;
+  __count?: number;
+}
+
 export function OfficeFloor() {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const appRef = useRef<Application | null>(null);
+  const appRef = useRef<AppWithHandles | null>(null);
   const mountIdRef = useRef(0);
   // Bumped when the WebGL context is evicted; a dep of the effect below, so the
   // whole scene is torn down and rebuilt through the existing mount path rather
@@ -185,6 +196,7 @@ export function OfficeFloor() {
   // tears down and rebuilds the whole scene on the new map/cast (see deps below).
   const officeTheme = useStore((s) => s.officeTheme);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: glGeneration is a deliberate rebuild trigger — bumping it on WebGL context loss tears down and re-inits the whole scene
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -231,7 +243,7 @@ export function OfficeFloor() {
       // each of which takes a context via @xterm/addon-webgl — are open. Pixi
       // reports nothing when that happens: the floor just goes blank forever.
       // Rebuild instead. See glRecovery.ts.
-      (app as any).__glRecovery = installContextLossRecovery(app.canvas, {
+      (app as AppWithHandles).__glRecovery = installContextLossRecovery(app.canvas, {
         onRebuild: () => {
           if (mountIdRef.current === mountId) setGlGeneration((n) => n + 1);
         },
@@ -599,7 +611,6 @@ export function OfficeFloor() {
           const run = rt.run;
           if (!run) continue;
           run.timer += dt;
-          const c = rt.character;
           switch (run.phase) {
             case 'toTray':
             case 'toMachine':
@@ -1162,8 +1173,8 @@ export function OfficeFloor() {
             deskNoteG.set(t.assignee!, g);
           }
           // stack multiple taken notes side by side on the same desk
-          const idx = (g as any).__count ?? 0;
-          (g as any).__count = idx + 1;
+          const idx = (g as Graphics & { __count?: number }).__count ?? 0;
+          (g as Graphics & { __count?: number }).__count = idx + 1;
           g.rect(idx * 7, -(idx % 2), 5, 4).fill(NOTE_COLORS.doing);
           g.rect(idx * 7 + 2, -(idx % 2), 1, 1).fill(0x4a3b52);
         }
@@ -1524,7 +1535,7 @@ export function OfficeFloor() {
       const taskBoardPoll = setInterval(() => {
         void pollTaskBoard();
       }, 5000);
-      (app as any).__taskBoardPoll = taskBoardPoll;
+      (app as AppWithHandles).__taskBoardPoll = taskBoardPoll;
 
       const addCharacter = async (agent: Agent) => {
         const charName = theme.cast.byName[agent.character]
@@ -1771,7 +1782,7 @@ export function OfficeFloor() {
           }
         }
       });
-      (app as any).__unsub = unsubscribe;
+      (app as AppWithHandles).__unsub = unsubscribe;
 
       // Fly an envelope from a sender's desk to each recipient when the hive
       // routes a message. Endpoints are snapshotted at spawn, so the paper flies
@@ -1812,7 +1823,7 @@ export function OfficeFloor() {
         if (d) spawnHandoff(d.from, d.to, d.act, false);
       };
       window.addEventListener('cth:demo-handoff', onDemoHandoff);
-      (app as any).__offMessage = () => {
+      (app as AppWithHandles).__offMessage = () => {
         offMessage();
         window.removeEventListener('cth:demo-handoff', onDemoHandoff);
       };
@@ -1890,7 +1901,7 @@ export function OfficeFloor() {
         }
       });
       resize.observe(host);
-      (app as any).__resize = resize;
+      (app as AppWithHandles).__resize = resize;
     };
 
     init().catch((err) => {
@@ -1909,20 +1920,20 @@ export function OfficeFloor() {
       mountIdRef.current++;
       const a = appRef.current;
       if (a) {
-        (a as any).__glRecovery?.();
-        (a as any).__resize?.disconnect?.();
+        (a as AppWithHandles).__glRecovery?.();
+        (a as AppWithHandles).__resize?.disconnect?.();
         try {
-          (a as any).__unsub?.();
+          (a as AppWithHandles).__unsub?.();
         } catch {
           /* noop */
         }
         try {
-          (a as any).__offMessage?.();
+          (a as AppWithHandles).__offMessage?.();
         } catch {
           /* noop */
         }
         try {
-          clearInterval((a as any).__taskBoardPoll);
+          clearInterval((a as AppWithHandles).__taskBoardPoll);
         } catch {
           /* noop */
         }

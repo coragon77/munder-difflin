@@ -225,6 +225,7 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
   // Insertion order is preserved inside each bucket (it's the user's own
   // drag-reorder from the floor strip) and buckets appear in first-seen order,
   // so the list doesn't reshuffle as statuses change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: repoVersion is a deliberate invalidation trigger — async repo-name lookups land later and must rebucket
   const { gods, groups } = useMemo(() => {
     const godList: Agent[] = [];
     // Keyed by absolute repo root (identity); the label is carried alongside so
@@ -866,6 +867,7 @@ function SidebarRow({
           {/* Every line of every agent, always on screen — the roster's job is
               to answer "who is on what" without a single interaction. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {/* biome-ignore-start lint/suspicious/noArrayIndexKey: note lines rebuilt every render; spans are stateless */}
             {bullets.map((line, i) => (
               <span
                 key={i}
@@ -894,6 +896,7 @@ function SidebarRow({
                 </span>
               </span>
             ))}
+            {/* biome-ignore-end lint/suspicious/noArrayIndexKey: end roster bullets */}
             {bullets.length === 0 && (
               <span
                 style={{

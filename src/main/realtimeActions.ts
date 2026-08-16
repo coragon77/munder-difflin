@@ -873,7 +873,7 @@ function proposeDestructive(
         spoken: 'I need a name for the schedule and what it should tell the agent.',
       };
     const minutes =
-      typeof a.intervalMinutes === 'number' && isFinite(a.intervalMinutes)
+      typeof a.intervalMinutes === 'number' && Number.isFinite(a.intervalMinutes)
         ? Math.min(7 * 24 * 60, Math.max(5, Math.round(a.intervalMinutes)))
         : 60;
     const to = str(a.to) || str(a.agentId) || 'god';
@@ -923,7 +923,7 @@ function proposeDestructive(
       if (typeof value !== 'boolean') return { ok: false, spoken: `Should ${key} be on or off?` };
     } else if (policy.type === 'number') {
       if (typeof value === 'string') value = parseFloat(value);
-      if (typeof value !== 'number' || !isFinite(value))
+      if (typeof value !== 'number' || !Number.isFinite(value))
         return { ok: false, spoken: `What number should ${key} be?` };
       if (policy.min !== undefined && value < policy.min)
         return { ok: false, spoken: `${key} can't go below ${policy.min}.` };

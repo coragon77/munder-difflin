@@ -16,8 +16,8 @@
  * the cup spot lands exactly as in the office. A flood-fill validator asserts
  * every seat / coffee stand / spawn is reachable from the entrance before write.
  */
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const W = 36,
   H = 24,

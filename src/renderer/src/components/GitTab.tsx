@@ -107,12 +107,12 @@ export function GitTab({ cwd }: GitTabProps) {
     }
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: poll re-arms only on cwd change; refresh is recreated per render and reads live state
   useEffect(() => {
     refresh();
     // Poll the working-tree status every 4s so freshly-edited files show up.
     const id = window.setInterval(refresh, 4000);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cwd]);
 
   if (isRepo === false) {
@@ -354,7 +354,7 @@ function StatusGroup({
               textAlign: 'center',
               fontFamily: 'var(--cth-font-mono)',
               color: statusColor(e.code),
-              fontWeight: 'bold' as any,
+              fontWeight: 'bold',
             }}
           >
             {e.code === ' ' ? '·' : e.code}

@@ -25,7 +25,6 @@
 import {
   INTEGRATION_TEMPLATES,
   authTypeNeedsSecret,
-  secretRefFor,
   validateIntegrationRecord,
   type IntegrationRecord,
   type IntegrationTemplate,

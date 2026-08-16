@@ -300,6 +300,7 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
   // Only ever fires for agents already on the restorable list — i.e. ones that
   // had a terminal open when the app last quit. Archived agents (closed tabs)
   // are never touched.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: store-subscription-driven one-shot auto-restore; restoreTeam/restoring are read fresh at call time
   useEffect(() => {
     if (autoStarted || !config?.onboardingComplete) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -331,7 +332,6 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
     };
     // restoreTeam is rebuilt every render but only ever called from inside the
     // timer, so it is read fresh at call time and does not belong in the deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config?.onboardingComplete]);
 
   return { restoring: isRestoring, autoRestoring: isAutoRestoring, restoreNote, restoreTeam };

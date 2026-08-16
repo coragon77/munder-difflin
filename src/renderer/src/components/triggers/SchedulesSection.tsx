@@ -249,6 +249,7 @@ function MissionRow({
 
   // Seed the draft when the row opens — never on every render, or the scheduler
   // stamping `lastFiredAt` mid-edit would wipe what you are typing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seed only when the row opens — mission gets lastFiredAt stamped mid-edit, re-seeding would wipe the draft
   useEffect(() => {
     if (!open) return;
     setLabel(mission.label);
@@ -257,7 +258,6 @@ function MissionRow({
     setBody(mission.body);
     setSkipQuiet(!!mission.skipWhenFloorQuiet);
     setSaved(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const heartbeat = mission.kind === 'heartbeat';

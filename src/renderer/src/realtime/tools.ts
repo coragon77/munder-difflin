@@ -28,7 +28,7 @@ import { tool } from '@openai/agents-realtime';
 
 /** Relative "x ago" for a unix-ms timestamp; voice-safe and defensive. */
 function ago(ts: unknown): string {
-  if (typeof ts !== 'number' || !isFinite(ts) || ts <= 0) return 'an unknown time ago';
+  if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) return 'an unknown time ago';
   const ms = Date.now() - ts;
   if (ms < 5_000) return 'just now';
   const s = Math.round(ms / 1000);
@@ -43,7 +43,7 @@ function ago(ts: unknown): string {
 
 /** Humanize an interval in ms into spoken cadence ("every 5 minutes"). */
 function every(ms: unknown): string {
-  if (typeof ms !== 'number' || !isFinite(ms) || ms <= 0) return 'on an unknown cadence';
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return 'on an unknown cadence';
   const m = Math.round(ms / 60_000);
   if (m < 1) return 'every minute or less';
   if (m < 60) return `every ${m} minute${m === 1 ? '' : 's'}`;
@@ -57,7 +57,7 @@ function plural(n: number, one: string, many = one + 's'): string {
 
 /** Compact a big number for speech (1.2 thousand / 3.4 million). */
 function tokens(n: unknown): string {
-  const v = typeof n === 'number' && isFinite(n) ? n : 0;
+  const v = typeof n === 'number' && Number.isFinite(n) ? n : 0;
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)} million`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(1)} thousand`;
   return `${Math.round(v)}`;
@@ -425,7 +425,7 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
         spoken(async () => {
           const a = obj(input);
           const want =
-            typeof a.limit === 'number' && isFinite(a.limit)
+            typeof a.limit === 'number' && Number.isFinite(a.limit)
               ? Math.max(1, Math.min(40, Math.round(a.limit)))
               : 12;
           const log = await window.cth.hiveLog(want);
@@ -476,7 +476,7 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const agentId = str(a.agentId).trim();
           const messageId = str(a.messageId).trim();
           const limit =
-            typeof a.limit === 'number' && isFinite(a.limit)
+            typeof a.limit === 'number' && Number.isFinite(a.limit)
               ? Math.max(1, Math.min(40, Math.round(a.limit)))
               : 8;
 

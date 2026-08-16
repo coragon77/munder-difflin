@@ -24,7 +24,6 @@ import {
   decodeProviderModel,
   encodeProviderModel,
   inferAgentProvider,
-  isClaudeProvider,
   modelProvidersForAgent,
   modelsForProvider,
   providerPreset,
@@ -1710,6 +1709,7 @@ function MemoryTab({
         </div>
         {textResults.length > 0 && (
           <div style={{ marginTop: 6 }}>
+            {/* biome-ignore-start lint/suspicious/noArrayIndexKey: results replaced wholesale per search; rows are stateless */}
             {textResults.map((r, i) => (
               <div key={i} style={{ marginBottom: 4 }}>
                 <div
@@ -1724,6 +1724,7 @@ function MemoryTab({
                 <Pre>{r.excerpt}</Pre>
               </div>
             ))}
+            {/* biome-ignore-end lint/suspicious/noArrayIndexKey: end text results */}
           </div>
         )}
         {textSearched && textResults.length === 0 && <Muted>Nothing matched.</Muted>}
@@ -1965,6 +1966,7 @@ function ActivityTab() {
     <Scroll>
       <Section title="ACTIVITY">
         {log.length === 0 && <Muted>Nothing yet.</Muted>}
+        {/* biome-ignore-start lint/suspicious/noArrayIndexKey: log replaced wholesale on each 3s poll; rows are stateless */}
         {[...log].reverse().map((e, i) => (
           <div
             key={i}
@@ -1989,6 +1991,7 @@ function ActivityTab() {
             </span>
           </div>
         ))}
+        {/* biome-ignore-end lint/suspicious/noArrayIndexKey: end activity log */}
       </Section>
 
       <Section title="BOARD">

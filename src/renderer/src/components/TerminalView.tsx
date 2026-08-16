@@ -44,6 +44,7 @@ export function TerminalView({ initialLines = [], feed = [] }: TerminalViewProps
   const fitRef = useRef<FitAddon | null>(null);
   const writtenCount = useRef(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: xterm instance is created exactly once; initialLines is a mount-time snapshot by design
   useEffect(() => {
     if (!hostRef.current) return;
     const term = new Terminal({
@@ -77,7 +78,6 @@ export function TerminalView({ initialLines = [], feed = [] }: TerminalViewProps
       term.dispose();
       termRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

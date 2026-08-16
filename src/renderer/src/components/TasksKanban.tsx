@@ -589,7 +589,7 @@ export function TaskDetail({
                   fontFamily: 'var(--cth-font-display)',
                 }}
               >
-                {isNaN(created.getTime()) ? '' : created.toLocaleString()}
+                {Number.isNaN(created.getTime()) ? '' : created.toLocaleString()}
               </span>
             </div>
 
@@ -624,6 +624,7 @@ export function TaskDetail({
                 >
                   HUMAN Q&A
                 </div>
+                {/* biome-ignore-start lint/suspicious/noArrayIndexKey: append-only QA event log — index stays stable for existing rows */}
                 {task.humanQA!.map((e, i) => (
                   <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div
@@ -684,6 +685,7 @@ export function TaskDetail({
                     )}
                   </div>
                 ))}
+                {/* biome-ignore-end lint/suspicious/noArrayIndexKey: end human QA rows */}
               </div>
             )}
 
@@ -823,21 +825,4 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--cth-ink-900)',
   outline: 'none',
   boxSizing: 'border-box',
-};
-
-const selectStyle: React.CSSProperties = {
-  padding: '3px 6px',
-  background: 'var(--cth-paper-100)',
-  border: 'none',
-  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-  fontFamily: 'var(--cth-font-ui)',
-  fontSize: 12,
-  color: 'var(--cth-ink-900)',
-  cursor: 'pointer',
-};
-
-const labelStyle: React.CSSProperties = {
-  fontFamily: 'var(--cth-font-display)',
-  fontSize: 8,
-  color: 'var(--cth-ink-500)',
 };

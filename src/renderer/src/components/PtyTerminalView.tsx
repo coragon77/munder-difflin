@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import { Icon } from './Icon';
@@ -374,6 +374,7 @@ export function PtyTerminalView({
   const resetZoom = () => setTerminalFontSize(DEFAULT_FONT_SIZE);
 
   // Keyboard zoom: Cmd/Ctrl + '=' / '-' / '0'
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once key handler; zoom/resetZoom read the live font size from storage, not render state
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;

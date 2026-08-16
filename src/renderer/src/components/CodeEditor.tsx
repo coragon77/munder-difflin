@@ -50,8 +50,8 @@ const cthSyntax = HighlightStyle.define([
   { tag: tags.function(tags.variableName), color: '#FFA07A' },
   { tag: [tags.typeName, tags.className], color: '#4ECDC4' },
   { tag: tags.propertyName, color: '#3D2E4A' },
-  { tag: tags.heading, color: '#1A1320', fontWeight: 'bold' as any },
-  { tag: tags.link, color: '#4ECDC4', textDecoration: 'underline' as any },
+  { tag: tags.heading, color: '#1A1320', fontWeight: 'bold' },
+  { tag: tags.link, color: '#4ECDC4', textDecoration: 'underline' },
   { tag: tags.meta, color: '#6B5878' },
 ]);
 

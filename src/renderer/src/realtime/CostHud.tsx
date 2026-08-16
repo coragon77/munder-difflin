@@ -68,7 +68,7 @@ export function CostHud({ compact = false }: CostHudProps): React.ReactElement |
 
   const commitCap = (raw: string): void => {
     const n = parseFloat(raw);
-    setCap(isFinite(n) && n > 0 ? n : null);
+    setCap(Number.isFinite(n) && n > 0 ? n : null);
   };
 
   const live = startedTs != null;
