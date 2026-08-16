@@ -2013,20 +2013,22 @@ Andy/Dwayne-style agents (\`andy-msudcy80\`, id = name-slug + base36 timestamp,
 Respawning an existing registry agent after restart = the UI "restore team" flow
 (same \`ensureAgent\`, resumes the recorded session id).
 
-### Path 3 — Persistent hire (god-runnable, standing floor agent) ✅
+### Path 3 — Intern (persistent hire, standing floor agent) ✅
 
-A spawn-request with \`"persistent": true\` mints a STANDING agent instead of an
-ephemeral worker: it gets a floor card + terminal pane (like any hire), is NEVER
-reaped (no done/idle/token-cap release), works directly in \`cwd\` (\`isolate\`
-defaults to \`false\` for persistent — worktrees are the ephemeral pattern), and
-survives restarts via the registry like any named agent (restore-team respawns
-it, resuming its recorded session).
+A spawn-request with \`"persistent": true\` hires an INTERN — a STANDING agent
+instead of an ephemeral worker. Interns are classified three ways so floor rules
+can target them: id prefix \`intern-\`, registry \`role: "intern"\`, and display
+name \`<name> (Intern)\`. They get a floor card + terminal pane (like any hire),
+are NEVER reaped (no done/idle/token-cap release), work directly in \`cwd\`
+(\`isolate\` defaults to \`false\` for interns — worktrees are the ephemeral
+pattern), and survive restarts via the registry like any named agent
+(restore-team respawns it, resuming its recorded session).
 
 \`\`\`bash
 cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/spawn-requests/new-hire.json" <<'EOF'
 {
   "id": "docs-writer",
-  "name": "Erin",
+  "name": "Dwayne",
   "objective": "Read the repo and draft a CONTRIBUTING.md; report to god when done, then standby for follow-ups.",
   "cwd": "/opt/myproject",
   "command": "claude",
@@ -2035,7 +2037,10 @@ cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/spawn-requests/new-hire.js
 EOF
 \`\`\`
 
-After the objective completes the agent stays hired — further work arrives via its
+→ agent id \`intern-docs-writer\`, floor name **Dwayne (Intern)**. Give the request
+a \`"name"\` so it reads as a person; without one it shows as \`Intern <id>\`.
+
+After the objective completes the intern stays hired — further work arrives via its
 inbox (god dispatches with the standard request protocol). Closing its terminal
 tab or quitting the app archives it; it re-hires through restore-team. Killing it
 for good = the UI archive/remove, same as a human-made hire.`;

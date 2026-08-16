@@ -4211,8 +4211,15 @@ async function processSpawnRequest(filePath: string): Promise<void> {
 
   const reqId = (typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : basename(filePath).replace(/\.json$/i, ''))
     .replace(/[^A-Za-z0-9._-]/g, '-');
-  const workerId = `worker-${reqId}`;
+  const persistent = raw.persistent === true; // see the fuller comment below
+  // Interns get their own id prefix — instantly distinguishable in registry,
+  // inboxes, agent dirs, logs, and on the floor card.
+  const workerId = `${persistent ? 'intern' : 'worker'}-${reqId}`;
   if (liveWorkers.has(workerId)) { fail(`worker "${workerId}" already running`); return; }
+  // A persistent hire doesn't join liveWorkers, so the dup-check above can't
+  // catch a live intern of the same id — guard it here (a PTY id collision
+  // would clobber the running agent).
+  if (persistent && ptyForAgent(workerId)) { fail(`intern "${workerId}" is already on the floor — close its terminal or pick another id`); return; }
 
   // Worker request files are hand/LLM-authored, so `~/…` shows up here too — expand
   // before the existence check (Node reads `~` literally).
@@ -4230,17 +4237,25 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   // reap (all three live in the liveWorkers map, so skipping registration skips
   // them all), a floor card (the hive:agentSpawned broadcast below), and the
   // modal-hire isolation default (work directly in cwd; worktrees are the
-  // ephemeral-worker pattern, force-removed at teardown).
-  const persistent = raw.persistent === true;
+  // ephemeral-worker pattern, force-removed at teardown). Persistent hires are
+  // INTERNS: id `intern-<id>`, role 'intern' (the machine-readable class for
+  // floor rules), and display name `<name> (Intern)` so god-spawned hires are
+  // distinguishable from human-made ones everywhere.
   // Base branch the worktree will be cut from (for the ahead-of-base safety check).
   let baseBranch = 'main';
   try { const br = await getBranch(cwd); if ('current' in br && br.current) baseBranch = br.current; } catch { /* keep default */ }
 
+  // Intern naming: a custom name gets the " (Intern)" suffix (idempotently);
+  // no name → "Intern <id>". Plain workers keep the old scheme.
+  const rawName = typeof raw.name === 'string' ? raw.name.trim() : '';
+  const displayName = persistent
+    ? rawName ? `${rawName.replace(/\s*\(intern\)$/i, '')} (Intern)` : `Intern ${reqId.slice(0, 12)}`
+    : rawName || `Worker ${reqId.slice(0, 12)}`;
   const meta: AgentMeta = {
     id: workerId,
-    name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : `Worker ${reqId.slice(0, 12)}`,
+    name: displayName,
     provider: raw.provider,
-    role: 'worker',
+    role: persistent ? 'intern' : 'worker',
     cwd
   };
   // Phase 2: grant this worker a broker capability over the currently-enabled
@@ -4289,14 +4304,14 @@ async function processSpawnRequest(filePath: string): Promise<void> {
       ? buildAutonomousRequestProtocol(slack.channel, slack.thread_ts, slackReplyScriptPath())
       : '[AUTONOMOUS WORKER TASK — no interactive human is watching. Work autonomously; do not ask interactive questions.] The task starts now: ';
     const suffix = persistent
-      ? `\n\n[CAPABILITIES] Before you start, consult your capability catalog — run the \`/capabilities\` skill (or read \`$AGENT_DIR/.claude/skills/capabilities/SKILL.md\`). It lists your temporal date-range skills (\`/today\`, \`/last30Days\`, \`/lastQuarter\`, …) and the integrations available to you (reached via the loopback broker) and how to call each. For any time-scoped work, resolve the dates with those skills instead of computing them by hand.\n\n[PERSISTENT HIRE] You are a standing member of the floor — you are NOT released when this task completes. When finished, send ONE outbox message to god with "act":"done" and a short result summary, then await further instructions in your inbox. Do NOT push to any remote; god is the sole integrator.`
+      ? `\n\n[CAPABILITIES] Before you start, consult your capability catalog — run the \`/capabilities\` skill (or read \`$AGENT_DIR/.claude/skills/capabilities/SKILL.md\`). It lists your temporal date-range skills (\`/today\`, \`/last30Days\`, \`/lastQuarter\`, …) and the integrations available to you (reached via the loopback broker) and how to call each. For any time-scoped work, resolve the dates with those skills instead of computing them by hand.\n\n[INTERN HIRE] You are a STANDING member of the floor (an INTERN hired by god) — you are NOT released when this task completes. When finished, send ONE outbox message to god with "act":"done" and a short result summary, then await further instructions in your inbox. Do NOT push to any remote; god is the sole integrator.`
       : `\n\n[CAPABILITIES] Before you start, consult your capability catalog — run the \`/capabilities\` skill (or read \`$AGENT_DIR/.claude/skills/capabilities/SKILL.md\`). It lists your temporal date-range skills (\`/today\`, \`/last30Days\`, \`/lastQuarter\`, …) and the integrations available to you (reached via the loopback broker) and how to call each. For any time-scoped work, resolve the dates with those skills instead of computing them by hand.\n\n[WORKER COMPLETION] When finished, signal done by sending ONE outbox message to god with "act":"done" and a short result summary — that releases this ephemeral worker (terminal closed; your branch is handed to god). Do NOT push to any remote; god is the sole integrator.`;
     hive.send({ to: workerId, conversation: `worker-${reqId}`, act: 'request', subject: meta.name, body: `${prefix}${objective}${suffix}` }, 'god');
   } catch (e) {
     console.error('[worker] dispatch send failed:', e);
   }
 
-  console.log(`[worker] spawned ${persistent ? 'PERSISTENT ' : ''}${workerId} (cwd=${cwd}, base=${baseBranch}${slack ? ', slack' : ''})`);
+  console.log(`[worker] spawned ${persistent ? 'INTERN ' : ''}${workerId} (cwd=${cwd}, base=${baseBranch}${slack ? ', slack' : ''})`);
   if (persistent) {
     // The renderer roster is only mutated by renderer-initiated hires, so without
     // this broadcast a MAIN-spawned persistent hire is headless-invisible. Effect
