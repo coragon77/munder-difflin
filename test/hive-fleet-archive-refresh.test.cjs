@@ -31,7 +31,7 @@ function snapshotWriter(hive, home) {
   const file = path.join(home, 'hive', 'fleet.json');
   const write = () => {
     const reg = hive.registry();
-    const agents = Object.entries(reg.agents).filter(([, a]) => !a.archived).map(([id]) => ({ id }));
+    const agents = Object.entries(reg.agents).filter(([, a]) => !a.archived && !a.retired).map(([id]) => ({ id }));
     fs.writeFileSync(file, JSON.stringify({ ts: 1, agents }), 'utf8');
   };
   const ids = () => new Set(JSON.parse(fs.readFileSync(file, 'utf8')).agents.map((a) => a.id));

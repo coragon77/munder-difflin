@@ -144,6 +144,14 @@ export interface RegistryAgent extends AgentMeta {
    *  (not deleted) so its history/memory survive; only agents with a live PTY
    *  are 'active'. Broadcast fan-out + roster reads skip archived agents. */
   archived?: boolean;
+  /** True once the agent has been FIRED — retirement, not liveness. Distinct from
+   *  `archived` on purpose (44df562): archiveOrphanedAgents flips `archived` on
+   *  every PTY-less agent at boot, so it says "no terminal right now", never "gone
+   *  for good". Retirement used to live only in the renderer's localStorage
+   *  (`restorableAgents`), which meant a wipe — or simply the app restarting —
+   *  brought fired agents back from the dead. It is persisted here so the refusal
+   *  outlives the renderer. Cleared only by a DELIBERATE unarchive/reinstate. */
+  retired?: boolean;
   /** Most recent Claude Code session_id seen for this agent (Lane A #6.6a),
    *  captured from hook payloads. Doubles as the `--resume` key (idempotent
    *  resume after a crash/restart) AND the cost accounting/dedup key on every
@@ -319,6 +327,10 @@ export class HiveManager {
    *  `agents/<id>` when the live folder is gone. Never clobbers: if BOTH exist the
    *  live one wins and the archive copy is left for the operator to reconcile. */
   private restoreFromArchive(id: string): void {
+    // A FIRED agent's folder stays swept. Pulling it back into the live set would
+    // undo the sweep and make a retired agent look present on disk to every
+    // readdir — the same resurrection `retired` exists to prevent, one layer down.
+    if (this.isRetired(id)) return;
     const live = this.agentDir(id);
     const archived = this.archivedAgentDir(id);
     if (existsSync(live) || !existsSync(archived)) return;
@@ -633,7 +645,12 @@ export class HiveManager {
       status: 'idle',
       cwdValid: cwd.valid,
       // A (re)spawn always means a live terminal — clear any prior archived flag.
-      archived: false,
+      // EXCEPT for a retired agent: `retired` survives the `...prev` spread, and
+      // letting a spawn clear `archived` here is exactly how a fired intern walked
+      // back onto the floor after a restart. The spawn door (spawnAgentCore)
+      // refuses retired agents outright; this is the registry-level backstop for
+      // any other caller, so re-registration can never re-activate.
+      archived: !!prev?.retired,
       lastSeen: Date.now()
     };
     if (meta.isGod) reg.godId = meta.id;
@@ -848,6 +865,43 @@ export class HiveManager {
       // snapshot on the flip instead of waiting for the beat.
       try { this.onRosterChange?.(); } catch { /* snapshot is best-effort */ }
     } catch { /* best-effort — never crash a lifecycle handler */ }
+  }
+
+  /**
+   * Retire (fire) an agent, or reinstate one. Retirement is PERSISTENT and lives
+   * in the registry, unlike `archived` — which is pure liveness and gets set on
+   * every PTY-less agent at boot (44df562). Keeping the two apart is the point:
+   * retirement used to exist only as a drop from the renderer's localStorage
+   * `restorableAgents`, so an app restart re-registered fired agents and they
+   * walked back onto the floor with `archived` flipped back to false.
+   *
+   * Retiring also archives (a fired agent is by definition off the floor);
+   * reinstating deliberately does NOT unarchive — it only lifts the refusal, so
+   * the agent comes back the normal way, by being spawned.
+   *
+   * Best-effort and idempotent, like setArchived — a fire path must never crash.
+   */
+  setRetired(id: string, retired: boolean): void {
+    const root = this.root();
+    if (!root) return;
+    try {
+      const reg = this.registry();
+      const agent = reg.agents[id];
+      if (!agent || !!agent.retired === retired) return;
+      agent.retired = retired;
+      if (retired) agent.archived = true;
+      agent.lastSeen = Date.now();
+      this.writeJson(join(root, 'registry.json'), reg);
+      this.appendLog({ kind: 'retire', agentId: id, retired });
+      this.commit(`hive: ${retired ? 'retire' : 'reinstate'} ${id}`);
+      try { this.onRosterChange?.(); } catch { /* snapshot is best-effort */ }
+    } catch { /* best-effort — never crash a lifecycle handler */ }
+  }
+
+  /** True when the agent has been fired and must not be re-registered, restored
+   *  or listed. The spawn door and the fleet builder both gate on this. */
+  isRetired(id: string): boolean {
+    return !!this.registry().agents[id]?.retired;
   }
 
   /**
