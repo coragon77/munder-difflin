@@ -3386,7 +3386,7 @@ ipcMain.handle('hive:setArchived', (_evt, id: unknown, archived: unknown) => {
   hive.setArchived(id, archived === true);
   return { ok: true };
 });
-// The UI's park/recall/end-vacation buttons run the SAME functions god's
+// The UI's park/recall buttons run the SAME functions god's
 // vacation-requests do — one code path, so the rules can't drift between them.
 ipcMain.handle('hive:park', (_e, id: unknown, reason: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
@@ -3395,14 +3395,6 @@ ipcMain.handle('hive:park', (_e, id: unknown, reason: unknown) => {
 ipcMain.handle('hive:recall', (_e, id: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
   return recallAgent(id);
-});
-// Ending a vacation demotes to plain ARCHIVED — the first half of the two-step
-// deletion. It never respawns; that is what recall is for.
-ipcMain.handle('hive:endVacation', (_e, id: unknown) => {
-  if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
-  if (!hive.enabled()) return { ok: false, error: 'hive disabled' };
-  hive.setVacation(id, false);
-  return { ok: true };
 });
 
 // ─── IPC: semantic memory (MemPalace CLI) ───────────────────────────────────

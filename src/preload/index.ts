@@ -724,9 +724,6 @@ const api = {
   /** Fetch a vacationer back onto the floor — the respawn IS the recall. */
   hiveRecall: (id: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:recall', id),
-  /** Demote a vacationer to plain ARCHIVED (step one of the two-step delete). */
-  hiveEndVacation: (id: string): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('hive:endVacation', id),
   hiveLog: (n?: number): Promise<unknown[]> => ipcRenderer.invoke('hive:log', n ?? 200),
   hiveMemory: (id: string): Promise<string> => ipcRenderer.invoke('hive:memory', id),
   hiveInbox: (id: string): Promise<HiveMessage[]> => ipcRenderer.invoke('hive:inbox', id),

@@ -1015,7 +1015,6 @@ function relAge(ms: number): string {
 function VacationSection() {
   const archived = useStore((s) => s.archivedAgents);
   const vacationers = useMemo(() => archived.filter((a) => a.vacation), [archived]);
-  const endVacationAgent = useStore((s) => s.endVacationAgent);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | undefined>();
   if (vacationers.length === 0) return null;
@@ -1028,19 +1027,6 @@ function VacationSection() {
     try {
       const res = await window.cth.hiveRecall(id);
       if (!res.ok) setError(res.error ?? 'could not recall this agent');
-    } finally { setBusy(null); }
-  };
-  // Only clear the local flag when main confirms the vacation actually ended —
-  // mutating unconditionally would desync the renderer from the registry (the
-  // authority) the moment hiveEndVacation fails, with the card silently
-  // claiming a state main never granted.
-  const end = async (id: string) => {
-    setBusy(id);
-    setError(undefined);
-    try {
-      const res = await window.cth.hiveEndVacation(id);
-      if (res.ok) endVacationAgent(id);
-      else setError(res.error ?? 'could not end this vacation');
     } finally { setBusy(null); }
   };
   return (
@@ -1075,9 +1061,6 @@ function VacationSection() {
           </div>
           <PixelButton variant="secondary" size="sm" disabled={busy === a.id} onClick={() => recall(a.id)}>
             {busy === a.id ? '…' : 'Recall'}
-          </PixelButton>
-          <PixelButton variant="secondary" size="sm" disabled={busy === a.id} onClick={() => end(a.id)}>
-            {busy === a.id ? '…' : 'End vacation'}
           </PixelButton>
         </div>
       ))}

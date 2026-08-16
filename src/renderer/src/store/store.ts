@@ -212,9 +212,6 @@ interface State {
    *  Pass `opts.vacation` to park instead of plain-archive — same teardown, but
    *  the entry lands on the VACATION shelf and is delete-protected. */
   archiveAgent: (id: string, opts?: { vacation?: boolean; vacationSince?: number }) => void;
-  /** End a vacation locally: the entry stays archived but loses the flag, which
-   *  is what re-enables deletion. Main owns the registry half (hiveEndVacation). */
-  endVacationAgent: (id: string) => void;
   /** Permanently forget an archived agent (drops the renderer entry only; the
    *  hive registry keeps its record). */
   removeArchivedAgent: (id: string) => void;
@@ -731,21 +728,14 @@ export const useStore = create<State>((set) => ({
       if (_queueGone) persistQueues(messageQueues);
       return { agents, archivedAgents, feeds, selectedId, messageQueues, restorableAgents };
     }),
-  endVacationAgent: (id) =>
-    set((s) => {
-      if (!s.archivedAgents.some((a) => a.id === id && a.vacation)) return s;
-      const archivedAgents = s.archivedAgents.map((a) =>
-        a.id === id ? { ...a, vacation: undefined, vacationSince: undefined, action: 'archived' } : a);
-      persistArchived(archivedAgents);
-      return { archivedAgents };
-    }),
   removeArchivedAgent: (id) =>
     set((s) => {
       const target = s.archivedAgents.find((a) => a.id === id);
       if (!target) return s;
-      // BELT: a vacationer is protected from deletion — end the vacation first
-      // (that demotes it to plain ARCHIVED). Main holds the braces: the registry
-      // flag only clears through hive:endVacation.
+      // BELT: a vacationer is protected from deletion — recall it first, then
+      // archive from the agent pane to reach the deletable plain-ARCHIVED state.
+      // Main holds the braces: the registry flag only clears through recall or
+      // an explicit unarchive.
       if (target.vacation) return s;
       const archivedAgents = s.archivedAgents.filter((a) => a.id !== id);
       persistArchived(archivedAgents);

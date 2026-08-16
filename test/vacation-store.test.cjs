@@ -7,10 +7,13 @@
 // archive, but flagged, so `vacationAgents`/`archivedOnlyAgents` can split one
 // list into two shelves without ever falling out of step with each other.
 //
-// The point of this file is the two-step delete: `removeArchivedAgent` refuses
-// while `vacation` is set, and only `endVacationAgent` (clearing the flag, NOT
-// deleting) re-enables it. A test that only pins the refusal would also pass
-// against a store that can never delete anything — so both halves are covered.
+// The point of this file is the delete guard: `removeArchivedAgent` refuses
+// while `vacation` is set, and the flag now only clears through the real
+// flows — recall (respawn) or main's registry verbs. A test that only pinned
+// the refusal would also pass against a store that can never delete anything,
+// so the recall-then-plain-archive re-enable is covered too.
+// (remove-end-vacation-button-20260816: the demote-without-respawn button is
+// gone — Stefan's flow is Recall, then the agent pane's Archive button.)
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -70,41 +73,23 @@ test('vacationAgents holds a parked agent, archivedOnlyAgents does not', () => {
   assert.deepEqual(archivedOnlyAgents(s).map((a) => a.id), ['dwight-1']);
 });
 
-test('removeArchivedAgent refuses while parked, then works once the vacation ends', () => {
+test('removeArchivedAgent refuses while parked; recall + plain archive re-enables delete', () => {
   useStore.setState({
     agents: [],
     archivedAgents: [agent('pam-1', { archived: true, vacation: true, vacationSince: 123 })],
     restorableAgents: []
   });
 
-  // Half 1: the delete guard refuses outright.
+  // Half 1: the delete guard refuses outright — a vacationer is undeletable.
   useStore.getState().removeArchivedAgent('pam-1');
   assert.equal(useStore.getState().archivedAgents.length, 1, 'a vacationer survives the delete call');
 
-  // Half 2: ending the vacation clears the flag but keeps the archived entry —
-  // it must NOT delete anything itself.
-  useStore.getState().endVacationAgent('pam-1');
-  let s = useStore.getState();
-  assert.equal(s.archivedAgents.length, 1, 'ending a vacation demotes, it does not delete');
-  assert.equal(s.archivedAgents[0].vacation, undefined, 'flag cleared');
-  assert.equal(s.archivedAgents[0].vacationSince, undefined, 'stamp cleared');
-  assert.equal(s.archivedAgents[0].action, 'archived', 'demoted to plain archived');
-
-  // Only now does delete actually take.
+  // Half 2: no demote-without-respawn exists any more — the path is Recall
+  // (the respawn drops the vacation shelf) then the agent pane's plain Archive.
+  useStore.getState().addAgent(agent('pam-1', { ptyId: 'pty-pam-1' }));
+  useStore.getState().archiveAgent('pam-1');
   useStore.getState().removeArchivedAgent('pam-1');
-  s = useStore.getState();
-  assert.deepEqual(s.archivedAgents, [], 'delete succeeds once the vacation is over');
-});
-
-test('endVacationAgent is a no-op for an agent that is not on vacation', () => {
-  useStore.setState({
-    agents: [],
-    archivedAgents: [agent('pam-1', { archived: true })],
-    restorableAgents: []
-  });
-  const before = useStore.getState().archivedAgents;
-  useStore.getState().endVacationAgent('pam-1');
-  assert.equal(useStore.getState().archivedAgents, before, 'no-op keeps the same array identity');
+  assert.deepEqual(useStore.getState().archivedAgents, [], 'delete succeeds after recall + plain archive');
 });
 
 // The `!target` branch: main parked an agent whose terminal was already closed,
