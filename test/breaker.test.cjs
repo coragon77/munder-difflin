@@ -53,9 +53,11 @@ function sample(agentId, ts, output, input = 1000) {
 const T0 = 1_000_000_000_000; // fixed epoch base so tests are deterministic
 const BEAT = 30_000;
 
-/** Run one beat for a single agent; returns its decision. */
-function beat(b, id, s, progressing, now) {
-  return b.tick([{ agentId: id, sample: s, progressing }], now)[0];
+/** Run one beat for a single agent; returns its decision. `hasOpenWork` defaults
+ *  to true — these cases are about a WORKING agent; the idle/standby gate has its
+ *  own file (breaker-standby-fps.test.cjs). */
+function beat(b, id, s, progressing, now, hasOpenWork = true) {
+  return b.tick([{ agentId: id, sample: s, progressing, hasOpenWork }], now)[0];
 }
 
 // ── regression: pre-existing trips still fire ────────────────────────────────

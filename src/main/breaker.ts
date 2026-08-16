@@ -54,6 +54,14 @@ export interface BreakerInput {
   sample: AgentUsageSample | null;
   /** Did the agent make coordination progress recently (file-mtime signal)? */
   progressing: boolean;
+  /** Does the agent hold OPEN WORK right now (undrained dispatch, an assigned
+   *  `doing` card, or activity that just went quiet)? Gates the no-progress arm:
+   *  an agent standing by with nothing assigned has stale files BY DEFINITION, so
+   *  without this it trips forever — and each steer makes it answer, which burns
+   *  the output tokens that re-arm the trip (observed: 4 steers in 3h on an idle
+   *  agent). A genuinely stuck WORKING agent still has open work and still trips.
+   *  The caller owns the evidence; this module only reads the verdict. */
+  hasOpenWork: boolean;
 }
 
 const LEVELS: BreakerLevel[] = ['healthy', 'steering', 'constrained', 'stopped'];
@@ -160,7 +168,8 @@ export class CircuitBreaker {
 
   /** A tool call ran. A NEW (name+input) key counts as forward progress (resets
    *  the repeat + error counters and stamps the distinct-tool clock the
-   *  no-progress arm reads); the SAME key in a row is the loop signal. */
+   *  no-progress arm reads); the SAME key in a row is the loop signal.
+   */
   recordToolUse(agentId: string, toolName: string | undefined, toolInput: unknown, now = Date.now()): void {
     const s = this.get(agentId);
     const key = this.toolKey(toolName, toolInput);
@@ -354,8 +363,11 @@ export class CircuitBreaker {
         // (a single-call loop never refreshes that clock, and the loop/velocity
         // arms above still backstop). Debounced: fires only after
         // NO_PROGRESS_BEATS consecutive beats, so a one-beat blip never steers.
+        // Gated on hasOpenWork: an idle agent with nothing assigned is SUPPOSED
+        // to have stale files — steering it is the false positive this arm kept
+        // producing, and the steer itself burns the tokens that re-arm it.
         const toolActive = nowMs - s.lastDistinctToolAt < PROGRESS_TOOL_WINDOW_MS;
-        if (!input.progressing && !toolActive) {
+        if (!input.progressing && !toolActive && input.hasOpenWork) {
           s.noProgressBeats += 1;
           if (s.noProgressBeats >= NO_PROGRESS_BEATS) {
             return { tripping: true, reason: 'no-progress: generating tokens without coordinating (stale log/files)' };

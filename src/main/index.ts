@@ -1074,6 +1074,43 @@ function breakerToast(title: string, body: string): void {
   catch { /* unsupported platform */ }
 }
 
+/** How long after its last coordination write an agent still counts as holding
+ *  open work. Covers "was working, then went quiet" — the shape of a wedged
+ *  worker — while an agent parked on standby for hours falls out of it. */
+const OPEN_WORK_WINDOW_MS = 30 * 60_000;
+
+/** Agent ids with a task card in `doing`. Read once per beat (one file read, not
+ *  one per agent). `blocked` is deliberately NOT open work: that card is parked
+ *  on the human, and steering a parked agent is the same false positive. */
+function agentsWithDoingCard(): Set<string> {
+  const out = new Set<string>();
+  try {
+    const t = (hive.tasks() as { tasks?: { status?: string; assignee?: string }[] })?.tasks ?? [];
+    for (const c of t) if (c.status === 'doing' && c.assignee) out.add(c.assignee);
+  } catch { /* no/!readable ledger — the other legs still answer */ }
+  return out;
+}
+
+/** Does this agent hold OPEN WORK right now? Gates the breaker's no-progress arm
+ *  (see BreakerInput.hasOpenWork). An agent standing by with nothing assigned has
+ *  stale coordination files by definition; steering it makes it answer, and that
+ *  answer burns the output tokens that re-arm the trip — observed live as 4 steers
+ *  in 3h on an idle agent. Any ONE leg is enough:
+ *    (1) undrained inbox mail from a REAL sender. SYSTEM_SENDERS are excluded on
+ *        purpose: without that, the breaker's own steer sitting in the inbox is
+ *        the evidence that justifies the next steer — a self-feeding loop;
+ *    (2) a `doing` card assigned to it — the ledger's own statement of open work;
+ *    (3) coordination activity within OPEN_WORK_WINDOW_MS — it was working and
+ *        just went quiet, which is what wedging looks like before any board update.
+ *  Fails OPEN (true) on error so a broken read can only lose the fix, never the arm. */
+function hasOpenWork(agentId: string, now: number, doingCards: Set<string>): boolean {
+  try {
+    if (doingCards.has(agentId)) return true;
+    if (hive.inbox(agentId).some((m) => !SYSTEM_SENDERS.has(m.from))) return true;
+    return now - lastCoordinationAt(agentId) < OPEN_WORK_WINDOW_MS;
+  } catch { return true; }
+}
+
 /** One circuit-breaker beat: pull a fresh usage sample per active agent, append
  *  it to the durable cost ledger (the SOLE durable cost store), tick the breaker,
  *  emit each BreakerState on control:breakerState (Seam 2), and enforce any
@@ -1084,6 +1121,7 @@ function runBreakerBeat(progressWindowMs: number): void {
   const reg = hive.registry();
   const now = Date.now();
   const inputs: BreakerInput[] = [];
+  const doingCards = agentsWithDoingCard();
   for (const [id, a] of Object.entries(reg.agents)) {
     if (a.archived) continue;
     // #57/#58: skip assistant + orphaned shells. The breaker must only evaluate
@@ -1118,7 +1156,8 @@ function runBreakerBeat(progressWindowMs: number): void {
     inputs.push({
       agentId: id,
       sample,
-      progressing: now - lastCoordinationAt(id) < progressWindowMs || now - lastSpanAt < progressWindowMs
+      progressing: now - lastCoordinationAt(id) < progressWindowMs || now - lastSpanAt < progressWindowMs,
+      hasOpenWork: hasOpenWork(id, now, doingCards)
     });
   }
   for (const d of breaker.tick(inputs, now)) {
