@@ -240,3 +240,35 @@ export function terminalReadyToReceive(
 ): boolean {
   return hasOutput !== false && elapsedMs >= terminalReadySettleMs(provider);
 }
+
+// ─── inbox monitor / nudge grace (card inbox-wake-quieting-20260816) ────────
+
+/**
+ * Providers whose boot prompt arms a PERSISTENT inbox monitor (claude's Monitor
+ * tool + a 1s ls-poll loop on the agent's own inbox dir).
+ *
+ * claude: proven live on god 2026-08-16. pi: NO equivalent of the Monitor tool
+ * exists — its bash tool is synchronous, so a poll loop would pin the only tool
+ * the agent can act with; there is no non-blocking watch primitive to verify,
+ * so pi stays off (verified absent, not merely skipped). codex/crush/others:
+ * nothing typed into their TUIs could arm it — the typed nudge IS their
+ * mechanism. Adding a provider here means the boot prompt gains arming text AND
+ * the nudge gains a grace (below); they must land together.
+ */
+const INBOX_MONITOR_PROVIDERS: ReadonlySet<AgentProvider> = new Set(['claude']);
+
+/** Does this provider's boot prompt arm a persistent inbox monitor? */
+export function hasInboxMonitor(provider: AgentProvider): boolean {
+  return INBOX_MONITOR_PROVIDERS.has(provider);
+}
+
+/** How long to wait before the typed nudge fires for a provider WITH a monitor.
+ *  The monitor sees mail within ~1s and wakes the agent in-session; the nudge is
+ *  only the fallback for when the monitor didn't take (crash, unsupported,
+ *  stale prompt). Providers without a monitor answer 0 — their nudge latency is
+ *  exactly what it was before monitors existed. */
+export const NUDGE_GRACE_MS = 45_000;
+
+export function nudgeGraceMsForProvider(provider: AgentProvider): number {
+  return hasInboxMonitor(provider) ? NUDGE_GRACE_MS : 0;
+}

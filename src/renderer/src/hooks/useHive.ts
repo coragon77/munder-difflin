@@ -11,6 +11,7 @@ import {
 import {
   clearCommandForProvider,
   compactionCommandForProvider,
+  nudgeGraceMsForProvider,
   remoteControlCommandForProvider,
   terminalReadyToReceive
 } from '../../../shared/providerAutomation';
@@ -258,6 +259,10 @@ export function useHive(config: HarnessConfig | null): void {
   // last nudged about. Keyed by id (not count) so an oscillating count after a
   // drain doesn't re-nudge for the same message set.
   const nudged = useRef<Record<string, string>>({});
+  // Per-agent first-sighting of the newest actionable inbox message — starts the
+  // per-provider nudge grace clock (monitor-capable agents wake themselves;
+  // the typed nudge is only the fallback once the grace elapses).
+  const inboxWakeSeen = useRef<Record<string, { id: string; since: number }>>({});
   // Per-agent timestamp of the last queued-message we submitted. Guards against
   // re-sending the next message before the agent's hooks have flipped it to
   // 'working' (there's a short window where it still reads 'idle' right after we
@@ -619,6 +624,15 @@ export function useHive(config: HarnessConfig | null): void {
             ? inbox.map((m) => m.id).sort().slice(-1)[0]
             : '';
           if (newest && nudged.current[a.id] !== newest) {
+            // Per-provider grace: a monitor-capable agent armed its own inbox
+            // monitor at boot (~1s poll), so give it the head start before the
+            // typed fallback fires. 0 for providers without a monitor — their
+            // nudge latency is unchanged. A NEWER message restarts the clock:
+            // the monitor gets a fresh wake chance for it too.
+            const seen = inboxWakeSeen.current[a.id];
+            if (!seen || seen.id !== newest) inboxWakeSeen.current[a.id] = { id: newest, since: Date.now() };
+            const grace = nudgeGraceMsForProvider(inferAgentProvider(a.command, a.provider));
+            if (Date.now() - inboxWakeSeen.current[a.id].since < grace) continue;
             // ONE nudge in flight at a time. The nudge text is generic ("read
             // your inbox") — it covers every unread message, so a second one
             // queued while the first is still undelivered would only produce a
@@ -637,6 +651,7 @@ export function useHive(config: HarnessConfig | null): void {
             }
           } else if (!newest) {
             nudged.current[a.id] = '';
+            delete inboxWakeSeen.current[a.id];
           }
         } catch { /* ignore */ }
       }
