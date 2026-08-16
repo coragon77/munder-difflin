@@ -271,7 +271,7 @@ let breakerBeatTimer: ReturnType<typeof setInterval> | null = null;
 telemetry.onApiError((agentId) => breaker.recordError(agentId));
 // HookServer needs BOTH: Oscar's control registry (HITL pause/gate/steer/halt via
 // hook returns) AND Jim's breaker (feed recordToolUse on each PostToolUse).
-const hookServer = new HookServer(hive, () => liveWebContents(), () => readConfig(), control, breaker);
+const hookServer = new HookServer(hive, () => liveWebContents(), () => readConfig(), control, breaker, telemetry);
 const memory = new MemoryManager(
   () => readConfig().harnessHome,
   () => { const c = readConfig(); return { enabled: c.semanticMemory !== false, model: c.embeddingModel ?? 'minilm' }; }

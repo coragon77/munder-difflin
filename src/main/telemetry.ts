@@ -28,7 +28,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { readAgentUsage } from './transcript';
-import { normalizeModel } from './pricing';
+import { estimateCostUsd, normalizeModel } from './pricing';
 
 // ─── The locked cross-lane contract (do not change without re-agreeing) ───────
 
@@ -132,6 +132,8 @@ export class TelemetryCollector {
   private readonly agentSessions = new Map<string, Set<string>>();
   /** agentId → ring buffer of recent tool spans. */
   private readonly spans = new Map<string, ToolSpan[]>();
+  /** agentId → hook-plane usage row (non-Claude providers; see recordHookUsage). */
+  private readonly hookUsage = new Map<string, AgentUsageSample>();
   /** Push subscribers (Lane A breaker + dashboard). */
   private readonly usageSubs = new Set<(s: AgentUsageSample) => void>();
   /** api_error subscribers — feeds Lane A's breaker error-storm trip (#6), which
@@ -205,13 +207,72 @@ export class TelemetryCollector {
   /** Everything the renderer needs on cold start (it missed the live pushes). */
   snapshot(): TelemetrySnapshot {
     const usage: AgentUsageSample[] = [];
+    // Hook-plane rows first, OTLP overlaid on top: an agent with BOTH sources
+    // (a Claude agent whose hooks also fire) must report its real OTLP totals,
+    // not the activity-only hook row.
+    for (const [agentId, h] of this.hookUsage) usage.push({ ...h });
+    const byId = new Map(usage.map((u) => [u.agentId, u]));
     for (const agentId of this.agentSessions.keys()) {
       const s = this.aggregateLive(agentId);
-      if (s) usage.push(s);
+      if (s) byId.set(agentId, s);
     }
     const spans: Record<string, ToolSpan[]> = {};
     for (const [agentId, ring] of this.spans) spans[agentId] = ring.slice();
-    return { usage, spans };
+    return { usage: [...byId.values()], spans };
+  }
+
+  // ─── Hook-plane ingest (non-Claude providers) ──────────────────────────────
+
+  // Claude Code pushes OTLP; every other provider (pi, agy, grok, opencode,
+  // qwen-via-sidecar) only reports through hook payloads on HIVE_SOCK. The
+  // HookServer forwards those signals here so the DISPLAY surfaces reading
+  // snapshot() (fleet.json, renderer fleet grid, voice directory) stop showing
+  // structurally blind rows for agents that are demonstrably working. These
+  // rows deliberately NEVER enter getAgentUsage() — that is the locked
+  // breaker/ledger seam, and hook-derived totals there would append
+  // cost-ledger rows (double-counting the per-sample CostSample rows) and
+  // change breaker inputs. Spans stay in the shared ring: recency, not sums.
+
+  /** Liveness: any hook event means the agent is alive (lastActiveSecAgo). */
+  recordHookActivity(agentId: string): void {
+    const h = this.hookRow(agentId);
+    h.ts = Date.now();
+  }
+
+  /** A tool completed via the hook plane (lastTool + the span waterfall).
+   *  Duration is unknown on this path — 0 keeps the ring shape honest. */
+  recordHookSpan(agentId: string, tool: string): void {
+    this.recordHookActivity(agentId);
+    this.pushSpan({ agentId, sessionId: '', ts: Date.now(), tool, success: true, durationMs: 0 });
+  }
+
+  /** Usage DELTAS from a CostSample hook payload — accumulates like the OTLP
+   *  path (token.usage is delta + monotonic there too). usd is priced through
+   *  the same estimate table so every provider stays cross-fleet comparable. */
+  recordHookUsage(agentId: string, sessionId: string, s: {
+    input: number; output: number; cacheRead: number; cacheCreation: number; model?: string;
+  }): void {
+    const h = this.hookRow(agentId);
+    h.input += s.input;
+    h.output += s.output;
+    h.cacheRead += s.cacheRead;
+    h.cacheCreation += s.cacheCreation;
+    if (s.model) h.model = normalizeModel(s.model);
+    if (sessionId) h.sessionId = sessionId;
+    h.ts = Date.now();
+    h.usd += estimateCostUsd(h.model, {
+      inputTokens: s.input, outputTokens: s.output,
+      cacheReadTokens: s.cacheRead, cacheWriteTokens: s.cacheCreation
+    });
+  }
+
+  private hookRow(agentId: string): AgentUsageSample {
+    let h = this.hookUsage.get(agentId);
+    if (!h) {
+      h = { agentId, sessionId: '', ts: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0, model: '', usd: 0 };
+      this.hookUsage.set(agentId, h);
+    }
+    return h;
   }
 
   // ─── HTTP plumbing (mirrors slack.ts) ──────────────────────────────────────

@@ -17,6 +17,7 @@ import type { HiveManager } from './hive';
 import type { HarnessConfig } from './config';
 import type { ControlRegistry } from './control';
 import type { CircuitBreaker } from './breaker';
+import type { TelemetryCollector } from './telemetry';
 import { estimateCostUsd } from './pricing';
 
 interface HookPayload {
@@ -67,7 +68,12 @@ export class HookServer {
     private control?: ControlRegistry,
     /** Circuit breaker (Lane A #6.6b) — fed the hook-derived signals (session id,
      *  repeated identical tool calls). Optional so the server still runs without it. */
-    private breaker?: CircuitBreaker
+    private breaker?: CircuitBreaker,
+    /** Telemetry sink for the hook plane (non-Claude providers — pi, agy, grok,
+     *  opencode, qwen sidecar — have no OTLP; their hook payloads are their ONLY
+     *  telemetry). Optional so tests can omit it. Claude agents keep OTLP as
+     *  their source; the collector overlays OTLP over these rows. */
+    private telemetry?: TelemetryCollector
   ) {}
 
   start(): void {
@@ -118,6 +124,10 @@ export class HookServer {
     if (agentId && typeof p.transcript_path === 'string' && p.transcript_path) {
       this.transcriptPaths.set(agentId, p.transcript_path);
     }
+    // Liveness for every provider: any hook event means the agent is alive, so
+    // fleet.json's lastActiveSecAgo stops reading null for non-Claude agents
+    // (their hooks are their only telemetry — see TelemetryCollector).
+    if (agentId) this.telemetry?.recordHookActivity(agentId);
 
     // Status-line payloads carry the session's EXACT context accounting —
     // current tokens AND the real window size (200k vs 1M, which nothing else
@@ -161,18 +171,21 @@ export class HookServer {
     // (Lane A #6.6a). Cheap: recordSession writes only when it changes.
     if (agentId && p.session_id) this.hive.recordSession(agentId, p.session_id);
 
-    // CostSample — synthesized by the proxy-bridge sidecar (qwen) on every
-    // response with usage. Persist it to the SAME cost ledger as Claude's OTel
-    // path, keyed by the synthesized session_id, then return early so cost stays
-    // OUT of the Claude-only OTel/breaker/drain paths below. `usd` is the fallback
-    // per-model estimate (a local model normally costs ~$0, but the row keeps the
-    // accounting schema uniform). Pure telemetry — never feeds the loop detector.
+    // CostSample — synthesized by the proxy-bridge sidecar (qwen) and the pi
+    // bridge extension on every response with usage. Persist it to the SAME cost
+    // ledger as Claude's OTel path, keyed by the synthesized session_id, then
+    // return early so cost stays OUT of the Claude-only OTel/breaker/drain paths
+    // below. `usd` is the fallback per-model estimate (a local model normally
+    // costs ~$0, but the row keeps the accounting schema uniform). Pure telemetry
+    // — never feeds the loop detector. Also forwarded to the telemetry collector
+    // so fleet.json shows these agents' tokens (snapshot-only, never the locked
+    // getAgentUsage seam).
     if (event === 'CostSample') {
+      const input = p.input ?? 0;
+      const output = p.output ?? 0;
+      const cacheRead = p.cache_read ?? 0;
+      const cacheCreation = p.cache_creation ?? 0;
       if (agentId && p.session_id) {
-        const input = p.input ?? 0;
-        const output = p.output ?? 0;
-        const cacheRead = p.cache_read ?? 0;
-        const cacheCreation = p.cache_creation ?? 0;
         this.hive.appendCostLedger({
           agentId,
           sessionId: p.session_id,
@@ -190,13 +203,22 @@ export class HookServer {
           })
         });
       }
+      if (agentId) {
+        this.telemetry?.recordHookUsage(agentId, p.session_id ?? '', {
+          input, output, cacheRead, cacheCreation, model: p.model ?? ''
+        });
+      }
       return {};
     }
 
     // Feed the breaker its hook-derived loop signal: a tool that actually ran.
     // A repeated identical (name+input) PostToolUse is the runaway-loop tell.
+    // The same event is the ONLY tool signal non-Claude providers have — forward
+    // it to the telemetry collector too (lastTool + span waterfall + the
+    // breaker's progress leg both read that ring).
     if (event === 'PostToolUse' && agentId) {
       this.breaker?.recordToolUse(agentId, p.tool_name, p.tool_input);
+      if (p.tool_name) this.telemetry?.recordHookSpan(agentId, p.tool_name);
     }
 
     // Compaction exemption (issue #109): PreCompact opens it so the compaction

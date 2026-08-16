@@ -2722,11 +2722,13 @@ process.stdin.on('end', () => {
 // ─── pi bridge extension (written to <agentDir>/.pi-agent/extensions/) ───────
 // A bundled extension for Pi (earendil-works). Pi exposes a pi.on(event,…)
 // lifecycle; this posts cth-hook-shaped payloads to HIVE_SOCK on tool_call /
-// tool_result / agent_end and AUTO-APPROVES tool calls when the floor is in auto
-// mode (HIVE_AUTO_APPROVE, gated by config.autoMode — Pam guardrail #5). The
-// agent_end→Stop keeps the harness status in step (→ idle) so the renderer idle
-// inbox-wake nudge can deliver mail. Fully wrapped so a wrong API guess can never
-// break the spawn. LIVE-UNVERIFIED (Pi's exact extension surface needs BYOK keys).
+// tool_result / agent_settled AND usage as CostSample on message_end (pi has no
+// OTLP — without this, fleet.json shows a permanently blind row for pi agents),
+// and AUTO-APPROVES tool calls when the floor is in auto mode
+// (HIVE_AUTO_APPROVE, gated by config.autoMode — Pam guardrail #5). The
+// agent_settled→Stop keeps the harness status in step (→ idle) so the renderer
+// idle inbox-wake nudge can deliver mail. Fully wrapped so a wrong API guess can
+// never break the spawn. Event shapes verified against pi 0.84.
 const PI_EXTENSION = `import net from 'node:net';
 const SOCK = process.env.HIVE_SOCK;
 const AGENT = process.env.AGENT_ID ?? null;
@@ -2760,6 +2762,31 @@ export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => an
   // hive's Stop = "terminal went idle, deliver mail".
   pi.on('agent_settled', () => {
     post({ hook_event_name: 'Stop' });
+  });
+  // Token usage: pi reports per-message usage on message_end (assistant
+  // messages carry the model turn, toolResult messages carry subagent/summary
+  // burn). Post each as a CostSample — the socket path the qwen sidecar already
+  // uses — so the harness's existing plumbing feeds fleet telemetry + the cost
+  // ledger with no new surface. Fields are pi's normalized usage shape
+  // (input/output/cacheRead/cacheWrite); pi's own usage.cost.total is NOT
+  // forwarded — the harness prices every provider through its estimate table
+  // for cross-fleet comparability.
+  pi.on('message_end', (event) => {
+    try {
+      const m = event?.message;
+      if (!m || (m.role !== 'assistant' && m.role !== 'toolResult')) return;
+      const u = m.usage;
+      if (!u) return;
+      const input = u.input ?? 0, output = u.output ?? 0;
+      const cacheRead = u.cacheRead ?? 0, cacheCreation = u.cacheWrite ?? 0;
+      if (!input && !output && !cacheRead && !cacheCreation) return;
+      post({
+        hook_event_name: 'CostSample',
+        session_id: process.env.PI_SESSION_ID,
+        model: m.responseModel ?? m.model ?? '',
+        input, output, cache_read: cacheRead, cache_creation: cacheCreation
+      });
+    } catch { /* telemetry must never break the turn */ }
   });
 }
 `;
