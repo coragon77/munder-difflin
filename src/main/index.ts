@@ -1405,7 +1405,7 @@ const SLACK_FILE_MAX_BYTES = 10 * 1024 * 1024;
  *  prefix with a random hex tag to prevent collisions and path-traversal attacks. */
 function sanitizeSlackFilename(name: string | undefined, tag: string): string {
   const safe = (typeof name === 'string' && name)
-    ? basename(name).replace(/[^\w.\-]/g, '_').replace(/^\.+/, '_').slice(0, 200) || 'file'
+    ? basename(name).replace(/[^\w.-]/g, '_').replace(/^\.+/, '_').slice(0, 200) || 'file'
     : 'file';
   return `${tag}-${safe}`;
 }
@@ -4511,7 +4511,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   const cwd = typeof raw.cwd === 'string' && raw.cwd.trim() ? expandTilde(raw.cwd) : '';
   if (!cwd || !existsSync(cwd)) { fail(`"cwd" missing or not found (${cwd || 'unset'})`); return; }
 
-  let command = typeof raw.command === 'string' && raw.command.trim() ? raw.command.trim() : (readConfig().defaultCommand ?? 'claude');
+  const command = typeof raw.command === 'string' && raw.command.trim() ? raw.command.trim() : (readConfig().defaultCommand ?? 'claude');
   // Permission mode (card permission-mode-config-20260816): god's workers and
   // interns follow the installation's worker-bypass SETTING — DEFAULT OFF,
   // bypass is the operator's per-installation opt-in, never the shipped
@@ -4758,7 +4758,7 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
   if (!hive.isOnVacation(agentId)) return { ok: false, error: `"${agentId}" is not on vacation — nothing to recall` };
   if (ptyForAgent(agentId)) return { ok: false, error: `"${agentId}" is already on the floor` };
   const recipe = rosterRecipe(agentId);
-  let command = recipe.command ?? readConfig().defaultCommand ?? 'claude';
+  const command = recipe.command ?? readConfig().defaultCommand ?? 'claude';
   const provider = entry.provider ?? inferAgentProvider(command);
   const bin = command.split(/\s+/)[0] || command;
   if (!ptyManager.isCommandAvailable(bin)) return { ok: false, error: `engine CLI "${bin}" is not installed` };

@@ -27,9 +27,9 @@ export class SpriteAdapter {
     const { frameWidth, frameHeight, walkRow, framesPerDirection } = config;
     const output: Texture[][] = [];
 
-    for (const dir of this.OUTPUT_DIRECTIONS) {
+    for (const dir of SpriteAdapter.OUTPUT_DIRECTIONS) {
       const frames: Texture[] = [];
-      const groupStart = this.DIRECTION_GROUP[dir] * framesPerDirection;
+      const groupStart = SpriteAdapter.DIRECTION_GROUP[dir] * framesPerDirection;
 
       // 3 walk frames sampled every other frame from the cycle
       for (let i = 0; i < framesPerDirection; i += 2) {

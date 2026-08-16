@@ -1,7 +1,7 @@
 // 16×16 pixel icons. 2 colors max. Integer paths only.
 // Add to library by extending `paths` below.
 
-import { CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 
 export type IconName =
   | 'gear' | 'plus' | 'x' | 'check' | 'arrow-right' | 'pause' | 'play'

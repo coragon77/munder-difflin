@@ -19,7 +19,7 @@ const assert = require('node:assert/strict');
 // at module load — same shim other store-backed tests use.
 const memoryStorage = {
   data: {},
-  getItem(k) { return Object.prototype.hasOwnProperty.call(this.data, k) ? this.data[k] : null; },
+  getItem(k) { return  Object.hasOwn(this.data, k) ? this.data[k] : null; },
   setItem(k, v) { this.data[k] = String(v); },
   removeItem(k) { delete this.data[k]; }
 };

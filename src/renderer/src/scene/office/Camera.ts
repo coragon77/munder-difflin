@@ -1,4 +1,4 @@
-import { Container } from 'pixi.js';
+import type { Container } from 'pixi.js';
 
 // Simplified port of shahar061/the-office (office/engine/camera.ts).
 // Phase targeting is dropped (we have no project phases); kept: fit-to-screen,

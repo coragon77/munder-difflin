@@ -3,7 +3,7 @@ import { AgentCard } from './AgentCard';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
 import { useStore, type Agent, agentClassOf, displayAgentName } from '@/store/store';
-import { type HarnessConfig } from '@/store/config';
+import type { HarnessConfig } from '@/store/config';
 import { useRestoreTeam } from '@/hooks/useRestoreTeam';
 
 export interface AgentStripProps {

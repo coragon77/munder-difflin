@@ -2480,15 +2480,15 @@ harness reuses any existing socket instead of spawning its own.
 \`\`\`bash
 SOCK="$(ls "\${TMPDIR:-/tmp}"/md-kitty-*.sock | head -1)"
 
-kitty @ --to "unix:\$SOCK" ls   # windows/tabs: ids + titles for --match
+kitty @ --to "unix:$SOCK" ls   # windows/tabs: ids + titles for --match
 
 # Open a tab — ALWAYS pass --env PATH: the satellite was started by the app,
 # and its env usually lacks nvm/node, so bash/claude would not be found.
-kitty @ --to "unix:\$SOCK" launch --type=tab --env PATH="\$PATH" --cwd="\$PWD" bash
+kitty @ --to "unix:$SOCK" launch --type=tab --env PATH="$PATH" --cwd="$PWD" bash
 
 # Send text (as if typed) or keys into a pane — match by id or title
-kitty @ --to "unix:\$SOCK" send-text --match title:Michael 'git status'
-kitty @ --to "unix:\$SOCK" send-key  --match title:Michael ctrl+c
+kitty @ --to "unix:$SOCK" send-text --match title:Michael 'git status'
+kitty @ --to "unix:$SOCK" send-key  --match title:Michael ctrl+c
 \`\`\`
 
 The renderer covers the common case with buttons: the kitty button in an

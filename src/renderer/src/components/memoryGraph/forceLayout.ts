@@ -74,7 +74,7 @@ export function forceLayout(
   const disp = new Map<string, { x: number; y: number }>(ids.map((id) => [id, { x: 0, y: 0 }]));
 
   let temp = Math.min(width, height) * 0.12;
-  const cool = Math.pow(0.02, 1 / iterations); // temp → ~2% of start by the end
+  const cool = 0.02 ** (1 / iterations); // temp → ~2% of start by the end
 
   for (let it = 0; it < iterations; it++) {
     for (const id of ids) { const d = disp.get(id)!; d.x = 0; d.y = 0; }

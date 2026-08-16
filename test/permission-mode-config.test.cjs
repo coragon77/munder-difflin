@@ -28,7 +28,7 @@ const { join } = require('node:path');
 // (same shim as restore-team.test.cjs).
 const memoryStorage = {
   data: {},
-  getItem(k) { return Object.prototype.hasOwnProperty.call(this.data, k) ? this.data[k] : null; },
+  getItem(k) { return  Object.hasOwn(this.data, k) ? this.data[k] : null; },
   setItem(k, v) { this.data[k] = String(v); },
   removeItem(k) { delete this.data[k]; }
 };

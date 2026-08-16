@@ -19,7 +19,7 @@ const assert = require('node:assert/strict');
 // store.ts reads window/localStorage at module load, so shim before requiring it.
 const memoryStorage = {
   data: {},
-  getItem(k) { return Object.prototype.hasOwnProperty.call(this.data, k) ? this.data[k] : null; },
+  getItem(k) { return  Object.hasOwn(this.data, k) ? this.data[k] : null; },
   setItem(k, v) { this.data[k] = String(v); },
   removeItem(k) { delete this.data[k]; }
 };

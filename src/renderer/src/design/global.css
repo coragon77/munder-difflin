@@ -60,6 +60,7 @@ input, textarea, [contenteditable='true'] {
 .cth-scroll-hidden::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 /* Pixel-snapping for any rasterised content */
+/* biome-ignore lint/suspicious/noDuplicateProperties: intentional fallback cascade (crisp-edges = Firefox) */
 canvas, img, svg { image-rendering: pixelated; image-rendering: crisp-edges; }
 
 /* Focus ring — 2px outer offset, ink */

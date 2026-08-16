@@ -573,10 +573,12 @@ export function reflowTerminal(ptyId: string): void {
   // tiny grid and resize the pty to it (clipped/oversized banner).
   if (!host.isConnected || !host.clientWidth || !host.clientHeight) return;
   try {
-    // Re-apply the SAME font options to force xterm's CharSizeService to
+    // Re-Apply the SAME font options to force xterm's CharSizeService to
     // re-measure the cell against the now-correct (woken) layout, then drop the
     // glyph atlas so it re-rasters at the corrected metrics.
+    // biome-ignore lint/correctness/noSelfAssign: intentional — setter side effect forces xterm re-measure
     entry.term.options.fontFamily = entry.term.options.fontFamily;
+    // biome-ignore lint/correctness/noSelfAssign: intentional — setter side effect forces xterm re-measure
     entry.term.options.fontSize = entry.term.options.fontSize;
     entry.term.clearTextureAtlas?.();
     const before = { cols: entry.term.cols, rows: entry.term.rows };

@@ -1,4 +1,4 @@
-import { Container, Graphics, Texture } from 'pixi.js';
+import { type Container, Graphics, type Texture } from 'pixi.js';
 import { CharacterSprite, type Direction, type AnimState } from './CharacterSprite';
 import { findPath } from './pathfinding';
 import type { TiledMapRenderer } from './TiledMapRenderer';

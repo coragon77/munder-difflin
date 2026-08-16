@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { PixelPanel } from './PixelPanel';
-import { PixelBadge, StatusKind } from './PixelBadge';
+import { PixelBadge, type StatusKind } from './PixelBadge';
 import { useHasTerminalDraft } from './terminalPool';
 import { SpritePortrait } from './SpritePortrait';
 import { RealtimeMichaelToggle } from './RealtimeMichaelToggle';
 import { CostHud } from '@/realtime/CostHud';
-import { AccentColorName } from '@/design/tokens';
-import { OfficeCharacterName } from '@/scene/office/cast';
+import type { AccentColorName } from '@/design/tokens';
+import type { OfficeCharacterName } from '@/scene/office/cast';
 
 export interface AgentCardProps {
   name: string;

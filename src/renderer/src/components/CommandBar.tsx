@@ -1,8 +1,8 @@
-import { useState, KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import { AccentColorName } from '@/design/tokens';
+import type { AccentColorName } from '@/design/tokens';
 
 type Mode = 'free' | 'slash' | 'quick';
 

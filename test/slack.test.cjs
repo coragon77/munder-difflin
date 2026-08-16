@@ -303,7 +303,7 @@ function ev(overrides = {}) {
     const sanitize = (name, tag) => {
       const { basename } = require('node:path');
       const safe = (typeof name === 'string' && name)
-        ? basename(name).replace(/[^\w.\-]/g, '_').replace(/^\.+/, '_').slice(0, 200) || 'file'
+        ? basename(name).replace(/[^\w.-]/g, '_').replace(/^\.+/, '_').slice(0, 200) || 'file'
         : 'file';
       return `${tag}-${safe}`;
     };

@@ -5,5 +5,3 @@ declare global {
     cth: CthApi;
   }
 }
-
-export {};

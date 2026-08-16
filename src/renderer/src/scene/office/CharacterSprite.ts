@@ -1,4 +1,4 @@
-import { AnimatedSprite, Container, Graphics, Texture } from 'pixi.js';
+import { AnimatedSprite, Container, Graphics, type Texture } from 'pixi.js';
 
 export type Direction = 'down' | 'up' | 'right' | 'left';
 export type AnimState = 'walk' | 'type' | 'read' | 'idle';

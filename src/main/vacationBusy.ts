@@ -1,4 +1,4 @@
-'use strict';
+
 
 /**
  * parkAgent's busy gate (card vacation-busy-check-tui-repaint-20260816).
