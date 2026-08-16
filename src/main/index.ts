@@ -23,6 +23,7 @@ import {
   getLogGraph, getCommitFiles, getFileAtRev, compareRefs, listWorktrees, checkoutRef
 } from './git';
 import { HiveManager, deriveSpawnLabel, type AgentMeta, type HiveMessage, type HiveTask } from './hive';
+import { startSessionRequestWatcher } from './sessionRequests';
 import { HookServer } from './hooks';
 import { CircuitBreaker, type BreakerInput } from './breaker';
 import type { UsageProvider } from './usage';
@@ -4895,6 +4896,25 @@ function bootstrapHiveServices(): void {
   archiveOrphanedAgents(); // #57/#58: archive stale archived:false entries with no live PTY
   hive.startRouter();
   startEphemeralWorkerWatcher(); // poll HIVE_ROOT/spawn-requests → ephemeral workers
+  // card session-requests-dropdir-20260816: HIVE_ROOT/session-requests → steer a
+  // live pane's conversation (/clear, /resume <id>). Own watcher (the spawn
+  // watcher is edit-contested); the command rides the EXISTING realtime:enqueue
+  // broadcast → renderer queue (useHive 5c) → queue-drain gates — never a direct
+  // PTY write from MAIN.
+  startSessionRequestWatcher({
+    root: () => hive.root(),
+    registry: () => hive.registry(),
+    ptyForAgent,
+    emit: (agentId, text) => {
+      try {
+        const wc = liveWebContents();
+        if (!wc) return false;
+        wc.send('realtime:enqueue', { agentId, text });
+        return true;
+      } catch { return false; }
+    },
+    informGod
+  });
   // Phase 2: the loopback secret broker. Bind it BEFORE workers spawn so each spawn can
   // be granted a capability token + the broker URL in its env. Loopback-only, idempotent.
   void integrationBroker.start().then((r) => {
