@@ -156,6 +156,16 @@ export interface RegistryAgent extends AgentMeta {
    *  brought fired agents back from the dead. It is persisted here so the refusal
    *  outlives the renderer. Cleared only by a DELIBERATE unarchive/reinstate. */
   retired?: boolean;
+  /** True while the agent is ON VACATION — parked by god (or the button), off the
+   *  floor at zero cost, individually recallable and PROTECTED FROM DELETION.
+   *  Layered on `archived` (liveness) exactly like `retired`, and mutually
+   *  exclusive with it: a vacationer is resting, a retiree is gone. Ending the
+   *  vacation clears this and leaves `archived` — that is the demotion to plain
+   *  ARCHIVED which deletion requires. */
+  vacation?: boolean;
+  /** Epoch ms the agent was parked — the "parked 2h ago" the VACATION section and
+   *  god's fetchable pool read. Cleared when the vacation ends. */
+  vacationSince?: number;
   /** Most recent Claude Code session_id seen for this agent (Lane A #6.6a),
    *  captured from hook payloads. Doubles as the `--resume` key (idempotent
    *  resume after a crash/restart) AND the cost accounting/dedup key on every
@@ -655,6 +665,10 @@ export class HiveManager {
       // refuses retired agents outright; this is the registry-level backstop for
       // any other caller, so re-registration can never re-activate.
       archived: !!prev?.retired,
+      // A (re)spawn of a vacationer IS the recall — it is the only way back onto
+      // the floor, so the flag clears here rather than in each caller.
+      vacation: false,
+      vacationSince: undefined,
       lastSeen: Date.now()
     };
     if (meta.isGod) reg.godId = meta.id;
@@ -910,6 +924,51 @@ export class HiveManager {
    *  or listed. The spawn door and the fleet builder both gate on this. */
   isRetired(id: string): boolean {
     return !!this.registry().agents[id]?.retired;
+  }
+
+  /**
+   * Send an agent ON VACATION, or end one. Vacation is a flag on top of
+   * `archived` (liveness), the same shape as `retired` (445d135) — a vacationer
+   * genuinely has no PTY, so the boot sweep, broadcast fan-out, heartbeat roster
+   * and nudge poller all skip it with no new exemptions.
+   *
+   * Parking also archives. ENDING a vacation deliberately does NOT unarchive: it
+   * demotes the agent to plain ARCHIVED, which is the first half of the two-step
+   * deletion the feature promises. The way back onto the floor is a respawn
+   * (ensureAgent clears the flag).
+   *
+   * Refused for the retired (`vacation` and `retired` are mutually exclusive —
+   * a fired agent is gone, not resting) and for god. The intern check lives at
+   * the park path in main, which knows the caller; here we guard what the
+   * registry itself can see. Best-effort + idempotent like setArchived/setRetired.
+   */
+  setVacation(id: string, vacation: boolean): void {
+    const root = this.root();
+    if (!root) return;
+    try {
+      const reg = this.registry();
+      const agent = reg.agents[id];
+      if (!agent || !!agent.vacation === vacation) return;
+      if (vacation && (agent.retired || agent.isGod || reg.godId === id)) return;
+      agent.vacation = vacation;
+      if (vacation) {
+        agent.archived = true;
+        agent.vacationSince = Date.now();
+      } else {
+        delete agent.vacationSince;
+      }
+      agent.lastSeen = Date.now();
+      this.writeJson(join(root, 'registry.json'), reg);
+      this.appendLog({ kind: 'vacation', agentId: id, vacation });
+      this.commit(`hive: ${vacation ? 'park' : 'unpark'} ${id}`);
+      try { this.onRosterChange?.(); } catch { /* snapshot is best-effort */ }
+    } catch { /* best-effort — never crash a lifecycle handler */ }
+  }
+
+  /** True while the agent is parked. The fleet builder, the park path and the
+   *  delete guards all read this. */
+  isOnVacation(id: string): boolean {
+    return !!this.registry().agents[id]?.vacation;
   }
 
   /**
