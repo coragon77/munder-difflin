@@ -84,12 +84,19 @@ export interface RecallDeps {
   log(message: string): void;
 }
 
+/** Who is asking for the park — the operator's button or god's automated
+ *  vacation-request. The ONLY rung that differs is the busy gate (operator
+ *  decision, card vacation-busy-fresh-boot-20260817): the human pressed the
+ *  button and can see the agent's PTY, so idleness is their call, not ours. */
+export type ParkOrigin = 'operator' | 'request';
+
 /** The refusal ladder + teardown/persist flow of parkAgent, verbatim.
  *  Returns { ok: true } only when the vacation flag verifiably landed. */
 export function parkAgentCore(
   deps: ParkDeps,
   agentId: string,
   reason?: string,
+  origin: ParkOrigin = 'request',
 ): { ok: boolean; error?: string } {
   if (!deps.hiveEnabled()) return { ok: false, error: 'hive disabled' };
   const reg = deps.registry();
@@ -112,7 +119,8 @@ export function parkAgentCore(
     // the fallback for agents with no telemetry row. An idle claude TUI
     // repaints its chrome continuously, so lastOutputAt alone read every idle
     // pane as "actively working" (card vacation-busy-check-tui-repaint).
-    if (deps.busy(ptyId, agentId)) {
+    // Operator origin skips ONLY this rung — their button, their judgment.
+    if (origin !== 'operator' && deps.busy(ptyId, agentId)) {
       return { ok: false, error: `"${agentId}" is actively working — park it when it goes quiet` };
     }
     // A park is not a firing: the worktree IS the agent's state, and the recall

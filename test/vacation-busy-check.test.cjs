@@ -65,6 +65,36 @@ test('no telemetry row and no PTY → not busy (nothing on the floor to guard)',
   assert.equal(vacationBusy(undefined, undefined), false);
 });
 
+test('fresh-boot truth table: a capable provider with no row is IDLE, not busy', () => {
+  // The fresh-boot false-positive (card vacation-busy-fresh-boot-20260817):
+  // an agent with no turn since app boot has NO telemetry row, so the gate
+  // fell into the PTY fallback — where the idle claude TUI's chrome repaint
+  // keeps ptyIdleMs < 60s forever and the park is refused forever. For a
+  // telemetry-CAPABLE provider, no row means "silent since boot" = idle.
+  assert.equal(
+    vacationBusy(undefined, 2_000, true),
+    false,
+    'capable + no row + chatty pane → parkable (the bug)',
+  );
+  // Providers with NO telemetry plane keep the PTY residual — unchanged.
+  assert.equal(
+    vacationBusy(undefined, 2_000, false),
+    true,
+    'no plane + no row + chatty pane → still busy (residual)',
+  );
+  // The row, when it exists, stays strictly primary whatever the capability.
+  assert.equal(
+    vacationBusy(5_000, 120_000, true),
+    true,
+    'capable + fresh row → busy (row decides)',
+  );
+  assert.equal(
+    vacationBusy(5 * 60_000, 50, true),
+    false,
+    'capable + stale row + chatty pane → parkable (row decides)',
+  );
+});
+
 // ——— the wiring parkAgent uses, against the real collector ————————————————
 // parkAgent computes telemetryAgeMs from TelemetryCollector's snapshot rows
 // and ptyIdleMs from ptyManager.idleFor(). This pins that the snapshot rows

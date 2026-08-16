@@ -78,7 +78,12 @@ import {
 } from './hive';
 import { startSessionRequestWatcher } from './sessionRequests';
 import { shouldAdoptWorktree } from './worktreeAdopt';
-import { parkAgentCore, recallAgentCore, vacationRequestTarget } from './vacationFlow';
+import {
+  parkAgentCore,
+  recallAgentCore,
+  vacationRequestTarget,
+  type ParkOrigin,
+} from './vacationFlow';
 import { startCardSessionWatcher } from './cardSessions';
 import type { CardSessionMarker } from '../shared/cardSessions';
 import { HookServer } from './hooks';
@@ -157,6 +162,7 @@ import { ClosingTimeController } from './closingTime';
 import {
   inferAgentProvider,
   isClaudeProvider,
+  bridgeOf,
   nonInteractiveEnvForProvider,
   permissionModeArgs,
   providerPreset,
@@ -4124,9 +4130,11 @@ ipcMain.handle('hive:setArchived', (_evt, id: unknown, archived: unknown) => {
 });
 // The UI's park/recall buttons run the SAME functions god's
 // vacation-requests do — one code path, so the rules can't drift between them.
+// The one deliberate divergence is the busy rung (operator decision): the
+// human pressed the button and can see the PTY — park unconditionally.
 ipcMain.handle('hive:park', (_e, id: unknown, reason: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
-  return parkAgent(id, typeof reason === 'string' ? reason : undefined);
+  return parkAgent(id, typeof reason === 'string' ? reason : undefined, 'operator');
 });
 ipcMain.handle('hive:recall', (_e, id: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
@@ -5838,8 +5846,14 @@ function processFireRequest(filePath: string): void {
 /** Send a human-created agent on vacation: validate, tear the PTY down cleanly,
  *  set `archived + vacation`, tell the floor. One code path for god's
  *  vacation-request, the UI button and the voice verb. Guard chain + flow live
- *  in vacationFlow.parkAgentCore (testable); this adapter is pure wiring. */
-function parkAgent(agentId: string, reason?: string): { ok: boolean; error?: string } {
+ *  in vacationFlow.parkAgentCore (testable); this adapter is pure wiring.
+ *  origin: 'operator' (UI button — skips the busy rung, the human's call) or
+ *  'request' (god's automated path — busy gate enforced). */
+function parkAgent(
+  agentId: string,
+  reason?: string,
+  origin: ParkOrigin = 'request',
+): { ok: boolean; error?: string } {
   return parkAgentCore(
     {
       hiveEnabled: () => hive.enabled(),
@@ -5849,7 +5863,14 @@ function parkAgent(agentId: string, reason?: string): { ok: boolean; error?: str
         const row = telemetry.snapshot().usage.find((u) => u.agentId === agentId);
         const telemetryAgeMs = row && row.ts > 0 ? Date.now() - row.ts : undefined;
         const ptyIdleMs = ptyManager.idleFor(ptyId);
-        return vacationBusy(telemetryAgeMs, ptyIdleMs);
+        // No row on a telemetry-CAPABLE provider = silent since boot = idle
+        // (fresh-boot false-positive, card vacation-busy-fresh-boot-20260817).
+        // Capability = claude's own hook/OTLP plane or a hook/proxy bridge;
+        // providerless legacy entries keep the PTY fallback (unchanged).
+        const provider = hive.registry().agents[agentId]?.provider;
+        const providerReportsTelemetry =
+          isClaudeProvider(provider) || bridgeOf(provider) !== undefined;
+        return vacationBusy(telemetryAgeMs, ptyIdleMs, providerReportsTelemetry);
       },
       dropWorktree: (ptyId) => {
         worktreePaths.delete(ptyId);
@@ -5865,6 +5886,7 @@ function parkAgent(agentId: string, reason?: string): { ok: boolean; error?: str
     },
     agentId,
     reason,
+    origin,
   );
 }
 

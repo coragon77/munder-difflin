@@ -276,12 +276,50 @@ test('park: ladder precedence — god > intern > retired > already-parked', () =
   assert.match(parkAgentCore(g.deps, 'bob').error, /god does not go/);
 });
 
-test('park: a busy agent is refused — "park it when it goes quiet"', () => {
+test('park: a busy agent is refused on the request path — "park it when it goes quiet"', () => {
   const { deps } = parkDeps({ ptyId: 'pty1', busy: true });
   assert.deepEqual(parkAgentCore(deps, 'bob'), {
     ok: false,
     error: '"bob" is actively working — park it when it goes quiet',
   });
+});
+
+test('park: operator origin skips ONLY the busy rung — the button parks unconditionally', () => {
+  // Operator decision (card vacation-busy-fresh-boot-20260817 scope change):
+  // the human pressed the button and can see the agent's PTY — the busy gate
+  // is the operator's call, not ours. Everything else in the flow (teardown
+  // order, flag write, notify) must run exactly as on the request path.
+  const { deps, t, calls } = parkDeps({ ptyId: 'pty1', busy: true });
+  assert.deepEqual(parkAgentCore(deps, 'bob', undefined, 'operator'), { ok: true });
+  assert.equal(calls.busy, 0, 'busy must not even be consulted');
+  assert.ok(t.before('dropWorktree:pty1', 'killPty:pty1'));
+  assert.ok(t.before('killPty:pty1', 'teardownPty:pty1'));
+  assert.ok(t.before('teardownPty:pty1', 'setVacation:bob=true'));
+});
+
+test('park: every OTHER refusal rung is identical for both origins', () => {
+  // The origin split touches exactly one rung — spot-check the neighbors
+  // so the split can never silently widen.
+  const cases = [
+    { over: { enabled: false }, error: 'hive disabled' },
+    { over: { registry: registry({}) }, error: 'no agent "bob" in the registry' },
+    { over: { bob: entry({ isGod: true }) }, error: 'god does not go on vacation' },
+    {
+      over: { bob: entry({ role: 'intern' }) },
+      error: '"bob" is an intern — interns are fired, never parked',
+    },
+    {
+      over: { bob: entry({ retired: true }) },
+      error: '"bob" was fired — retired and vacation are mutually exclusive',
+    },
+    { over: { bob: entry({ vacation: true }) }, error: '"bob" is already on vacation' },
+  ];
+  for (const c of cases) {
+    const req = parkAgentCore(parkDeps(c.over).deps, 'bob');
+    const op = parkAgentCore(parkDeps(c.over).deps, 'bob', undefined, 'operator');
+    assert.deepEqual(req, { ok: false, error: c.error });
+    assert.deepEqual(op, req, 'operator origin must refuse identically');
+  }
 });
 
 // ─── parkAgentCore: the teardown-and-persist flow ───────────────────────────
