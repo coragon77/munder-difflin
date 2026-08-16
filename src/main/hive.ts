@@ -2040,7 +2040,8 @@ EOF
 → agent id \`intern-docs-writer\`, floor name **Dwayne (Intern)**. Give the request
 a \`"name"\` so it reads as a person; without one it shows as \`Intern <id>\`.
 
-**Permissions:** interns inherit the floor's autoMode like human hires — when
+**Permissions:** EVERY spawn-request — ephemeral workers AND interns — inherits
+the floor's autoMode like human hires — when
 auto mode is on, the harness appends the engine's bypass flag itself. You do NOT
 need to write \`--permission-mode bypassPermissions\` into \`command\`.
 
