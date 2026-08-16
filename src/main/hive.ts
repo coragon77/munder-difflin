@@ -144,6 +144,14 @@ export interface RegistryAgent extends AgentMeta {
    *  (not deleted) so its history/memory survive; only agents with a live PTY
    *  are 'active'. Broadcast fan-out + roster reads skip archived agents. */
   archived?: boolean;
+  /** True once the agent has been FIRED — retirement, not liveness. Distinct from
+   *  `archived` on purpose (44df562): archiveOrphanedAgents flips `archived` on
+   *  every PTY-less agent at boot, so it says "no terminal right now", never "gone
+   *  for good". Retirement used to live only in the renderer's localStorage
+   *  (`restorableAgents`), which meant a wipe — or simply the app restarting —
+   *  brought fired agents back from the dead. It is persisted here so the refusal
+   *  outlives the renderer. Cleared only by a DELIBERATE unarchive/reinstate. */
+  retired?: boolean;
   /** Most recent Claude Code session_id seen for this agent (Lane A #6.6a),
    *  captured from hook payloads. Doubles as the `--resume` key (idempotent
    *  resume after a crash/restart) AND the cost accounting/dedup key on every
@@ -297,6 +305,39 @@ export class HiveManager {
   }
   private agentDir(id: string): string {
     return join(this.root()!, 'agents', id);
+  }
+  /** Where a retired agent's folder is swept to: `agents/archive/<id>`. The sweep
+   *  is a manual/operator move (keeps the floor readable); the layout has to know
+   *  about it or a re-hire silently starts blind — see restoreFromArchive. */
+  private archivedAgentDir(id: string): string {
+    return join(this.root()!, 'agents', 'archive', id);
+  }
+  /** Agent ids under `agents/` — i.e. every entry EXCEPT the `archive/` sweep
+   *  folder and dotfiles. `archive` is a container, never an agent, so any
+   *  readdir over `agents/` that skips this filter invents a phantom owner. */
+  private agentIds(): string[] {
+    const root = this.root();
+    if (!root) return [];
+    try {
+      return readdirSync(join(root, 'agents')).filter((id) => id !== 'archive' && !id.startsWith('.'));
+    } catch { return []; }
+  }
+  /** Re-hiring a swept agent must give it its memory/inbox back, not a fresh empty
+   *  folder next to an orphaned archive copy. Moves `agents/archive/<id>` back to
+   *  `agents/<id>` when the live folder is gone. Never clobbers: if BOTH exist the
+   *  live one wins and the archive copy is left for the operator to reconcile. */
+  private restoreFromArchive(id: string): void {
+    // A FIRED agent's folder stays swept. Pulling it back into the live set would
+    // undo the sweep and make a retired agent look present on disk to every
+    // readdir — the same resurrection `retired` exists to prevent, one layer down.
+    if (this.isRetired(id)) return;
+    const live = this.agentDir(id);
+    const archived = this.archivedAgentDir(id);
+    if (existsSync(live) || !existsSync(archived)) return;
+    try {
+      renameSync(archived, live);
+      this.appendLog({ kind: 'unarchive_dir', agentId: id });
+    } catch { /* best-effort — a failed move just means a fresh folder below */ }
   }
   /** IPC endpoint the cth-hook shim talks to (Phase 1 autonomy).
    *  On POSIX this is a Unix-domain socket file under the hive root. On Windows,
@@ -550,6 +591,11 @@ export class HiveManager {
     if (!root) return { args: [], env: {} };
     this.ensureHive();
 
+    // A re-hire of a swept agent gets its own history back BEFORE anything is
+    // seeded below — otherwise mkdirSync creates a fresh empty workspace and the
+    // agent's memory.md/inbox stay orphaned under agents/archive/<id> forever.
+    this.restoreFromArchive(meta.id);
+
     const dir = this.agentDir(meta.id);
     mkdirSync(join(dir, 'inbox', '.done'), { recursive: true });
     mkdirSync(join(dir, 'outbox', '.sent'), { recursive: true });
@@ -599,7 +645,12 @@ export class HiveManager {
       status: 'idle',
       cwdValid: cwd.valid,
       // A (re)spawn always means a live terminal — clear any prior archived flag.
-      archived: false,
+      // EXCEPT for a retired agent: `retired` survives the `...prev` spread, and
+      // letting a spawn clear `archived` here is exactly how a fired intern walked
+      // back onto the floor after a restart. The spawn door (spawnAgentCore)
+      // refuses retired agents outright; this is the registry-level backstop for
+      // any other caller, so re-registration can never re-activate.
+      archived: !!prev?.retired,
       lastSeen: Date.now()
     };
     if (meta.isGod) reg.godId = meta.id;
@@ -611,6 +662,10 @@ export class HiveManager {
       this.appendLog({ kind: 'cwd_invalid', agentId: meta.id, cwd: meta.cwd, issue: cwd.issue });
     }
     this.commit(`hive: register ${meta.id}`);
+    // Symmetric with setArchived: a spawn changes the ACTIVE set too, so refresh
+    // the roster snapshot now instead of leaving god blind to a new hire until the
+    // next 8s beat (longer across a suspend, where the interval is frozen).
+    try { this.onRosterChange?.(); } catch { /* snapshot is best-effort */ }
 
     const env: Record<string, string> = {
       AGENT_ID: meta.id,
@@ -784,6 +839,11 @@ export class HiveManager {
     return { args, env };
   }
 
+  /** Called whenever the set of ACTIVE agents changes (an archive flip), so the
+   *  owner can rebuild `fleet.json` immediately rather than on its next beat.
+   *  Set by main; unset in tests and headless use, where it is simply a no-op. */
+  onRosterChange: (() => void) | null = null;
+
   /**
    * Flip an agent's archived flag and persist the registry. Closing a terminal
    * tab archives the agent (retained + flagged, NOT deleted); a (re)spawn clears
@@ -802,7 +862,50 @@ export class HiveManager {
       this.writeJson(join(root, 'registry.json'), reg);
       this.appendLog({ kind: 'archive', agentId: id, archived });
       this.commit(`hive: ${archived ? 'archive' : 'unarchive'} ${id}`);
+      // fleet.json is what god's LIVE ROSTER injection reads, and it is otherwise
+      // only rebuilt on an 8s timer — so between a fire and the next tick the
+      // roster still swears the fired agent is ACTIVE, and god routes work to a
+      // dead inbox. Worse after a suspend, where the interval is frozen. Push the
+      // snapshot on the flip instead of waiting for the beat.
+      try { this.onRosterChange?.(); } catch { /* snapshot is best-effort */ }
     } catch { /* best-effort — never crash a lifecycle handler */ }
+  }
+
+  /**
+   * Retire (fire) an agent, or reinstate one. Retirement is PERSISTENT and lives
+   * in the registry, unlike `archived` — which is pure liveness and gets set on
+   * every PTY-less agent at boot (44df562). Keeping the two apart is the point:
+   * retirement used to exist only as a drop from the renderer's localStorage
+   * `restorableAgents`, so an app restart re-registered fired agents and they
+   * walked back onto the floor with `archived` flipped back to false.
+   *
+   * Retiring also archives (a fired agent is by definition off the floor);
+   * reinstating deliberately does NOT unarchive — it only lifts the refusal, so
+   * the agent comes back the normal way, by being spawned.
+   *
+   * Best-effort and idempotent, like setArchived — a fire path must never crash.
+   */
+  setRetired(id: string, retired: boolean): void {
+    const root = this.root();
+    if (!root) return;
+    try {
+      const reg = this.registry();
+      const agent = reg.agents[id];
+      if (!agent || !!agent.retired === retired) return;
+      agent.retired = retired;
+      if (retired) agent.archived = true;
+      agent.lastSeen = Date.now();
+      this.writeJson(join(root, 'registry.json'), reg);
+      this.appendLog({ kind: 'retire', agentId: id, retired });
+      this.commit(`hive: ${retired ? 'retire' : 'reinstate'} ${id}`);
+      try { this.onRosterChange?.(); } catch { /* snapshot is best-effort */ }
+    } catch { /* best-effort — never crash a lifecycle handler */ }
+  }
+
+  /** True when the agent has been fired and must not be re-registered, restored
+   *  or listed. The spawn door and the fleet builder both gate on this. */
+  isRetired(id: string): boolean {
+    return !!this.registry().agents[id]?.retired;
   }
 
   /**
@@ -1290,7 +1393,7 @@ export class HiveManager {
     const agentsDir = join(root, 'agents');
     if (!existsSync(agentsDir)) return 0;
     let routed = 0;
-    for (const id of readdirSync(agentsDir)) {
+    for (const id of this.agentIds()) {
       const outbox = join(agentsDir, id, 'outbox');
       if (!existsSync(outbox)) continue;
       for (const f of readdirSync(outbox)) {
@@ -1395,14 +1498,9 @@ export class HiveManager {
     const onlyAgent = typeof opts.agentId === 'string' ? opts.agentId.trim() : '';
     const includeArchived = opts.includeArchived !== false; // default true
 
-    let owners: string[];
-    try {
-      owners = onlyAgent
-        ? [onlyAgent]
-        : readdirSync(agentsDir).filter((id) => !id.startsWith('.') && existsSync(this.agentDir(id)));
-    } catch {
-      return [];
-    }
+    const owners: string[] = onlyAgent
+      ? [onlyAgent]
+      : this.agentIds().filter((id) => existsSync(this.agentDir(id)));
 
     const seen = new Set<string>();
     const out: VoiceMessage[] = [];

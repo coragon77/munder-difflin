@@ -1191,7 +1191,9 @@ function writeFleetSnapshot(): void {
     const usageById = new Map(snap.usage.map((u) => [u.agentId, u]));
     const now = Date.now();
     const agents = Object.entries(reg.agents)
-      .filter(([, a]) => !a.archived)
+      // `archived` is liveness, `retired` is a fire — a fired agent must never be
+      // listed as floor capacity, even if some path flips archived back off.
+      .filter(([, a]) => !a.archived && !a.retired)
       .map(([id, a]) => {
         const u = usageById.get(id);
         const spans = snap.spans[id] ?? [];
@@ -2524,6 +2526,17 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   // with `cwd does not exist`. Expanding BEFORE hive provisioning is what makes the
   // registry store an ABSOLUTE cwd (and `cwdValid: true`). The resolved value is
   // returned to the caller so the renderer records the same absolute path.
+  // ── FIRED STAYS FIRED ───────────────────────────────────────────────────────
+  // This is the single door every spawn comes through — `pty:spawn` (which is
+  // also what "restore team" calls, once per remembered agent), the god
+  // spawn-request watcher, and the install relaunch. Retirement was previously
+  // renderer-only state (a drop from localStorage `restorableAgents`), so a
+  // restart — or any localStorage wipe — walked fired agents right back onto the
+  // floor. Refuse here, where the registry is the authority, rather than trusting
+  // the caller to have forgotten them.
+  if (opts.hive && hive.enabled() && hive.isRetired(opts.hive.id)) {
+    return { ok: false, error: `${opts.hive.id} was fired — reinstate them first (unarchive) if they should come back` };
+  }
   opts.cwd = expandTilde(opts.cwd);
   if (opts.hive) opts.hive = { ...opts.hive, cwd: expandTilde(opts.hive.cwd) };
   // Which CLI is this? Explicit wins; else inferred from the binary
@@ -4145,6 +4158,11 @@ registerRealtimeActionIpc({
   controlGateTool: (id, toolName, on) => control.gateTool(id, toolName, on),
   setArchived: (id, archived) => {
     if (!hive.enabled()) return { ok: false, error: 'hive disabled' };
+    // Unarchive is the DELIBERATE "bring them back" verb (it is what the archive
+    // action tells the operator to say), so it is also the one path that lifts a
+    // retirement. Restarts and restore-team must never do this implicitly — that
+    // silent resurrection is the bug `retired` exists to stop.
+    if (!archived) hive.setRetired(id, false);
     hive.setArchived(id, archived);
     try { liveWebContents()?.send(archived ? 'hive:agentArchived' : 'hive:agentSpawned', { id }); } catch { /* window gone */ }
     return { ok: true };
@@ -4506,7 +4524,12 @@ function processFireRequest(filePath: string): void {
     hive.setArchived(agentId, true);
     try { liveWebContents()?.send('hive:agentArchived', { id: agentId }); } catch { /* window gone */ }
   }
-  informGod(`[fired] ${agentId}`, `Intern ${entry.name} was fired: terminal closed, agent archived (retained in the registry — re-hire via restore-team or a fresh spawn-request).`);
+  // Retirement is the POINT of a fire, and it has to outlive the renderer: the
+  // teardown above only sets `archived` (liveness), and dropping the agent from
+  // localStorage `restorableAgents` is the renderer's business. Persist the fire
+  // in the registry so a restart can't re-register the intern onto the floor.
+  hive.setRetired(agentId, true);
+  informGod(`[fired] ${agentId}`, `Intern ${entry.name} was fired: terminal closed, agent retired in the registry — this survives a restart, and spawning or restoring the same id is now refused. Their memory and inbox are kept; to bring them back, reinstate them explicitly (unarchive) or hire a new intern under a fresh id.`);
   console.log(`[worker] fired intern ${agentId}`);
   archiveRequestIn(fireRequestsDir(), filePath, '.done');
 }
@@ -4782,6 +4805,9 @@ function bootstrapHiveServices(): void {
  *  powerMonitor resume can't stack duplicate timers — these are setInterval
  *  handles that freeze during true system sleep and must be re-armed on wake. */
 function armAlwaysOnBeats(): void {
+  // An archive flip changes the ACTIVE roster; don't make god wait up to a full
+  // beat (longer across a suspend) to stop seeing a fired agent as live.
+  hive.onRosterChange = writeFleetSnapshot;
   if (fleetTimer) clearInterval(fleetTimer);
   writeFleetSnapshot();
   fleetTimer = setInterval(writeFleetSnapshot, 8_000);
