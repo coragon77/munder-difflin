@@ -3530,14 +3530,6 @@ async function spawnAgentCore(
   if (provider === 'codex' && opts.hive?.id) {
     await enableCodexRemoteForSpawn(opts, opts.hive.id);
   }
-  // Satellite Kitty (lazy): the FIRST agent spawn brings it up and exports the
-  // handoff env before this PTY is created, so even agent #1 sees both vars.
-  // Awaits ≤5s (window-id poll) once per app run; later spawns are a no-op.
-  try {
-    await startKittySatellite();
-  } catch {
-    /* best-effort */
-  }
   const res = ptyManager.spawn(opts, owner);
   if (res.ok) analytics.track('agent_spawned', { provider });
   syncKeepAwake(); // arm the power-save blocker while ≥1 agent PTY is alive (#18)
@@ -3690,7 +3682,7 @@ ipcMain.handle('terminal:openInKitty', async (_evt, cwd: unknown) => {
     });
   // Socket present → straight into the satellite.
   if (existsSync(kittySocketPath())) return runLaunch();
-  // No satellite (none spawned yet, or it died) → bring it up, then tab.
+  // No satellite (never started, or it died) → bring it up, then tab.
   await startKittySatellite();
   if (existsSync(kittySocketPath())) return runLaunch();
   return { ok: false, error: 'satellite did not come up' };
@@ -6590,7 +6582,9 @@ app.whenReady().then(() => {
   // Satellite Kitty: export KITTY_LISTEN_ON + KITTY_WINDOW_ID so the user's
   // handoff skills (pi-handoff/claude-handoff) work inside agent PTYs exactly
   // as they do in a real Kitty pane — splits land in the satellite window.
-  // Started LAZILY at the first agent spawn (spawnAgentCore → kittySatellite.ts).
+  // Started ONLY on demand from the Kitty button (terminal:openInKitty) —
+  // never at boot or agent spawn (card kitty-satellite-button-only-20260816);
+  // agents spawned before a button press take the skills' fallback path.
   // Open the durable store first — createWindow() reads the saved window bounds.
   // Guarded: a DB failure (e.g. a bad native build) must degrade to defaults,
   // never block app startup.

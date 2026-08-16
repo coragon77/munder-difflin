@@ -8,7 +8,8 @@
  * print a paste-line fallback. Harness agents live in app PTYs, not in Kitty —
  * so without help the skills always degrade to the fallback.
  *
- * Fix: at boot, spawn a small "satellite" Kitty window with a known listen
+ * Fix: on demand (the operator's Kitty button — never at boot or agent
+ * spawn), spawn a small "satellite" Kitty window with a known listen
  * socket, read its first window id, and export KITTY_LISTEN_ON + that
  * KITTY_WINDOW_ID into process.env. Every agent PTY (spawned with a merged
  * process.env) then sees exactly what a pane inside that satellite window would
@@ -17,13 +18,14 @@
  *
  * Failure is always graceful: kitty absent, headless box, display gone → no
  * env vars → skills take their existing fallback path. kitty exiting later
- * (user closed the satellite) leaves stale-but-harmless vars; a relaunch of the
- * app re-establishes everything.
+ * (user closed the satellite) leaves stale-but-harmless vars; the operator's
+ * next Kitty-button click re-establishes everything.
  */
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { resolveCommand } from './shellEnv';
 import {
   DEFAULT_HIRE_PERMISSION_MODE,
   permissionModeArgs,
@@ -82,8 +84,19 @@ async function firstWindowId(socket: string, kitty: string): Promise<string | nu
 /** The satellite's FIRST window is the god's co-terminal: the configured
  *  default engine (e.g. `claude`) in the hive cwd. Same memory/inbox/roster
  *  files as the in-app god session — a second process, not a shared transcript.
- *  Falls back to a plain shell when no engine/hive is configured. */
-export function godCommand(): { file: string; args: string[]; cwd: string | null } {
+ *  Falls back to a plain shell when no engine/hive is configured.
+ *
+ *  The engine binary is resolved to an absolute path through the SAME
+ *  login-shell resolver the PTYs use (`shellEnv.resolveCommand`): kitty is
+ *  not a login shell, so an nvm/asdf-installed `claude` is invisible to the
+ *  satellite's inherited PATH and a bare name died with `executable file not
+ *  found in $PATH` (card kitty-satellite-button-only-20260816). `resolve` is
+ *  injectable so tests can pin the wiring without a login shell. */
+export function godCommand(resolve: (command: string) => string = resolveCommand): {
+  file: string;
+  args: string[];
+  cwd: string | null;
+} {
   try {
     const cfgPath = join(
       process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'),
@@ -123,7 +136,7 @@ export function godCommand(): { file: string; args: string[]; cwd: string | null
     // Claude at the hive root finds the god's memory/board/inbox via its cwd.
     const godCwd = hive ? join(hive, 'agents', 'god') : null;
     return {
-      file: parts[0],
+      file: resolve(parts[0]),
       args: parts.slice(1),
       cwd: godCwd && existsSync(godCwd) ? godCwd : hive,
     };
@@ -133,10 +146,11 @@ export function godCommand(): { file: string; args: string[]; cwd: string | null
 }
 
 /** Start the satellite and export the handoff env. No-op (and env-clean) when
- *  kitty is missing or the socket never comes up. LAZY: called from the first
- *  agent spawn, not app boot — the user sees no Kitty window until an agent
- *  actually exists that might hand off. Awaits the window id so even the first
- *  PTY's env carries both vars. */
+ *  kitty is missing or the socket never comes up. BUTTON-ONLY (card
+ *  kitty-satellite-button-only-20260816): called solely from the
+ *  terminal:openInKitty IPC — never at boot and never from an agent spawn, so
+ *  no Kitty window appears until the operator clicks for one. Awaits the
+ *  window id so the env is exported before the caller opens its tab. */
 export async function startKittySatellite(): Promise<void> {
   // Respect an explicit opt-out and headless sessions.
   if (process.env.MD_DISABLE_KITTY_SATELLITE === '1' || !process.env.DISPLAY) return;

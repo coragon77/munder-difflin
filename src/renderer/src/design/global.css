@@ -91,11 +91,11 @@ textarea,
 }
 
 /* Pixel-snapping for any rasterised content */
-/* biome-ignore lint/suspicious/noDuplicateProperties: intentional fallback cascade (crisp-edges = Firefox) */
 canvas,
 img,
 svg {
   image-rendering: pixelated;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: intentional fallback cascade (crisp-edges = Firefox) */
   image-rendering: crisp-edges;
 }
 

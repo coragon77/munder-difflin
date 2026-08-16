@@ -72,7 +72,9 @@ const withTempXdg = (run) => {
 test('god co-terminal defaults to Claude Auto, not bypass', () => {
   withTempXdg((cfgPath) => {
     writeFileSync(cfgPath, JSON.stringify({ defaultCommand: 'claude' }));
-    const { file, args } = godCommand();
+    // Identity resolver: this test pins the permission-mode argv, not binary
+    // resolution (which is machine-dependent — see section 6 below).
+    const { file, args } = godCommand((c) => c);
     assert.equal(file, 'claude');
     assert.deepEqual(
       args,
@@ -230,4 +232,43 @@ test('resolution: stored mode wins; legacy agents fall back to Claude Auto, neve
     ['claude', '--model', 'claude-sonnet-5', '--permission-mode', 'auto'],
     'legacy agents (hired before the selector) restart in Claude Auto, not bypass',
   );
+});
+
+// ── 6) god co-terminal binary resolution (card kitty-satellite-button-only-20260816)
+// kitty is not a login shell — an nvm-installed bare `claude` died with
+// "executable file not found in $PATH". The engine token must go through the
+// same login-shell resolver the PTYs use; the bash fallback (always on PATH)
+// never needs it.
+
+test('god co-terminal resolves the engine binary through the login-shell resolver', () => {
+  withTempXdg((cfgPath) => {
+    writeFileSync(cfgPath, JSON.stringify({ defaultCommand: 'claude --model sonnet' }));
+    const { file, args, cwd } = godCommand(() => '/nvm/versions/node/v24/bin/claude');
+    assert.equal(file, '/nvm/versions/node/v24/bin/claude');
+    assert.deepEqual(args, ['--model', 'sonnet', '--permission-mode', 'auto']);
+    assert.equal(cwd, null, 'no harnessHome in config → no god cwd');
+  });
+});
+
+test('god co-terminal passes an explicit path token straight through', () => {
+  withTempXdg((cfgPath) => {
+    writeFileSync(cfgPath, JSON.stringify({ defaultCommand: '/opt/engines/claude' }));
+    // resolveCommand's own contract: path-like tokens come back untouched.
+    const seen = [];
+    const { file, args } = godCommand((c) => {
+      seen.push(c);
+      return c;
+    });
+    assert.deepEqual(seen, ['/opt/engines/claude']);
+    assert.equal(file, '/opt/engines/claude');
+    assert.deepEqual(args, [], 'a non-claude first token gets no permission-mode argv');
+  });
+});
+
+test('god co-terminal without config falls back to plain bash, unresolved', () => {
+  withTempXdg(() => {
+    const { file, args } = godCommand((c) => `/resolved/${c}`);
+    assert.equal(file, 'bash', 'the fallback shell never goes through the resolver');
+    assert.deepEqual(args, []);
+  });
 });
