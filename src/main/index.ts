@@ -4323,7 +4323,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
         provider: raw.provider ?? 'claude',
         cwd: res.worktreePath ?? cwd,
         command,
-        role: 'worker'
+        role: meta.role // 'intern' for persistent hires — matches the registry (useHive shows it on the card)
       });
     } catch { /* window torn down */ }
   }
