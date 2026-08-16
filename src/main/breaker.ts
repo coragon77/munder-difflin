@@ -192,17 +192,33 @@ export class CircuitBreaker {
   private toolKey(toolName: string | undefined, toolInput: unknown): string {
     // Truncating replacer: a Write/Edit tool_input carries the whole file body
     // (up to MBs), and this runs synchronously inside the hook reply path on
-    // EVERY PostToolUse — serializing it all only to keep 200 chars was a
+    // EVERY PostToolUse — serializing it all only to keep a short key was a
     // multi-MB transient allocation per large write. Capping each string field
-    // bounds the work while keeping the key semantics (a repeat of the same
-    // call still yields the same key; distinct calls still differ within the
-    // first 200 chars far more often than full serialization ever mattered).
+    // bounds the work; identity is then hashed over the WHOLE capped
+    // serialization (hashKey below), never a prefix. The old 200-char prefix
+    // keep collapsed DISTINCT probe commands sharing a long `cd <dir> && …`
+    // prefix into one "identical" key and tripped the loop arm on
+    // file-probe-heavy agents (observed live, 8×/10× "identical bash").
     let inp = '';
     try {
       inp = JSON.stringify(toolInput, (_k, v) =>
         typeof v === 'string' && v.length > 250 ? v.slice(0, 250) : v) ?? '';
     } catch { inp = String(toolInput); }
-    return `${toolName ?? '?'}:${inp.slice(0, 200)}`;
+    return `${toolName ?? '?'}:${CircuitBreaker.hashKey(inp)}`;
+  }
+
+  /** Length-independent 32-bit FNV-1a digest of a key string. Keeps repeat keys
+   *  short and cheap while distinguishing inputs anywhere along their length —
+   *  a difference past the 200th char changes the hash just like one at the
+   *  start. Collisions across the handful of keys a loop detector compares are
+   *  negligible (2^32 space, and a true identical-call loop still hashes equal). */
+  private static hashKey(s: string): string {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0).toString(16);
   }
 
   // ── periodic evaluation (called by the heartbeat beat) ────────────────────
