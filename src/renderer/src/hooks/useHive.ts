@@ -367,7 +367,12 @@ export function useHive(config: HarnessConfig | null): void {
       bootGraceUntil.current[GOD_ID] = Date.now() + BOOT_GRACE_MS;
       void (async () => {
         try {
-          const remoteCommand = remoteControlCommandForProvider(godProvider, 'Michael');
+          // godRemoteControl (Settings) gates the /remote-control link — off =
+          // the orchestrator runs unwatched from the phone (Telegram still
+          // reports what he says, but not what he does).
+          const remoteCommand = config.godRemoteControl !== false
+            ? remoteControlCommandForProvider(godProvider, 'Michael')
+            : null;
           if (remoteCommand) {
             // settleMs pauses the chain ~1.5s after /remote-control before the
             // orientation prompt (fresh spawns only) is submitted next.

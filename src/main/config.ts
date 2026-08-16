@@ -183,6 +183,11 @@ export interface HarnessConfig {
   registeredRepos: string[];
   /** When true, new agents are spawned with --permission-mode bypassPermissions. */
   autoMode: boolean;
+  /** When true, the god agent's fresh spawns run `/remote-control Michael`,
+   *  linking his session to the Claude mobile app (phone-side supervision of a
+   *  bypassPermissions orchestrator — the only remote view into what he DOES,
+   *  vs Telegram's what he SAYS). Default true; toggleable in Settings. */
+  godRemoteControl?: boolean;
   /** The command we run when spawning a new agent. */
   defaultCommand: string;
   /** Default model for newly spawned agents (e.g. 'claude-sonnet-4-6[1m]'); unset = CLI default. */
@@ -406,6 +411,7 @@ const DEFAULTS: HarnessConfig = {
   recentHives: [],
   registeredRepos: [],
   autoMode: true,
+  godRemoteControl: true,
   defaultCommand: 'claude',
   godProvider: 'claude',
   godModel: 'claude-opus-4-8',

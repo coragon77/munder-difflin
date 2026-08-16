@@ -62,6 +62,9 @@ export interface HarnessConfig {
   recentHives?: string[];
   registeredRepos: string[];
   autoMode: boolean;
+  /** When true, fresh god spawns run /remote-control Michael (Claude mobile
+   *  link). Mirrors main's config field — default ON. */
+  godRemoteControl?: boolean;
   defaultCommand: string;
   /** Default model for newly spawned agents (e.g. 'claude-sonnet-4-6[1m]'); unset = CLI default. */
   defaultModel?: string;

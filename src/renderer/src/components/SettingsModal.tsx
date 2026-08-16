@@ -208,6 +208,13 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
     try { await window.cth.updateConfig({ autoMode: next } as Partial<HarnessConfig>); }
     catch { setAutoModeOn(!next); }
   };
+  const [godRemote, setGodRemote] = useState<boolean>(cfgX.godRemoteControl !== false);
+  const toggleGodRemote = async () => {
+    const next = !godRemote;
+    setGodRemote(next);
+    try { await window.cth.updateConfig({ godRemoteControl: next } as Partial<HarnessConfig>); }
+    catch { setGodRemote(!next); }
+  };
   const [defaultModelSel, setDefaultModelSel] = useState<string>(cfgX.defaultModel ?? 'claude-fable-5');
   const [defaultModelNote, setDefaultModelNote] = useState('');
   const saveDefaultModel = async (id: string) => {
@@ -1114,6 +1121,23 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                           </div>
                           <PixelButton variant={autoModeOn ? 'primary' : 'secondary'} size="sm" onClick={toggleAutoMode}>
                             {autoModeOn ? 'autonomous' : 'ask-first'}
+                          </PixelButton>
+                        </div>
+                      </div>
+
+                      {/* God remote-control link (phone supervision of Michael) */}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>
+                              {godRemote ? 'Michael links to Claude mobile' : 'Michael runs unlinked'}
+                            </span>
+                            <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
+                              Fresh spawns run /remote-control — watch and approve the orchestrator from your phone. Applies at his next spawn.
+                            </span>
+                          </div>
+                          <PixelButton variant={godRemote ? 'primary' : 'secondary'} size="sm" onClick={toggleGodRemote}>
+                            {godRemote ? 'linked' : 'off'}
                           </PixelButton>
                         </div>
                       </div>
