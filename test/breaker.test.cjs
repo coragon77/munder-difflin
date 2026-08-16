@@ -210,6 +210,35 @@ test('huge inputs differing early still count as distinct calls', () => {
   assert.equal(d.state.level, 'healthy', `reason: ${d.state.reason}`);
 });
 
+// Live defect 2026-08-15/16: N DISTINCT grep/sed probes sharing a long
+// `cd <dir> && …` prefix were counted as "identical bash calls" and tripped
+// constrain/steer (observed 8×/10× on one agent within an hour). The key used
+// to keep only the first 200 chars of the serialized input, so commands that
+// differed only PAST that cap collided. hashKey makes identity
+// length-independent.
+
+test('distinct bash probes sharing a >200-char command prefix do NOT trip the loop arm', () => {
+  const b = makeBreaker();
+  // ~200 chars of shared prefix, ~30 chars of varying tail — the serialized
+  // inputs are identical for their first 200+ chars and differ only after.
+  const cd = 'cd /opt/very/deeply/nested/monorepo/path/that/pushes/the/varying/part/of/the/command/past/the/old/prefix/cap/abcdefghijklmnopqrstuvwxyz/0123456789/abcdefghij/qrstuvwxyz/0123456789abcdef && ';
+  assert.ok(`{"command":"${cd}`.length > 200, 'fixture must exceed the old prefix cap');
+  for (let i = 0; i < 10; i++) {
+    b.recordToolUse('a', 'Bash', { command: `${cd}grep -rn needle${i} src/main/` });
+  }
+  const d = beat(b, 'a', null, true, T0);
+  assert.equal(d.state.level, 'healthy', `reason: ${d.state.reason}`);
+});
+
+test('identical long commands still trip the loop arm (hash preserves repeats)', () => {
+  const b = makeBreaker();
+  const cmd = 'cd /opt/some/really/long/path && grep -rn needle src/main/ | sort | uniq -c | tail -20 && echo done';
+  for (let i = 0; i < 8; i++) b.recordToolUse('a', 'Bash', { command: cmd });
+  const d = beat(b, 'a', null, true, T0);
+  assert.equal(d.state.level, 'steering');
+  assert.match(d.state.reason, /looping/);
+});
+
 // ── recovery still works ─────────────────────────────────────────────────────
 
 test('a healthy beat de-escalates one level', () => {

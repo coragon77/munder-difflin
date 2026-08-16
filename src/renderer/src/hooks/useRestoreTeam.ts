@@ -149,6 +149,23 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
             hive: { id: a.id, name: a.name, provider, cwd, role: a.description }
           });
           if (res.ok) {
+            // The card must reflect the REGISTRY (source of truth), not just the
+            // PTY spawn result: spawnAgentCore has ok-without-registration paths
+            // (the missing-CLI installer short-circuit; hive provisioning is
+            // best-effort and never blocks a spawn), so an ARCHIVED agent can
+            // "restore" green while the registry still lists it archived — a
+            // phantom floor card with no backing agent (observed live:
+            // intern-chip-test after the 13:26 restart; its later fire-request
+            // answered "already archived; nothing to tear down"). Only enforced
+            // when the registry is actually populated — with the hive disabled
+            // there is nothing to verify against and restores behave as before.
+            const reg = await window.cth.hiveRegistry().catch(() => null);
+            const entry = reg?.agents?.[a.id];
+            if (reg && Object.keys(reg.agents).length > 0 && (!entry || entry.archived)) {
+              failures.push(`${a.name}: ${entry?.archived ? 'registry still has them archived' : 'spawn did not register them'} — not restored`);
+              console.error('[restore] spawn reported ok but the registry disagrees for', a.id);
+              return null;
+            }
             restored++;
             return {
                 ...a,

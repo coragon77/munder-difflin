@@ -115,7 +115,10 @@ export function useFleetTelemetry(): FleetTelemetry {
       }
     };
 
-    // Backfill from the snapshot (we missed the pushes before mount).
+    // Backfill from the snapshot (we missed the pushes before mount). Breaker
+    // states are part of it — the live stream is push-only (one per beat), so
+    // without this backfill the breaker badge would show a stale level (or none
+    // at all) until the next beat, minutes on the adaptive heartbeat.
     window.cth.telemetrySnapshot?.().then((snap) => {
       if (!alive || !snap) return;
       for (const s of snap.usage ?? []) foldUsage(s as AgentUsageSample);
@@ -125,6 +128,9 @@ export function useFleetTelemetry(): FleetTelemetry {
         if (arr.length) tools[id] = arr[arr.length - 1].tool;
       }
       setLastTool((prev) => ({ ...tools, ...prev }));
+      const brk: Record<string, BreakerState> = {};
+      for (const b of snap.breakers ?? []) brk[b.agentId] = b;
+      setBreakers(brk);
     }).catch(() => { /* collector not up — empty grid */ });
 
     const offEvent = window.cth.onTelemetryEvent?.((e: TelemetryEvent) => {

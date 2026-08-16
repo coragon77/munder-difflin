@@ -499,10 +499,14 @@ export type TelemetryEvent =
   | { kind: 'tool_result'; span: ToolSpan }
   | { kind: 'api_error'; agentId: string; sessionId: string; ts: number; error: string };
 
-/** Cold-start backfill from the collector. */
+/** Cold-start backfill from the collector. `breakers` carries the CURRENT
+ *  per-agent circuit-breaker level — the live stream is push-only (one per
+ *  heartbeat beat), so without this backfill a reloaded renderer would show a
+ *  stale breaker badge until the next beat lands. */
 export interface TelemetrySnapshot {
   usage: AgentUsageSample[];
   spans: Record<string, ToolSpan[]>;
+  breakers?: BreakerState[];
 }
 
 /** One captured user prompt from the SQLite command_history table. */
