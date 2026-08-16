@@ -24,6 +24,8 @@
  */
 import { tool } from '@openai/agents-realtime';
 
+import { agentWhere, plural, rosterSpeech, vacationSummaryLine } from './roster';
+
 // ─── spoken-prose formatting helpers ────────────────────────────────────────
 
 /** Relative "x ago" for a unix-ms timestamp; voice-safe and defensive. */
@@ -51,10 +53,6 @@ function every(ms: unknown): string {
   return `every ${h} hour${h === 1 ? '' : 's'}`;
 }
 
-function plural(n: number, one: string, many = one + 's'): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
 /** Compact a big number for speech (1.2 thousand / 3.4 million). */
 function tokens(n: unknown): string {
   const v = typeof n === 'number' && Number.isFinite(n) ? n : 0;
@@ -65,13 +63,6 @@ function tokens(n: unknown): string {
 
 function clip(s: string, n: number): string {
   return s.length > n ? s.slice(0, n).trimEnd() + ' (truncated)' : s;
-}
-
-/** The trailing folder name of a path — speech-friendly (the persona avoids
- *  reading full file paths aloud unless asked). e.g. /a/b/cth-voice-tools → cth-voice-tools. */
-function shortDir(p: string): string {
-  const parts = (p || '').replace(/\/+$/, '').split('/').filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : p;
 }
 
 /** Strip markdown to plain speakable prose (headers, emphasis, bullets, links,
@@ -549,9 +540,7 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           if (!e) return `I don't see an agent matching "${str(a.agentId)}".`;
           const parts: string[] = [];
           const role = e.role ? `, the ${e.role},` : '';
-          const where = e.archived
-            ? 'archived — its terminal is closed, but its working directory and memory are still here'
-            : `active and ${e.status}`;
+          const where = agentWhere(e);
           parts.push(
             `${e.name}${role} runs on ${e.provider}${e.model ? ` with model ${e.model}` : ''}, ${where}.`,
           );
@@ -603,29 +592,7 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const dir = await window.cth.hiveAgentDirectory();
           const all = Array.isArray(dir.agents) ? dir.agents : [];
           if (!all.length) return 'The hive has no registered agents.';
-          const active = all.filter((e) => !e.archived);
-          const archived = all.filter((e) => e.archived);
-          const near = active
-            .filter((e) => typeof e.contextPct === 'number' && e.contextPct >= 70)
-            .map((e) => `${e.name} at ${e.contextPct} percent`);
-          const describe = (e: (typeof all)[number]): string =>
-            `${e.name} on ${e.provider}${e.cwd ? ` in ${shortDir(e.cwd)}` : ''}${
-              typeof e.contextPct === 'number' ? `, context ${e.contextPct} percent` : ''
-            }`;
-          const parts: string[] = [];
-          parts.push(
-            `${plural(active.length, 'active agent')}${archived.length ? ` and ${plural(archived.length, 'archived agent')}` : ''}.`,
-          );
-          if (active.length) parts.push(`Active: ${active.slice(0, 12).map(describe).join('; ')}.`);
-          if (includeArchived && archived.length)
-            parts.push(
-              `Archived: ${archived
-                .slice(0, 12)
-                .map((e) => `${e.name}${e.cwd ? ` (last in ${shortDir(e.cwd)})` : ''}`)
-                .join('; ')}.`,
-            );
-          if (near.length) parts.push(`Near their context limit: ${near.join(', ')}.`);
-          return parts.join(' ');
+          return rosterSpeech(all, includeArchived);
         }, 'agent roster'),
     }),
 
@@ -716,9 +683,8 @@ export async function realtimeSessionSummary(): Promise<string> {
       window.cth.hiveAgentDirectory(),
       window.cth.hiveTasks(),
     ]);
-    const rows = (Array.isArray(dir?.agents) ? (dir.agents as unknown[]) : [])
-      .map(obj)
-      .filter((a) => !a.archived);
+    const all = (Array.isArray(dir?.agents) ? (dir.agents as unknown[]) : []).map(obj);
+    const rows = all.filter((a) => !a.archived);
     const godRow = rows.find((a) => a.isGod === true);
     const lines = rows.slice(0, 20).map((a) => {
       const bits = [
@@ -755,11 +721,19 @@ export async function realtimeSessionSummary(): Promise<string> {
     ]
       .filter(Boolean)
       .join(' ');
+    const vacationLine = vacationSummaryLine(
+      all.map((a) => ({
+        name: str(a.name),
+        archived: a.archived === true,
+        vacation: a.vacation === true,
+      })),
+    );
     return (
       `Floor at connect — ${plural(rows.length, 'agent')} active` +
       `${godRow ? `, ${str(godRow.name)} orchestrating alongside you` : ''}. ` +
       `Per agent: ${lines.join(' | ') || 'none'}. ` +
       taskLine +
+      (vacationLine ? ` ${vacationLine}` : '') +
       ` You will also receive short "(Floor update: …)" notes as things change mid-call — trust those over this snapshot.` +
       ` You share the floor with god (the typing orchestrator); the board is the single source of truth.`
     );

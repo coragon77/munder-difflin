@@ -787,20 +787,29 @@ export const useStore = create<State>((set) => ({
       const target = s.agents.find((a) => a.id === id);
       if (!target) {
         // No floor card: main parked an agent whose terminal was already gone.
-        // Flag the existing archived entry in place so it still lands in VACATION.
-        if (opts?.vacation && s.archivedAgents.some((a) => a.id === id)) {
-          const archivedAgents = s.archivedAgents.map((a) =>
-            a.id === id
-              ? {
-                  ...a,
-                  vacation: true,
-                  vacationSince: opts.vacationSince ?? Date.now(),
-                  action: 'on vacation',
-                }
-              : a,
-          );
-          persistArchived(archivedAgents);
-          return wasRestorable ? { archivedAgents, restorableAgents } : { archivedAgents };
+        // Either an existing archived entry gets flagged in place so it lands in
+        // VACATION, or — the headless-park case (vacation-renderer M5) — a
+        // PHANTOM RESTORABLE entry (boot reconcileWithLivePtys filed it because
+        // the dead PTY was the only visible trace) is promoted onto the shelf;
+        // without the promotion the agent would silently vanish from every list.
+        if (opts?.vacation) {
+          const base =
+            s.archivedAgents.find((a) => a.id === id) ??
+            s.restorableAgents.find((a) => a.id === id);
+          if (base) {
+            const promoted: Agent = {
+              ...base,
+              archived: true,
+              vacation: true,
+              vacationSince: opts.vacationSince ?? base.vacationSince ?? Date.now(),
+              ptyId: undefined,
+              status: 'idle',
+              action: 'on vacation',
+            };
+            const archivedAgents = [...s.archivedAgents.filter((a) => a.id !== id), promoted];
+            persistArchived(archivedAgents);
+            return wasRestorable ? { archivedAgents, restorableAgents } : { archivedAgents };
+          }
         }
         return wasRestorable ? { restorableAgents } : s;
       }

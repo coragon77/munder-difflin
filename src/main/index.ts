@@ -4556,6 +4556,7 @@ ipcMain.handle('hive:agentDirectory', () => {
       cwdValid: a.cwdValid ?? null,
       archived: !!a.archived,
       vacation: !!a.vacation,
+      vacationSince: a.vacationSince ?? null,
       isGod: !!a.isGod,
       isAssistant: !!a.isAssistant,
       sessionId: a.sessionId ?? null,

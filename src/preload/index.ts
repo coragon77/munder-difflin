@@ -127,6 +127,10 @@ export interface AgentDirectoryEntry {
   /** Whether `cwd` is an absolute, existing directory (spawn-usable). */
   cwdValid: boolean | null;
   archived: boolean;
+  /** Parked (vacation): off the floor, zero cost, recallable, not deletable. */
+  vacation: boolean;
+  /** When the vacation started (unix ms), if parked. */
+  vacationSince: number | null;
   isGod: boolean;
   isAssistant: boolean;
   sessionId: string | null;

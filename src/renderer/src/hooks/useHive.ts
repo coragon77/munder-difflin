@@ -1089,6 +1089,34 @@ export function useHive(config: HarnessConfig | null): void {
     };
   }, [config?.onboardingComplete]);
 
+  // 5b') BOOT vacation reconcile (vacation-renderer M5). A park that happened
+  //     while no window was open (god's headless vacation-request) missed the
+  //     hive:agentVacationed broadcast above, so on the next boot
+  //     reconcileWithLivePtys would file the parked agent under restorableAgents
+  //     (a phantom restore card) and the VACATION shelf would stay empty. The
+  //     registry is the truth — re-run the park locally for its vacationers.
+  //     Idempotent: re-parking an already-parked entry only refreshes the flag.
+  useEffect(() => {
+    if (!config?.onboardingComplete) return;
+    let cancelled = false;
+    window.cth
+      .hiveAgentDirectory()
+      .then((dir) => {
+        if (cancelled) return;
+        for (const e of dir.agents)
+          if (e.vacation)
+            useStore
+              .getState()
+              .archiveAgent(e.id, { vacation: true, vacationSince: e.vacationSince ?? undefined });
+      })
+      .catch(() => {
+        /* ignore — the broadcasts above still cover live parks */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [config?.onboardingComplete]);
+
   // 5c) v0.3.4 voice bridge: main stages queue insertions (clear_context) and
   //     pushes them here, so delivery rides EVERY existing gate — idle-only,
   //     boot grace, draft/picker safety, auto-delivery pause. Main owns the
