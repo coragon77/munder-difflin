@@ -614,11 +614,22 @@ export function useHive(config: HarnessConfig | null): void {
             ? inbox.map((m) => m.id).sort().slice(-1)[0]
             : '';
           if (newest && nudged.current[a.id] !== newest) {
-            useStore.getState().enqueueMessage(
-              a.id,
-              'You have new hive inbox message(s) — read your inbox, act on them now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.'
-            );
-            nudged.current[a.id] = newest;
+            // ONE nudge in flight at a time. The nudge text is generic ("read
+            // your inbox") — it covers every unread message, so a second one
+            // queued while the first is still undelivered would only produce a
+            // duplicate wake the moment the agent goes idle. Advance `nudged`
+            // ONLY on a real enqueue: if this nudge is suppressed (or a later
+            // one dropped as stale at delivery), the next poll re-nudges for
+            // whatever is still unread.
+            const queued = useStore.getState().messageQueues[a.id] ?? [];
+            if (!queued.some((m) => m.inboxFor)) {
+              useStore.getState().enqueueMessage(
+                a.id,
+                'You have new hive inbox message(s) — read your inbox, act on them now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.',
+                { inboxFor: newest }
+              );
+              nudged.current[a.id] = newest;
+            }
           } else if (!newest) {
             nudged.current[a.id] = '';
           }
@@ -714,6 +725,20 @@ export function useHive(config: HarnessConfig | null): void {
       if (now - (lastFlush.current[target.id] ?? 0) < FLUSH_COOLDOWN_MS) return { sent: false };
       const flightKey = `${srcId}:${next.id}`;
       if (inFlight.has(flightKey)) return { sent: false };
+      // An inbox nudge is enqueued the moment mail arrives but typed only when
+      // the agent goes idle — the mail may have been handled and moved to
+      // inbox/.done in between (or the agent drained it mid-turn). Re-validate at
+      // DELIVERY time: if the message this nudge vouches for is verifiably gone,
+      // it is stale — a phantom "new inbox message(s)" wake on an empty inbox.
+      // Drop it silently; the 4s inbox poll re-nudges for whatever is still
+      // unread. Fail-open on a fetch error so a hiccup can never strand real mail.
+      if (next.inboxFor) {
+        const inbox = await window.cth.hiveInbox(target.id).catch(() => null);
+        if (inbox && !inbox.some((m) => m.id === next.inboxFor)) {
+          removeQueuedMessage(srcId, next.id);
+          return { sent: false };
+        }
+      }
       inFlight.add(flightKey);
       lastFlush.current[target.id] = now;
       try {

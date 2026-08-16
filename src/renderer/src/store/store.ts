@@ -133,6 +133,11 @@ export interface QueuedMessage {
    *  ONLY the pause gate in the drain loop — idle/draft/picker safety still hold,
    *  so it delivers the moment the terminal is actually free. */
   manual?: boolean;
+  /** Inbox-nudge ONLY: the id of the newest inbox message this nudge vouches for.
+   *  A nudge is enqueued the moment mail arrives but typed only when the agent
+   *  goes idle — the mail may be handled (moved to inbox/.done) in between, so the
+   *  drain re-validates that this id is still in the inbox before typing. */
+  inboxFor?: string;
 }
 
 // 'files' retired in v0.3.4 (the per-agent IDE button superseded it) — a
@@ -265,7 +270,7 @@ interface State {
   /** Park a message for an agent. Returns nothing; the flush loop delivers it.
    *  `meta.instruction`, when set, is what gets typed into the PTY instead of
    *  `text` (UI/card surfaces still show `text`). */
-  enqueueMessage: (agentId: string, text: string, meta?: { slack?: { channel: string; thread_ts: string }; instruction?: string }) => void;
+  enqueueMessage: (agentId: string, text: string, meta?: { slack?: { channel: string; thread_ts: string }; instruction?: string; inboxFor?: string }) => void;
   /** Drop a single queued message (user removed it, or it was just delivered). */
   removeQueuedMessage: (agentId: string, messageId: string) => void;
   /** "Send now" while floor auto-delivery is paused: marks the message manual
@@ -760,7 +765,8 @@ export const useStore = create<State>((set) => ({
       const msg: QueuedMessage = {
         id: newQueuedId(), text: trimmed, ts: Date.now(),
         ...(meta?.slack ? { slack: meta.slack } : {}),
-        ...(meta?.instruction ? { instruction: meta.instruction } : {})
+        ...(meta?.instruction ? { instruction: meta.instruction } : {}),
+        ...(meta?.inboxFor ? { inboxFor: meta.inboxFor } : {})
       };
       const messageQueues = { ...s.messageQueues, [agentId]: [...(s.messageQueues[agentId] ?? []), msg] };
       persistQueues(messageQueues);
