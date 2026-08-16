@@ -8,8 +8,13 @@
  * harness rules live in the harness:
  *  - RENDERER-MERGE BATCHING — god QAs branches anytime, but ff-merges
  *    renderer/preload-touching branches ONLY in restart/reload windows,
- *    batched; main-process/test-only branches merge immediately;
- *    push+restart together.
+ *    batched; NEVER live (HMR reload of store/hook modules can
+ *    white-screen the floor — an operator merge-now request gets the risk
+ *    named plus the detached alternative); a restart-window merge runs as
+ *    a DETACHED setsid process armed BEFORE the close (god's pane dies
+ *    with the harness), verified by log after reboot; main-process/
+ *    test-only branches merge immediately; push+restart together
+ *    (hardened by card godline-renderer-merge-mechanism-20260817).
  *  - ARCHIVE-ON-READ — god moves a read inbox mail to inbox/.done/
  *    IMMEDIATELY before acting, so the typed-nudge fallback stands down
  *    inside its grace window; the card/board carry work state, not the
@@ -43,6 +48,21 @@ test('godLine carries the RENDERER-MERGE BATCHING rule', () => {
   assert.ok(/renderer\/preload-touching branches ONLY in restart\/reload windows, batched/.test(p));
   assert.ok(/main-process\/test-only branches merge immediately/.test(p));
   assert.ok(/push and restart\/reload together/.test(p));
+  // hardening (card godline-renderer-merge-mechanism-20260817)
+  assert.ok(/NEVER while the app RUNS/.test(p), 'must forbid live merges while the app runs');
+  assert.ok(
+    /hot-reloads the working tree/.test(p),
+    'must say why: dev server hot-reloads the tree',
+  );
+  assert.ok(/HMR reload of store\/hook modules can white-screen the floor/.test(p));
+  assert.ok(
+    /name that risk and offer the detached merge/.test(p),
+    'operator merge-now requests get the risk named + detached alternative',
+  );
+  assert.ok(/your pane dies with the harness/.test(p), 'god cannot act while the harness is down');
+  assert.ok(/DETACHED process BEFORE the close/.test(p));
+  assert.ok(/setsid script that polls for the harness process to disappear/.test(p));
+  assert.ok(/verify the log after reboot/.test(p));
 });
 
 test('godLine carries the ARCHIVE-ON-READ rule', () => {
