@@ -16,7 +16,7 @@ npm install        # postinstall rebuilds node-pty for Electron's ABI (most comm
 npm run dev        # live-reloading Electron dev build
 npm run typecheck  # node + web TS projects — part of the standard gate
 npm run lint       # biome check (lint rules + format verification) — part of the standard gate
-npm run test:focused   # node --test suite in test/ — part of the standard gate
+npm run test:focused   # node --test suite in test/ — part of the standard gate (files come from test/focused.list; adding a test = appending one line there)
 npm run build      # production build — must work before any PR
 ```
 
@@ -66,7 +66,7 @@ agents live as files under `<harnessHome>/hive/` — `registry.json`, `board.md`
 | `src/renderer/` | React + Pixi.js office scene (`src/renderer/src/scene/office/`), stores, components |
 | `src/shared/` | Types shared across processes |
 | `tools/mapgen/` | Python helpers for the Tiled office map |
-| `test/` | `node --test` suites (`npm run test:focused`) |
+| `test/` | `node --test` suites (`npm run test:focused`) — focused files listed in `test/focused.list`, one per line; append a line to add a test |
 | `hive/` (repo root) | Static hive assets (`docs/integration-templates.md`) — `PROTOCOL.md` and `COMMANDS.md` are generated into the *runtime* hive from constants in `src/main/hive.ts` |
 
 ## UI rules (non-negotiable, `DESIGN.md`)
