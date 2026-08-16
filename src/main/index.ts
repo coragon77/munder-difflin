@@ -4620,6 +4620,14 @@ function parkAgent(agentId: string, reason?: string): { ok: boolean; error?: str
     if (typeof last === 'number' && Date.now() - last < VACATION_BUSY_MS) {
       return { ok: false, error: `"${agentId}" is actively working — park it when it goes quiet` };
     }
+    // A park is not a firing: the worktree IS the agent's state, and the recall
+    // re-enters it (the registry cwd is that path for an isolated agent). Drop the
+    // tracking entries so teardownPty's force-remove — correct for a closed
+    // terminal, catastrophic for a parked one — never sees them. This is exactly
+    // how a post-restart respawn already behaves (isolate:false, empty map), so
+    // park now matches the path that was always correct.
+    worktreePaths.delete(ptyId);
+    worktreeOrigins.delete(ptyId);
     try { ptyManager.kill(ptyId); } catch { /* already gone — teardown is idempotent */ }
     teardownPty(ptyId);   // sets archived (liveness); vacation is the layer on top
   }
@@ -4671,6 +4679,15 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
     res = { ok: false, error: String(e) };
   }
   if (!res.ok) return { ok: false, error: res.error ?? 'spawn failed' };
+  // ensureAgent clears `vacation`, but spawnAgentCore swallows its failures by
+  // design ("never block a spawn on it") — so a green spawn does NOT prove the
+  // flag cleared. An agent left flagged is invisible to every roster read while
+  // its PTY burns tokens, so repair it here rather than trusting the spawn.
+  if (hive.isOnVacation(agentId)) {
+    hive.setVacation(agentId, false);
+    hive.setArchived(agentId, false);
+    hive.appendLog({ kind: 'vacation_recall_repair', agentId });
+  }
   try {
     liveWebContents()?.send('hive:agentSpawned', {
       id: agentId, name: entry.name, provider, cwd: res.worktreePath ?? cwd,

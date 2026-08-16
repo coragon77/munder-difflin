@@ -2318,9 +2318,9 @@ EOF
 
 Parking closes the terminal and archives the agent (zero cost, off the
 floor, listed in fleet.json's \`vacation\` pool) but it is NOT deletable while
-parked. Recall respawns it in place, resuming its own session, exactly like
-any other respawn. Rejected (with a notice) for god, interns, the retired,
-or anyone already on vacation.`;
+parked. Parking is rejected (with a notice) for god, interns, the retired,
+or anyone already on vacation. Recall respawns it in place, resuming its own
+session, exactly like any other respawn.`;
 
 /** The '## KITTY SATELLITE' section appended to COMMANDS.md — the god-facing
  *  remote-control surface for the satellite kitty. Every claim here is
