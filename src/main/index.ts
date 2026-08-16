@@ -390,6 +390,11 @@ const preservedWorktrees = new Map<string, PreservedWorktree>();
  * onExit) is a harmless no-op. Best-effort — every step is wrapped so a teardown
  * error can never crash the caller (an IPC handler or node-pty's onExit).
  */
+/** Registry check: is this agent an intern (persistent god-hire)? */
+function isIntern(agentId: string): boolean {
+  try { return hive.registry().agents[agentId]?.role === 'intern'; } catch { return false; }
+}
+
 function teardownPty(id: string): void {
   // 0) Revoke this id's broker capability (if any). Idempotent + harmless for a
   //    non-worker PTY; ensures a dead worker's token can never reach an integration.
@@ -421,6 +426,21 @@ function teardownPty(id: string): void {
     if (worker) {
       liveWorkers.delete(id);
       void finalizeWorkerWorktree(wtPath, origCwd, worker);
+    } else if (agentId && isIntern(agentId)) {
+      // Interns default to worktrees too (isolation amendment) but skip
+      // liveWorkers — their unintegrated commits get the SAME preserve gate,
+      // never a force-remove. Base branch resolved lazily at teardown; the
+      // gate fails safe, so an unknown base keeps the worktree.
+      void (async () => {
+        let baseBranch = 'main';
+        try {
+          const br = await getBranch(origCwd);
+          if ('current' in br && br.current) baseBranch = br.current;
+        } catch { /* keep default — the gate fails safe */ }
+        await finalizeWorkerWorktree(wtPath, origCwd, {
+          workerId: agentId, reqId: agentId, baseBranch, spawnedAt: 0
+        });
+      })();
     } else {
       void removeWorktree(origCwd, wtPath)
         .then(r => { if (!r.ok) console.error('[worktree] removeWorktree failed:', r.error); })
@@ -467,7 +487,7 @@ async function finalizeWorkerWorktree(wtPath: string, origCwd: string, worker: W
       });
       informGod(
         `[worker worktree preserved] ${worker.workerId}`,
-        `Ephemeral worker ${worker.workerId} ended but its worktree holds unintegrated work, so it was NOT auto-removed (you are the sole integrator).\n`
+        `Worker ${worker.workerId} ended but its worktree holds unintegrated work, so it was NOT auto-removed (you are the sole integrator).\n`
         + `Worktree: ${wtPath}\nBranch: ${work.branch}\nState: ${work.detail}\n`
         + `Review/merge it — it will be auto-reclaimed once its work lands in ${worker.baseBranch}, or remove it now with: git -C "${origCwd}" worktree remove "${wtPath}"`,
         worker.slack
@@ -4390,12 +4410,16 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   // so we never run the cc49e1e install banner here — we reject and tell god.
   if (!ptyManager.isCommandAvailable(bin)) { fail(`engine CLI "${bin}" is not installed`); return; }
 
-  const isolate = raw.persistent === true ? raw.isolate === true : raw.isolate !== false;
+  // Isolation default is worktree for EVERYONE — ephemeral workers AND interns
+  // (Stefan's policy, amendment spawn-bypass-flag-dropped): an explicit
+  // "isolate": false in the spawn-request is the opt-out for the rare cwd where
+  // a worktree cannot work.
+  const isolate = raw.isolate !== false;
   // persistent: a STANDING floor agent, not an ephemeral worker — no done/idle
   // reap (all three live in the liveWorkers map, so skipping registration skips
-  // them all), a floor card (the hive:agentSpawned broadcast below), and the
-  // modal-hire isolation default (work directly in cwd; worktrees are the
-  // ephemeral-worker pattern, force-removed at teardown). Persistent hires are
+  // them all), a floor card (the hive:agentSpawned broadcast below), and — since
+  // the isolation amendment — a worktree like ephemeral workers (its teardown is
+  // preserve-gated below, never a blind force-remove). Persistent hires are
   // INTERNS: id `intern-<id>`, role 'intern' (the machine-readable class for
   // floor rules), and display name `<name> (Intern)` so god-spawned hires are
   // distinguishable from human-made ones everywhere.

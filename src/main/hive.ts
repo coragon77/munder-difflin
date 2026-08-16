@@ -2200,9 +2200,10 @@ Persistence of the process is an implementation detail, not a promise of
 tenure. Interns are classified three ways so floor rules can target them:
 id prefix \`intern-\`, registry \`role: "intern"\`, and display
 name \`<name> (Intern)\`. They get a floor card + terminal pane (like any hire),
-are NEVER reaped (no done/idle/token-cap release), work directly in \`cwd\`
-(\`isolate\` defaults to \`false\` for interns — worktrees are the ephemeral
-pattern), and survive restarts via the registry like any named agent
+are NEVER reaped (no done/idle/token-cap release), work in their own git
+worktree by default (\`isolate\` defaults to \`true\`, same as ephemeral
+workers; an explicit \`"isolate": false\` opts out for cwds where a worktree
+cannot work), and survive restarts via the registry like any named agent
 (restore-team respawns it, resuming its recorded session).
 
 \`\`\`bash

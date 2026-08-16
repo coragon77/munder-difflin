@@ -44,9 +44,11 @@ test('Grok is a first-class inferred provider with hooks, resume, and always-app
 });
 
 test('provider commands use matching models and equivalent bypass modes', () => {
+  // claude's bypass flag is the single-token --dangerously-skip-permissions —
+  // verified against the shipped binary (card spawn-bypass-flag-dropped).
   assert.equal(
     buildSpawnCommand(autoConfig, 'claude-sonnet-5', 'claude'),
-    'claude --model claude-sonnet-5 --permission-mode bypassPermissions'
+    'claude --model claude-sonnet-5 --dangerously-skip-permissions'
   );
   assert.equal(
     buildSpawnCommand(autoConfig, 'gpt-5.6-sol', 'codex'),
