@@ -663,8 +663,18 @@ export const useStore = create<State>((set) => ({
     }),
   archiveAgent: (id) =>
     set((s) => {
+      // Archiving is RETIREMENT — it must also end restorability, and it must do
+      // so even when there is no floor card to remove. A fire-request for an
+      // agent whose terminal was already gone (main archives the registry entry
+      // and broadcasts hive:agentArchived) hits the `!target` path below; without
+      // this the agent stays on the restorable list and comes back on the next
+      // restore. This list — not the registry's `archived` liveness flag — is
+      // what says an agent may be brought back.
+      const restorableAgents = s.restorableAgents.filter((a) => a.id !== id);
+      const wasRestorable = restorableAgents.length !== s.restorableAgents.length;
+      if (wasRestorable) persistRestorable(restorableAgents);
       const target = s.agents.find((a) => a.id === id);
-      if (!target) return s;
+      if (!target) return wasRestorable ? { restorableAgents } : s;
       const agents = s.agents.filter((a) => a.id !== id);
       // Retain a flagged copy; the PTY is gone, so clear all live run-state.
       const archivedEntry: Agent = {
@@ -683,7 +693,7 @@ export const useStore = create<State>((set) => ({
       persistAgents(agents, selectedId);
       persistArchived(archivedAgents);
       if (_queueGone) persistQueues(messageQueues);
-      return { agents, archivedAgents, feeds, selectedId, messageQueues };
+      return { agents, archivedAgents, feeds, selectedId, messageQueues, restorableAgents };
     }),
   removeArchivedAgent: (id) =>
     set((s) => {

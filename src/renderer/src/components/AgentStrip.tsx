@@ -22,7 +22,7 @@ export function AgentStrip({ config }: AgentStripProps) {
   const reorderAgents = useStore(s => s.reorderAgents);
   const setAgentNote = useStore(s => s.setAgentNote);
   // Shared with the fullscreen roster so both show one restore in progress.
-  const { restoring, autoRestoring, restoreTeam } = useRestoreTeam(config);
+  const { restoring, autoRestoring, restoreNote, restoreTeam } = useRestoreTeam(config);
   // ONE restore control (bottom-right): a button whose dropdown OPENS UPWARD and
   // lists last session's agents with per-agent dismiss. The menu is position:
   // fixed (anchored off the button's rect) because the strip scrolls with
@@ -243,11 +243,31 @@ export function AgentStrip({ config }: AgentStripProps) {
       {(restorableAgents.length > 0 || restoreBusy) && (
         <span
           ref={restoreBtnRef}
-          style={{ alignSelf: 'center', flexShrink: 0, marginLeft: 'auto' }}
+          style={{
+            alignSelf: 'center', flexShrink: 0, marginLeft: 'auto',
+            display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4
+          }}
           title={restoreBusy
             ? "Your previous session's agents are being respawned with their original ids, so memory and inboxes reattach."
             : `Previous session: ${restorableAgents.map((a: Agent) => a.name).join(', ')}`}
         >
+          {/* The outcome of the last run. A restore that spawned NOTHING used to
+              be completely silent here — the note was computed and never
+              rendered, so a failing button looked merely dead. A full success
+              empties the restorable list and takes this whole block away; the
+              restored agents appearing are the outcome then. */}
+          {!restoreBusy && restoreNote && (
+            <span
+              title={restoreNote}
+              style={{
+                maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                fontFamily: 'var(--cth-font-ui)', fontSize: 11,
+                color: 'var(--cth-ink-700)'
+              }}
+            >
+              {restoreNote}
+            </span>
+          )}
           <PixelButton
             variant="primary"
             size="lg"

@@ -114,22 +114,14 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
           // it to 'on standby' on idle) into the registry role. No role here;
           // ensureAgent preserves the hired one.
           //
-          // Resurrection guard: an ARCHIVED registry entry must never be
-          // restored. ensureAgent un-archives on any successful spawn, so
-          // checking AFTER the spawn (b5ea0bc) is too late for this half — the
-          // entry would already read archived:false and the check pass. Verify
-          // BEFORE spawning: archived in the registry means the operator (or a
-          // fire-request) retired this agent; report it and leave it restorable
-          // for a deliberate re-hire. Only enforced when the registry is
-          // populated — with the hive disabled there is nothing to verify
-          // against and restores behave as before.
-          const reg0 = await window.cth.hiveRegistry().catch(() => null);
-          const entry0 = reg0?.agents?.[a.id];
-          if (reg0 && Object.keys(reg0.agents).length > 0 && entry0?.archived) {
-            failures.push(`${a.name}: registry has them archived — not restored (re-hire deliberately instead)`);
-            console.warn('[restore] refusing to resurrect archived agent', a.id);
-            return null;
-          }
+          // NO pre-spawn `archived` check here. `archived` is a LIVENESS flag,
+          // not a retirement one: archiveOrphanedAgents (main/index.ts) flips
+          // every PTY-less agent to archived:true at boot, and a restorable
+          // agent is BY DEFINITION one whose terminal died with the last
+          // session — so such a check rejects 100% of restores and the button
+          // goes inert. Retirement is tracked where it is actually known: an
+          // archive/fire drops the agent from `restorableAgents` (store's
+          // archiveAgent), so a retired agent never reaches this loop.
           // An isolated agent's worktree SURVIVES an app restart on disk (it's only
           // torn down on per-tab close / mid-session exit, not on quit). So re-enter
           // that exact worktree as the cwd rather than re-isolating — `git worktree
