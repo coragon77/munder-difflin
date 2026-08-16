@@ -126,6 +126,13 @@ export interface HiveTask {
    *  Persistent origin marker: the UI's delete rule (only human-origin cards,
    *  only while still 'todo') and the god's triage rely on it. */
   origin?: 'human';
+  /** The conversation this card runs in (card-scoped-sessions-20260816): the
+   *  agent's live claude session id, stamped automatically by recordSession
+   *  whenever it CHANGES while the card is the agent's active 'doing' card —
+   *  so it converges to the post-clear conversation without racing the queue.
+   *  The /resume key when the card is picked up again after a pause. God
+   *  never writes this by hand. */
+  sessionId?: string;
 }
 
 export interface AgentMeta {
@@ -1023,8 +1030,32 @@ export class HiveManager {
       agent.lastSeen = Date.now();
       this.writeJson(join(root, 'registry.json'), reg);
       this.appendLog({ kind: 'session', agentId, sessionId });
+      this.stampActiveCards(agentId, sessionId);
       this.commit(`hive: session ${agentId}`);
     } catch { /* best-effort — never crash a hook handler */ }
+  }
+
+  /** Card-session stamping (card-scoped-sessions-20260816): whenever an
+   *  agent's session id CHANGES, record it on their active 'doing' cards so
+   *  the card always knows the conversation it runs in (the /resume key).
+   *  Read-modify-write at action time — same contract as addHumanTask — and
+   *  a no-op (no write, no commit) when nothing matches. Assumes the ledger
+   *  discipline of one active card per agent; a rare multi-card agent simply
+   *  gets the same stamp on each (they share the conversation anyway). */
+  private stampActiveCards(agentId: string, sessionId: string): void {
+    const root = this.root();
+    if (!root) return;
+    try {
+      const data = this.tasks() as { tasks: HiveTask[] };
+      let touched = false;
+      for (const t of data.tasks) {
+        if (t?.assignee === agentId && t.status === 'doing' && t.sessionId !== sessionId) {
+          t.sessionId = sessionId;
+          touched = true;
+        }
+      }
+      if (touched) this.writeTasks(data.tasks);
+    } catch { /* best-effort — stamping must never fail a hook */ }
   }
 
   /** The last known session_id for an agent, or undefined. Used to build a
@@ -2455,9 +2486,38 @@ function renderCommandsMd(): string {
     }
     lines.push('');
   }
-  lines.push(HIRING_AGENTS_MD, KITTY_SATELLITE_MD);
+  lines.push(HIRING_AGENTS_MD, CARD_SESSIONS_MD, KITTY_SATELLITE_MD);
   return lines.join('\n');
 }
+const CARD_SESSIONS_MD = `## CARD SESSIONS — one kanban card = one conversation
+
+A standing agent's pane does NOT carry unrelated engagements in one window:
+the harness scopes conversations to cards (card-scoped-sessions).
+
+**What you do (nothing new):** dispatch a card by setting its status to
+\`doing\` with the assignee — your normal ledger act.
+
+**What the harness does (automatic, ~1.5s later, delivered through the pane's
+queue gates — only once the agent is idle):**
+
+- NEW card (never ran) → the pane is cleared for a FRESH conversation, then a
+  card-title lead is typed so the conversation is NAMED after the card.
+- PAUSED card (\`doing\` → away → \`doing\` again) → the pane is steered to
+  \`/resume <card.sessionId>\` — the card's recorded conversation continues.
+- The card's \`sessionId\` is stamped/refreshed automatically while it is the
+  agent's active \`doing\` card. Never write it by hand.
+
+**Conventions:** pause a card by moving it OFF \`done\`-track statuses you
+control (e.g. back to \`todo\`/\`blocked\`); picking it back up (\`doing\` again)
+resumes its conversation. memory.md/MemPalace remain the bridge between
+conversations — the end-of-task memory append matters more than ever. Assumes
+one active card per agent (ledger discipline). Follow-ups within a card stay
+in the same conversation — the trigger is a NEW card, not task-feels-done.
+
+**Manual steering** (any pane, no card involved): drop a request JSON into
+\`$HIVE_ROOT/session-requests/\` — \`{ "agentId": "...", "verb": "clear" }\` or
+\`{ "agentId": "...", "verb": "resume", "sessionId": "<uuid>" }\`.`;
+
 const COMMANDS_MD = renderCommandsMd();
 
 /** The read-me-first written to `<harnessHome>/AGENTS.md` (god's cwd, the

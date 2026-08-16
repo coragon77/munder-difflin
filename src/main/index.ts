@@ -24,6 +24,7 @@ import {
 } from './git';
 import { HiveManager, deriveSpawnLabel, type AgentMeta, type HiveMessage, type HiveTask } from './hive';
 import { startSessionRequestWatcher } from './sessionRequests';
+import { startCardSessionWatcher } from './cardSessions';
 import { HookServer } from './hooks';
 import { CircuitBreaker, type BreakerInput } from './breaker';
 import type { UsageProvider } from './usage';
@@ -5114,18 +5115,34 @@ function bootstrapHiveServices(): void {
   // watcher is edit-contested); the command rides the EXISTING realtime:enqueue
   // broadcast → renderer queue (useHive 5c) → queue-drain gates — never a direct
   // PTY write from MAIN.
+  // Shared broadcast for pane-steering commands (session-requests + card
+  // sessions): rides the existing realtime:enqueue channel into the renderer's
+  // queue gates — never a direct PTY write from MAIN.
+  const paneCommandEmit = (agentId: string, text: string): boolean => {
+    try {
+      const wc = liveWebContents();
+      if (!wc) return false;
+      wc.send('realtime:enqueue', { agentId, text });
+      return true;
+    } catch { return false; }
+  };
   startSessionRequestWatcher({
     root: () => hive.root(),
     registry: () => hive.registry(),
     ptyForAgent,
-    emit: (agentId, text) => {
-      try {
-        const wc = liveWebContents();
-        if (!wc) return false;
-        wc.send('realtime:enqueue', { agentId, text });
-        return true;
-      } catch { return false; }
-    },
+    emit: paneCommandEmit,
+    informGod
+  });
+  // card-scoped-sessions-20260816: one kanban card = one conversation. Watches
+  // tasks.json for todo→doing transitions and steers the assignee's pane through
+  // the SAME channel (clear for a new card, /resume <card.sessionId> for a
+  // returning one, card-title lead names the conversation). First tick is
+  // snapshot-only — a restart never re-clears a working pane. sessionId stamps are
+  // maintained by HiveManager.recordSession (stampActiveCards).
+  startCardSessionWatcher({
+    root: () => hive.root(),
+    registry: () => hive.registry(),
+    emit: paneCommandEmit,
     informGod
   });
   // Phase 2: the loopback secret broker. Bind it BEFORE workers spawn so each spawn can
