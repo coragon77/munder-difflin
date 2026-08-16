@@ -4508,27 +4508,32 @@ function processFireRequest(filePath: string): void {
   if (!entry) { fail(`no agent "${agentId}" in the registry`); return; }
   if (entry.role !== 'intern') { fail(`"${agentId}" is a ${entry.role ?? 'plain hire'}, not an intern — only god-hired interns are fireable from Bash`); return; }
 
-  if (entry.archived) {
-    informGod(`[fired] ${agentId} (already archived)`, `Intern ${entry.name} was already archived; nothing to tear down. Request consumed.`);
+  // Already FIRED is the only "nothing to do" — `archived` is liveness (44df562),
+  // set on every PTY-less agent by the boot sweep, so testing it here made firing
+  // an intern after a restart a no-op that left them retire-less AND on the floor.
+  if (entry.retired) {
+    informGod(`[fired] ${agentId} (already fired)`, `Intern ${entry.name} was already retired; nothing to tear down. Request consumed.`);
     archiveRequestIn(fireRequestsDir(), filePath, '.done');
     return;
   }
 
-  // Live PTY → the standard kill/teardown (archives + broadcasts to the floor).
+  // Live PTY → the standard kill/teardown (archives the registry entry).
   const ptyId = ptyForAgent(agentId);
   if (ptyId) {
     try { ptyManager.kill(ptyId); } catch { /* already gone — teardown is idempotent */ }
     teardownPty(ptyId);
-  } else {
-    // No live terminal (app restarted since): just archive the registry entry.
-    hive.setArchived(agentId, true);
-    try { liveWebContents()?.send('hive:agentArchived', { id: agentId }); } catch { /* window gone */ }
   }
   // Retirement is the POINT of a fire, and it has to outlive the renderer: the
   // teardown above only sets `archived` (liveness), and dropping the agent from
   // localStorage `restorableAgents` is the renderer's business. Persist the fire
   // in the registry so a restart can't re-register the intern onto the floor.
+  // (setRetired also sets `archived`, which covers the no-PTY case.)
   hive.setRetired(agentId, true);
+  // A MAIN-initiated fire: the renderer never removed the card itself (unlike a
+  // UI kill), so tell the floor to archive it — same as the voice kill at
+  // killAgent(). Without this the floor card outlives the fire, survives in
+  // persisted `cth.agents`, and the next reload respawns the intern from it.
+  try { liveWebContents()?.send('hive:agentArchived', { id: agentId }); } catch { /* window gone */ }
   informGod(`[fired] ${agentId}`, `Intern ${entry.name} was fired: terminal closed, agent retired in the registry — this survives a restart, and spawning or restoring the same id is now refused. Their memory and inbox are kept; to bring them back, reinstate them explicitly (unarchive) or hire a new intern under a fresh id.`);
   console.log(`[worker] fired intern ${agentId}`);
   archiveRequestIn(fireRequestsDir(), filePath, '.done');
