@@ -912,17 +912,6 @@ export function selectedAgent(s: State): Agent | undefined {
   return s.agents.find(a => a.id === s.selectedId);
 }
 
-/** Parked agents — shown in the Command Center's VACATION section. Derived from
- *  `archivedAgents` rather than stored beside it, so the two lists cannot fall
- *  out of step. Wrap the call in useMemo: it returns a fresh array. */
-export function vacationAgents(s: State): Agent[] {
-  return s.archivedAgents.filter((a) => a.vacation);
-}
-/** Genuinely archived agents — vacationers live on their own shelf. */
-export function archivedOnlyAgents(s: State): Agent[] {
-  return s.archivedAgents.filter((a) => !a.vacation);
-}
-
 /** Whether the Command Center's Trigger History tab has anything to be about
  *  yet: an organisation key is set, or at least one webhook exists. Derived from
  *  the two mirrors rather than stored beside them, so it cannot fall out of step
