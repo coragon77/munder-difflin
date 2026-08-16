@@ -298,6 +298,35 @@ export class HiveManager {
   private agentDir(id: string): string {
     return join(this.root()!, 'agents', id);
   }
+  /** Where a retired agent's folder is swept to: `agents/archive/<id>`. The sweep
+   *  is a manual/operator move (keeps the floor readable); the layout has to know
+   *  about it or a re-hire silently starts blind — see restoreFromArchive. */
+  private archivedAgentDir(id: string): string {
+    return join(this.root()!, 'agents', 'archive', id);
+  }
+  /** Agent ids under `agents/` — i.e. every entry EXCEPT the `archive/` sweep
+   *  folder and dotfiles. `archive` is a container, never an agent, so any
+   *  readdir over `agents/` that skips this filter invents a phantom owner. */
+  private agentIds(): string[] {
+    const root = this.root();
+    if (!root) return [];
+    try {
+      return readdirSync(join(root, 'agents')).filter((id) => id !== 'archive' && !id.startsWith('.'));
+    } catch { return []; }
+  }
+  /** Re-hiring a swept agent must give it its memory/inbox back, not a fresh empty
+   *  folder next to an orphaned archive copy. Moves `agents/archive/<id>` back to
+   *  `agents/<id>` when the live folder is gone. Never clobbers: if BOTH exist the
+   *  live one wins and the archive copy is left for the operator to reconcile. */
+  private restoreFromArchive(id: string): void {
+    const live = this.agentDir(id);
+    const archived = this.archivedAgentDir(id);
+    if (existsSync(live) || !existsSync(archived)) return;
+    try {
+      renameSync(archived, live);
+      this.appendLog({ kind: 'unarchive_dir', agentId: id });
+    } catch { /* best-effort — a failed move just means a fresh folder below */ }
+  }
   /** IPC endpoint the cth-hook shim talks to (Phase 1 autonomy).
    *  On POSIX this is a Unix-domain socket file under the hive root. On Windows,
    *  Node's `net` IPC uses named pipes (a flat `\\.\pipe\` namespace, not the
@@ -549,6 +578,11 @@ export class HiveManager {
     const root = this.root();
     if (!root) return { args: [], env: {} };
     this.ensureHive();
+
+    // A re-hire of a swept agent gets its own history back BEFORE anything is
+    // seeded below — otherwise mkdirSync creates a fresh empty workspace and the
+    // agent's memory.md/inbox stay orphaned under agents/archive/<id> forever.
+    this.restoreFromArchive(meta.id);
 
     const dir = this.agentDir(meta.id);
     mkdirSync(join(dir, 'inbox', '.done'), { recursive: true });
@@ -1290,7 +1324,7 @@ export class HiveManager {
     const agentsDir = join(root, 'agents');
     if (!existsSync(agentsDir)) return 0;
     let routed = 0;
-    for (const id of readdirSync(agentsDir)) {
+    for (const id of this.agentIds()) {
       const outbox = join(agentsDir, id, 'outbox');
       if (!existsSync(outbox)) continue;
       for (const f of readdirSync(outbox)) {
@@ -1395,14 +1429,9 @@ export class HiveManager {
     const onlyAgent = typeof opts.agentId === 'string' ? opts.agentId.trim() : '';
     const includeArchived = opts.includeArchived !== false; // default true
 
-    let owners: string[];
-    try {
-      owners = onlyAgent
-        ? [onlyAgent]
-        : readdirSync(agentsDir).filter((id) => !id.startsWith('.') && existsSync(this.agentDir(id)));
-    } catch {
-      return [];
-    }
+    const owners: string[] = onlyAgent
+      ? [onlyAgent]
+      : this.agentIds().filter((id) => existsSync(this.agentDir(id)));
 
     const seen = new Set<string>();
     const out: VoiceMessage[] = [];
