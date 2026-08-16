@@ -149,6 +149,13 @@ export class CircuitBreaker {
     return this.agents.get(agentId)?.level ?? 'healthy';
   }
 
+  /** Current trip reason for an agent ('' when healthy/unknown) — pairs with
+   *  levelFor for cold-start badge backfill, so a reloaded renderer shows the
+   *  ⚠ tooltip without waiting for the next beat push. */
+  reasonFor(agentId: string): string {
+    return this.agents.get(agentId)?.reason ?? '';
+  }
+
   // ── event-driven inputs (fed by HookServer) ──────────────────────────────
 
   /** A tool call ran. A NEW (name+input) key counts as forward progress (resets

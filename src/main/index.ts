@@ -3540,7 +3540,24 @@ ipcMain.handle('telemetry:usage', (_evt, agentId: unknown) =>
   typeof agentId === 'string' ? telemetry.getAgentUsage(agentId) : null);
 ipcMain.handle('telemetry:spans', (_evt, agentId: unknown) =>
   typeof agentId === 'string' ? telemetry.getSpans(agentId) : []);
-ipcMain.handle('telemetry:snapshot', () => telemetry.snapshot());
+ipcMain.handle('telemetry:snapshot', () => ({
+  ...telemetry.snapshot(),
+  // Breaker states were push-only (one per beat per live agent), so a reloaded
+  // renderer showed a stale/absent breaker badge until the next beat — and the
+  // heartbeat cadence is adaptive (up to 2.5× base), so that window could be
+  // minutes. Backfill the CURRENT level per agent here; live pushes resume on
+  // the next beat. Forgotten/archived agents read 'healthy' by construction.
+  breakers: hive.enabled()
+    ? Object.entries(hive.registry().agents)
+        .filter(([, a]) => !a.archived)
+        .map(([id]) => ({
+          agentId: id,
+          level: breaker.levelFor(id),
+          reason: breaker.reasonFor(id),
+          ts: Date.now()
+        }))
+    : []
+}));
 
 // ─── IPC: circuit-breaker state (Lane A #6 policy → this lane's avatars/meter) ─
 // Lane A's breaker calls this with a BreakerState; we fan it out to the renderer
