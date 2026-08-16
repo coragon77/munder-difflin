@@ -2686,15 +2686,27 @@ function post(payload) {
   } catch (e) {}
 }
 export const HiveBridge = async () => {
+  // OpenCode exposes call args only as tool.execute.before's output.args; after
+  // keeps the same callID but exposes result output/metadata instead. Preserve
+  // the args by callID so concurrent tool calls stay correctly associated.
+  const toolInputs = new Map();
   return {
     event: async (input) => {
       try { if (input && input.event && input.event.type === 'session.idle') post({ hook_event_name: 'Stop' }); } catch (e) {}
     },
-    'tool.execute.before': async (input) => {
-      try { post({ hook_event_name: 'PreToolUse', tool_name: input && (input.tool || input.name) }); } catch (e) {}
+    'tool.execute.before': async (input, output) => {
+      try {
+        const toolInput = output?.args ?? null;
+        if (input?.callID) toolInputs.set(input.callID, toolInput);
+        post({ hook_event_name: 'PreToolUse', tool_name: input && (input.tool || input.name), tool_input: toolInput });
+      } catch (e) {}
     },
     'tool.execute.after': async (input) => {
-      try { post({ hook_event_name: 'PostToolUse', tool_name: input && (input.tool || input.name) }); } catch (e) {}
+      try {
+        const toolInput = input?.callID ? toolInputs.get(input.callID) ?? null : null;
+        if (input?.callID) toolInputs.delete(input.callID);
+        post({ hook_event_name: 'PostToolUse', tool_name: input && (input.tool || input.name), tool_input: toolInput });
+      } catch (e) {}
     }
   };
 };
