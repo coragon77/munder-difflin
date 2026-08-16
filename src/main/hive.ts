@@ -582,7 +582,14 @@ export class HiveManager {
       ...prev,
       ...meta,
       capabilities: meta.capabilities ?? [],
-      role: meta.role ?? (meta.isGod ? 'orchestrator' : 'agent'),
+      // ROLE IS IDENTITY, set at hire (AddAgentModal's description, god's
+      // spawn-request 'intern'/'worker'), and a respawn is the SAME identity:
+      // when the spawn meta carries no explicit role, PRESERVE the prior one
+      // instead of defaulting. The old `?? 'agent'` default let respawn paths
+      // that echoed the renderer's `description` (a live STATUS field —
+      // usePtyParser writes 'on standby' into it) clobber a hired 'intern' role
+      // with status wording, which then locked god out of the intern fire gate.
+      role: meta.role ?? prev?.role ?? (meta.isGod ? 'orchestrator' : 'agent'),
       status: 'idle',
       cwdValid: cwd.valid,
       // A (re)spawn always means a live terminal — clear any prior archived flag.
