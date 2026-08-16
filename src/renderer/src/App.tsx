@@ -42,6 +42,12 @@ export function App() {
   const godStatus = useStore(s => s.godStatus);
   const fullscreenAgentId = useStore(s => s.fullscreenAgentId);
   const appThemeNow = useAppTheme();
+  // Terminal palette (decoupled from the chrome) — read ONCE up here with the
+  // other hooks. Calling useTerminalTheme() inline in the title-bar JSX below
+  // broke the Rules of Hooks: App early-returns while config loads, so the
+  // extra hook calls appeared only after config arrived → "Rendered more
+  // hooks than during the previous render" → blank screen.
+  const termThemeNow = useTerminalTheme();
   const fullscreenFilePath = useStore(s => s.fullscreenFilePath);
   const sidebarWidth = useStore(s => s.sidebarWidth);
   const setSidebarWidth = useStore(s => s.setSidebarWidth);
@@ -310,17 +316,17 @@ export function App() {
             // harness agents — the user's global Claude theme is never touched.
             void window.cth.updateConfig({ terminalTheme: next });
           }}
-          title={useTerminalTheme() === 'dark'
+          title={termThemeNow === 'dark'
             ? 'Terminal palette: dark — click for light (app chrome unchanged)'
             : 'Terminal palette: light — click for dark (app chrome unchanged)'}
           aria-label="Toggle terminal palette"
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             width: 28, height: 28, padding: 0,
-            background: useTerminalTheme() === 'dark' ? 'var(--cth-ink-900)' : 'var(--cth-paper-100)',
+            background: termThemeNow === 'dark' ? 'var(--cth-ink-900)' : 'var(--cth-paper-100)',
             boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
             border: 'none', borderRadius: 2, cursor: 'pointer',
-            color: useTerminalTheme() === 'dark' ? 'var(--cth-paper-100)' : 'var(--cth-ink-900)',
+            color: termThemeNow === 'dark' ? 'var(--cth-paper-100)' : 'var(--cth-ink-900)',
             fontSize: 13, lineHeight: 1
           }}
         >
