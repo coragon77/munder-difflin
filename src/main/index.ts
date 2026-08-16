@@ -78,6 +78,7 @@ import {
   type HiveTask,
 } from './hive';
 import { startSessionRequestWatcher } from './sessionRequests';
+import { shouldAdoptWorktree } from './worktreeAdopt';
 import { startCardSessionWatcher } from './cardSessions';
 import type { CardSessionMarker } from '../shared/cardSessions';
 import { HookServer } from './hooks';
@@ -3230,11 +3231,12 @@ async function spawnAgentCore(
   // its own worktree on an `agent/<id>` branch so it can't clobber other agents'
   // (or the user's) working tree. Best-effort — a failure falls back to the
   // shared cwd rather than blocking the spawn.
-  // NOTE (tracked, not yet hardened): the restore flow passes isolate:false and
-  // re-enters the existing worktree by cwd, so it never reaches here. But a stale
+  // NOTE (tracked, not yet hardened): isolate:false re-entry (recall, restore,
+  // un-archive) is handled by the ADOPTION block right below. But a stale
   // `isolate:true` recipe spawned against an already-existing worktree path would
-  // make addWorktree below conflict (path/branch exists) and fall back to the base
-  // cwd — reuse-existing-worktree handling here is the follow-up.
+  // still make addWorktree below conflict (path/branch exists) and fall back to
+  // reusing that path untracked — teaching THIS block to reuse an existing
+  // worktree instead of conflicting is the follow-up.
   if (opts.isolate === true && (await isRepo(opts.cwd))) {
     try {
       const origCwd = opts.cwd;
@@ -3262,6 +3264,27 @@ async function spawnAgentCore(
     } catch (e) {
       console.error('[worktree] isolation failed:', e);
     }
+  }
+  // Worktree RE-ENTRY adoption (card vacation-worktree-leak-20260816): recall,
+  // restart restore, and un-archive all spawn isolate:false with cwd = the
+  // agent's EXISTING worktree, so the fresh-spawn block above never runs and
+  // the worktree is never re-registered — park deliberately drops the map
+  // entries (9d4c5ee), and without re-registration a later teardown finds
+  // nothing in worktreePaths, so the worktree orphans on disk forever (plus a
+  // dangling `git worktree` registration; nothing GCs it). Adopt it back: a
+  // hive spawn whose cwd IS a direct child of the worktrees root is
+  // re-registered with the MAIN repo as origin, so park→recall→archive now
+  // cleans up exactly like a never-parked agent. Bare non-hive terminals are
+  // left untracked (today's behavior). Decision rule in worktreeAdopt.ts.
+  const adoptRoot = join(readConfig().harnessHome ?? opts.cwd, 'worktrees');
+  if (
+    opts.hive &&
+    shouldAdoptWorktree(opts.isolate, opts.cwd, adoptRoot) &&
+    (await isRepo(opts.cwd))
+  ) {
+    const mainRoot = await mainRepoRoot(opts.cwd);
+    worktreePaths.set(opts.id, opts.cwd);
+    worktreeOrigins.set(opts.id, mainRoot ?? opts.cwd);
   }
   // Proxy-tier CLIs (qwen/crush) route their LLM traffic through a loopback sidecar
   // whose UPSTREAM is read from the preset's bridge.baseUrlEnv inside hive.ensureAgent.

@@ -49,3 +49,4 @@ test/vacation-ui-surface.test.cjs
 test/godline-rules.test.cjs
 test/pi-bridge-session-id.test.cjs
 test/focused-list.test.cjs
+test/worktree-adopt.test.cjs
