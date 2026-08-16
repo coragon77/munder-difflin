@@ -4547,6 +4547,7 @@ ipcMain.handle('hive:agentDirectory', () => {
       cwd: a.cwd ?? null,
       cwdValid: a.cwdValid ?? null,
       archived: !!a.archived,
+      vacation: !!a.vacation,
       isGod: !!a.isGod,
       isAssistant: !!a.isAssistant,
       sessionId: a.sessionId ?? null,
@@ -5880,7 +5881,18 @@ function parkAgent(agentId: string, reason?: string): { ok: boolean; error?: str
     }
     teardownPty(ptyId); // sets archived (liveness); vacation is the layer on top
   }
-  hive.setVacation(agentId, true);
+  // setVacation REPORTS persistence (vacation-review M3): the terminal is
+  // already gone and the agent sits plain-archived, so a failed flag write
+  // must fail the park — otherwise the request answers "protected, zero cost,
+  // not deletable" while the registry holds none of that.
+  if (!hive.setVacation(agentId, true)) {
+    hive.appendLog({ kind: 'vacation_park_failed', agentId });
+    console.error(`[vacation] park ${agentId} failed: could not persist the vacation flag`);
+    return {
+      ok: false,
+      error: `could not persist the vacation flag — ${agentId} is archived but NOT protected; retry, or unarchive to restore it`,
+    };
+  }
   const vacationSince = hive.registry().agents[agentId]?.vacationSince ?? Date.now();
   try {
     liveWebContents()?.send('hive:agentVacationed', { id: agentId, vacationSince });
@@ -5945,7 +5957,16 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
   // flag cleared. An agent left flagged is invisible to every roster read while
   // its PTY burns tokens, so repair it here rather than trusting the spawn.
   if (hive.isOnVacation(agentId)) {
-    hive.setVacation(agentId, false);
+    if (!hive.setVacation(agentId, false)) {
+      // The repair itself failed (vacation-review M3): say so instead of
+      // reporting a healthy recall — god must know the agent is live but
+      // invisible to the rosters, not discover it from a dead route.
+      hive.appendLog({ kind: 'vacation_recall_repair_failed', agentId });
+      return {
+        ok: false,
+        error: `${agentId} is spawned but the vacation flag is stuck — it is invisible to the rosters; check registry.json`,
+      };
+    }
     hive.setArchived(agentId, false);
     hive.appendLog({ kind: 'vacation_recall_repair', agentId });
   }

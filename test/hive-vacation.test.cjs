@@ -196,3 +196,71 @@ test('only a real flip rebuilds the roster, and a broken writer cannot roll it b
     'a throwing snapshot writer must not roll back or crash the park',
   );
 });
+
+// ─── vacation review findings M2–M4 (card vacation-review-bundle-20260816) ──
+
+test('M2: an unarchive cannot silently end a vacation — the flag guards setArchived', async (t) => {
+  const { hive } = floor(t);
+  await hive.ensureAgent({ id: 'pam-1', name: 'Pam', provider: 'claude', cwd: '/tmp' });
+  hive.setVacation('pam-1', true);
+
+  // The sanctioned way back is a RECALL (respawn). A plain unarchive would
+  // strand the agent at archived:false + vacation:true — on the floor by
+  // liveness but skipped by every vacation-aware sweep — or silently demote
+  // it, un-protected and un-announced. The registry guard closes both.
+  hive.setArchived('pam-1', false);
+
+  const entry = hive.registry().agents['pam-1'];
+  assert.equal(entry.vacation, true, 'the vacation flag survives an unarchive attempt');
+  assert.equal(entry.archived, true, 'a vacationer stays off the floor');
+  assert.equal(hive.isOnVacation('pam-1'), true);
+});
+
+test('M3: setVacation reports whether the registry state actually landed', async (t) => {
+  const { home, hive } = floor(t);
+  await hive.ensureAgent({ id: 'pam-1', name: 'Pam', provider: 'claude', cwd: '/tmp' });
+  await hive.ensureAgent({ id: 'ryan-1', name: 'Ryan', provider: 'claude', cwd: '/tmp' });
+  hive.setRetired('ryan-1', true);
+
+  assert.equal(hive.setVacation('pam-1', true), true, 'a successful park reports true');
+  assert.equal(hive.setVacation('pam-1', true), true, 'an idempotent re-park is still true');
+  assert.equal(hive.setVacation('pam-1', false), true, 'ending the vacation reports true');
+  assert.equal(
+    hive.setVacation('ryan-1', true),
+    false,
+    'a refusal (retired) reports false — it did not happen',
+  );
+
+  // The write-failure half: parkAgent reports ok today even when this write
+  // dies, promising deletion-protection the registry never got. A read-only
+  // hive root breaks only the WRITE (tmp-file creation) — the read still
+  // works, so this exercises the exact swallowed-error path.
+  const hiveRoot = path.join(home, 'hive');
+  fs.chmodSync(hiveRoot, 0o555);
+  try {
+    assert.equal(
+      hive.setVacation('pam-1', true),
+      false,
+      'a failed registry write must report false',
+    );
+  } finally {
+    // Restore BEFORE floor()'s rmSync after-hook (registration order) so a
+    // failure in the assertion can't also break the tempdir cleanup.
+    fs.chmodSync(hiveRoot, 0o755);
+  }
+});
+
+test('M4: retiring a vacationer ends the vacation — retired means gone, not resting', async (t) => {
+  const { hive } = floor(t);
+  await hive.ensureAgent({ id: 'pam-1', name: 'Pam', provider: 'claude', cwd: '/tmp' });
+  hive.setVacation('pam-1', true);
+
+  hive.setRetired('pam-1', true);
+
+  const entry = hive.registry().agents['pam-1'];
+  assert.equal(entry.retired, true);
+  assert.equal(!!entry.vacation, false, 'vacation and retired are mutually exclusive');
+  assert.equal(entry.vacationSince, undefined, 'the parked-at stamp goes with it');
+  assert.equal(entry.archived, true, 'retiring still archives');
+  assert.deepEqual(vacationPool(hive), [], 'a fired agent leaves the fetchable pool');
+});

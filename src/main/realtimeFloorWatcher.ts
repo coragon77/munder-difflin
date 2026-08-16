@@ -17,7 +17,7 @@
  */
 
 interface RegistryLike {
-  agents: Record<string, { name?: string; archived?: boolean }>;
+  agents: Record<string, { name?: string; archived?: boolean; vacation?: boolean }>;
   godId?: string | null;
 }
 
@@ -40,7 +40,7 @@ export class RealtimeFloorWatcher {
   private live = false;
   private lastPushAt = 0;
   private buffer: string[] = [];
-  private prevAgents = new Map<string, { archived: boolean; name: string }>();
+  private prevAgents = new Map<string, { archived: boolean; vacation: boolean; name: string }>();
   private prevTasks = new Map<string, { status: string; title: string }>();
   private prevActive = new Map<string, boolean>();
   private primed = false;
@@ -77,9 +77,9 @@ export class RealtimeFloorWatcher {
     if (!this.deps.enabled()) return;
 
     const reg = this.deps.registry();
-    const agents = new Map<string, { archived: boolean; name: string }>();
+    const agents = new Map<string, { archived: boolean; vacation: boolean; name: string }>();
     for (const [id, m] of Object.entries(reg.agents ?? {})) {
-      agents.set(id, { archived: !!m.archived, name: m.name || id });
+      agents.set(id, { archived: !!m.archived, vacation: !!m.vacation, name: m.name || id });
     }
 
     const tasksRaw = this.deps.tasks() as {
@@ -98,13 +98,22 @@ export class RealtimeFloorWatcher {
     }
 
     if (this.primed && this.live) {
-      // roster changes
+      // roster changes — vacation-aware (vacation-review M1): a park flips
+      // archived AND vacation in one tick, so the vacation flag decides the
+      // wording first; only plain flips fall through to the archive lines.
       for (const [id, cur] of agents) {
         const prev = this.prevAgents.get(id);
         if (!prev) this.buffer.push(`${cur.name} joined the floor`);
-        else if (!prev.archived && cur.archived) this.buffer.push(`${cur.name} was archived`);
-        else if (prev.archived && !cur.archived)
-          this.buffer.push(`${cur.name} is back from the archive`);
+        else if (cur.vacation && !prev.vacation) this.buffer.push(`${cur.name} went on vacation`);
+        else if (!cur.archived && prev.archived)
+          this.buffer.push(
+            prev.vacation
+              ? `${cur.name} is back from vacation`
+              : `${cur.name} is back from the archive`,
+          );
+        else if (cur.archived && !prev.archived) this.buffer.push(`${cur.name} was archived`);
+        else if (!cur.vacation && prev.vacation)
+          this.buffer.push(`${cur.name}'s vacation ended — now plain archived`);
       }
       // task transitions
       for (const [id, cur] of tasks) {

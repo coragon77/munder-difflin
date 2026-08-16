@@ -1029,6 +1029,13 @@ export class HiveManager {
       const reg = this.registry();
       const agent = reg.agents[id];
       if (!agent || agent.archived === archived) return;
+      // An UNARCHIVE cannot lift a vacation (vacation-review M2): the way back
+      // from vacation is a recall (respawn), never a plain unarchive — left
+      // unchecked it would either strand the agent at archived:false while
+      // still flagged (skipped by every vacation-aware sweep) or silently end
+      // a protected state with no one told. setVacation(false) is the one
+      // deliberate demote, and the recall clears the flag at spawn.
+      if (!archived && agent.vacation) return;
       agent.archived = archived;
       agent.lastSeen = Date.now();
       this.writeJson(join(root, 'registry.json'), reg);
@@ -1071,7 +1078,16 @@ export class HiveManager {
       const agent = reg.agents[id];
       if (!agent || !!agent.retired === retired) return;
       agent.retired = retired;
-      if (retired) agent.archived = true;
+      if (retired) {
+        agent.archived = true;
+        // Retiring ENDS any vacation (vacation-review M4): the two flags are
+        // mutually exclusive — a fired agent is gone, not resting — and a
+        // vacation flag that outlives the fire would keep a retired agent
+        // listed in god's fetchable vacation pool behind a recall that must
+        // refuse it. Cleared in the same atomic write as the fire itself.
+        agent.vacation = false;
+        delete agent.vacationSince;
+      }
       agent.lastSeen = Date.now();
       this.writeJson(join(root, 'registry.json'), reg);
       this.appendLog({ kind: 'retire', agentId: id, retired });
@@ -1106,16 +1122,21 @@ export class HiveManager {
    * Refused for the retired (`vacation` and `retired` are mutually exclusive —
    * a fired agent is gone, not resting) and for god. The intern check lives at
    * the park path in main, which knows the caller; here we guard what the
-   * registry itself can see. Best-effort + idempotent like setArchived/setRetired.
+   * registry itself can see. Idempotent like setArchived/setRetired — but it
+   * REPORTS the outcome (vacation-review M3): `true` means the registry now
+   * holds the requested state (or already did); `false` means a refusal or a
+   * failed write, so park/recall callers must not promise protection they
+   * never persisted.
    */
-  setVacation(id: string, vacation: boolean): void {
+  setVacation(id: string, vacation: boolean): boolean {
     const root = this.root();
-    if (!root) return;
+    if (!root) return false;
     try {
       const reg = this.registry();
       const agent = reg.agents[id];
-      if (!agent || !!agent.vacation === vacation) return;
-      if (vacation && (agent.retired || agent.isGod || reg.godId === id)) return;
+      if (!agent) return false;
+      if (!!agent.vacation === vacation) return true;
+      if (vacation && (agent.retired || agent.isGod || reg.godId === id)) return false;
       agent.vacation = vacation;
       if (vacation) {
         agent.archived = true;
@@ -1132,8 +1153,10 @@ export class HiveManager {
       } catch {
         /* snapshot is best-effort */
       }
+      return true;
     } catch {
       /* best-effort — never crash a lifecycle handler */
+      return false;
     }
   }
 

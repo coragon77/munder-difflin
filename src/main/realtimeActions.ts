@@ -623,6 +623,14 @@ function execDeleteTask(deps: RealtimeActionDeps, a: Record<string, unknown>): A
 function execUnarchive(deps: RealtimeActionDeps, a: Record<string, unknown>): ActionResult {
   const r = resolveAgent(str(a.agentId) || str(a.target) || str(a.name), deps.hiveRegistry());
   if ('error' in r) return { ok: false, spoken: r.error };
+  // A vacationer is NOT plain archived (vacation-review M2): unarchiving one
+  // would silently end a protected, recallable state. The sanctioned way back
+  // is a recall — the respawn that resumes the agent's own session.
+  if (deps.hiveRegistry().agents[r.id]?.vacation)
+    return {
+      ok: false,
+      spoken: `${r.name} is on vacation, not archived — recall them instead: that respawns their terminal and resumes their session.`,
+    };
   const res = deps.setArchived(r.id, false);
   attribute(deps, 'unarchive', r.id);
   return res.ok
