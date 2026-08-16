@@ -1068,7 +1068,7 @@ export function useHive(config: HarnessConfig | null): void {
           ? { id: a.id, name: a.name, cwd, provider, isGod: true, role: 'orchestrator (god)' }
           : a.isAssistant
           ? { id: a.id, name: a.name, cwd, provider, isAssistant: true, role: "Michael's prep assistant" }
-          : { id: a.id, name: a.name, cwd, provider, role: a.description };
+          : { id: a.id, name: a.name, cwd, provider };
         // Spawn at the terminal's real grid so the TUI's absolute cursor moves land
         // in the right cells (a size mismatch scatters the redraw).
         const entry = acquireTerminal(deadId);

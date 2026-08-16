@@ -109,6 +109,27 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
           }
           const [exe, ...args] = tokenizeCommand(command);
           const ptyId = a.ptyId ?? `pty-${a.id}`;
+          // ROLE IS IDENTITY, SET AT HIRE — a respawn must NOT echo the
+          // renderer `description` (a live status field: usePtyParser rewrites
+          // it to 'on standby' on idle) into the registry role. No role here;
+          // ensureAgent preserves the hired one.
+          //
+          // Resurrection guard: an ARCHIVED registry entry must never be
+          // restored. ensureAgent un-archives on any successful spawn, so
+          // checking AFTER the spawn (b5ea0bc) is too late for this half — the
+          // entry would already read archived:false and the check pass. Verify
+          // BEFORE spawning: archived in the registry means the operator (or a
+          // fire-request) retired this agent; report it and leave it restorable
+          // for a deliberate re-hire. Only enforced when the registry is
+          // populated — with the hive disabled there is nothing to verify
+          // against and restores behave as before.
+          const reg0 = await window.cth.hiveRegistry().catch(() => null);
+          const entry0 = reg0?.agents?.[a.id];
+          if (reg0 && Object.keys(reg0.agents).length > 0 && entry0?.archived) {
+            failures.push(`${a.name}: registry has them archived — not restored (re-hire deliberately instead)`);
+            console.warn('[restore] refusing to resurrect archived agent', a.id);
+            return null;
+          }
           // An isolated agent's worktree SURVIVES an app restart on disk (it's only
           // torn down on per-tab close / mid-session exit, not on quit). So re-enter
           // that exact worktree as the cwd rather than re-isolating — `git worktree
@@ -146,7 +167,7 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
             // agent id is preserved across restart, so its registry entry,
             // memory.md and inbox reattach by id. No-op without a recorded session.
             resume: true,
-            hive: { id: a.id, name: a.name, provider, cwd, role: a.description }
+            hive: { id: a.id, name: a.name, provider, cwd }
           });
           if (res.ok) {
             // The card must reflect the REGISTRY (source of truth), not just the

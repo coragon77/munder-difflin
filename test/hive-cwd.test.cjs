@@ -61,3 +61,45 @@ test('cwdValidity repairs a "~" left in an older registry', async (t) => {
   assert.equal(hive.cwdValidity('relative/path').valid, false,
     'a relative path is still an error, not silently resolved');
 });
+
+// ── role is identity: a respawn preserves the hired role ────────────────────
+// Live defect 2026-08-16 (intern-chip-test): respawn paths echoed the renderer
+// `description` (a live STATUS field — usePtyParser rewrites it to 'on standby')
+// into the registry role, so a hired 'intern' became 'on standby' and the
+// intern-scoped fire gate rejected him. ensureAgent must keep the prior role
+// whenever the spawn meta carries none.
+
+test('a respawn without a role preserves the hired role', async (t) => {
+  const home = tmpHome();
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const hive = new HiveManager(() => home);
+
+  await hive.ensureAgent({ id: 'intern-x', name: 'X', provider: 'claude', cwd: home, role: 'intern' });
+  // Respawn with NO role (the restore path after the fix) — same identity.
+  await hive.ensureAgent({ id: 'intern-x', name: 'X', provider: 'claude', cwd: home });
+
+  const agent = registryOf(home).agents['intern-x'];
+  assert.equal(agent.role, 'intern', 'role is identity — never defaulted over on respawn');
+  assert.equal(agent.archived, false, 'a successful respawn still un-archives');
+});
+
+test('an explicit role still wins (re-hire can upgrade/set the role)', async (t) => {
+  const home = tmpHome();
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const hive = new HiveManager(() => home);
+
+  await hive.ensureAgent({ id: 'w1', name: 'W', provider: 'claude', cwd: home });
+  await hive.ensureAgent({ id: 'w1', name: 'W', provider: 'claude', cwd: home, role: 'worker' });
+
+  assert.equal(registryOf(home).agents.w1.role, 'worker');
+});
+
+test('a fresh agent with no role still defaults to agent', async (t) => {
+  const home = tmpHome();
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const hive = new HiveManager(() => home);
+
+  await hive.ensureAgent({ id: 'w2', name: 'W2', provider: 'claude', cwd: home });
+
+  assert.equal(registryOf(home).agents.w2.role, 'agent');
+});
