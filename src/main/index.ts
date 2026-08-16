@@ -56,6 +56,7 @@ import { registerRealtimeActionIpc } from './realtimeActions';
 import { initCompletionWatcher } from './realtimeCompletionWatcher';
 import type { TaskCard, InboxMessage } from './realtimeCompletionWatcher';
 import { TelemetryCollector } from './telemetry';
+import { vacationBusy } from './vacationBusy';
 import { analytics } from './analytics';
 import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
@@ -4696,12 +4697,6 @@ function processFireRequest(filePath: string): void {
   archiveRequestIn(fireRequestsDir(), filePath, '.done');
 }
 
-/** An agent counts as BUSY when its PTY printed inside this window — the same
- *  objective, main-owned signal the repo checkout guard uses (index.ts:3254).
- *  Registry `status` is written once at spawn and never updated, so it cannot
- *  answer this. */
-const VACATION_BUSY_MS = 10_000;
-
 /** Send a human-created agent on vacation: validate, tear the PTY down cleanly,
  *  set `archived + vacation`, tell the floor. One code path for god's
  *  vacation-request, the UI button and the voice verb. */
@@ -4716,8 +4711,15 @@ function parkAgent(agentId: string, reason?: string): { ok: boolean; error?: str
   if (entry.vacation) return { ok: false, error: `"${agentId}" is already on vacation` };
   const ptyId = ptyForAgent(agentId);
   if (ptyId) {
-    const last = ptyManager.lastOutputAt(ptyId);
-    if (typeof last === 'number' && Date.now() - last < VACATION_BUSY_MS) {
+    // Busy = REAL work inside the window (rule + rationale in vacationBusy.ts):
+    // telemetry liveness (hook/OTLP lastActive) is primary; PTY output is only
+    // the fallback for agents with no telemetry row. An idle claude TUI
+    // repaints its chrome continuously, so lastOutputAt alone read every idle
+    // pane as "actively working" (card vacation-busy-check-tui-repaint).
+    const row = telemetry.snapshot().usage.find((u) => u.agentId === agentId);
+    const telemetryAgeMs = row && row.ts > 0 ? Date.now() - row.ts : undefined;
+    const ptyIdleMs = ptyManager.idleFor(ptyId);
+    if (vacationBusy(telemetryAgeMs, ptyIdleMs)) {
       return { ok: false, error: `"${agentId}" is actively working — park it when it goes quiet` };
     }
     // A park is not a firing: the worktree IS the agent's state, and the recall
