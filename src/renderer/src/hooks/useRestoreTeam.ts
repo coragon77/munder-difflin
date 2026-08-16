@@ -46,6 +46,12 @@ const getRestoring = (): boolean => restoring;
 const getNote = (): string | null => note;
 const getAutoRestoring = (): boolean => autoRestoring;
 
+/** Ids currently on vacation, per the registry. Pulled out of restoreTeam so it
+ *  can be unit-tested without mounting the hook (see vacation-restore-skip.test.cjs). */
+export function parkedAgentIds(reg: { agents: Record<string, { vacation?: boolean }> }): Set<string> {
+  return new Set(Object.entries(reg.agents).filter(([, a]) => a.vacation).map(([id]) => id));
+}
+
 export interface RestoreTeamState {
   restoring: boolean;
   /** True when the run in flight was started automatically at boot, not by a
@@ -89,7 +95,7 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
     let parked: Set<string>;
     try {
       const reg = await window.cth.hiveRegistry();
-      parked = new Set(Object.entries(reg.agents).filter(([, a]) => a.vacation).map(([id]) => id));
+      parked = parkedAgentIds(reg);
     } catch {
       restoring = false;
       note = "couldn't verify vacation status — restore skipped, try again";
