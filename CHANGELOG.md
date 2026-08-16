@@ -19,6 +19,11 @@ All notable changes to this project are documented here. The format is based on
   first agent spawn; god can drive it over its Unix socket (`kitty @ --to unix:… launch/send-text`),
   and agent PTYs get `KITTY_LISTEN_ON`/`KITTY_WINDOW_ID` so handoff skills split into it.
   Documented in the generated hive `COMMANDS.md`.
+- **Quiet-floor standup skip.** The ops-standup mission skips its dispatch while the floor is
+  quiet — no non-god agent active since the last fire and no `doing`/`blocked` cards — instead
+  of waking god for a turn nobody needed (backfilled on; any read error fails toward firing).
+  Per-mission **QUIET FLOOR** toggle in the Schedules mission editor; an explicit `false`
+  survives the backfill.
 
 ### Changed
 - **Spawn-requests honor autoMode.** God-hired workers and interns now get the engine's
