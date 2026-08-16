@@ -287,6 +287,9 @@ export interface HarnessConfig {
   slackChannelId?: string;
   slackPort?: number;
   slackProactivePosting?: boolean;
+  /** Telegram master toggle (unset = on, matching main's non-breaking default;
+  *  the token/chat id NEVER live here — they stay in .env.telegram, main-only). */
+  telegramEnabled?: boolean;
   webhookEnabled?: boolean;
   webhookSecret?: string;
   webhookPort?: number;
@@ -1080,6 +1083,14 @@ const api = {
     proactivePosting?: boolean;
   }): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('slack:setConfig', patch),
+  /** Non-secret Telegram runtime state (token value never crosses IPC). */
+  telegramStatus: (): Promise<{ running: boolean; hasToken: boolean; chatId?: number | null }> =>
+    ipcRenderer.invoke('telegram:status'),
+  /** Persist Telegram settings (token/chat id → .env.telegram write-only,
+   *  enabled → config) and reconcile the trigger live — no app restart. */
+  telegramSetConfig: (patch: { enabled?: boolean; botToken?: string; chatId?: string }):
+    Promise<{ ok: boolean; running: boolean; error?: string }> =>
+    ipcRenderer.invoke('telegram:setConfig', patch),
 
   // ─── Generic webhook + status API (POST → work, GET → status) ────────────────
   /** Start the generic webhook server; returns the public endpoint URL callers

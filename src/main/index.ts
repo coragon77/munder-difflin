@@ -33,7 +33,7 @@ import { PersistStore } from './db';
 import { readAgentUsage, readContextTokens, seedSessionTranscript, resolveSessionCwd } from './transcript';
 import { listIssues, listCIRuns } from './github';
 import { SlackWebhookServer, SlackReplyServer, postSlackReply, type SlackEventFile } from './slack';
-import { TelegramTrigger } from './telegram';
+import { TelegramTrigger, resolveTelegramRuntime, telegramEnvSummary, writeTelegramEnv } from './telegram';
 import { startKittySatellite, kittySocketPath, kittyBinPath, godCommand } from './kittySatellite';
 import {
   WebhookServer,
@@ -1676,8 +1676,10 @@ function stopSlackServer(): void {
 /** The single Telegram trigger instance, or null when not running. */
 let telegramTrigger: TelegramTrigger | null = null;
 
-/** Env file with the bot token (dev: repo root; packaged: userData). The file's
- *  presence IS the on/off switch — no config row, no UI toggle for v1. */
+/** Env file with the bot token (dev: repo root; packaged: userData). Still the
+ *  feature's STORAGE (token + claimed chat id); the master on/off toggle lives
+ *  in config.json (`telegramEnabled`, unset = on) and Settings edits the file
+ *  write-only via writeTelegramEnv — see telegram:setConfig below. */
 function telegramEnvFile(): string {
   return app.isPackaged ? join(app.getPath('userData'), '.env.telegram') : join(app.getAppPath(), '.env.telegram');
 }
@@ -3836,6 +3838,41 @@ ipcMain.handle('slack:setConfig', (_evt, patch: unknown) => {
   return { ok: true };
 });
 
+// ─── IPC: Telegram trigger (settings + live on/off, card telegram-settings-toggle-20260816) ─
+/** Non-secret runtime state for Settings: is the poll loop live, is a token
+ *  configured, which chat owns the hive. The token VALUE never crosses IPC. */
+ipcMain.handle('telegram:status', () => ({
+  running: telegramTrigger != null,
+  ...telegramEnvSummary(telegramEnvFile())
+}));
+/** The one write path for Telegram settings. The token + chat id stay in
+ *  `.env.telegram` (write-only from the renderer — never read back across IPC);
+ *  `enabled` goes to config.json. Reconciles the trigger LIVE (no restart):
+ *  off stops the poll loop, on (re)starts it, an edited token restarts it.
+ *  `startTelegramServer` itself stops any prior instance first, so 'start' and
+ *  'restart' share one branch. */
+ipcMain.handle('telegram:setConfig', async (_evt, patch: unknown) => {
+  const p = (patch ?? {}) as { enabled?: unknown; botToken?: unknown; chatId?: unknown };
+  let envChanged = false;
+  const env: { TELEGRAM_BOT_TOKEN?: string | null; MD_TELEGRAM_CHAT_ID?: string | null } = {};
+  if (typeof p.botToken === 'string') env.TELEGRAM_BOT_TOKEN = p.botToken.trim() || null;
+  if (typeof p.chatId === 'string') env.MD_TELEGRAM_CHAT_ID = p.chatId.trim() || null;
+  if (Object.keys(env).length > 0) {
+    try { writeTelegramEnv(telegramEnvFile(), env); envChanged = true; }
+    catch (e) { return { ok: false, running: telegramTrigger != null, error: 'could not write ' + telegramEnvFile() + ': ' + (e instanceof Error ? e.message : String(e)) }; }
+  }
+  if (typeof p.enabled === 'boolean') writeConfig({ telegramEnabled: p.enabled });
+  const { hasToken } = telegramEnvSummary(telegramEnvFile());
+  const action = resolveTelegramRuntime(telegramTrigger != null, readConfig().telegramEnabled, hasToken, envChanged);
+  let error: string | undefined;
+  if (action === 'stop') stopTelegramServer();
+  if (action === 'start' || action === 'restart') {
+    const r = await startTelegramServer();
+    if (!r.ok) error = r.error;
+  }
+  return { ok: !error, running: telegramTrigger != null, error };
+});
+
 // ─── IPC: Triggers — context (auto-compact / auto-clear) ────────────────────
 ipcMain.handle('triggers:getContext', () => readConfig().contextTrigger ?? DEFAULT_CONTEXT_TRIGGER);
 ipcMain.handle('triggers:setContext', (_evt, arg: unknown) => {
@@ -5004,12 +5041,16 @@ app.whenReady().then(() => {
       else console.log('[slack] webhook listening', r.url ? `(tunnel: ${r.url})` : '(no tunnel)');
     });
   }
-  // Auto-start the Telegram trigger when .env.telegram exists (the file IS the
-  // switch). Best-effort: offline/errors are logged by the poll loop's backoff.
-  void startTelegramServer().then((r) => {
-    if (!r.ok && r.error && !r.error.includes('no TELEGRAM_BOT_TOKEN')) console.error('[telegram] auto-start failed:', r.error);
-    else if (r.ok) console.log('[telegram] trigger polling');
-  });
+  // Auto-start the Telegram trigger unless explicitly disabled in Settings.
+  // Default (unset) keeps today's behaviour: the trigger runs whenever
+  // `.env.telegram` carries a token; no token → start() reports not-configured,
+  // which is logged quietly below.
+  if (readConfig().telegramEnabled ?? true) {
+    void startTelegramServer().then((r) => {
+      if (!r.ok && r.error && !r.error.includes('no TELEGRAM_BOT_TOKEN')) console.error('[telegram] auto-start failed:', r.error);
+      else if (r.ok) console.log('[telegram] trigger polling');
+    });
+  }
   // Auto-start the generic webhook only for endpoints the user has explicitly
   // enabled (each with its own secret) — never a default-on public surface.
   // Opt-in, like Slack; an install with no enabled endpoint opens no tunnel.

@@ -332,6 +332,12 @@ export interface HarnessConfig {
    *  done-reply round-trip (a user @-mention → task → result posted back to that
    *  thread) or an agent's own direct in-thread reply — those always stay on. */
   slackProactivePosting?: boolean;
+  /** Master toggle for the Telegram trigger. UNSET = enabled, which keeps the
+   *  pre-Settings behaviour intact: `.env.telegram` carrying a token ⇒ the
+   *  trigger polls (the file stays the feature's storage; the TOKEN itself never
+   *  lives here — config.json is renderer-visible, .env.telegram is not).
+   *  `false` fully stops bot polling, live (no restart). Mirrors slackEnabled. */
+  telegramEnabled?: boolean;
 
   // ─── Free Flow (voice dictation → message queue) ───────────────────────────
   /** Master toggle for Free Flow push-to-talk dictation. Default OFF: with it off

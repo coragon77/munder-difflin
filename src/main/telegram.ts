@@ -9,7 +9,9 @@
  *
  * SECURITY MODEL (mirrors slack.ts):
  *   - the bot token is read from `.env.telegram` and NEVER leaves this class —
- *     not in prompts, not in agent env, not in logs;
+ *     not in prompts, not in agent env, not in logs, not in config.json (the
+ *     renderer-visible settings store); Settings edits it WRITE-ONLY through
+ *     `writeTelegramEnv` — the value never crosses IPC back to the renderer;
  *   - inbound is allowlisted to ONE chat id (`MD_TELEGRAM_CHAT_ID` in the same
  *     env file). If unset, the FIRST chat to send `/start` claims ownership and
  *     the id is persisted back to the file — every other chat is dropped
@@ -49,6 +51,76 @@ interface TgUpdate {
   message?: { chat?: { id?: number }; text?: string };
 }
 
+/** Parse `KEY=value` lines from a `.env.telegram`-style file. Exported for
+ *  tests and the settings plumbing; tolerant of missing files (empty map). */
+export function readTelegramEnv(envFile: string): Map<string, string> {
+  const out = new Map<string, string>();
+  try {
+    for (const line of readFileSync(envFile, 'utf8').split('\n')) {
+      const i = line.indexOf('=');
+      if (i > 0 && !line.trimStart().startsWith('#')) {
+        out.set(line.slice(0, i).trim(), line.slice(i + 1).trim());
+      }
+    }
+  } catch { /* missing file → empty map */ }
+  return out;
+}
+
+/** Non-secret summary of the env file for IPC (`telegram:status`): whether a
+ *  token exists and which chat (if any) owns the hive. The token VALUE never
+ *  crosses this boundary — that is the whole point of the shape. */
+export function telegramEnvSummary(envFile: string): { hasToken: boolean; chatId: number | null } {
+  const env = readTelegramEnv(envFile);
+  const claimed = env.get('MD_TELEGRAM_CHAT_ID');
+  return { hasToken: !!env.get('TELEGRAM_BOT_TOKEN'), chatId: claimed ? Number(claimed) : null };
+}
+
+/** Key-level edit of `.env.telegram`, preserving every other line (comments
+ *  included). A blank/null value REMOVES the key — that is how Settings clears
+ *  the chat id (back to claim-on-first-/start). Written by the settings IPC so
+ *  the token can be edited without ever being read back into the renderer. */
+export function writeTelegramEnv(
+  envFile: string,
+  patch: { TELEGRAM_BOT_TOKEN?: string | null; MD_TELEGRAM_CHAT_ID?: string | null }
+): void {
+  const lines = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n') : [];
+  for (const [key, value] of Object.entries(patch)) {
+    const wanted = typeof value === 'string' && value.trim() ? value.trim() : null;
+    let done = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.trimStart().startsWith('#')) continue;
+      const eq = line.indexOf('=');
+      if (eq <= 0 || line.slice(0, eq).trim() !== key) continue;
+      if (wanted === null) lines.splice(i--, 1);
+      else lines[i] = `${key}=${wanted}`;
+      done = true;
+    }
+    if (!done && wanted !== null) lines.push(`${key}=${wanted}`);
+  }
+  // Trim a trailing blank-run so repeated claim-appends (handleUpdate appends
+  // `MD_TELEGRAM_CHAT_ID=...` directly) don't accumulate empty lines.
+  while (lines.length && lines[lines.length - 1] === '') lines.pop();
+  writeFileSync(envFile, lines.length ? lines.join('\n') + '\n' : '');
+}
+
+/** Pure toggle/start/stop decision for the settings IPC + boot path. `enabled`
+ *  is the RAW config value: undefined = enabled, exactly the pre-Settings
+ *  behaviour (env file present ⇒ feature on — non-breaking default). Returns
+ *  what the caller should do with the trigger so `telegram:setConfig` takes
+ *  effect live, with no app restart. */
+export function resolveTelegramRuntime(
+  running: boolean,
+  enabled: boolean | undefined,
+  hasToken: boolean,
+  envChanged: boolean
+): 'start' | 'stop' | 'restart' | 'none' {
+  const wantsRun = (enabled ?? true) && hasToken;
+  if (!wantsRun) return running ? 'stop' : 'none';
+  if (!running) return 'start';
+  return envChanged ? 'restart' : 'none';
+}
+
 const log = (...a: unknown[]) => console.log('[telegram]', ...a);
 
 export class TelegramTrigger {
@@ -68,16 +140,7 @@ export class TelegramTrigger {
 
   /** Parse `KEY=value` lines from the env file (no shell semantics needed). */
   private readEnv(): Map<string, string> {
-    const out = new Map<string, string>();
-    try {
-      for (const line of readFileSync(this.opts.envFile, 'utf8').split('\n')) {
-        const i = line.indexOf('=');
-        if (i > 0 && !line.trimStart().startsWith('#')) {
-          out.set(line.slice(0, i).trim(), line.slice(i + 1).trim());
-        }
-      }
-    } catch { /* missing file → empty map → start() reports not-configured */ }
-    return out;
+    return readTelegramEnv(this.opts.envFile);
   }
 
   private api(method: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<{ ok: boolean; result?: unknown; description?: string }> {

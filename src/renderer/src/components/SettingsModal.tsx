@@ -301,6 +301,20 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
   // Whether the connect-steps help panel is expanded.
   const [showSlackHelp, setShowSlackHelp] = useState(false);
 
+  // --- Telegram integration ---
+  // Toggle state mirrors config (unset = ON, the non-breaking default); token +
+  // chat id are WRITE-ONLY: the input starts blank, a blank save keeps the
+  // current token (tgHasToken shows whether one exists — the value never
+  // crosses IPC into the renderer).
+  const [tgEnabled, setTgEnabled] = useState(config.telegramEnabled ?? true);
+  const [tgRunning, setTgRunning] = useState(false);
+  const [tgHasToken, setTgHasToken] = useState(false);
+  const [tgChatId, setTgChatId] = useState<number | null>(null);
+  const [tgToken, setTgToken] = useState('');
+  const [tgChatIdInput, setTgChatIdInput] = useState('');
+  const [tgBusy, setTgBusy] = useState(false);
+  const [tgNote, setTgNote] = useState('');
+
   // --- Webhook triggers (a LIST; src/shared/triggers.ts owns the type) ---------
   // The list itself lives in the store, not in local state: the Triggers tab
   // edits the same webhooks, and one of the two surfaces holding a private copy
@@ -452,6 +466,7 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       setSlackChannel(cc.slackChannelId ?? '');
       setSlackPort(String(cc.slackPort ?? 3847));
       setSlackProactivePosting(cc.slackProactivePosting ?? false);
+      setTgEnabled((cc as HarnessConfig).telegramEnabled ?? true);
       const kgOn = (cc as { knowledgeGraph?: { enabled?: boolean } }).knowledgeGraph?.enabled === true;
       setKgEnabled(kgOn);
       setFreeflowEnabled(cc.freeflowEnabled !== false);
@@ -468,6 +483,15 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       setRunning(s.running);
       if (s.url) setTunnelUrl(s.url);
     }).catch(() => { /* status unavailable - assume not running */ });
+    // Telegram: non-secret runtime state only (running / token-exists / owner
+    // chat). Also (re)seeds the chat-id input from the claimed chat, if any.
+    window.cth.telegramStatus().then((s) => {
+      if (!alive) return;
+      setTgRunning(s.running);
+      setTgHasToken(s.hasToken);
+      setTgChatId(s.chatId ?? null);
+      setTgChatIdInput(s.chatId != null ? String(s.chatId) : '');
+    }).catch(() => { /* status unavailable */ });
     // Triggers: re-read main and push the result into the shared mirror. App
     // already seeded it at launch; this catches anything the Triggers tab (or
     // another window) changed since, and is the ONLY place Settings reads them —
@@ -538,6 +562,39 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
     catch (e) { setSlackNote(e instanceof Error ? e.message : String(e)); }
     finally { setSlackBusy(false); }
   };
+
+  // --- Telegram handlers ---
+  /** The one write path. The toggle takes effect LIVE (main reconciles the poll
+   *  loop — no app restart); a save with a typed token restarts the trigger with
+   *  the new credentials. Blank token input = keep the current one. */
+  const applyTelegram = async (patch: { enabled?: boolean; botToken?: string; chatId?: string }) => {
+    setTgBusy(true); setTgNote('');
+    try {
+      if (patch.enabled !== undefined) setTgEnabled(patch.enabled);
+      const res = await window.cth.telegramSetConfig(patch);
+      setTgRunning(res.running);
+      if (res.ok) {
+        setTgNote(patch.enabled === undefined ? 'saved' : patch.enabled ? 'on' : 'off');
+        setTgToken('');
+      } else {
+        setTgNote(res.error ?? 'failed');
+        if (patch.enabled !== undefined) setTgEnabled(!patch.enabled);
+      }
+      // Refresh the non-secret summary (token existence / owner chat may have
+      // changed server-side — e.g. claim-on-/start after a chat-id clear).
+      const s = await window.cth.telegramStatus();
+      setTgHasToken(s.hasToken); setTgChatId(s.chatId ?? null);
+      if (s.chatId == null) setTgChatIdInput('');
+    } catch (e) {
+      setTgNote(e instanceof Error ? e.message : String(e));
+      if (patch.enabled !== undefined) setTgEnabled(!patch.enabled);
+    } finally { setTgBusy(false); }
+  };
+
+  const saveTelegram = () => applyTelegram({
+    botToken: tgToken.trim() || undefined,
+    chatId: tgChatIdInput.trim()
+  });
 
   // --- Webhook trigger handlers ---
   /** The one write path. Updates the shared mirror FIRST so the Triggers tab
@@ -1477,6 +1534,90 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                               <code>message.channels</code> / <code>message.groups</code> bot event, set the
                               Request URL above, and reinstall to your workspace. The tunnel URL changes on every
                               restart, so re-paste it after pressing Start again.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ height: 2, background: 'var(--cth-ink-300)' }} />
+
+                      {/* Telegram integration — phone → Michael's queue over the
+                          bot's outbound poll; no tunnel, no port. Master toggle
+                          stops/starts the poll loop LIVE. */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{
+                          fontFamily: 'var(--cth-font-display)', fontSize: 8, lineHeight: '12px',
+                          color: 'var(--cth-ink-500)', textTransform: 'uppercase', marginBottom: 2
+                        }}>
+                          Telegram
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>
+                              Telegram integration
+                            </span>
+                            <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
+                              Talk to the hive from your phone — replies come back in the same chat.
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{
+                              fontSize: 12, lineHeight: '16px',
+                              color: tgRunning ? 'var(--cth-mint-700, #1f7a4d)' : 'var(--cth-ink-500)'
+                            }}>
+                              {tgRunning ? '● Connected' : '○ Not connected'}
+                            </span>
+                            <PixelButton
+                              variant={tgEnabled ? 'primary' : 'secondary'}
+                              size="sm"
+                              disabled={tgBusy}
+                              onClick={() => applyTelegram({ enabled: !tgEnabled })}
+                            >
+                              {tgEnabled ? 'on' : 'off'}
+                            </PixelButton>
+                          </div>
+                        </div>
+
+                        {tgEnabled && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            {/* Token input is WRITE-ONLY: blank keeps the stored one
+                                (main never sends the value back); typing replaces. */}
+                            <div style={{ display: 'flex', gap: 16 }}>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                                <span style={slackLabelStyle}>Bot token</span>
+                                <input
+                                  type="password"
+                                  value={tgToken}
+                                  onChange={(e) => setTgToken(e.target.value)}
+                                  placeholder={tgHasToken ? 'set — leave blank to keep' : 'from @BotFather'}
+                                  style={{ ...slackInputStyle, fontFamily: 'var(--cth-font-mono)' }}
+                                />
+                              </label>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                                <span style={slackLabelStyle}>Chat id (optional)</span>
+                                <input
+                                  value={tgChatIdInput}
+                                  onChange={(e) => setTgChatIdInput(e.target.value)}
+                                  placeholder={tgChatId != null ? '' : 'blank — first /start claims the chat'}
+                                  style={{ ...slackInputStyle, fontFamily: 'var(--cth-font-mono)' }}
+                                />
+                              </label>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <PixelButton variant="ghost" size="sm" onClick={saveTelegram} disabled={tgBusy}>
+                                save
+                              </PixelButton>
+                              {tgNote && (
+                                <span style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>{tgNote}</span>
+                              )}
+                            </div>
+
+                            <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
+                              Get a token from <code>@BotFather</code>, paste it above and press save. The first chat to
+                              send <code>/start</code> to the bot owns the hive — every other chat is silently ignored.
+                              Turning the integration off stops the bot poll immediately (no app restart); blanking the
+                              chat id hands ownership back to the next <code>/start</code>.
                             </span>
                           </div>
                         )}
