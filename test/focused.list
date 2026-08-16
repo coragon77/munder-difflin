@@ -52,3 +52,4 @@ test/focused-list.test.cjs
 test/worktree-adopt.test.cjs
 test/vacation-floor-watcher.test.cjs
 test/spawn-identity.test.cjs
+test/office-departures.test.cjs

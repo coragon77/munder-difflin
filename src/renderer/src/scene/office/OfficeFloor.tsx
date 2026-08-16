@@ -3,6 +3,12 @@ import { Application, Container, Graphics, type Ticker, Texture } from 'pixi.js'
 // PixiJS uses new Function() internally, blocked by Electron CSP — this patches it.
 import 'pixi.js/unsafe-eval';
 import { useStore, type Agent } from '@/store/store';
+import {
+  DEPARTURE_THOUGHTS,
+  detectDepartures,
+  type Departure,
+  type DepartureSnapshot,
+} from './departures';
 import { TiledMapRenderer } from './TiledMapRenderer';
 import { Camera } from './Camera';
 import { Character, paintCup } from './Character';
@@ -212,6 +218,11 @@ export function OfficeFloor() {
     // broadcast doesn't bury the floor in paper.
     const envelopes: MessageEnvelope[] = [];
     const MAX_ENVELOPES = 16;
+    // Departing agents outlive their roster row: the backend parks/fires/
+    // archives instantly, but the ghost sprite keeps walking to the door
+    // (see departures.ts for the transition diff and the bubble pools).
+    const departures: Array<{ character: Character; timer: number; finished: boolean }> = [];
+    const DEPARTURE_TIMEOUT_S = 20; // hard expiry — a blocked path can't strand a ghost
 
     const init = async () => {
       // Load the active theme bundle (falls back to 'office' on a bad/absent bundle).
@@ -1584,7 +1595,7 @@ export function OfficeFloor() {
         applyState(agent, rt, true);
       };
 
-      const removeCharacter = (id: string) => {
+      const removeCharacter = (id: string, departure?: Departure) => {
         const rt = runtimes.get(id);
         if (!rt) return;
         releaseBreak(rt); // free any café seat it was holding
@@ -1603,10 +1614,44 @@ export function OfficeFloor() {
         }
         if (rt.seatIndex != null) seatClaims.delete(rt.seatIndex);
         rt.screen?.destroy();
+        runtimes.delete(id);
+        if (departure) {
+          // A departure walks out visibly instead of fading: bubble up, then
+          // out through the same bottom door the recall walk-in uses. The
+          // ghost lives in `departures` until it arrives (or the watchdog
+          // expires it) — reloads can't strand it because ghosts are
+          // scene-local, torn down with the rest of the floor.
+          const lines = DEPARTURE_THOUGHTS[departure.kind];
+          rt.character.showThought(lines[Math.floor(Math.random() * lines.length)]);
+          const ghost = { character: rt.character, timer: 0, finished: false };
+          departures.push(ghost);
+          rt.character.walkToAndThen(entrance, () => finishDeparture(ghost));
+          return;
+        }
         rt.character.hide(0);
         // give the fade-out a moment, then destroy
         setTimeout(() => rt.character.destroy(), 700);
-        runtimes.delete(id);
+      };
+
+      const finishDeparture = (ghost: {
+        character: Character;
+        timer: number;
+        finished: boolean;
+      }) => {
+        if (ghost.finished) return;
+        ghost.finished = true;
+        const i = departures.indexOf(ghost);
+        if (i >= 0) departures.splice(i, 1);
+        ghost.character.hide(0);
+        setTimeout(() => ghost.character.destroy(), 700);
+      };
+
+      const updateDepartures = (dt: number): void => {
+        for (const ghost of [...departures]) {
+          ghost.timer += dt;
+          ghost.character.update(dt);
+          if (ghost.timer > DEPARTURE_TIMEOUT_S) finishDeparture(ghost); // never arrived — give up
+        }
       };
 
       // Map an agent's store state onto its on-floor character.
@@ -1755,11 +1800,15 @@ export function OfficeFloor() {
         }
       };
 
-      const syncAgents = () => {
-        const { agents } = useStore.getState();
+      const syncAgents = (prev?: DepartureSnapshot) => {
+        const state = useStore.getState();
+        const { agents } = state;
+        // Which vanished roster rows are staged departures (walk to the door)
+        // vs plain removals (dead-PTY reconcile → keep the quiet fade).
+        const going = new Map(prev ? detectDepartures(prev, state).map((d) => [d.id, d]) : []);
         const present = new Set(agents.map((a) => a.id));
         for (const id of Array.from(runtimes.keys())) {
-          if (!present.has(id)) removeCharacter(id);
+          if (!present.has(id)) removeCharacter(id, going.get(id));
         }
         for (const agent of agents) {
           const rt = runtimes.get(agent.id);
@@ -1772,7 +1821,7 @@ export function OfficeFloor() {
 
       let lastSelected: string | null = useStore.getState().selectedId;
       const unsubscribe = useStore.subscribe((s, prev) => {
-        if (s.agents !== prev.agents) syncAgents();
+        if (s.agents !== prev.agents) syncAgents(prev);
         if (s.selectedId !== lastSelected) {
           lastSelected = s.selectedId;
           const rt = s.selectedId ? runtimes.get(s.selectedId) : undefined;
@@ -1881,6 +1930,7 @@ export function OfficeFloor() {
         updateErrands(dt);
         updateBossAura(dt);
         updateDeskLife(dt);
+        updateDepartures(dt);
         updateBoardMoves(dt);
         resolveBubbleOverlaps();
         for (let i = envelopes.length - 1; i >= 0; i--) {
