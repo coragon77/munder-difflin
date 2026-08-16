@@ -14,10 +14,17 @@ Viewer/controller, not a CLI replacement.
 ```bash
 npm install        # postinstall rebuilds node-pty for Electron's ABI (most common setup failure)
 npm run dev        # live-reloading Electron dev build
-npm run typecheck  # node + web TS projects — the de-facto CI gate, keep it green
-npm run test:focused   # node --test suite in test/ (CONTRIBUTING.md predates it)
+npm run typecheck  # node + web TS projects — part of the standard gate
+npm run lint       # biome check (lint rules + format verification) — part of the standard gate
+npm run test:focused   # node --test suite in test/ — part of the standard gate
 npm run build      # production build — must work before any PR
 ```
+
+**Standard gate** = `npm run typecheck && npm run lint && npm run test:focused` —
+run all three before claiming a card done. Lint findings you can't resolve:
+`npm run format` fixes formatting; ask god before suppressing a rule
+(`biome-ignore` comments carry a reason). Biome config and rule deviations
+live in `biome.json`.
 
 ## Process pointers
 
