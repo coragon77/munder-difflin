@@ -28,6 +28,43 @@ export function withHiveRuntimeFallback(path: string, hiveRoot?: string): string
   return [...entries, dir].join(delimiter);
 }
 
+/** Merge the pane-PTY environment. Exported for tests.
+ *
+ *  Agent panes (extra carries AGENT_ID) must be claude sessions of their OWN,
+ *  not nested children of whatever claude session launched the harness: when
+ *  the app starts from inside a claude session (e.g. god's detached restart
+ *  script), the inherited CLAUDE_* child-session markers make the CLI disable
+ *  transcript saving fleet-wide (--resume broken). Scrub the markers for agent
+ *  panes and belt-and-suspenders force persistence on (the CLI banner itself
+ *  names this override). Non-agent panes keep inheriting untouched. */
+export function buildSpawnEnv(
+  inherited: NodeJS.ProcessEnv,
+  extra: Record<string, string> | undefined,
+  path: string
+): Record<string, string> {
+  const env = {
+    ...inherited,
+    PATH: path,
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor',
+    // Help apps that look for a real interactive shell
+    FORCE_COLOR: '1',
+    // Per-agent hive identity (AGENT_ID, HIVE_ROOT, …) when provided.
+    ...(extra ?? {})
+  } as Record<string, string>;
+  if (extra?.AGENT_ID) {
+    for (const k of [
+      'CLAUDE_CODE_CHILD_SESSION',
+      'CLAUDE_PID',
+      'CLAUDECODE',
+      'CLAUDE_CODE_SESSION_ID',
+      'CLAUDE_CODE_ENTRYPOINT'
+    ]) delete env[k];
+    env.CLAUDE_CODE_FORCE_SESSION_PERSISTENCE = '1';
+  }
+  return env;
+}
+
 interface PtySession {
   id: string;
   proc: pty.IPty;
@@ -332,16 +369,7 @@ export class PtyManager {
         cols: opts.cols ?? 100,
         rows: opts.rows ?? 30,
         cwd: opts.cwd,
-        env: {
-          ...process.env,
-          PATH: userPath,
-          TERM: 'xterm-256color',
-          COLORTERM: 'truecolor',
-          // Help apps that look for a real interactive shell
-          FORCE_COLOR: '1',
-          // Per-agent hive identity (AGENT_ID, HIVE_ROOT, …) when provided.
-          ...(opts.env ?? {})
-        } as Record<string, string>
+        env: buildSpawnEnv(process.env, opts.env, userPath)
       });
 
       // Capture THIS session object so the proc's callbacks can tell whether the
