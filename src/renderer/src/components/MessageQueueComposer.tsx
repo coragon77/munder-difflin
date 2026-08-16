@@ -32,6 +32,11 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
   const removeQueuedMessage = useStore((s) => s.removeQueuedMessage);
   const releaseQueuedMessage = useStore((s) => s.releaseQueuedMessage);
   const clearQueue = useStore((s) => s.clearQueue);
+  // Collapse (per agent, persists across panel switches). Collapsed still
+  // shows the queue count + held/delivery hints in the slim bar — a queued
+  // message must never become invisible just because the box is folded up.
+  const collapsed = useStore((s) => !!s.composerCollapsed[agent.id]);
+  const toggleCollapsed = useStore((s) => s.toggleComposerCollapsed);
 
   // Draft lives in the store, keyed by agent — switching agents remounts this
   // component, and component-local state would silently eat the typed text.
@@ -171,6 +176,43 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
     ? `held — ${agent.name}'s terminal has exited`
     : `sending to ${agent.name} one-by-one…`;
 
+  // Collapsed: one slim bar — toggle, label, count, and (if any) the status
+  // hint. Clicking anywhere on it expands again. The full composer stays
+  // mounted only in the expanded state.
+  if (collapsed) {
+    return (
+      <div
+        onClick={toggleCollapsed.bind(null, agent.id)}
+        title="Expand the message queue box"
+        style={{
+          flexShrink: 0, cursor: 'pointer',
+          borderTop: '1px solid var(--cth-ink-700)',
+          background: 'var(--cth-cream-100)',
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '4px 8px'
+        }}>
+        <span style={{
+          fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '12px',
+          color: 'var(--cth-ink-700)'
+        }}>▾ QUEUE</span>
+        {queue.length > 0 && (
+          <span style={{
+            fontSize: 11, padding: '1px 6px 0',
+            background: 'var(--cth-cream-200)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+            fontFamily: 'var(--cth-font-ui)', color: 'var(--cth-ink-900)'
+          }}>{queue.length}</span>
+        )}
+        {statusHint && (
+          <span style={{
+            fontSize: 12, color: 'var(--cth-ink-500)',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+          }}>{statusHint}</span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
@@ -198,11 +240,14 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
       )}
       {/* Header: label, count, status, clear-all */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{
-          fontFamily: 'var(--cth-font-display)',
-          fontSize: 9, lineHeight: '12px',
-          color: 'var(--cth-ink-700)'
-        }}>QUEUE</span>
+        <button
+          onClick={() => toggleCollapsed(agent.id)}
+          title="Collapse the queue box — the terminal gets the space"
+          style={{
+            border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
+            fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '12px',
+            color: 'var(--cth-ink-700)'
+          }}>▴ QUEUE</button>
         {queue.length > 0 && (
           <span style={{
             fontSize: 11, padding: '1px 6px 0',

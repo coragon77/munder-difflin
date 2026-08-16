@@ -207,6 +207,10 @@ interface State {
    *  composer) doesn't eat what the user was typing. */
   drafts: Record<string, string>;
   setDraft: (agentId: string, text: string) => void;
+  /** Per-agent composer (QUEUE box) collapsed flag — collapses to a slim bar
+   *  so the terminal gets the space. Persists across panel switches/remounts. */
+  composerCollapsed: Record<string, boolean>;
+  toggleComposerCollapsed: (agentId: string) => void;
   /** Mirror of config.freeflowEnabled so the composer can show/hide the Free Flow
    *  mic button reactively (set by App on config load and by Settings on save). */
   freeflowEnabled: boolean;
@@ -702,6 +706,9 @@ export const useStore = create<State>((set) => ({
   drafts: {},
   setDraft: (agentId, text) =>
     set((s) => ({ drafts: { ...s.drafts, [agentId]: text } })),
+  composerCollapsed: {},
+  toggleComposerCollapsed: (agentId) =>
+    set((s) => ({ composerCollapsed: { ...s.composerCollapsed, [agentId]: !s.composerCollapsed[agentId] } })),
   freeflowEnabled: false,
   setFreeflowEnabled: (on) => set({ freeflowEnabled: on }),
   hasGroqKey: false,
