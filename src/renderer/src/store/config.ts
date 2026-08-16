@@ -63,7 +63,11 @@ export interface HarnessConfig {
    *  Mirrors src/main/config.ts. */
   recentHives?: string[];
   registeredRepos: string[];
-  autoMode: boolean;
+  /** God's spawn-requests (workers/interns) launch with the engine's bypass
+   *  flag when true — the operator's per-installation opt-in, DEFAULT OFF
+   *  (card permission-mode-config-20260816). Mirrors main's config field;
+   *  UI hires carry their own per-agent permission-mode selector. */
+  workerBypass: boolean;
   /** Operator authorization for Agent-tool subagents in skill-driven plan
    *  execution (superpowers SDD). Default ON; mirrors main's config field
    *  (card sdd-authorization-switch-20260816). */
@@ -370,15 +374,15 @@ export function decodeProviderModel(value: string): {
  *  configured `defaultCommand`; other providers use their preset binary so the
  *  app works without Claude installed.
  *
- *  The auto-mode bypass flag is deliberately NOT baked into this string: it
+ *  The permission-mode flag is deliberately NOT baked into this string: it
  *  rides ARGV — spawnAgentCore injects it as args tokens from the shared
- *  preset table (`autoModeArgsForCommand`) — because a flag glued onto the
+ *  preset table (`permissionModeArgs`) — because a flag glued onto the
  *  command string is the bug class 2714c92 fixed for spawn-requests (any
  *  consumer that resolves the command to its binary drops the tail). Keeping
- *  the string flag-free also means restarts/revives follow the LIVE autoMode
- *  setting instead of whatever was baked in at hire time. */
+ *  the string flag-free also means restarts/revives follow the agent's STORED
+ *  hire-time choice instead of whatever was baked in at hire time. */
 export function buildSpawnCommand(
-  config: Pick<HarnessConfig, 'defaultCommand' | 'autoMode'>,
+  config: Pick<HarnessConfig, 'defaultCommand'>,
   model?: string,
   provider: AgentProvider = inferAgentProvider(config.defaultCommand)
 ): string {
@@ -399,7 +403,7 @@ export function buildSpawnCommand(
     const m = /\s/.test(model) ? `"${model}"` : model;
     cmd = `${cmd} ${preset.modelFlag} ${m}`;
   }
-  // Auto (skip-permissions) mode: see the doc comment above — the flag rides
-  // ARGV via spawnAgentCore's autoModeArgsForCommand injection, never this string.
+  // Permission mode: see the doc comment above — the flag rides ARGV via
+  // spawnAgentCore's permissionModeArgs injection, never this string.
   return cmd;
 }

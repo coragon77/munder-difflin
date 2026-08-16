@@ -494,7 +494,10 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
         hive,
         resume,
         resumeSessionId,
-        requireResume: resume
+        requireResume: resume,
+        // Restart & Continue keeps the agent's hire-time permission mode (card
+        // permission-mode-config-20260816) — only the MODEL changes here.
+        permissionMode: a.permissionMode
       });
       if (!res.ok) throw new Error(res.error ?? 'Restart failed.');
       if (resume && res.resumed !== true) {

@@ -335,11 +335,12 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     defaultCommand: 'opencode',
     commandGroups: [],
     // OpenCode's TUI exposes no skip-permissions FLAG; headless auto-approve is a
-    // config concern (permission:allow). To keep auto-mode gated behind the floor
-    // `config.autoMode` toggle (Pam guardrail #2), the permission JSON is NOT a
-    // static nonInteractiveEnv — spawnAgentCore builds OPENCODE_CONFIG_CONTENT
-    // dynamically (permission:allow only when autoMode is on; + a local provider
-    // block when a base-URL is set). So no auto flag is spliced onto the command.
+    // config concern (permission:allow). To keep auto-approve gated behind the
+    // spawn's resolved permission mode (Pam guardrail #2), the permission JSON
+    // is NOT a static nonInteractiveEnv — spawnAgentCore builds
+    // OPENCODE_CONFIG_CONTENT dynamically (permission:allow only when the
+    // spawn's mode is auto/bypass; + a local provider block when a base-URL is
+    // set). So no auto flag is spliced onto the command.
     autoModeFlag: '',
     autoFlag: '',
     supportsModel: true,
@@ -514,25 +515,50 @@ export function providerPreset(provider: AgentProvider): AgentProviderPreset {
   return AGENT_PROVIDER_PRESETS.find((p) => p.id === provider) ?? AGENT_PROVIDER_PRESETS[0];
 }
 
+/** Per-hire permission mode (card permission-mode-config-20260816): the
+ *  operator's choice AT HIRE TIME — bypass is Stefan's per-installation
+ *  decision, never the shipped default. 'auto' = Claude Auto
+ *  (`--permission-mode auto`, verified against the shipped 2.1.221 binary's
+ *  help); 'bypass' = `--dangerously-skip-permissions`; 'default' = ask-first,
+ *  no flag. For non-claude CLIs auto and bypass both map to their single
+ *  autonomous flag (they don't distinguish). */
+export type HirePermissionMode = 'default' | 'auto' | 'bypass';
+
+/** The hire-window selector's default: Claude Auto. */
+export const DEFAULT_HIRE_PERMISSION_MODE: HirePermissionMode = 'auto';
+
 /**
- * The provider's auto-mode bypass flag as ARGV TOKENS for a spawn command.
+ * The permission-mode flag as ARGV TOKENS for a spawn command.
  *
  * Spawn paths resolve the command STRING to its bare binary — PATH resolution
  * drops anything appended after the first token — so a flag glued onto the
  * command string never reaches the process. It must ride the args array (the
  * same channel `--model` provably reaches argv through). Idempotent: a flag
- * the operator already wrote into the command string wins and is never
- * doubled. Multi-token flags (copilot) split into one argv element per token.
- * Empty when auto mode is off or the provider has no flag.
+ * the operator already wrote into the command string (or args — callers pass
+ * the JOIN) wins and is never doubled; for claude 'auto' ANY typed
+ * `--permission-mode <value>` wins, since appending a second --permission-mode
+ * would conflict on the same key. Multi-token flags (copilot, grok) split into
+ * one argv element per token. Empty for 'default'/unset modes or a provider
+ * with no flag.
  */
-export function autoModeArgsForCommand(
+export function permissionModeArgs(
   command: string,
   provider: AgentProvider | undefined,
-  autoMode: boolean
+  mode: HirePermissionMode | undefined
 ): string[] {
+  if (mode !== 'auto' && mode !== 'bypass') return [];
   const preset = providerPreset(inferAgentProvider(command, provider));
-  if (!autoMode || !preset.autoFlag || command.includes(preset.autoFlag)) return [];
-  return preset.autoFlag.split(/\s+/).filter(Boolean);
+  const claude = isClaudeProvider(preset.id);
+  const tokens = claude
+    ? (mode === 'bypass'
+        ? (preset.autoFlag ?? '').split(/\s+/).filter(Boolean)
+        : ['--permission-mode', 'auto'])
+    : (preset.autoFlag ?? '').split(/\s+/).filter(Boolean);
+  if (!tokens.length) return [];
+  // ponytail: string includes-guard, not argv-aware matching — a flag glued
+  // mid-token would false-negative, but no real flag spelling contains another.
+  const guard = claude && mode === 'auto' ? '--permission-mode' : tokens.join(' ');
+  return command.includes(guard) ? [] : tokens;
 }
 
 export function isClaudeProvider(provider: AgentProvider | undefined): boolean {

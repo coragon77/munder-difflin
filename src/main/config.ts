@@ -183,8 +183,13 @@ export interface HarnessConfig {
   recentHives?: string[];
   /** Folders the user registered during onboarding (used as quick-picks). */
   registeredRepos: string[];
-  /** When true, new agents are spawned with the provider's permission-bypass flag (claude: --dangerously-skip-permissions). */
-  autoMode: boolean;
+  /** When true, god's spawn-requests (ephemeral workers AND interns) launch
+   *  with the provider's permission-bypass flag (claude:
+   *  --dangerously-skip-permissions). DEFAULT OFF — bypass is the operator's
+   *  per-installation opt-in, never the shipped default (card
+   *  permission-mode-config-20260816); a flag god typed into the request's
+   *  command still wins. UI hires carry their own hire-time selector. */
+  workerBypass: boolean;
   /** Operator authorization for Agent-tool SUBAGENTS in skill-driven plan
    *  execution (superpowers SDD) — card sdd-authorization-switch-20260816.
    *  The claude CLI's stock prompt forbids AgentTool "unless the user
@@ -428,7 +433,7 @@ const DEFAULTS: HarnessConfig = {
   harnessHome: null,
   recentHives: [],
   registeredRepos: [],
-  autoMode: true,
+  workerBypass: false,
   sddSubagentsAuthorized: true,
   godRemoteControl: true,
   defaultCommand: 'claude',

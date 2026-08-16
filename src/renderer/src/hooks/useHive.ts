@@ -333,6 +333,9 @@ export function useHive(config: HarnessConfig | null): void {
         // fresh session. Without this the most important context on the floor —
         // the orchestrator's — was lost on every restart.
         resume: true,
+        // The god sends NO explicit permission mode — spawnAgentCore's
+        // Claude-Auto default (card permission-mode-config-20260816); the
+        // satellite co-terminal (kittySatellite.godCommand) mirrors this.
         hive: { id: GOD_ID, name: 'Michael', provider: godProvider, cwd: config.harnessHome!, isGod: true, role: 'orchestrator (god)' }
       });
       if (cancelled) { godSpawning.current = false; return; }
@@ -1124,6 +1127,9 @@ export function useHive(config: HarnessConfig | null): void {
           isolate: false,
           // Reattach the agent's prior session so no context is lost on revive.
           resume: true,
+          // The agent's own hire-time permission mode — revives keep the choice
+          // they were hired with (card permission-mode-config-20260816).
+          permissionMode: a.permissionMode,
           hive
         });
         if (res.ok) {

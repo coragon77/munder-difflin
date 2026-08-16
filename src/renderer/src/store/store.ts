@@ -3,7 +3,7 @@ import type { AccentColorName } from '@/design/tokens';
 import type { OfficeCharacterName } from '@/scene/office/cast';
 import type { ThemeId } from '@/scene/office/themeRegistry';
 import type { StatusKind } from '@/components/PixelBadge';
-import type { AgentProvider } from '@shared/agentProvider';
+import type { AgentProvider, HirePermissionMode } from '@shared/agentProvider';
 import type { HireManifest } from '@shared/hire';
 import { DEFAULT_ORG_TRIGGER, type OrgTriggerConfig, type WebhookTrigger } from '@shared/triggers';
 import { isCompactionCommand } from '@shared/providerAutomation';
@@ -67,6 +67,14 @@ export interface Agent {
   /** the model this agent runs on (e.g. 'claude-sonnet-4-6[1m]' or 'gemini-3-pro');
    *  drives the model selector + the --model arg used when (re)spawning the agent */
   model?: string;
+  /** Hire-time permission-mode choice (card permission-mode-config-20260816):
+   *  'default' ask-first, 'auto' Claude Auto (the shipped selector default),
+   *  'bypass' the engine's skip-permissions flag (the operator's explicit
+   *  per-hire opt-in). Sent on every (re)spawn — restore, revive, restart —
+   *  so the agent keeps the choice it was hired with; spawnAgentCore injects
+   *  the flag (a typed flag in `command` still wins). Persisted with the
+   *  roster; legacy pre-selector agents have none and restart in Claude Auto. */
+  permissionMode?: HirePermissionMode;
   /** the last prompt the user submitted to this agent in Claude Code —
    *  shown on the floor as a card above the seated avatar */
   lastPrompt?: string;

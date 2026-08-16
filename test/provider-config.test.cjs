@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const loadTs = require('./load-ts.cjs');
 
 const {
-  autoModeArgsForCommand,
+  permissionModeArgs,
   inferAgentProvider,
   isAgentProvider,
   providerPreset
@@ -69,28 +69,26 @@ test('provider commands use matching models and equivalent bypass modes', () => 
   );
 });
 
-test('renderer hire argv carries the auto-mode flag on the args channel', () => {
+test('renderer hire argv carries the selected permission-mode flag on the args channel', () => {
   // Mirrors spawnAgentCore's composition: the spawn site tokenizes the built
-  // command, and the bypass flag is appended as ARGV TOKENS from the shared
-  // preset table (card renderer-hire-flag-append-20260816).
+  // command, and the mode flag is appended as ARGV TOKENS from the shared
+  // preset table (cards spawn-bypass-flag-dropped + renderer-hire-flag-append
+  // + permission-mode-config).
   const cases = [
-    ['claude', 'claude-sonnet-5', ['--dangerously-skip-permissions']],
-    ['codex', 'gpt-5.6-sol', ['--dangerously-bypass-approvals-and-sandbox']],
+    ['claude', 'claude-sonnet-5', 'auto', ['--permission-mode', 'auto']],
+    ['claude', 'claude-sonnet-5', 'bypass', ['--dangerously-skip-permissions']],
+    ['claude', 'claude-sonnet-5', 'default', []],
+    ['codex', 'gpt-5.6-sol', 'bypass', ['--dangerously-bypass-approvals-and-sandbox']],
     // grok's flag: verified in an earlier round, NOT re-verified since — no
     // grok binary installed on this machine (documented per card).
-    ['grok', 'grok-4.5', ['--permission-mode', 'bypassPermissions']],
-    ['kimi', 'kimi-code/k3', ['--auto']]
+    ['grok', 'grok-4.5', 'auto', ['--permission-mode', 'bypassPermissions']],
+    ['kimi', 'kimi-code/k3', 'auto', ['--auto']]
   ];
-  for (const [provider, model, flagTokens] of cases) {
+  for (const [provider, model, mode, flagTokens] of cases) {
     const cmd = buildSpawnCommand(autoConfig, model, provider);
-    const argv = [...tokenizeCommand(cmd), ...autoModeArgsForCommand(cmd, provider, true)];
-    const flagStart = argv.indexOf(flagTokens[0]);
-    assert.ok(flagStart > 0, `${provider}: flag missing from argv: ${argv}`);
-    assert.deepEqual(
-      argv.slice(flagStart, flagStart + flagTokens.length),
-      flagTokens,
-      `${provider}: flag tokens not intact in argv: ${argv}`
-    );
+    const argv = [...tokenizeCommand(cmd), ...permissionModeArgs(cmd, provider, mode)];
+    for (const t of flagTokens) assert.ok(argv.includes(t), `${provider}/${mode}: token ${t} missing from argv: ${argv}`);
+    assert.equal(argv.length, tokenizeCommand(cmd).length + flagTokens.length, `${provider}/${mode}: unexpected extra tokens: ${argv}`);
   }
 });
 
@@ -99,10 +97,25 @@ test('tokenizeCommand semantics stay intact: a quoted model label stays ONE argv
   // command string and re-tokenizes it — buildSpawnCommand must keep emitting a
   // string that tokenizes losslessly (spaces in the model value stay one arg).
   const cmd = buildSpawnCommand(autoConfig, 'Gemini 3.1 Pro (High)', 'antigravity');
-  const argv = [...tokenizeCommand(cmd), ...autoModeArgsForCommand(cmd, 'antigravity', true)];
+  const argv = [...tokenizeCommand(cmd), ...permissionModeArgs(cmd, 'antigravity', 'auto')];
   assert.deepEqual(argv, [
     'agy', '--model', 'Gemini 3.1 Pro (High)', '--dangerously-skip-permissions'
   ]);
+});
+
+test('restart honors the STORED per-agent choice, not the live global toggle', () => {
+  // Restart/restore/revive pass the agent's persisted permissionMode through to
+  // spawnPty; spawnAgentCore injects per that mode. A stored 'default' stays
+  // flag-less even on an install with autoMode on (and vice versa).
+  const cmd = buildSpawnCommand(autoConfig, 'claude-sonnet-5', 'claude');
+  assert.deepEqual(
+    [...tokenizeCommand(cmd), ...permissionModeArgs(cmd, 'claude', 'bypass')],
+    ['claude', '--model', 'claude-sonnet-5', '--dangerously-skip-permissions']
+  );
+  assert.deepEqual(
+    [...tokenizeCommand(cmd), ...permissionModeArgs(cmd, 'claude', 'default')],
+    ['claude', '--model', 'claude-sonnet-5']
+  );
 });
 
 test('joined command+args guard: an operator-typed flag is respected, never doubled', () => {
@@ -111,11 +124,11 @@ test('joined command+args guard: an operator-typed flag is respected, never doub
   // pre-fix command string bakes it into the command). Both spellings — single
   // token and multi-token grok — must suppress the injection.
   assert.deepEqual(
-    autoModeArgsForCommand(['claude', '--dangerously-skip-permissions'].join(' '), 'claude', true),
+    permissionModeArgs(['claude', '--dangerously-skip-permissions'].join(' '), 'claude', 'bypass'),
     []
   );
   assert.deepEqual(
-    autoModeArgsForCommand(['grok', '--permission-mode', 'bypassPermissions'].join(' '), 'grok', true),
+    permissionModeArgs(['grok', '--permission-mode', 'bypassPermissions'].join(' '), 'grok', 'bypass'),
     []
   );
 });

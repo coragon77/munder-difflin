@@ -277,13 +277,6 @@ export function App() {
         {/* v0.3.7: the version is no longer inert text — it doubles as the
             update control (check / download / restart to update). */}
         <UpdateBadge />
-        <span style={{
-          fontFamily: 'var(--cth-font-ui)',
-          fontSize: 13,
-          color: 'var(--cth-ink-500)'
-        }}>
-          {config.autoMode ? 'auto mode on' : 'auto mode off'}
-        </span>
         {/* v0.3.4: theme + fullscreen live HERE (top right), not buried in the
             terminal header. The ☾ swaps the whole app chrome (tokens.css dark
             block). The terminal button next to it flips ONLY the agent

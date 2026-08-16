@@ -184,7 +184,7 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
 
   // ─── v0.3.4 redesign: settings that were onboarding-trapped or UI-less ────
   const cfgX = config as HarnessConfig & {
-    strongKeepalive?: boolean; audience?: string; autoMode?: boolean;
+    strongKeepalive?: boolean; audience?: string;
     defaultModel?: string; maxTurns?: number; semanticMemory?: boolean;
   };
   const [keepAwake, setKeepAwake] = useState<boolean>(cfgX.strongKeepalive === true);
@@ -201,12 +201,16 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
     try { await window.cth.updateConfig({ audience: next ? 'non-technical' : 'technical' } as Partial<HarnessConfig>); }
     catch { setSimpleMode(!next); }
   };
-  const [autoModeOn, setAutoModeOn] = useState<boolean>(cfgX.autoMode !== false);
-  const toggleAutoMode = async () => {
-    const next = !autoModeOn;
-    setAutoModeOn(next);
-    try { await window.cth.updateConfig({ autoMode: next } as Partial<HarnessConfig>); }
-    catch { setAutoModeOn(!next); }
+  // Worker/intern bypass (card permission-mode-config-20260816): god's
+  // spawn-requests launch with the engine's bypass flag when ON. DEFAULT OFF —
+  // bypass is the operator's per-installation opt-in, never the shipped
+  // default. UI hires each carry their own hire-window permission selector.
+  const [workerBypassOn, setWorkerBypassOn] = useState<boolean>(cfgX.workerBypass === true);
+  const toggleWorkerBypass = async () => {
+    const next = !workerBypassOn;
+    setWorkerBypassOn(next);
+    try { await window.cth.updateConfig({ workerBypass: next } as Partial<HarnessConfig>); }
+    catch { setWorkerBypassOn(!next); }
   };
   // SDD subagent authorization (card sdd-authorization-switch-20260816): ON
   // writes the operator-authorization line (scoped to skill execution) into the
@@ -1181,14 +1185,14 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <span style={{ fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>
-                              {autoModeOn ? 'Autonomous — agents act without asking' : 'Ask-first — agents pause for tool approval'}
+                              {workerBypassOn ? 'Workers/interns spawn with bypass permissions' : 'Workers/interns spawn auto/ask-first'}
                             </span>
                             <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
-                              Applies to newly spawned agents (each agent's command can still override).
+                              God's spawn-requests only. Hires from the Add Agent window carry their own per-agent selector. OFF by default.
                             </span>
                           </div>
-                          <PixelButton variant={autoModeOn ? 'primary' : 'secondary'} size="sm" onClick={toggleAutoMode}>
-                            {autoModeOn ? 'autonomous' : 'ask-first'}
+                          <PixelButton variant={workerBypassOn ? 'primary' : 'secondary'} size="sm" onClick={toggleWorkerBypass}>
+                            {workerBypassOn ? 'bypass' : 'off'}
                           </PixelButton>
                         </div>
                       </div>

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
-import type { AgentProvider } from '../shared/agentProvider';
+import type { AgentProvider, HirePermissionMode } from '../shared/agentProvider';
 import type { HireManifest } from '../shared/hire';
 export type { HireManifest } from '../shared/hire';
 import type { IntegrationRecord, IntegrationTemplate } from '../shared/integrations';
@@ -218,6 +218,11 @@ export interface SpawnPtyOptions {
    *  main process seeds that session's `.jsonl` into the target cwd's project dir
    *  (copying it from wherever it lives) and launches `claude --resume <id>`. */
   resumeSessionId?: string;
+  /** Per-hire permission mode (card permission-mode-config-20260816): the
+   *  hire-window selection — 'default' | 'auto' (shipped selector default) |
+   *  'bypass'. Omitted → spawnAgentCore's Claude-Auto default (legacy agents,
+   *  the god). spawnAgentCore injects the engine flag on argv. */
+  permissionMode?: HirePermissionMode;
 }
 
 export interface PtyExit { exitCode: number; signal?: number | undefined }
@@ -263,7 +268,10 @@ export interface HarnessConfig {
   /** Recently-opened hive home folders (most-recent first). Mirrors src/main/config.ts. */
   recentHives?: string[];
   registeredRepos: string[];
-  autoMode: boolean;
+  /** God's spawn-requests (workers/interns) launch with the engine's bypass
+   *  flag when true — the operator's per-installation opt-in, DEFAULT OFF
+   *  (card permission-mode-config-20260816). Mirrors main's config field. */
+  workerBypass: boolean;
   /** Operator authorization for Agent-tool subagents in skill-driven plan
    *  execution (superpowers SDD). Default ON; mirrors main + renderer config
    *  (card sdd-authorization-switch-20260816). */

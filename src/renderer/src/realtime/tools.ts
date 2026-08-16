@@ -263,7 +263,7 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
     tool({
       name: 'get_config',
       description:
-        'The non-sensitive hive settings: autonomy mode, the default model and god engine, budget caps, worker limits, the circuit breaker, and which features are on. Never returns secrets or API keys. Call this when the user asks how the hive is configured, what the limits or budgets are, or whether a feature is enabled.',
+        'The non-sensitive hive settings: worker-bypass mode, the default model and god engine, budget caps, worker limits, the circuit breaker, and which features are on. Never returns secrets or API keys. Call this when the user asks how the hive is configured, what the limits or budgets are, or whether a feature is enabled.',
       parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
       execute: () =>
         spoken(async () => {
@@ -274,7 +274,7 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           // one (it is hand-mirrored across three files) without breaking us.
           const cc = obj(c);
           const parts: string[] = [];
-          parts.push(`Autonomy mode is ${c.autoMode ? 'on' : 'off'}.`);
+          parts.push(`Worker bypass is ${c.workerBypass ? 'on' : 'off'}; new hires default to Claude Auto.`);
           if (c.defaultModel) parts.push(`The default model is ${c.defaultModel}.`);
           if (c.godProvider || c.godModel)
             parts.push(`The god orchestrator runs ${[c.godProvider, c.godModel].filter(Boolean).join(' ')}.`);

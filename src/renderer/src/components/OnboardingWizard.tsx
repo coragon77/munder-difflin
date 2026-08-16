@@ -88,7 +88,6 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
 
   const [home, setHome] = useState<string>('');
   const [repos, setRepos] = useState<string[]>([]);
-  const [autoMode, setAutoMode] = useState<boolean>(true);
   // Anonymous usage stats (TELEMETRY.md). Default ON (opt-out); persisted by
   // finish() so unchecking before finishing means nothing is ever sent.
   const [shareStats, setShareStats] = useState<boolean>(true);
@@ -166,7 +165,6 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       audience: audience ?? 'technical',
       harnessHome: home,
       registeredRepos: repos,
-      autoMode,
       godProvider,
       godModel,
       telemetryEnabled: shareStats
@@ -514,45 +512,35 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
 
             {step === 'permissions' && (
               <>
-                {/* AUTONOMY — merged from the old "auto mode" step (item 5). One choice
-                    that maps to each engine's flag (item 6): autoMode → claude
-                    bypassPermissions / codex --dangerously-bypass-approvals-and-sandbox,
-                    etc.; off → each engine's ask-first default. */}
+                {/* AUTONOMY — fixed at the shipped default since card
+                    permission-mode-config-20260816: fresh hires default to
+                    Claude Auto via the Add Agent selector; god's workers follow
+                    Settings → Autonomy (worker bypass, default OFF). The old
+                    install-wide autoMode checkbox retired with its key. */}
                 <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 10, color: 'var(--cth-ink-700)' }}>
                   HOW MUCH CAN AGENTS DO ON THEIR OWN?
                 </div>
-                <label style={{
+                <div style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: 12,
-                  background: autoMode ? 'var(--cth-mint-light)' : 'var(--cth-cream-200)',
-                  boxShadow: `inset 0 0 0 2px ${autoMode ? 'var(--cth-mint)' : 'var(--cth-ink-500)'}`,
-                  cursor: 'pointer'
+                  background: 'var(--cth-mint-light)',
+                  boxShadow: 'inset 0 0 0 2px var(--cth-mint)'
                 }}>
-                  <input
-                    type="checkbox"
-                    checked={autoMode}
-                    onChange={(e) => setAutoMode(e.target.checked)}
-                    style={{ width: 18, height: 18, flexShrink: 0 }}
-                  />
                   <div>
                     <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 10, lineHeight: '14px' }}>
-                      {plain ? 'LET AGENTS WORK ON THEIR OWN' : 'WORK AUTONOMOUSLY (AUTO MODE)'}
+                      {plain ? 'AGENTS WORK ON THEIR OWN' : 'AUTONOMOUS BY DEFAULT (CLAUDE AUTO)'}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--cth-ink-700)' }}>
                       {plain
-                        ? (autoMode
-                            ? 'On. Agents carry out tasks without stopping to ask — the smoothest experience.'
-                            : 'Off. Agents pause and ask you before changing files or running commands.')
-                        : (autoMode
-                            ? 'On. Agents never pause — Claude runs bypassPermissions, Codex bypasses approvals + sandbox, etc.'
-                            : 'Off. Each agent asks before edits / shell commands (Claude default, codex -a untrusted, …).')}
+                        ? 'New hires carry out tasks without stopping to ask — the smoothest experience.'
+                        : 'New hires launch in Claude Auto (claude --permission-mode auto); Codex and friends use their own autonomous flag. Pick Bypass per hire in Add Agent, or flip the worker-bypass switch in Settings for god spawn-requests.'}
                     </div>
                   </div>
-                </label>
+                </div>
                 <div style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>
                   {plain
-                    ? 'Best when agents work in their own projects. You can change this later, including for individual agents.'
-                    : 'The right default for the "control room" experience; a foot-gun on production repos. Override per agent in the Add Agent dialog.'}
+                    ? 'Best when agents work in their own projects. You can change the mode for each hire.'
+                    : 'The right default for the "control room" experience; bypass is a per-hire or per-installation opt-in, never the shipped default.'}
                 </div>
 
                 <div style={{ height: 1, background: 'var(--cth-ink-300)', margin: '2px 0' }} />

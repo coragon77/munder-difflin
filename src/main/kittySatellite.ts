@@ -80,16 +80,19 @@ export function godCommand(): { file: string; args: string[]; cwd: string | null
     );
     if (!existsSync(cfgPath)) return { file: 'bash', args: [], cwd: null };
     const cfg = JSON.parse(readFileSync(cfgPath, 'utf8')) as {
-      defaultCommand?: string; harnessHome?: string | null; autoMode?: boolean;
+      defaultCommand?: string; harnessHome?: string | null;
     };
     const cmd = (cfg.defaultCommand ?? '').trim() || 'bash';
     const parts = cmd.split(/\s+/);
     const hive = cfg.harnessHome ?? null;
-    // God co-terminal runs in auto mode like the in-app god (autoMode config →
-    // Claude's bypassPermissions). He is an unattended orchestrator: permission
-    // prompts in the satellite window answer nobody.
-    if (cfg.autoMode && parts[0] === 'claude' && !parts.includes('--permission-mode')) {
-      parts.push('--permission-mode', 'bypassPermissions');
+    // God co-terminal runs in Claude Auto like the in-app god (card
+    // permission-mode-config-20260816: his spawn passes no explicit mode, so
+    // spawnAgentCore resolves the DEFAULT). He is an unattended orchestrator:
+    // permission prompts in the satellite window answer nobody — auto keeps him
+    // moving without the install-wide bypass the card retired. A typed
+    // --permission-mode wins and is never doubled.
+    if (parts[0] === 'claude' && !parts.includes('--permission-mode')) {
+      parts.push('--permission-mode', 'auto');
     }
     // Claude at the hive root finds the god's memory/board/inbox via its cwd.
     const godCwd = hive ? join(hive, 'agents', 'god') : null;

@@ -163,7 +163,7 @@ michael`, flagged `isGod`. It is an ordinary `claude` process — the *intellige
   conflict.
 - **Task ledger** (`tasks.json`): assign, track, retry, checkpoint.
 - **Hiring & firing**: mints ephemeral workers and standing interns via
-  `spawn-requests/` (honoring autoMode) and fires interns via `fire-requests/`;
+  `spawn-requests/` (honoring the worker-bypass setting) and fires interns via `fire-requests/`;
   human-made hires stay human surfaces.
 
 Its escalation policy (what counts as "critical") lives in its system prompt and

@@ -187,6 +187,10 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
             // agent id is preserved across restart, so its registry entry,
             // memory.md and inbox reattach by id. No-op without a recorded session.
             resume: true,
+            // The agent's OWN hire-time choice rides every respawn (card
+            // permission-mode-config-20260816); a legacy pre-selector agent has
+            // none and spawnAgentCore defaults it to Claude Auto.
+            permissionMode: a.permissionMode,
             hive: { id: a.id, name: a.name, provider, cwd, spawnLabel: a.spawnLabel }
           });
           if (res.ok) {

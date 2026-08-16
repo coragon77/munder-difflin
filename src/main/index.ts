@@ -68,13 +68,15 @@ import { fetchHireManifest, readHireManifestFile } from './hire';
 import { parseHireDeepLink, type HireManifest } from '../shared/hire';
 import { ClosingTimeController } from './closingTime';
 import {
-  autoModeArgsForCommand,
+  DEFAULT_HIRE_PERMISSION_MODE,
   inferAgentProvider,
   isClaudeProvider,
   nonInteractiveEnvForProvider,
+  permissionModeArgs,
   providerPreset,
   installInfoForProvider,
-  type AgentProvider
+  type AgentProvider,
+  type HirePermissionMode
 } from '../shared/agentProvider';
 import { buildMissingCliScript, chooseInstallRung } from './cliInstall';
 import { detectNodeVersion, nodeIsUsable, resolveNodeInstaller } from './nodeInstall';
@@ -2540,7 +2542,7 @@ function findCodexHomeForSession(sessionId: string, siblingsRoot: string): strin
 
 /** Spawn options shared by the `pty:spawn` IPC handler and the god-triggered
  *  ephemeral-worker watcher. */
-type AgentSpawnOptions = SpawnOptions & { hive?: AgentMeta; isolate?: boolean; resume?: boolean; requireResume?: boolean; resumeSessionId?: string; provider?: AgentProvider; noAutoInstall?: boolean };
+type AgentSpawnOptions = SpawnOptions & { hive?: AgentMeta; isolate?: boolean; resume?: boolean; requireResume?: boolean; resumeSessionId?: string; provider?: AgentProvider; noAutoInstall?: boolean; permissionMode?: HirePermissionMode };
 
 ipcMain.handle('pty:spawn', async (evt, opts: AgentSpawnOptions) => {
   if (!opts || typeof opts.id !== 'string' || typeof opts.cwd !== 'string' || typeof opts.command !== 'string') {
@@ -2588,24 +2590,26 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   const claudeProvider = isClaudeProvider(provider);
   opts.provider = provider;
   if (opts.hive) opts.hive = { ...opts.hive, provider };
-  // ── AUTO-MODE FLAG ON ARGV ───────────────────────────────────────────────
-  // Same fix as 2714c92, applied to the single door every renderer/UI hire
-  // passes through: the bypass flag rides opts.args (the channel `--model`
-  // provably reaches argv through), never a string-append on the command —
-  // any consumer that resolves the command to its binary (the missing-CLI
-  // probe below, PATH resolution in pty.spawn) drops a glued tail. The
-  // renderer's buildSpawnCommand no longer bakes the flag in, so inject it
-  // here from the SHARED preset table: every path (Add Agent hire, god
-  // spawn, pane restart, restore, revive) gets it, and it follows the LIVE
-  // autoMode setting rather than whatever the hire-time string persisted.
-  // Idempotent: a flag the operator typed into the command — or that an
-  // older persisted command string / the spawn-request path already carries
-  // in args — wins, never doubled; hence the command+args join the guard sees.
+  // ── PERMISSION MODE ON ARGV (card permission-mode-config-20260816) ───────
+  // Replaces 8e5fd6d's blanket readConfig().autoMode-keyed bypass injection:
+  // bypass is the operator's per-installation opt-in, never the shipped
+  // default. The mode arrives ON opts — UI hires send the hire-window
+  // selection (persisted on the agent, so restore/revive/restart re-send the
+  // SAME choice); god's spawn-requests send workerBypass ? 'bypass' :
+  // 'default'; the in-app god and legacy pre-selector agents send nothing and
+  // land on the Claude-Auto default. The flag still rides opts.args (the
+  // channel `--model` provably reaches argv through), never a string-append on
+  // the command — any consumer that resolves the command to its binary (the
+  // missing-CLI probe below, PATH resolution in pty.spawn) drops a glued tail.
+  // Idempotent: a flag the operator (or god) typed into the command — or that
+  // an older persisted command string already carries — wins, never doubled;
+  // hence the command+args join the guard sees.
+  const permissionMode = opts.permissionMode ?? DEFAULT_HIRE_PERMISSION_MODE;
   {
-    const autoArgs = autoModeArgsForCommand(
+    const autoArgs = permissionModeArgs(
       [opts.command, ...(opts.args ?? [])].join(' '),
       provider,
-      readConfig().autoMode
+      permissionMode
     );
     if (autoArgs.length) opts.args = [...(opts.args ?? []), ...autoArgs];
   }
@@ -2908,14 +2912,17 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
       // GEMINI_API_KEY — inject both so google/* authenticates (Jim NIT #1).
       if (backend === 'google') extra.GOOGLE_GENERATIVE_AI_API_KEY = key;
     }
-    // 2) Floor auto-state for pi's bundled extension auto-allow (guardrail #5): it
-    //    only auto-approves tool calls when this is '1' (i.e. floor auto mode on).
-    extra.HIVE_AUTO_APPROVE = cfg.autoMode ? '1' : '0';
+    // 2) Floor auto-state for pi's bundled extension auto-allow (guardrail #5):
+    //    it only auto-approves tool calls when this is '1' — i.e. when THIS
+    //    spawn's resolved permission mode grants autonomy (auto or bypass),
+    //    not install-wide (card permission-mode-config-20260816).
+    extra.HIVE_AUTO_APPROVE = permissionMode !== 'default' ? '1' : '0';
     // 3) OpenCode's auto-approve + local provider live in its single config-injection
-    //    env var, built dynamically so permission:allow is GATED on autoMode (#2).
+    //    env var, built dynamically so permission:allow is GATED on this spawn's
+    //    resolved permission mode (auto/bypass), not install-wide (#2).
     if (provider === 'opencode') {
       const oc: Record<string, unknown> = { autoupdate: false };
-      if (cfg.autoMode) oc.permission = { edit: 'allow', bash: 'allow', webfetch: 'allow' };
+      if (permissionMode !== 'default') oc.permission = { edit: 'allow', bash: 'allow', webfetch: 'allow' };
       const baseUrl = cfg.providerBaseUrls?.opencode;
       if (baseUrl) {
         // Register the model id the user actually selects (the part after 'local/')
@@ -4504,15 +4511,16 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   if (!cwd || !existsSync(cwd)) { fail(`"cwd" missing or not found (${cwd || 'unset'})`); return; }
 
   let command = typeof raw.command === 'string' && raw.command.trim() ? raw.command.trim() : (readConfig().defaultCommand ?? 'claude');
-  // AutoMode parity with human hires — as ARGV TOKENS, not string-appended:
-  // spawnAgentCore resolves the command string to its BINARY (PATH resolution
-  // keeps only the first token), so a flag glued onto the string never reached
-  // the process (verified live on intern-vacation-state via /proc cmdline —
-  // the floor only worked because the HIVE_AUTO_APPROVE hook approves per
-  // call, and that hook STAYS as belt-and-braces). The args array is the
-  // proven channel — raw.model's '--model' rides it into argv. Idempotent: an
-  // explicit flag god wrote into raw.command is respected, never doubled.
-  const autoArgs = autoModeArgsForCommand(command, raw.provider, readConfig().autoMode);
+  // Permission mode (card permission-mode-config-20260816): god's workers and
+  // interns follow the installation's worker-bypass SETTING — DEFAULT OFF,
+  // bypass is the operator's per-installation opt-in, never the shipped
+  // default. The flag itself is injected ONCE, centrally, in spawnAgentCore on
+  // the args channel (PATH resolution keeps only the command's first token, so
+  // a flag glued onto this string never reached the process — verified live on
+  // intern-vacation-state via /proc cmdline; the HIVE_AUTO_APPROVE hook STAYS
+  // as belt-and-braces). A flag god typed into raw.command still wins — the
+  // central guard sees the command+args join, never doubled.
+  const permissionMode: HirePermissionMode = readConfig().workerBypass ? 'bypass' : 'default';
   const bin = command.split(/\s+/)[0] || command;
   // Missing-CLI → FAIL FAST. A headless worker has no human to watch an installer,
   // so we never run the cc49e1e install banner here — we reject and tell god.
@@ -4567,8 +4575,8 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   }
   const spawnOpts: AgentSpawnOptions = {
     id: workerId, cwd, command, cols: 120, rows: 32,
-    args: [...(raw.model ? ['--model', raw.model] : []), ...autoArgs],
-    hive: meta, isolate, provider: raw.provider, env: brokerEnv
+    args: raw.model ? ['--model', raw.model] : [],
+    hive: meta, isolate, provider: raw.provider, env: brokerEnv, permissionMode
   };
 
   let res: { ok: boolean; error?: string; worktreePath?: string };
@@ -4751,12 +4759,6 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
   const recipe = rosterRecipe(agentId);
   let command = recipe.command ?? readConfig().defaultCommand ?? 'claude';
   const provider = entry.provider ?? inferAgentProvider(command);
-  {
-    const preset = providerPreset(provider);
-    if (readConfig().autoMode && preset.autoFlag && !command.includes(preset.autoFlag)) {
-      command = `${command} ${preset.autoFlag}`;
-    }
-  }
   const bin = command.split(/\s+/)[0] || command;
   if (!ptyManager.isCommandAvailable(bin)) return { ok: false, error: `engine CLI "${bin}" is not installed` };
   const cwd = recipe.cwd ?? entry.cwd;
@@ -4767,7 +4769,10 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
       id: agentId, cwd, command, cols: 120, rows: 32,
       args: recipe.model ? ['--model', recipe.model] : [],
       hive: { id: agentId, name: entry.name, provider, role: entry.role, cwd },
-      isolate: false, provider
+      isolate: false, provider,
+      // The vacationer's OWN hire-time choice (roster mirror) — the central
+      // injection appends its flag; a flag typed into the saved command wins.
+      permissionMode: recipe.permissionMode
     }, liveWebContents());
   } catch (e) {
     res = { ok: false, error: String(e) };
@@ -4797,15 +4802,15 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
  *  `command`/`model`/`cwd` live in the renderer's Agent, not in the registry.
  *  Every field is optional: a missing mirror just means falling back to the
  *  configured default engine and the registry cwd. */
-function rosterRecipe(id: string): { command?: string; model?: string; cwd?: string } {
+function rosterRecipe(id: string): { command?: string; model?: string; cwd?: string; permissionMode?: HirePermissionMode } {
   try {
     const snap = roster.read();
     if (!snap) return {};
     const rows = [...snap.agents, ...snap.archived, ...snap.restorable] as Array<{
-      id?: string; command?: string; model?: string; cwd?: string;
+      id?: string; command?: string; model?: string; cwd?: string; permissionMode?: HirePermissionMode;
     }>;
     const row = rows.find((a) => a?.id === id);
-    return row ? { command: row.command, model: row.model, cwd: row.cwd } : {};
+    return row ? { command: row.command, model: row.model, cwd: row.cwd, permissionMode: row.permissionMode } : {};
   } catch { return {}; }
 }
 

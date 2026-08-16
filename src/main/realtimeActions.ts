@@ -143,7 +143,7 @@ const SETTING_POLICY: Record<string, {
   autoUpdate: { tier: 'soft', type: 'boolean' },
   realtimeIdleDisconnectMs: { tier: 'soft', type: 'number', min: 30_000, max: 3_600_000 },
   // confirm: behavior-changing — echo old→new + distinct token
-  autoMode: { tier: 'confirm', type: 'boolean' },
+  workerBypass: { tier: 'confirm', type: 'boolean' },
   defaultModel: { tier: 'confirm', type: 'string' },
   godProvider: { tier: 'confirm', type: 'string' },
   godModel: { tier: 'confirm', type: 'string' },

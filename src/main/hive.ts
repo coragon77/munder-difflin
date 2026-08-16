@@ -1896,7 +1896,8 @@ export class HiveManager {
    *  Claude-shaped hook file; instead we drop a bundled EXTENSION into a PER-AGENT
    *  PI_CODING_AGENT_DIR (so the user's global ~/.pi is never mutated) that, when Pi
    *  loads it, posts cth-hook-shaped payloads to HIVE_SOCK on tool_call/agent_end and
-   *  auto-approves tool calls when the floor is in auto mode (HIVE_AUTO_APPROVE).
+   *  auto-approves tool calls when this spawn's permission mode grants autonomy
+   *  (HIVE_AUTO_APPROVE).
    *  Emitting an `agent_end`→`Stop` keeps the harness status in step (→ idle), which
    *  lets the renderer idle inbox-wake nudge deliver mail. Returns the per-agent dir
    *  for PI_CODING_AGENT_DIR.
@@ -2378,10 +2379,10 @@ EOF
 → agent id \`intern-docs-writer\`, floor name **Dwayne (Intern)**. Give the request
 a \`"name"\` so it reads as a person; without one it shows as \`Intern <id>\`.
 
-**Permissions:** EVERY spawn-request — ephemeral workers AND interns — inherits
-the floor's autoMode like human hires — when
-auto mode is on, the harness appends the engine's bypass flag itself. You do NOT
-need to write \`--dangerously-skip-permissions\` into \`command\`.
+**Permissions:** spawn-requests follow the installation's worker-bypass
+setting (Settings → Autonomy, DEFAULT OFF) — ON, the harness appends the
+engine's bypass flag itself; OFF, workers start auto/ask-first. You can ALWAYS
+write the flag into \`command\` yourself — a typed flag wins.
 
 **Firing an intern** (god-runnable, interns only):
 
@@ -2896,8 +2897,8 @@ process.stdin.on('end', () => {
 // lifecycle; this posts cth-hook-shaped payloads to HIVE_SOCK on tool_call /
 // tool_result / agent_settled AND usage as CostSample on message_end (pi has no
 // OTLP — without this, fleet.json shows a permanently blind row for pi agents),
-// and AUTO-APPROVES tool calls when the floor is in auto mode
-// (HIVE_AUTO_APPROVE, gated by config.autoMode — Pam guardrail #5). The
+// and AUTO-APPROVES tool calls when the spawn's permission mode grants
+// autonomy (HIVE_AUTO_APPROVE, per-spawn — Pam guardrail #5). The
 // agent_settled→Stop keeps the harness status in step (→ idle) so the renderer
 // idle inbox-wake nudge can deliver mail. Fully wrapped so a wrong API guess can
 // never break the spawn. Event shapes verified against pi 0.84.

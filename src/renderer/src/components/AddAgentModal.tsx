@@ -27,6 +27,7 @@ import {
   providerPreset,
   isClaudeProvider
 } from '@/store/config';
+import { DEFAULT_HIRE_PERMISSION_MODE, type HirePermissionMode } from '@shared/agentProvider';
 
 const ACCENTS: AccentColorName[] = ['coral', 'mint', 'sky', 'lemon', 'lilac', 'peach'];
 
@@ -209,6 +210,11 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
   const preset = providerPreset(provider);
   const [goal, setGoal] = useState(pendingHire?.goal ?? '');
   const [isolate, setIsolate] = useState(pendingHire?.isolate ?? false);
+  // Card permission-mode-config-20260816 — the hire-time permission mode.
+  // Claude Auto is the shipped default; Bypass is the operator's explicit
+  // per-hire opt-in (never install-wide default). Rides the spawn opts and is
+  // persisted on the agent so restarts/revives keep the choice.
+  const [permissionMode, setPermissionMode] = useState<HirePermissionMode>(DEFAULT_HIRE_PERMISSION_MODE);
   // #2 — optional Claude session id to continue. When set, the spawn seeds that
   // session's transcript into the cwd's project dir and launches `--resume`.
   const [resumeSessionId, setResumeSessionId] = useState('');
@@ -336,6 +342,9 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
       args,
       cols: 100,
       rows: 30,
+      // The hire-time permission choice — spawnAgentCore turns it into the
+      // engine flag (a flag typed into the command field still wins).
+      permissionMode,
       // When set, the main process spawns this agent in its own git worktree.
       // Forced OFF when resuming a session — `--resume` needs the real cwd's
       // transcript, not a fresh worktree with a different (empty) project dir.
@@ -386,6 +395,7 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
       command: command.trim(),
       provider,
       model,
+      permissionMode,
       // Persist the resolved worktree path (set only when isolation provisioned
       // one) so a restart can re-enter this exact worktree — see restoreTeam.
       worktreePath: spawnRes.worktreePath,
@@ -888,7 +898,7 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
                       </div>
                     )}
 
-                    <Row label={config.autoMode && preset.autoFlag ? 'Command (auto mode on)' : 'Command'}>
+                    <Row label="Command">
                       <input
                         value={command}
                         onChange={(e) => setCommand(e.target.value)}
@@ -903,6 +913,32 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
                         }
                         style={{ ...inputStyle, fontFamily: 'var(--cth-font-mono)' }}
                       />
+                    </Row>
+
+                    {/* Card permission-mode-config-20260816 — the permission-mode
+                        selector: Default / Claude Auto (shipped default) / Bypass
+                        (explicit per-hire opt-in). Chips reuse the ossChip pattern
+                        (token-derived, active = agent accent). */}
+                    <Row label="Permissions">
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {([
+          { id: 'default', label: 'Default', hint: 'Ask first — the engine pauses for tool approval (claude: no flag)' },
+          { id: 'auto', label: 'Claude Auto', hint: 'Autonomous — claude --permission-mode auto; other engines: their autonomous flag' },
+          { id: 'bypass', label: 'Bypass', hint: 'Skip prompts entirely — claude --dangerously-skip-permissions; your explicit per-hire opt-in' }
+                        ] as Array<{ id: HirePermissionMode; label: string; hint: string }>).map((m) => (
+                          <button
+                            key={m.id}
+                            onClick={() => setPermissionMode(m.id)}
+                            title={m.hint}
+                            style={ossChip(permissionMode === m.id, accent)}
+                          >
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 11, lineHeight: '15px', color: 'var(--cth-ink-500)' }}>
+                        Rides every respawn of this agent; a flag typed into the command field wins.
+                      </div>
                     </Row>
                   </>
                 )}
