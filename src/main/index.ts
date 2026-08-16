@@ -1212,7 +1212,19 @@ function writeFleetSnapshot(): void {
           inboxBacklog: hive.inboxBacklog(id)
         };
       });
-    hive.writeFleetSnapshot({ ts: now, agents });
+    // Vacationers are NOT floor capacity (they have no PTY), but god must be able
+    // to FETCH one back instead of spawning a stranger — so they ride along as a
+    // separate pool the roster injection offers as fetchable.
+    const vacation = Object.entries(reg.agents)
+      .filter(([, a]) => !!a.vacation && !a.retired)
+      .map(([id, a]) => ({
+        id,
+        name: a.name,
+        role: a.role ?? 'agent',
+        cwd: a.cwd,
+        parkedAt: a.vacationSince ?? null
+      }));
+    hive.writeFleetSnapshot({ ts: now, agents, vacation });
   } catch (e) {
     console.error('[fleet] snapshot failed:', e);
   }
@@ -3318,6 +3330,17 @@ ipcMain.handle('hive:setArchived', (_evt, id: unknown, archived: unknown) => {
   hive.setArchived(id, archived === true);
   return { ok: true };
 });
+// The UI's park/recall/end-vacation buttons run the SAME functions god's
+// vacation-requests do — one code path, so the rules can't drift between them.
+ipcMain.handle('hive:park', (_e, id: string, reason?: string) => parkAgent(id, reason));
+ipcMain.handle('hive:recall', (_e, id: string) => recallAgent(id));
+// Ending a vacation demotes to plain ARCHIVED — the first half of the two-step
+// deletion. It never respawns; that is what recall is for.
+ipcMain.handle('hive:endVacation', (_e, id: string) => {
+  if (!hive.enabled()) return { ok: false, error: 'hive disabled' };
+  hive.setVacation(id, false);
+  return { ok: true };
+});
 
 // ─── IPC: semantic memory (MemPalace CLI) ───────────────────────────────────
 ipcMain.handle('hive:memoryStatus', () => { memory.resetBinCache(); return memory.status(); });
@@ -4179,7 +4202,7 @@ registerRealtimeActionIpc({
     // action tells the operator to say), so it is also the one path that lifts a
     // retirement. Restarts and restore-team must never do this implicitly — that
     // silent resurrection is the bug `retired` exists to stop.
-    if (!archived) hive.setRetired(id, false);
+    if (!archived) { hive.setRetired(id, false); hive.setVacation(id, false); }
     hive.setArchived(id, archived);
     try { liveWebContents()?.send(archived ? 'hive:agentArchived' : 'hive:agentSpawned', { id }); } catch { /* window gone */ }
     return { ok: true };
@@ -4276,6 +4299,16 @@ function spawnRequestsDir(): string | null {
 function fireRequestsDir(): string | null {
   const root = hive.root();
   return root ? join(root, 'fire-requests') : null;
+}
+
+/** HIVE_ROOT/vacation-requests — the queue dir god drops park/recall requests
+ *  into. Mirrors fire-requests, incl. the `.done`/`.failed` archive subdirs.
+ *  `{ "agentId": "...", "reason": "..." }` parks; `"action": "recall"` fetches
+ *  back. ONE dir for both directions: god is autonomous either way, and a second
+ *  watcher would buy nothing. */
+function vacationRequestsDir(): string | null {
+  const root = hive.root();
+  return root ? join(root, 'vacation-requests') : null;
 }
 
 /** Move a processed request out of the queue so it's never reprocessed. Works
@@ -4556,6 +4589,133 @@ function processFireRequest(filePath: string): void {
   archiveRequestIn(fireRequestsDir(), filePath, '.done');
 }
 
+/** An agent counts as BUSY when its PTY printed inside this window — the same
+ *  objective, main-owned signal the repo checkout guard uses (index.ts:3254).
+ *  Registry `status` is written once at spawn and never updated, so it cannot
+ *  answer this. */
+const VACATION_BUSY_MS = 10_000;
+
+/** Send a human-created agent on vacation: validate, tear the PTY down cleanly,
+ *  set `archived + vacation`, tell the floor. One code path for god's
+ *  vacation-request, the UI button and the voice verb. */
+function parkAgent(agentId: string, reason?: string): { ok: boolean; error?: string } {
+  if (!hive.enabled()) return { ok: false, error: 'hive disabled' };
+  const reg = hive.registry();
+  const entry = reg.agents[agentId];
+  if (!entry) return { ok: false, error: `no agent "${agentId}" in the registry` };
+  if (entry.isGod || reg.godId === agentId) return { ok: false, error: 'god does not go on vacation' };
+  if (entry.role === 'intern') return { ok: false, error: `"${agentId}" is an intern — interns are fired, never parked` };
+  if (entry.retired) return { ok: false, error: `"${agentId}" was fired — retired and vacation are mutually exclusive` };
+  if (entry.vacation) return { ok: false, error: `"${agentId}" is already on vacation` };
+  const ptyId = ptyForAgent(agentId);
+  if (ptyId) {
+    const last = ptyManager.lastOutputAt(ptyId);
+    if (typeof last === 'number' && Date.now() - last < VACATION_BUSY_MS) {
+      return { ok: false, error: `"${agentId}" is actively working — park it when it goes quiet` };
+    }
+    try { ptyManager.kill(ptyId); } catch { /* already gone — teardown is idempotent */ }
+    teardownPty(ptyId);   // sets archived (liveness); vacation is the layer on top
+  }
+  hive.setVacation(agentId, true);
+  const vacationSince = hive.registry().agents[agentId]?.vacationSince ?? Date.now();
+  try { liveWebContents()?.send('hive:agentVacationed', { id: agentId, vacationSince }); } catch { /* window gone */ }
+  hive.appendLog({ kind: 'vacation_park', agentId, reason: reason ?? null });
+  console.log(`[vacation] parked ${agentId}${reason ? ` — ${reason}` : ''}`);
+  return { ok: true };
+}
+
+/** Fetch a vacationer back onto the floor. The spawn is the recall: ensureAgent
+ *  clears `vacation`, the registry keeps role/cwd/provider, and the session
+ *  resume machinery reattaches the agent's own thread. The spawn RECIPE
+ *  (command/model) lives in the renderer's roster mirror, so we read it back
+ *  from roster.json and fall back to the configured default engine. */
+async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!hive.enabled()) return { ok: false, error: 'hive disabled' };
+  const entry = hive.registry().agents[agentId];
+  if (!entry) return { ok: false, error: `no agent "${agentId}" in the registry` };
+  if (entry.retired) return { ok: false, error: `"${agentId}" was fired — reinstate them first` };
+  if (ptyForAgent(agentId)) return { ok: false, error: `"${agentId}" is already on the floor` };
+  const recipe = rosterRecipe(agentId);
+  let command = recipe.command ?? readConfig().defaultCommand ?? 'claude';
+  const provider = entry.provider ?? inferAgentProvider(command);
+  {
+    const preset = providerPreset(provider);
+    if (readConfig().autoMode && preset.autoFlag && !command.includes(preset.autoFlag)) {
+      command = `${command} ${preset.autoFlag}`;
+    }
+  }
+  const bin = command.split(/\s+/)[0] || command;
+  if (!ptyManager.isCommandAvailable(bin)) return { ok: false, error: `engine CLI "${bin}" is not installed` };
+  const cwd = recipe.cwd ?? entry.cwd;
+  if (!cwd || !existsSync(cwd)) return { ok: false, error: `cwd missing or not found (${cwd || 'unset'})` };
+  const res = await spawnAgentCore({
+    id: agentId, cwd, command, cols: 120, rows: 32,
+    args: recipe.model ? ['--model', recipe.model] : [],
+    hive: { id: agentId, name: entry.name, provider, role: entry.role, cwd },
+    isolate: false, provider
+  }, liveWebContents());
+  if (!res.ok) return { ok: false, error: res.error ?? 'spawn failed' };
+  try {
+    liveWebContents()?.send('hive:agentSpawned', {
+      id: agentId, name: entry.name, provider, cwd: res.worktreePath ?? cwd,
+      command, role: entry.role, worktreePath: res.worktreePath
+    });
+  } catch { /* window torn down */ }
+  hive.appendLog({ kind: 'vacation_recall', agentId });
+  console.log(`[vacation] recalled ${agentId}`);
+  return { ok: true };
+}
+
+/** The spawn recipe for an id from the renderer's roster mirror (roster.json) —
+ *  `command`/`model`/`cwd` live in the renderer's Agent, not in the registry.
+ *  Every field is optional: a missing mirror just means falling back to the
+ *  configured default engine and the registry cwd. */
+function rosterRecipe(id: string): { command?: string; model?: string; cwd?: string } {
+  try {
+    const snap = roster.read();
+    if (!snap) return {};
+    const rows = [...snap.agents, ...snap.archived, ...snap.restorable] as Array<{
+      id?: string; command?: string; model?: string; cwd?: string;
+    }>;
+    const row = rows.find((a) => a?.id === id);
+    return row ? { command: row.command, model: row.model, cwd: row.cwd } : {};
+  } catch { return {}; }
+}
+
+/** Vacation-request — god parking an idle human-created agent, or fetching one
+ *  back. JSON: `{ "agentId": "...", "reason": "..." }` parks;
+ *  `{ "agentId": "...", "action": "recall" }` recalls. Every outcome archives
+ *  the request (.done/.failed) and informs god's inbox, exactly like
+ *  processFireRequest. */
+async function processVacationRequest(filePath: string): Promise<void> {
+  let raw: { agentId?: string; id?: string; action?: string; reason?: string };
+  try {
+    raw = JSON.parse(readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    informGod('[vacation rejected] unparseable request', `Could not parse vacation-request ${basename(filePath)} — ${String(e)}`);
+    archiveRequestIn(vacationRequestsDir(), filePath, '.failed');
+    return;
+  }
+  const fail = (reason: string): void => {
+    informGod('[vacation rejected]', `Vacation-request ${basename(filePath)} rejected: ${reason}.`);
+    archiveRequestIn(vacationRequestsDir(), filePath, '.failed');
+  };
+  // `id` accepted beside `agentId` — both spellings ship in the docs' sibling
+  // request formats, and a typo here would otherwise read as a silent no-op.
+  const agentId = (typeof raw.agentId === 'string' ? raw.agentId : typeof raw.id === 'string' ? raw.id : '').trim();
+  if (!agentId) { fail('missing "agentId"'); return; }
+  const recall = String(raw.action ?? 'park').toLowerCase() === 'recall';
+  const res = recall ? await recallAgent(agentId) : parkAgent(agentId, raw.reason);
+  if (!res.ok) { fail(res.error ?? 'unknown error'); return; }
+  informGod(
+    recall ? `[recalled] ${agentId}` : `[on vacation] ${agentId}`,
+    recall
+      ? `${agentId} is back on the floor — its pane resumed the agent's own session and its inbox drains on the next turn.`
+      : `${agentId} is on vacation: terminal closed, zero cost, off the floor but NOT deletable. Fetch it back with an "action":"recall" vacation-request when work fits it.`
+  );
+  archiveRequestIn(vacationRequestsDir(), filePath, '.done');
+}
+
 /** Total tokens (input+output+cache) a worker has burned so far, from the usage
  *  provider — 0 when unknown. Mirrors the breaker's `tokensOf`. Used only by the
  *  (default-off) per-worker token cap. */
@@ -4690,6 +4850,16 @@ async function ephemeralWorkerTick(): Promise<void> {
       for (const f of files) await processFireRequest(join(fdir, f));
     }
 
+    // (2c) Vacation requests — god parking an idle human-created agent, or
+    //      fetching one back. Interns and god are refused (they are fired /
+    //      never parked); the harness re-checks every rule god's policy states.
+    const vdir = vacationRequestsDir();
+    if (vdir && existsSync(vdir)) {
+      let files: string[] = [];
+      try { files = readdirSync(vdir).filter(f => f.endsWith('.json')).sort(); } catch { /* dir vanished */ }
+      for (const f of files) await processVacationRequest(join(vdir, f));
+    }
+
     // (3) GC preserved worktrees whose work has since integrated. Throttled to
     //     GC_SWEEP_MS and a no-op when nothing is preserved (the common case).
     const now = Date.now();
@@ -4708,6 +4878,8 @@ function startEphemeralWorkerWatcher(): void {
   if (workerWatchTimer || !hive.enabled()) return;
   const dir = spawnRequestsDir();
   if (dir) { try { mkdirSync(dir, { recursive: true }); } catch { /* noop */ } }
+  const vdir = vacationRequestsDir();
+  if (vdir) { try { mkdirSync(vdir, { recursive: true }); } catch { /* noop */ } }
   workerWatchTimer = setInterval(() => { void ephemeralWorkerTick(); }, WORKER_TICK_MS);
 }
 
