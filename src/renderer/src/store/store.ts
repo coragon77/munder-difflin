@@ -92,6 +92,11 @@ export interface Agent {
    *  positional seed. useHive types it once after boot-grace then clears it.
    *  Ephemeral spawn state — not persisted. (ondev-b) */
   seedPrompt?: string;
+  /** Engagement label from the spawn-request (card session-naming-seed-20260816).
+   *  Leads this agent's typed wake nudge so the CLI names the session after the
+   *  task instead of "check your inbox…". Stable per hire; persisted with the
+   *  agent record so a mid-engagement reload keeps labeling. */
+  spawnLabel?: string;
 }
 
 /** Roster class for display: 'god' (Michael), 'intern' (god-hired persistent

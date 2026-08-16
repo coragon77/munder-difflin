@@ -140,6 +140,30 @@ export interface AgentMeta {
   /** Michael's prep assistant — enriches prompts and forwards them to Michael.
    *  Send-only: excluded from broadcast fan-out so it never drains an inbox. */
   isAssistant?: boolean;
+  /** One-line engagement label (card session-naming-seed-20260816). Leads the
+   *  agent's FIRST user turn — the typed inbox-wake nudge (claude), the
+   *  positional/flag initial prompt (codex/grok/agy), or the typed TUI seed
+   *  (crush) — so the CLI's auto session name says what the hire is about
+   *  instead of the generic "check your inbox…". Derived from the
+   *  spawn-request's objective (or its explicit label field) at spawn; stable
+   *  for the agent's lifetime (prompt-cache-safe) and registry-persisted so
+   *  restore-team keeps labeling after a restart. */
+  spawnLabel?: string;
+}
+
+/** One-line engagement label for a fresh hire (card session-naming-seed-20260816).
+ *  An explicit spawn-request `label` (or `title`) field wins verbatim; otherwise
+ *  the objective's first sentence is used — collapsed to one line and capped at
+ *  80 chars on a word boundary so the session name stays readable. Empty input
+ *  ⇒ '' (no label ⇒ callers keep today's generic behavior). Pure on purpose:
+ *  tested directly, reused by the spawn-request path. */
+export function deriveSpawnLabel(explicit: string | undefined, objective: string): string {
+  const src = (explicit ?? '').trim() || objective.trim();
+  if (!src) return '';
+  const firstSentence = src.split('\n')[0].split(/(?<=[.!?])\s/)[0].replace(/\s+/g, ' ').trim().replace(/[.!?]+$/, '');
+  if (firstSentence.length <= 80) return firstSentence;
+  const cut = firstSentence.slice(0, 80).lastIndexOf(' ');
+  return (cut > 40 ? firstSentence.slice(0, cut) : firstSentence.slice(0, 80)).trimEnd() + '…';
 }
 
 export interface RegistryAgent extends AgentMeta {
@@ -1200,7 +1224,7 @@ export class HiveManager {
         + 'Each "new hive mail:" line means a message arrived — read your inbox and handle it (handled files go to inbox/.done/ per protocol). System FYI notices are skipped on purpose. If you cannot arm the monitor, do nothing — the harness\'s typed "read your inbox" nudge remains the fallback and fires only if mail is still unread after its grace window.'
       : '';
     const godLine = meta.isGod
-      ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST: BEFORE minting an intern (spawn-requests/), check the roster for an EXISTING fitting agent that is not currently busy and route the task there; interns are the fallback, not the default — mint one only when (a) the human explicitly ordered an intern/observable worker, or (b) parallelism: every fitting agent is mid-task. Say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, branch integration, and final QA — and remain the sole scribe of board.md. You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short.'
+      ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST: BEFORE minting an intern (spawn-requests/), check the roster for an EXISTING fitting agent that is not currently busy and route the task there; interns are the fallback, not the default — mint one only when (a) the human explicitly ordered an intern/observable worker, or (b) parallelism: every fitting agent is mid-task. Say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, branch integration, and final QA — and remain the sole scribe of board.md. You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill\'s execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans.'
         + ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.`
         + ' INTERNS — you OWN their lifecycle: mint them via spawn-requests/ ("persistent": true; template in COMMANDS.md) for delegated standing work, and FIRE them via fire-requests/ IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate.'
       : meta.isAssistant
@@ -1211,6 +1235,15 @@ export class HiveManager {
       ? 'SLACK REPLIES: When composing a Slack reply (or writing the `result` field of a Slack-origin kanban card), you MUST: (1) directly address what the user asked — never a bare "done"; (2) include the relevant specifics, outcome, and details; (3) format for Slack mrkdwn — open with a short *bold* headline, use bullet points for multiple items, wrap code/paths in `backtick` blocks, keep it concise (no walls of text). When finishing a Slack-origin task, always write a complete, user-facing, well-formatted `result` on the kanban card — the system posts it verbatim to Slack as the done reply.'
       : 'SLACK REPLIES: If god dispatches you a task that came from Slack, it will include an exact `"$HIVE_NODE" "<helper>" --channel … --thread … --text "…"` reply command — when you finish, run it VERBATIM to post your result back to that thread yourself. The reply must be SUBSTANTIVE Slack mrkdwn (a short *bold* headline + the actual outcome/specifics/links), NEVER a bare "done".';
     return [
+      // Session label FIRST (card session-naming-seed-20260816): engines that
+      // take this prompt as their first user turn (codex/grok positional, crush
+      // typed seed) name the session after its opening line. For claude this
+      // text is the --append-system-prompt, where the label still orients the
+      // hire; the claude session NAME is carried by the renderer's typed nudge
+      // (useHive), which leads with the same label.
+      meta.spawnLabel
+        ? `${meta.spawnLabel} — full dispatch in your hive inbox (read every file in inbox/ before starting).`
+        : '',
       `You are "${meta.name}" (${meta.id}), an autonomous agent in a collaborating hive of Claude agents.`,
       `Your private workspace is ${dir}. The shared hive is ${root}. Full protocol: ${root}/PROTOCOL.md.`,
       '',
@@ -2156,6 +2189,7 @@ cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/spawn-requests/my-task.jso
   "model": null,
   "isolate": true,
   "tokenCap": 0,
+  "label": null,
   "slack": null
 }
 EOF
@@ -2165,7 +2199,9 @@ EOF
 - **Optional:** \`id\` (defaults to filename), \`name\` (default \`Worker <id>\`), \`command\`
   (engine CLI; default = config \`defaultCommand\`), \`provider\`, \`model\` (Claude
   \`--model\`), \`isolate\` (default \`true\` = fresh git worktree on \`agent/<id>\`),
-  \`tokenCap\`, \`slack\` \`{channel, thread_ts}\` (reply target + failure surfacing),
+  \`tokenCap\`, \`label\`/\`title\` (short task label — leads the hire's FIRST prompt so
+  the CLI session is NAMED after the engagement instead of "check your inbox…";
+  default = first sentence of \`objective\`), \`slack\` \`{channel, thread_ts}\` (reply target + failure surfacing),
   \`persistent\` (default \`false\` — see Path 3).
 - **What happens** (main process, poll every 1.5s, cap = config \`maxConcurrentWorkers\`
   default 4): validates → spawns \`worker-<id>\` via the shared core (\`ensureAgent\` →

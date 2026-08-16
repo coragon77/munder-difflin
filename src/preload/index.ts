@@ -46,6 +46,8 @@ export interface HiveAgentMeta {
   isGod?: boolean;
   /** Michael's prep assistant — send-only; enriches prompts and forwards them. */
   isAssistant?: boolean;
+  /** Engagement label — leads the hire's first prompt (session naming). */
+  spawnLabel?: string;
 }
 
 export interface HiveMessage {
@@ -816,6 +818,8 @@ const api = {
     cb: (rec: {
       id: string; name: string; provider?: string; cwd: string;
       command?: string; role?: string; worktreePath?: string;
+      /** Engagement label (session naming) — leads the typed wake nudge. */
+      spawnLabel?: string;
     }) => void
   ): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: Parameters<typeof cb>[0]) => cb(payload);

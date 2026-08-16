@@ -159,7 +159,7 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
             // agent id is preserved across restart, so its registry entry,
             // memory.md and inbox reattach by id. No-op without a recorded session.
             resume: true,
-            hive: { id: a.id, name: a.name, provider, cwd }
+            hive: { id: a.id, name: a.name, provider, cwd, spawnLabel: a.spawnLabel }
           });
           if (res.ok) {
             // The card must reflect the REGISTRY (source of truth), not just the

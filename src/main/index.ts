@@ -22,7 +22,7 @@ import {
   addWorktree, removeWorktree, worktreeHasUnintegratedWork, worktreeIsGcSafe,
   getLogGraph, getCommitFiles, getFileAtRev, compareRefs, listWorktrees, checkoutRef
 } from './git';
-import { HiveManager, type AgentMeta, type HiveMessage, type HiveTask } from './hive';
+import { HiveManager, deriveSpawnLabel, type AgentMeta, type HiveMessage, type HiveTask } from './hive';
 import { HookServer } from './hooks';
 import { CircuitBreaker, type BreakerInput } from './breaker';
 import type { UsageProvider } from './usage';
@@ -4212,7 +4212,8 @@ registerRealtimeActionIpc({
           cwd: res.worktreePath ?? o.cwd,
           command: o.command,
           role: o.hive?.role,
-          worktreePath: res.worktreePath
+          worktreePath: res.worktreePath,
+          spawnLabel: o.hive?.spawnLabel
         });
       } catch { /* window torn down */ }
     }
@@ -4311,6 +4312,8 @@ interface SpawnRequest {
   isolate?: boolean;                                   // default true (fresh worktree)
   tokenCap?: number;                                   // optional per-worker token cap (advisory P1)
   persistent?: boolean;                                // NOT reaped — a standing floor agent (docs: HIRING_AGENTS_MD)
+  label?: string;                                      // optional explicit task label — session-naming (see below); alias: title
+  title?: string;                                      // alias for label
 }
 
 /** Polling cadence — matches the hive router. */
@@ -4475,7 +4478,13 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     name: displayName,
     provider: raw.provider,
     role: persistent ? 'intern' : 'worker',
-    cwd
+    cwd,
+    // Session naming (card session-naming-seed-20260816): leads the hire's
+    // first user turn (typed nudge / initial prompt / TUI seed) so the CLI
+    // names the session after the engagement. Explicit label/title wins; else
+    // derived from the objective's first sentence. '' → undefined (unlabeled
+    // agents keep today's generic first turn).
+    spawnLabel: deriveSpawnLabel(raw.label ?? raw.title, objective) || undefined
   };
   // Phase 2: grant this worker a broker capability over the currently-enabled
   // integrations and inject the broker URL + a per-worker capability TOKEN (a handle,
@@ -4542,7 +4551,8 @@ async function processSpawnRequest(filePath: string): Promise<void> {
         provider: raw.provider ?? 'claude',
         cwd: res.worktreePath ?? cwd,
         command,
-        role: meta.role // 'intern' for persistent hires — matches the registry (useHive shows it on the card)
+        role: meta.role, // 'intern' for persistent hires — matches the registry (useHive shows it on the card)
+        spawnLabel: meta.spawnLabel // leads the renderer's typed nudge → session name
       });
     } catch { /* window torn down */ }
   }

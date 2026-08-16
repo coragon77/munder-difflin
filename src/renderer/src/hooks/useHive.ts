@@ -642,9 +642,19 @@ export function useHive(config: HarnessConfig | null): void {
             // whatever is still unread.
             const queued = useStore.getState().messageQueues[a.id] ?? [];
             if (!queued.some((m) => m.inboxFor)) {
+              // Session naming (card session-naming-seed-20260816): this nudge is
+              // a fresh hire's FIRST typed user turn, and CLIs name the session
+              // after it — so a labeled spawn leads with its engagement label
+              // instead of the generic "check your inbox…". The instructions are
+              // unchanged (read inbox, act, .done/, autonomy); only the lead
+              // changes. Unlabeled agents (god, human hires, pre-label spawns)
+              // keep today's exact text.
+              const label = a.spawnLabel?.trim();
               useStore.getState().enqueueMessage(
                 a.id,
-                'You have new hive inbox message(s) — read your inbox, act on them now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.',
+                label
+                  ? `${label} — read your hive inbox for the full dispatch, act on it now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.`
+                  : 'You have new hive inbox message(s) — read your inbox, act on them now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.',
                 { inboxFor: newest }
               );
               nudged.current[a.id] = newest;
@@ -963,6 +973,7 @@ export function useHive(config: HarnessConfig | null): void {
         command: rec.command,
         provider: rec.provider as Agent['provider'],
         isGod: false,
+        spawnLabel: rec.spawnLabel, // leads the wake nudge → the CLI session's name
         recentTextTs: Date.now()
       };
       useStore.getState().addAgent(agent);
