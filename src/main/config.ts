@@ -186,7 +186,7 @@ export interface HarnessConfig {
   recentHives?: string[];
   /** Folders the user registered during onboarding (used as quick-picks). */
   registeredRepos: string[];
-  /** When true, new agents are spawned with --permission-mode bypassPermissions. */
+  /** When true, new agents are spawned with the provider's permission-bypass flag (claude: --dangerously-skip-permissions). */
   autoMode: boolean;
   /** When true, the god agent's fresh spawns run `/remote-control Michael`,
    *  linking his session to the Claude mobile app (phone-side supervision of a
@@ -692,8 +692,9 @@ export function ensureHarnessHome(path: string): { ok: boolean; error?: string }
   }
 }
 
-/** Idempotently pre-accept Claude Code's first-run prompts so agents spawned with
- *  `--permission-mode bypassPermissions` start cleanly. Without this, a fresh
+/** Idempotently pre-accept Claude Code's first-run prompts so agents spawned
+ *  with bypass permissions (claude: `--dangerously-skip-permissions`) start
+ *  cleanly. Without this, a fresh
  *  install shows an interactive "WARNING: Bypass Permissions mode … 1. No, exit /
  *  2. Yes, I accept" prompt that the PTY can't answer in time, so the agent exits
  *  code 1 on its own (reported by multiple users).

@@ -168,10 +168,19 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     label: 'Claude Code',
     defaultCommand: 'claude',
     commandGroups: CLAUDE_COMMAND_GROUPS,
-    autoModeFlag: '--permission-mode bypassPermissions',
+    // Verified against the SHIPPED binary (claude 2.1.221 native ELF): the help
+    // documents --dangerously-skip-permissions as "Alias for --permission-mode
+    // bypassPermissions", and it is ALSO the launch flag the runtime bypass
+    // toggle requires (the binary's own refusal: "Cannot set permission mode
+    // to bypassPermissions because the session was not launched with
+    // --dangerously-skip-permissions"). Single token — the old two-token
+    // '--permission-mode bypassPermissions' was one more split hazard on the
+    // args channel. `--dangerously-bypass-permissions` does NOT exist in the
+    // binary (zero occurrences) despite parsing without error.
+    autoModeFlag: '--dangerously-skip-permissions',
     supportsModel: true,
     modelFlag: '--model',
-    autoFlag: '--permission-mode bypassPermissions',
+    autoFlag: '--dangerously-skip-permissions',
     hiveAware: true,
     canReceiveInbox: true,
     // Longest-context Claude variant — matches the "give Michael a bigger model"
@@ -500,6 +509,27 @@ export function normalizeAgentProvider(value: unknown): AgentProvider | undefine
 
 export function providerPreset(provider: AgentProvider): AgentProviderPreset {
   return AGENT_PROVIDER_PRESETS.find((p) => p.id === provider) ?? AGENT_PROVIDER_PRESETS[0];
+}
+
+/**
+ * The provider's auto-mode bypass flag as ARGV TOKENS for a spawn command.
+ *
+ * Spawn paths resolve the command STRING to its bare binary — PATH resolution
+ * drops anything appended after the first token — so a flag glued onto the
+ * command string never reaches the process. It must ride the args array (the
+ * same channel `--model` provably reaches argv through). Idempotent: a flag
+ * the operator already wrote into the command string wins and is never
+ * doubled. Multi-token flags (copilot) split into one argv element per token.
+ * Empty when auto mode is off or the provider has no flag.
+ */
+export function autoModeArgsForCommand(
+  command: string,
+  provider: AgentProvider | undefined,
+  autoMode: boolean
+): string[] {
+  const preset = providerPreset(inferAgentProvider(command, provider));
+  if (!autoMode || !preset.autoFlag || command.includes(preset.autoFlag)) return [];
+  return preset.autoFlag.split(/\s+/).filter(Boolean);
 }
 
 export function isClaudeProvider(provider: AgentProvider | undefined): boolean {

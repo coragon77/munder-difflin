@@ -100,7 +100,7 @@ export const COMMAND_GROUPS: CmdGroup[] = [
     items: [
       { cmd: '/permissions', kind: 'slash', desc: 'View and edit which tools are allowed / asked / denied.' },
       { cmd: '/hooks', kind: 'slash', desc: 'View the configured lifecycle hooks (PreToolUse, Stop, etc.).' },
-      { cmd: 'claude --permission-mode bypassPermissions', kind: 'cli', desc: 'Run without per-tool approval prompts (this is what "auto mode" uses).' },
+      { cmd: 'claude --dangerously-skip-permissions', kind: 'cli', desc: 'Run without per-tool approval prompts (this is what "auto mode" uses).' },
       { cmd: 'claude --allowedTools "Bash(git *) Edit Read"', kind: 'cli', desc: 'Pre-allow specific tools so they never prompt.' }
     ]
   },

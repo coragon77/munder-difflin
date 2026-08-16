@@ -65,6 +65,7 @@ import { fetchHireManifest, readHireManifestFile } from './hire';
 import { parseHireDeepLink, type HireManifest } from '../shared/hire';
 import { ClosingTimeController } from './closingTime';
 import {
+  autoModeArgsForCommand,
   inferAgentProvider,
   isClaudeProvider,
   nonInteractiveEnvForProvider,
@@ -2801,7 +2802,7 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   // live terminal means active — ensureAgent above already cleared `archived`.
   if (opts.hive?.id) ptyToAgent.set(opts.id, opts.hive.id);
   // Pre-accept Claude Code's bypass-mode warning + folder-trust dialog so the
-  // agent (spawned with --permission-mode bypassPermissions) doesn't stall on an
+  // agent (spawned with the bypass-permissions flag) doesn't stall on an
   // interactive prompt it can't answer and exit code 1. Best-effort, never blocks.
   // Claude-only — other CLIs handle their own permission UX.
   if (claudeProvider) {
@@ -4375,19 +4376,15 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   if (!cwd || !existsSync(cwd)) { fail(`"cwd" missing or not found (${cwd || 'unset'})`); return; }
 
   let command = typeof raw.command === 'string' && raw.command.trim() ? raw.command.trim() : (readConfig().defaultCommand ?? 'claude');
-  // AutoMode parity with human hires: the renderer's spawn builder appends the
-  // provider's autoFlag (config.ts) when the floor runs in auto mode, but this
-  // path took `command` literally — so god-hired workers/interns spawned WITHOUT
-  // bypass permissions and stalled on their first Bash/Edit prompt (observed
-  // live: Creed, no --permission-mode flag). Apply the same rule here, from the
-  // SHARED preset table (not a renderer import). Idempotent: an explicit flag
-  // god wrote into raw.command is respected, never doubled.
-  {
-    const preset = providerPreset(inferAgentProvider(command, raw.provider));
-    if (readConfig().autoMode && preset.autoFlag && !command.includes(preset.autoFlag)) {
-      command = `${command} ${preset.autoFlag}`;
-    }
-  }
+  // AutoMode parity with human hires — as ARGV TOKENS, not string-appended:
+  // spawnAgentCore resolves the command string to its BINARY (PATH resolution
+  // keeps only the first token), so a flag glued onto the string never reached
+  // the process (verified live on intern-vacation-state via /proc cmdline —
+  // the floor only worked because the HIVE_AUTO_APPROVE hook approves per
+  // call, and that hook STAYS as belt-and-braces). The args array is the
+  // proven channel — raw.model's '--model' rides it into argv. Idempotent: an
+  // explicit flag god wrote into raw.command is respected, never doubled.
+  const autoArgs = autoModeArgsForCommand(command, raw.provider, readConfig().autoMode);
   const bin = command.split(/\s+/)[0] || command;
   // Missing-CLI → FAIL FAST. A headless worker has no human to watch an installer,
   // so we never run the cc49e1e install banner here — we reject and tell god.
@@ -4432,7 +4429,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   }
   const spawnOpts: AgentSpawnOptions = {
     id: workerId, cwd, command, cols: 120, rows: 32,
-    args: raw.model ? ['--model', raw.model] : [],
+    args: [...(raw.model ? ['--model', raw.model] : []), ...autoArgs],
     hive: meta, isolate, provider: raw.provider, env: brokerEnv
   };
 
