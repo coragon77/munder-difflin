@@ -3,9 +3,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import {
-  autoModeFlagForProvider,
-  defaultCommandForProvider,
-  inferAgentProvider,
   providerPreset,
   type AgentProvider
 } from '../shared/agentProvider';
@@ -683,20 +680,6 @@ export function modelForRole(
   const hay = `${meta.role ?? ''} ${(meta.capabilities ?? []).join(' ')}`.toLowerCase();
   if (/\b(triage|rout|verif|lint|format|summar|classif|label)/.test(hay)) return MODEL_HELPER;
   return MODEL_WORKER;
-}
-
-/** Auto-suggested command string given current autoMode preference. */
-export function commandForAutoMode(
-  config: HarnessConfig,
-  provider?: AgentProvider
-): string {
-  const p = provider ?? inferAgentProvider(config.defaultCommand);
-  const base = p === 'claude' || p === 'custom'
-    ? config.defaultCommand
-    : defaultCommandForProvider(p, config.defaultCommand);
-  if (!config.autoMode) return base;
-  const flag = autoModeFlagForProvider(p);
-  return flag ? `${base} ${flag}` : base;
 }
 
 /** Ensure harnessHome exists on disk. */

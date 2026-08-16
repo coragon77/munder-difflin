@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const loadTs = require('./load-ts.cjs');
 
 const {
+  autoModeArgsForCommand,
   inferAgentProvider,
   isAgentProvider,
   providerPreset
@@ -14,7 +15,8 @@ const {
   decodeProviderModel,
   encodeProviderModel,
   modelProvidersForAgent,
-  modelsForProvider
+  modelsForProvider,
+  tokenizeCommand
 } = loadTs('src/renderer/src/store/config.ts');
 
 const autoConfig = { defaultCommand: 'claude', autoMode: true };
@@ -44,23 +46,77 @@ test('Grok is a first-class inferred provider with hooks, resume, and always-app
 });
 
 test('provider commands use matching models and equivalent bypass modes', () => {
-  // claude's bypass flag is the single-token --dangerously-skip-permissions —
-  // verified against the shipped binary (card spawn-bypass-flag-dropped).
+  // Since the renderer-hire-flag fix the command STRING carries only the
+  // binary + model; the auto-mode bypass flag rides ARGV via
+  // autoModeArgsForCommand (see the argv test below) — string-appending it was
+  // the same bug class 2714c92 fixed for spawn-requests (any consumer that
+  // resolves the command to its binary drops a glued tail).
   assert.equal(
     buildSpawnCommand(autoConfig, 'claude-sonnet-5', 'claude'),
-    'claude --model claude-sonnet-5 --dangerously-skip-permissions'
+    'claude --model claude-sonnet-5'
   );
   assert.equal(
     buildSpawnCommand(autoConfig, 'gpt-5.6-sol', 'codex'),
-    'codex --model gpt-5.6-sol --dangerously-bypass-approvals-and-sandbox'
+    'codex --model gpt-5.6-sol'
   );
   assert.equal(
     buildSpawnCommand(autoConfig, 'grok-4.5', 'grok'),
-    'grok --model grok-4.5 --permission-mode bypassPermissions'
+    'grok --model grok-4.5'
   );
   assert.equal(
     buildSpawnCommand(autoConfig, 'kimi-code/k3', 'kimi'),
-    'kimi --model kimi-code/k3 --auto'
+    'kimi --model kimi-code/k3'
+  );
+});
+
+test('renderer hire argv carries the auto-mode flag on the args channel', () => {
+  // Mirrors spawnAgentCore's composition: the spawn site tokenizes the built
+  // command, and the bypass flag is appended as ARGV TOKENS from the shared
+  // preset table (card renderer-hire-flag-append-20260816).
+  const cases = [
+    ['claude', 'claude-sonnet-5', ['--dangerously-skip-permissions']],
+    ['codex', 'gpt-5.6-sol', ['--dangerously-bypass-approvals-and-sandbox']],
+    // grok's flag: verified in an earlier round, NOT re-verified since — no
+    // grok binary installed on this machine (documented per card).
+    ['grok', 'grok-4.5', ['--permission-mode', 'bypassPermissions']],
+    ['kimi', 'kimi-code/k3', ['--auto']]
+  ];
+  for (const [provider, model, flagTokens] of cases) {
+    const cmd = buildSpawnCommand(autoConfig, model, provider);
+    const argv = [...tokenizeCommand(cmd), ...autoModeArgsForCommand(cmd, provider, true)];
+    const flagStart = argv.indexOf(flagTokens[0]);
+    assert.ok(flagStart > 0, `${provider}: flag missing from argv: ${argv}`);
+    assert.deepEqual(
+      argv.slice(flagStart, flagStart + flagTokens.length),
+      flagTokens,
+      `${provider}: flag tokens not intact in argv: ${argv}`
+    );
+  }
+});
+
+test('tokenizeCommand semantics stay intact: a quoted model label stays ONE argv token', () => {
+  // The pane-restart path (CommandCenterPanel restartWithModel) rebuilds the
+  // command string and re-tokenizes it — buildSpawnCommand must keep emitting a
+  // string that tokenizes losslessly (spaces in the model value stay one arg).
+  const cmd = buildSpawnCommand(autoConfig, 'Gemini 3.1 Pro (High)', 'antigravity');
+  const argv = [...tokenizeCommand(cmd), ...autoModeArgsForCommand(cmd, 'antigravity', true)];
+  assert.deepEqual(argv, [
+    'agy', '--model', 'Gemini 3.1 Pro (High)', '--dangerously-skip-permissions'
+  ]);
+});
+
+test('joined command+args guard: an operator-typed flag is respected, never doubled', () => {
+  // spawnAgentCore guards with the JOIN of command + args (the flag may live
+  // in either: a user-typed flag lands in args after tokenization; a persisted
+  // pre-fix command string bakes it into the command). Both spellings — single
+  // token and multi-token grok — must suppress the injection.
+  assert.deepEqual(
+    autoModeArgsForCommand(['claude', '--dangerously-skip-permissions'].join(' '), 'claude', true),
+    []
+  );
+  assert.deepEqual(
+    autoModeArgsForCommand(['grok', '--permission-mode', 'bypassPermissions'].join(' '), 'grok', true),
+    []
   );
 });
 

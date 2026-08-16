@@ -2573,6 +2573,27 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   const claudeProvider = isClaudeProvider(provider);
   opts.provider = provider;
   if (opts.hive) opts.hive = { ...opts.hive, provider };
+  // ── AUTO-MODE FLAG ON ARGV ───────────────────────────────────────────────
+  // Same fix as 2714c92, applied to the single door every renderer/UI hire
+  // passes through: the bypass flag rides opts.args (the channel `--model`
+  // provably reaches argv through), never a string-append on the command —
+  // any consumer that resolves the command to its binary (the missing-CLI
+  // probe below, PATH resolution in pty.spawn) drops a glued tail. The
+  // renderer's buildSpawnCommand no longer bakes the flag in, so inject it
+  // here from the SHARED preset table: every path (Add Agent hire, god
+  // spawn, pane restart, restore, revive) gets it, and it follows the LIVE
+  // autoMode setting rather than whatever the hire-time string persisted.
+  // Idempotent: a flag the operator typed into the command — or that an
+  // older persisted command string / the spawn-request path already carries
+  // in args — wins, never doubled; hence the command+args join the guard sees.
+  {
+    const autoArgs = autoModeArgsForCommand(
+      [opts.command, ...(opts.args ?? [])].join(' '),
+      provider,
+      readConfig().autoMode
+    );
+    if (autoArgs.length) opts.args = [...(opts.args ?? []), ...autoArgs];
+  }
   // ── Missing engine CLI → run its installer visibly (pre-spawn) ───────────────
   // If the agent's engine binary (claude/codex/…) isn't installed, spawning it
   // just dies with "— process exited (code 1) —" and the user has no idea why.

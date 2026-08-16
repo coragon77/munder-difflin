@@ -252,6 +252,9 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     commandGroups: GROK_COMMAND_GROUPS,
     // Grok documents bypassPermissions as the CLI/config spelling of its
     // always-approve mode. Deny rules and lifecycle gates still take precedence.
+    // Verified against a grok binary in an earlier round; NOT re-verified since
+    // the 2714c92 flag audit — no grok binary installed on this machine
+    // (2026-08-16, card renderer-hire-flag-append).
     autoModeFlag: '--permission-mode bypassPermissions',
     autoFlag: '--permission-mode bypassPermissions',
     supportsModel: true,

@@ -365,10 +365,18 @@ export function decodeProviderModel(value: string): {
   }
 }
 
-/** Build the command line to feed into spawnPty, honoring the provider's flags,
- *  autoMode, and an optional per-agent model override. Claude keeps the user's
+/** Build the command line to feed into spawnPty, honoring the provider's
+ *  model flag and an optional per-agent model override. Claude keeps the user's
  *  configured `defaultCommand`; other providers use their preset binary so the
- *  app works without Claude installed. */
+ *  app works without Claude installed.
+ *
+ *  The auto-mode bypass flag is deliberately NOT baked into this string: it
+ *  rides ARGV — spawnAgentCore injects it as args tokens from the shared
+ *  preset table (`autoModeArgsForCommand`) — because a flag glued onto the
+ *  command string is the bug class 2714c92 fixed for spawn-requests (any
+ *  consumer that resolves the command to its binary drops the tail). Keeping
+ *  the string flag-free also means restarts/revives follow the LIVE autoMode
+ *  setting instead of whatever was baked in at hire time. */
 export function buildSpawnCommand(
   config: Pick<HarnessConfig, 'defaultCommand' | 'autoMode'>,
   model?: string,
@@ -391,9 +399,7 @@ export function buildSpawnCommand(
     const m = /\s/.test(model) ? `"${model}"` : model;
     cmd = `${cmd} ${preset.modelFlag} ${m}`;
   }
-  // Auto (skip-permissions) mode appends each provider's own flag — Claude's
-  // bypassPermissions, Codex's dangerous bypass, Grok's always-approve, Kimi's
-  // auto, or agy's skip flag.
-  if (config.autoMode && preset.autoFlag) cmd = `${cmd} ${preset.autoFlag}`;
+  // Auto (skip-permissions) mode: see the doc comment above — the flag rides
+  // ARGV via spawnAgentCore's autoModeArgsForCommand injection, never this string.
   return cmd;
 }
