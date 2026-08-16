@@ -49,7 +49,9 @@ globalThis.window = {
 const loadTs = require('./load-ts.cjs');
 const { godCommand } = loadTs('src/main/kittySatellite.ts');
 const { useStore } = loadTs('src/renderer/src/store/store.ts');
-const { DEFAULT_HIRE_PERMISSION_MODE, permissionModeArgs } = loadTs('src/shared/agentProvider.ts');
+const { DEFAULT_HIRE_PERMISSION_MODE, permissionModeArgs, resolveHirePermissionMode } = loadTs(
+  'src/shared/agentProvider.ts',
+);
 
 // ── 1) god co-terminal ───────────────────────────────────────────────────
 
@@ -127,6 +129,84 @@ test('a restorable agent keeps its stored permissionMode through the slim', () =
 });
 
 // ── 3) spawnAgentCore resolution mirror ───────────────────────────────────
+
+// ── 4) registry fallback rung (card god-boot-ignores-permission-mode-20260816)
+// The real helper spawnAgentCore calls (not a mirror): a spawn carrying no
+// explicit mode must fall back to the STORED registry record before the
+// Claude-Auto default — that record is how an operator-set god bypass
+// survives restarts when the god boot (which never sends a mode) re-spawns.
+
+test('resolution helper exists as real shared code', () => {
+  assert.equal(typeof resolveHirePermissionMode, 'function');
+});
+
+test('registry rung: no explicit mode + stored bypass => bypass argv', () => {
+  const mode = resolveHirePermissionMode(undefined, 'bypass');
+  assert.equal(mode, 'bypass');
+  // The argv spawnAgentCore assembles: opts WITHOUT permissionMode + registry
+  // record 'bypass' => the bypass flag lands in the injected args.
+  assert.deepEqual(permissionModeArgs('claude --model m', 'claude', mode), [
+    '--dangerously-skip-permissions',
+  ]);
+});
+
+test('registry rung: record with no stored mode => unchanged Claude-Auto default', () => {
+  const mode = resolveHirePermissionMode(undefined, undefined);
+  assert.equal(mode, DEFAULT_HIRE_PERMISSION_MODE);
+  assert.deepEqual(permissionModeArgs('claude --model m', 'claude', mode), [
+    '--permission-mode',
+    'auto',
+  ]);
+});
+
+test('registry rung: an explicit spawn mode still wins over the record', () => {
+  // god's spawn-requests send workerBypass ? 'bypass' : 'default' — that
+  // explicit choice must never be overridden by a stale registry record.
+  assert.equal(resolveHirePermissionMode('default', 'bypass'), 'default');
+  assert.equal(resolveHirePermissionMode('bypass', undefined), 'bypass');
+});
+
+// ── 5) god co-terminal prefers the registry god record (same authority as the
+//      in-app boot's new fallback rung) —
+
+const withGodRegistry = (godRecord, defaultCommand = 'claude') =>
+  withTempXdg((cfgPath) => {
+    const hive = mkdtempSync(join(tmpdir(), 'perm-mode-hive-'));
+    writeFileSync(cfgPath, JSON.stringify({ defaultCommand, harnessHome: hive }));
+    mkdirSync(join(hive, 'agents', 'god'), { recursive: true });
+    writeFileSync(
+      join(hive, 'registry.json'),
+      JSON.stringify({
+        godId: 'god',
+        agents: { god: { id: 'god', isGod: true, cwd: hive, ...godRecord } },
+      }),
+    );
+    return godCommand();
+  });
+
+test('god co-terminal: registry god bypass => bypass flag, not Claude Auto', () => {
+  const { args } = withGodRegistry({ permissionMode: 'bypass' });
+  assert.ok(args.includes('--dangerously-skip-permissions'), `got ${JSON.stringify(args)}`);
+  assert.ok(!args.includes('auto'), 'stored bypass must replace the blanket auto default');
+});
+
+test('god co-terminal: no registry record => unchanged Claude-Auto default', () => {
+  const { args } = withGodRegistry({});
+  assert.deepEqual(args, ['--permission-mode', 'auto']);
+});
+
+test('god co-terminal: registry stored default mode => no flag at all', () => {
+  const { args } = withGodRegistry({ permissionMode: 'default' });
+  assert.deepEqual(args, []);
+});
+
+test('god co-terminal: a typed --permission-mode beats the registry record', () => {
+  const { args } = withGodRegistry(
+    { permissionMode: 'bypass' },
+    'claude --permission-mode acceptEdits',
+  );
+  assert.deepEqual(args, ['--permission-mode', 'acceptEdits']);
+});
 
 test('resolution: stored mode wins; legacy agents fall back to Claude Auto, never bypass', () => {
   // Mirrors spawnAgentCore: const mode = opts.permissionMode ?? DEFAULT_HIRE_PERMISSION_MODE

@@ -537,6 +537,18 @@ export type HirePermissionMode = 'default' | 'auto' | 'bypass';
 /** The hire-window selector's default: Claude Auto. */
 export const DEFAULT_HIRE_PERMISSION_MODE: HirePermissionMode = 'auto';
 
+/** Resolve a spawn's permission mode (card god-boot-ignores-permission-mode-
+ *  20260816): an explicit mode on the spawn opts wins; else the agent's STORED
+ *  registry record (the durable preference — how an operator-set god bypass
+ *  survives restarts, since the in-app god boot and legacy pre-selector agents
+ *  send no mode); else the Claude-Auto default. Used by spawnAgentCore. */
+export function resolveHirePermissionMode(
+  explicit: HirePermissionMode | undefined,
+  stored: HirePermissionMode | undefined,
+): HirePermissionMode {
+  return explicit ?? stored ?? DEFAULT_HIRE_PERMISSION_MODE;
+}
+
 /**
  * The permission-mode flag as ARGV TOKENS for a spawn command.
  *

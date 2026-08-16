@@ -45,6 +45,7 @@ import {
   providerPreset,
   bridgeOf,
   type AgentProvider,
+  type HirePermissionMode,
 } from '../shared/agentProvider';
 import { MCP_CATALOG } from '../shared/mcpCatalog';
 import { hasInboxMonitor } from '../shared/providerAutomation';
@@ -211,6 +212,13 @@ export interface RegistryAgent extends AgentMeta {
    *  vacation clears this and leaves `archived` — that is the demotion to plain
    *  ARCHIVED which deletion requires. */
   vacation?: boolean;
+  /** The agent's persisted permission mode — the hire-time selector's choice
+   *  for workers, or the operator-set mode for the god. spawnAgentCore reads it
+   *  as the fallback rung when a spawn carries no explicit mode (the in-app god
+   *  boot sends none), so the stored preference survives restarts. Write-side
+   *  is unchanged (spawn meta never carries it; ensureAgent's `...prev` spread
+   *  preserves it) — it changes only through operator action. */
+  permissionMode?: HirePermissionMode;
   /** Epoch ms the agent was parked — the "parked 2h ago" the VACATION section and
    *  god's fetchable pool read. Cleared when the vacation ends. */
   vacationSince?: number;

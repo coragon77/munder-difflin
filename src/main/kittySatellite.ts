@@ -24,6 +24,11 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  DEFAULT_HIRE_PERMISSION_MODE,
+  permissionModeArgs,
+  type HirePermissionMode,
+} from '../shared/agentProvider';
 
 const log = (...a: unknown[]) => console.log('[kitty-satellite]', ...a);
 
@@ -93,14 +98,27 @@ export function godCommand(): { file: string; args: string[]; cwd: string | null
     const cmd = (cfg.defaultCommand ?? '').trim() || 'bash';
     const parts = cmd.split(/\s+/);
     const hive = cfg.harnessHome ?? null;
-    // God co-terminal runs in Claude Auto like the in-app god (card
-    // permission-mode-config-20260816: his spawn passes no explicit mode, so
-    // spawnAgentCore resolves the DEFAULT). He is an unattended orchestrator:
-    // permission prompts in the satellite window answer nobody — auto keeps him
-    // moving without the install-wide bypass the card retired. A typed
-    // --permission-mode wins and is never doubled.
+    // God co-terminal mirrors the in-app god's resolution (card
+    // god-boot-ignores-permission-mode-20260816): his REGISTRY record's stored
+    // permissionMode wins when set, else the Claude-Auto default. He is an
+    // unattended orchestrator — permission prompts in the satellite window
+    // answer nobody. A typed --permission-mode wins and is never doubled.
+    let godMode: HirePermissionMode | undefined;
+    if (hive) {
+      try {
+        const reg = JSON.parse(readFileSync(join(hive, 'registry.json'), 'utf8')) as {
+          godId?: string | null;
+          agents?: Record<string, { permissionMode?: HirePermissionMode }>;
+        };
+        godMode = reg.agents?.[reg.godId ?? 'god']?.permissionMode;
+      } catch {
+        /* no/bad registry → default */
+      }
+    }
     if (parts[0] === 'claude' && !parts.includes('--permission-mode')) {
-      parts.push('--permission-mode', 'auto');
+      parts.push(
+        ...permissionModeArgs(parts.join(' '), 'claude', godMode ?? DEFAULT_HIRE_PERMISSION_MODE),
+      );
     }
     // Claude at the hive root finds the god's memory/board/inbox via its cwd.
     const godCwd = hive ? join(hive, 'agents', 'god') : null;

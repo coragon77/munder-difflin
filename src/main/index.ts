@@ -154,13 +154,13 @@ import { fetchHireManifest, readHireManifestFile } from './hire';
 import { parseHireDeepLink, type HireManifest } from '../shared/hire';
 import { ClosingTimeController } from './closingTime';
 import {
-  DEFAULT_HIRE_PERMISSION_MODE,
   inferAgentProvider,
   isClaudeProvider,
   nonInteractiveEnvForProvider,
   permissionModeArgs,
   providerPreset,
   installInfoForProvider,
+  resolveHirePermissionMode,
   type AgentProvider,
   type HirePermissionMode,
 } from '../shared/agentProvider';
@@ -3136,14 +3136,23 @@ async function spawnAgentCore(
   // selection (persisted on the agent, so restore/revive/restart re-send the
   // SAME choice); god's spawn-requests send workerBypass ? 'bypass' :
   // 'default'; the in-app god and legacy pre-selector agents send nothing and
-  // land on the Claude-Auto default. The flag still rides opts.args (the
+  // fall back to their REGISTRY record (rung below), else the Claude-Auto
+  // default. The flag still rides opts.args (the
   // channel `--model` provably reaches argv through), never a string-append on
   // the command — any consumer that resolves the command to its binary (the
   // missing-CLI probe below, PATH resolution in pty.spawn) drops a glued tail.
   // Idempotent: a flag the operator (or god) typed into the command — or that
   // an older persisted command string already carries — wins, never doubled;
   // hence the command+args join the guard sees.
-  const permissionMode = opts.permissionMode ?? DEFAULT_HIRE_PERMISSION_MODE;
+  // REGISTRY RUNG (card god-boot-ignores-permission-mode-20260816): a spawn
+  // that carries no explicit mode (the in-app god boot + revive, legacy
+  // pre-selector agents) falls back to the agent's STORED registry record
+  // before the default — a persisted choice (e.g. operator-set god bypass)
+  // survives restarts instead of silently degrading to Claude Auto.
+  const permissionMode = resolveHirePermissionMode(
+    opts.permissionMode,
+    opts.hive ? hive.registry().agents[opts.hive.id]?.permissionMode : undefined,
+  );
   {
     const autoArgs = permissionModeArgs(
       [opts.command, ...(opts.args ?? [])].join(' '),
