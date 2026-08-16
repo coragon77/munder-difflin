@@ -68,6 +68,11 @@ async function run(cmd, env) {
     const child = spawn('/bin/sh', ['-c', cmd], { env, stdio: ['pipe', 'pipe', 'pipe'] });
     let stderr = '';
     child.stderr.on('data', (d) => { stderr += d; });
+    // Fast-exiting commands (`command -v node`, `node` when absent → 127) never
+    // read stdin; the pending write then EPIPEs. Expected — exit code is what
+    // callers assert — but without a listener it crashes the test as an
+    // unhandled 'error' event.
+    child.stdin.on('error', () => {});
     child.stdin.end(JSON.stringify({ hook_event_name: 'Stop', session_id: 's1' }));
     child.on('close', (code) => resolve({ code, stderr }));
   });
