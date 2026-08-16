@@ -30,7 +30,7 @@ import {
   type IntegrationRecord,
   buildAuthHeaders,
   resolveUpstreamUrl,
-  authTypeNeedsSecret
+  authTypeNeedsSecret,
 } from '../shared/integrations';
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB request-body cap
@@ -39,18 +39,27 @@ const DEFAULT_USER_AGENT = 'munder-difflin-broker/1';
 
 /** Hop-by-hop headers never forwarded in either direction. */
 const HOP_BY_HOP = new Set([
-  'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
-  'te', 'trailer', 'transfer-encoding', 'upgrade'
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
 ]);
 /** Request headers the worker is NEVER allowed to pass upstream. */
 const STRIP_REQUEST = new Set([
-  'authorization', 'x-md-broker-token', 'host', 'cookie', 'content-length', ...HOP_BY_HOP
+  'authorization',
+  'x-md-broker-token',
+  'host',
+  'cookie',
+  'content-length',
+  ...HOP_BY_HOP,
 ]);
 /** Response headers never forwarded back (fetch already decodes the body, so the
  *  upstream content-encoding/length would be wrong). */
-const STRIP_RESPONSE = new Set([
-  'content-encoding', 'content-length', 'set-cookie', ...HOP_BY_HOP
-]);
+const STRIP_RESPONSE = new Set(['content-encoding', 'content-length', 'set-cookie', ...HOP_BY_HOP]);
 
 interface Capability {
   workerId: string;
@@ -87,9 +96,15 @@ export class IntegrationBroker {
   /** Bind a loopback port (0 ⇒ OS-assigned). Resolves the bound port. */
   start(preferredPort = 0): Promise<{ ok: boolean; port?: number; error?: string }> {
     return new Promise((resolve) => {
-      if (this.server) { resolve({ ok: true, port: this.port }); return; }
+      if (this.server) {
+        resolve({ ok: true, port: this.port });
+        return;
+      }
       const server = createServer((req, res) => this.handle(req, res));
-      const onError = (e: Error): void => { server.off('listening', onListening); resolve({ ok: false, error: e.message }); };
+      const onError = (e: Error): void => {
+        server.off('listening', onListening);
+        resolve({ ok: false, error: e.message });
+      };
       const onListening = (): void => {
         server.off('error', onError);
         this.server = server;
@@ -106,7 +121,11 @@ export class IntegrationBroker {
 
   /** Close the broker. Idempotent and best-effort. Clears all capabilities. */
   stop(): void {
-    try { this.server?.close(); } catch { /* noop */ }
+    try {
+      this.server?.close();
+    } catch {
+      /* noop */
+    }
     this.server = null;
     this.port = 0;
     this.byToken.clear();
@@ -137,7 +156,10 @@ export class IntegrationBroker {
   /** Revoke a worker's capability (called on teardown). Idempotent. */
   revoke(workerId: string): void {
     const token = this.byWorker.get(workerId);
-    if (token) { this.byToken.delete(token); this.byWorker.delete(workerId); }
+    if (token) {
+      this.byToken.delete(token);
+      this.byWorker.delete(workerId);
+    }
   }
 
   /** Constant-time-ish lookup of a presented token against live capabilities. */
@@ -151,8 +173,20 @@ export class IntegrationBroker {
     return undefined;
   }
 
-  private static sendError(res: ServerResponse, status: number, code: string, message: string): void {
-    if (res.headersSent) { try { res.end(); } catch { /* noop */ } return; }
+  private static sendError(
+    res: ServerResponse,
+    status: number,
+    code: string,
+    message: string,
+  ): void {
+    if (res.headersSent) {
+      try {
+        res.end();
+      } catch {
+        /* noop */
+      }
+      return;
+    }
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: message, code }));
   }
@@ -176,34 +210,59 @@ export class IntegrationBroker {
     }
     // 2) Capability token.
     const cap = this.resolveCapability(IntegrationBroker.tokenFrom(req));
-    if (!cap) return IntegrationBroker.sendError(res, 401, 'unauthorized', 'missing or invalid capability token');
+    if (!cap)
+      return IntegrationBroker.sendError(
+        res,
+        401,
+        'unauthorized',
+        'missing or invalid capability token',
+      );
 
     // 3) Parse /i/<integrationId>/<path...>.
     const rawUrl = req.url ?? '';
     const m = /^\/i\/([^/?#]+)(?:\/([^?#]*))?(\?[^#]*)?$/.exec(rawUrl);
-    if (!m) return IntegrationBroker.sendError(res, 404, 'not_found', 'expected /i/<integrationId>/<path>');
+    if (!m)
+      return IntegrationBroker.sendError(
+        res,
+        404,
+        'not_found',
+        'expected /i/<integrationId>/<path>',
+      );
     const integrationId = decodeURIComponent(m[1]);
     const path = m[2] ?? '';
     const query = m[3] ?? '';
 
     // 4) Authorize against this worker's capability.
     if (!cap.allowedIds.has(integrationId)) {
-      return IntegrationBroker.sendError(res, 403, 'forbidden', 'integration not in this worker capability');
+      return IntegrationBroker.sendError(
+        res,
+        403,
+        'forbidden',
+        'integration not in this worker capability',
+      );
     }
     // 5) Resolve the record (still enabled?).
     const rec = this.deps.getRecord(integrationId);
     if (!rec) return IntegrationBroker.sendError(res, 404, 'not_found', 'unknown integration');
-    if (!rec.enabled) return IntegrationBroker.sendError(res, 403, 'forbidden', 'integration is disabled');
+    if (!rec.enabled)
+      return IntegrationBroker.sendError(res, 403, 'forbidden', 'integration is disabled');
 
     // 6) Confine the upstream URL under the integration origin (NOT an open proxy).
     const upstream = resolveUpstreamUrl(rec.baseUrl, path + query);
-    if (!upstream) return IntegrationBroker.sendError(res, 400, 'bad_request', 'invalid or out-of-bounds path');
+    if (!upstream)
+      return IntegrationBroker.sendError(res, 400, 'bad_request', 'invalid or out-of-bounds path');
 
     // 7) Secret (decrypted ONLY here, used ONLY to inject the upstream header).
     let secret: string | undefined;
     if (authTypeNeedsSecret(rec.authType)) {
       secret = this.deps.getSecret(rec.secretRef);
-      if (!secret) return IntegrationBroker.sendError(res, 503, 'no_secret', 'no secret configured for this integration');
+      if (!secret)
+        return IntegrationBroker.sendError(
+          res,
+          503,
+          'no_secret',
+          'no secret configured for this integration',
+        );
     }
 
     void this.forward(req, res, rec, upstream, secret);
@@ -214,7 +273,7 @@ export class IntegrationBroker {
     res: ServerResponse,
     rec: IntegrationRecord,
     upstream: URL,
-    secret: string | undefined
+    secret: string | undefined,
   ): Promise<void> {
     // Buffer the request body with a hard cap (write methods).
     const method = (req.method ?? 'GET').toUpperCase();
@@ -225,7 +284,12 @@ export class IntegrationBroker {
         body = await readBodyCapped(req);
       } catch (e) {
         if ((e as Error).message === 'too_large') {
-          return IntegrationBroker.sendError(res, 413, 'payload_too_large', 'request body too large');
+          return IntegrationBroker.sendError(
+            res,
+            413,
+            'payload_too_large',
+            'request body too large',
+          );
         }
         return IntegrationBroker.sendError(res, 400, 'bad_request', 'could not read request body');
       }
@@ -256,12 +320,17 @@ export class IntegrationBroker {
         headers: outHeaders,
         body: body as BodyInit | undefined,
         redirect: 'manual',
-        signal: ac.signal
+        signal: ac.signal,
       });
     } catch (e) {
       clearTimeout(timer);
       // The message could in theory contain the URL but never the secret.
-      return IntegrationBroker.sendError(res, 502, 'bad_gateway', `upstream request failed: ${(e as Error).message}`);
+      return IntegrationBroker.sendError(
+        res,
+        502,
+        'bad_gateway',
+        `upstream request failed: ${(e as Error).message}`,
+      );
     }
 
     // Stream the response back (status + sanitized headers + body).
@@ -277,7 +346,11 @@ export class IntegrationBroker {
         res.end();
       }
     } catch {
-      try { res.end(); } catch { /* socket gone */ }
+      try {
+        res.end();
+      } catch {
+        /* socket gone */
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -291,7 +364,11 @@ function readBodyCapped(req: IncomingMessage): Promise<Buffer> {
     let size = 0;
     req.on('data', (c: Buffer) => {
       size += c.length;
-      if (size > MAX_BODY_BYTES) { reject(new Error('too_large')); req.destroy(); return; }
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('too_large'));
+        req.destroy();
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => resolve(Buffer.concat(chunks)));

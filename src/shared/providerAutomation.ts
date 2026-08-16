@@ -27,7 +27,7 @@ export interface ProviderContextCommands {
 const NO_CONTEXT_COMMANDS: ProviderContextCommands = {
   compact: null,
   clear: null,
-  compactTakesFocus: false
+  compactTakesFocus: false,
 };
 
 /**
@@ -135,7 +135,7 @@ const CONTEXT_COMMANDS: Record<AgentProvider, ProviderContextCommands> = {
 
   // An arbitrary user binary. We cannot know its command surface, and guessing
   // means typing slashes into someone's unknown REPL.
-  custom: NO_CONTEXT_COMMANDS
+  custom: NO_CONTEXT_COMMANDS,
 };
 
 /** The full context-command entry for a provider (unknown ids degrade to none). */
@@ -152,7 +152,7 @@ export function contextCommandsForProvider(provider: AgentProvider): ProviderCon
  */
 export function compactionCommandForProvider(
   provider: AgentProvider,
-  message: string = DEFAULT_COMPACTION_FOCUS
+  message: string = DEFAULT_COMPACTION_FOCUS,
 ): string | null {
   const { compact, compactTakesFocus } = contextCommandsForProvider(provider);
   if (!compact) return null;
@@ -166,7 +166,7 @@ export function compactionCommandForProvider(
 const COMPACT_VERBS: ReadonlySet<string> = new Set(
   Object.values(CONTEXT_COMMANDS)
     .map((c) => c.compact)
-    .filter((c): c is string => typeof c === 'string' && c.length > 0)
+    .filter((c): c is string => typeof c === 'string' && c.length > 0),
 );
 
 /**
@@ -196,7 +196,7 @@ export function isCompactionCommand(text: string): boolean {
  */
 export function clearCommandForProvider(
   provider: AgentProvider,
-  message: string = ''
+  message: string = '',
 ): string | null {
   const override = message.trim();
   if (override) return override;
@@ -207,7 +207,7 @@ export function clearCommandForProvider(
  * Kimi has no equivalent slash command. */
 export function remoteControlCommandForProvider(
   provider: AgentProvider,
-  sessionName?: string
+  sessionName?: string,
 ): string | null {
   if (provider !== 'claude') return null;
   const name = sessionName?.trim();
@@ -217,10 +217,14 @@ export function remoteControlCommandForProvider(
 /** Initial TUI output needs a short provider-specific settle before typing. */
 export function terminalReadySettleMs(provider: AgentProvider): number {
   switch (provider) {
-    case 'kimi': return 650;
-    case 'grok': return 500;
-    case 'codex': return 500;
-    default: return 400;
+    case 'kimi':
+      return 650;
+    case 'grok':
+      return 500;
+    case 'codex':
+      return 500;
+    default:
+      return 400;
   }
 }
 
@@ -236,7 +240,7 @@ export function terminalReadySettleMs(provider: AgentProvider): number {
 export function terminalReadyToReceive(
   hasOutput: boolean | undefined,
   elapsedMs: number,
-  provider: AgentProvider
+  provider: AgentProvider,
 ): boolean {
   return hasOutput !== false && elapsedMs >= terminalReadySettleMs(provider);
 }

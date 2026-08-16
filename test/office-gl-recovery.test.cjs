@@ -17,12 +17,14 @@ const test = require('node:test');
 const assert = require('node:assert');
 const load = require('./load-ts.cjs');
 
-const {
-  installContextLossRecovery, DEFAULT_MAX_REBUILDS, DEFAULT_REBUILD_DELAY_MS
-} = load('src/renderer/src/scene/office/glRecovery.ts');
+const { installContextLossRecovery, DEFAULT_MAX_REBUILDS, DEFAULT_REBUILD_DELAY_MS } = load(
+  'src/renderer/src/scene/office/glRecovery.ts',
+);
 
 /** A canvas stand-in: EventTarget is all the recovery code touches. */
-function fakeCanvas() { return new EventTarget(); }
+function fakeCanvas() {
+  return new EventTarget();
+}
 function lose(canvas) {
   // cancelable so defaultPrevented actually reports whether preventDefault ran —
   // that call is what allows the browser to hand the context back at all.
@@ -34,10 +36,21 @@ function lose(canvas) {
 function fakeClock() {
   const queue = [];
   return {
-    schedule: (fn, ms) => { queue.push({ fn, ms }); return queue.length; },
-    runAll: () => { const q = queue.splice(0); q.forEach((j) => j.fn()); return q; },
-    get pending() { return queue.length; },
-    get delays() { return queue.map((j) => j.ms); }
+    schedule: (fn, ms) => {
+      queue.push({ fn, ms });
+      return queue.length;
+    },
+    runAll: () => {
+      const q = queue.splice(0);
+      q.forEach((j) => j.fn());
+      return q;
+    },
+    get pending() {
+      return queue.length;
+    },
+    get delays() {
+      return queue.map((j) => j.ms);
+    },
   };
 }
 
@@ -45,7 +58,11 @@ test('a lost context rebuilds the scene instead of leaving it blank', () => {
   const canvas = fakeCanvas();
   const clock = fakeClock();
   let rebuilds = 0;
-  installContextLossRecovery(canvas, { onRebuild: () => rebuilds++, schedule: clock.schedule, log: () => {} });
+  installContextLossRecovery(canvas, {
+    onRebuild: () => rebuilds++,
+    schedule: clock.schedule,
+    log: () => {},
+  });
 
   lose(canvas);
   assert.equal(rebuilds, 0, 'rebuild must be deferred, not immediate');
@@ -63,7 +80,11 @@ test('preventDefault is called — without it the context is gone for good', () 
 test('the rebuild is delayed so it does not race the eviction storm', () => {
   const canvas = fakeCanvas();
   const clock = fakeClock();
-  installContextLossRecovery(canvas, { onRebuild: () => {}, schedule: clock.schedule, log: () => {} });
+  installContextLossRecovery(canvas, {
+    onRebuild: () => {},
+    schedule: clock.schedule,
+    log: () => {},
+  });
   lose(canvas);
   // Several contexts are usually created at once; claiming one straight back
   // just loses it again to the next terminal in the same burst.
@@ -74,14 +95,20 @@ test('the rebuild is delayed so it does not race the eviction storm', () => {
 test('retries are capped, then it gives up LOUDLY rather than staying blank', () => {
   const canvas = fakeCanvas();
   const clock = fakeClock();
-  let rebuilds = 0, gaveUp = 0;
+  let rebuilds = 0,
+    gaveUp = 0;
   const logs = [];
   installContextLossRecovery(canvas, {
-    onRebuild: () => rebuilds++, onGiveUp: () => gaveUp++,
-    schedule: clock.schedule, log: (m) => logs.push(m)
+    onRebuild: () => rebuilds++,
+    onGiveUp: () => gaveUp++,
+    schedule: clock.schedule,
+    log: (m) => logs.push(m),
   });
 
-  for (let i = 0; i < DEFAULT_MAX_REBUILDS; i++) { lose(canvas); clock.runAll(); }
+  for (let i = 0; i < DEFAULT_MAX_REBUILDS; i++) {
+    lose(canvas);
+    clock.runAll();
+  }
   assert.equal(rebuilds, DEFAULT_MAX_REBUILDS);
   assert.equal(gaveUp, 0, 'gave up while it still had budget');
 
@@ -91,17 +118,25 @@ test('retries are capped, then it gives up LOUDLY rather than staying blank', ()
   assert.equal(rebuilds, DEFAULT_MAX_REBUILDS, 'kept rebuilding past the cap');
 
   // And it stays given-up: no infinite fight for a context we cannot keep.
-  lose(canvas); clock.runAll();
+  lose(canvas);
+  clock.runAll();
   assert.equal(gaveUp, 1);
   assert.equal(rebuilds, DEFAULT_MAX_REBUILDS);
-  assert.ok(logs.some((m) => /giving up/i.test(m)), 'nothing explains the blank floor');
+  assert.ok(
+    logs.some((m) => /giving up/i.test(m)),
+    'nothing explains the blank floor',
+  );
 });
 
 test('uninstalling stops recovery — a torn-down scene must not resurrect itself', () => {
   const canvas = fakeCanvas();
   const clock = fakeClock();
   let rebuilds = 0;
-  const off = installContextLossRecovery(canvas, { onRebuild: () => rebuilds++, schedule: clock.schedule, log: () => {} });
+  const off = installContextLossRecovery(canvas, {
+    onRebuild: () => rebuilds++,
+    schedule: clock.schedule,
+    log: () => {},
+  });
 
   // Loss already in flight when the component unmounts: the queued rebuild must
   // not fire against a destroyed Pixi app.
@@ -118,12 +153,24 @@ test('recovery survives repeated losses across rebuilds, one budget per install'
   const canvas = fakeCanvas();
   const clock = fakeClock();
   let rebuilds = 0;
-  installContextLossRecovery(canvas, { onRebuild: () => rebuilds++, schedule: clock.schedule, log: () => {}, maxRebuilds: 1 });
-  lose(canvas); clock.runAll();
+  installContextLossRecovery(canvas, {
+    onRebuild: () => rebuilds++,
+    schedule: clock.schedule,
+    log: () => {},
+    maxRebuilds: 1,
+  });
+  lose(canvas);
+  clock.runAll();
   assert.equal(rebuilds, 1);
   // A fresh install (what the next mount does) gets its own budget.
   const canvas2 = fakeCanvas();
-  installContextLossRecovery(canvas2, { onRebuild: () => rebuilds++, schedule: clock.schedule, log: () => {}, maxRebuilds: 1 });
-  lose(canvas2); clock.runAll();
+  installContextLossRecovery(canvas2, {
+    onRebuild: () => rebuilds++,
+    schedule: clock.schedule,
+    log: () => {},
+    maxRebuilds: 1,
+  });
+  lose(canvas2);
+  clock.runAll();
   assert.equal(rebuilds, 2);
 });

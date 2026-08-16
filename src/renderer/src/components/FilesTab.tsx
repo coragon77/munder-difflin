@@ -12,7 +12,7 @@ function joinAbs(cwd: string, rel: string): string {
 }
 
 export function FilesTab({ cwd }: FilesTabProps) {
-  const setFullscreenFile = useStore(s => s.setFullscreenFile);
+  const setFullscreenFile = useStore((s) => s.setFullscreenFile);
   const [active, setActive] = useState<string | null>(null);
   const [treeWidth, setTreeWidth] = useState<number>(200);
   const dragRef = useRef<{ x: number; w: number } | null>(null);
@@ -38,7 +38,9 @@ export function FilesTab({ cwd }: FilesTabProps) {
 
   const onCopyPath = (rel: string) => {
     const abs = joinAbs(cwd, rel);
-    navigator.clipboard.writeText(abs).catch(() => { /* noop */ });
+    navigator.clipboard.writeText(abs).catch(() => {
+      /* noop */
+    });
   };
 
   const onOpenFullscreen = () => {
@@ -47,12 +49,26 @@ export function FilesTab({ cwd }: FilesTabProps) {
   };
 
   return (
-    <div style={{ flex: 1, minWidth: 0, height: '100%', minHeight: 0, display: 'flex', background: 'var(--cth-paper-100)' }}>
-      <div style={{
-        width: treeWidth, flexShrink: 0,
-        height: '100%', minHeight: 0, overflow: 'hidden',
-        borderRight: '1px solid var(--cth-ink-700)'
-      }}>
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        background: 'var(--cth-paper-100)',
+      }}
+    >
+      <div
+        style={{
+          width: treeWidth,
+          flexShrink: 0,
+          height: '100%',
+          minHeight: 0,
+          overflow: 'hidden',
+          borderRight: '1px solid var(--cth-ink-700)',
+        }}
+      >
         <FileTree
           root={cwd}
           activeRel={active ?? undefined}
@@ -81,8 +97,10 @@ export function FilesTab({ cwd }: FilesTabProps) {
           e.preventDefault();
         }}
         style={{
-          width: 4, cursor: 'ew-resize', flexShrink: 0,
-          background: 'var(--cth-ink-300)'
+          width: 4,
+          cursor: 'ew-resize',
+          flexShrink: 0,
+          background: 'var(--cth-ink-300)',
         }}
       />
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>

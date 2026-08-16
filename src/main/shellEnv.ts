@@ -42,7 +42,7 @@ function captureFromLoginShellUncached(script: string): string | null {
     const res = spawnSync(
       process.env.SHELL ?? '/bin/zsh',
       ['-ilc', `printf %s ${mark}; ${script}; printf %s ${mark}`],
-      { encoding: 'utf8', timeout: 3000 }
+      { encoding: 'utf8', timeout: 3000 },
     );
     const out = res.stdout ?? '';
     const start = out.indexOf(mark);
@@ -81,7 +81,9 @@ export function resolveCommand(command: string): string {
       const res = spawnSync('where', [command], { encoding: 'utf8', timeout: 3000, shell: true });
       const path = (res.stdout ?? '').trim().split(/\r?\n/)[0];
       if (path && existsSync(path)) return path;
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
     const appData = process.env.APPDATA ?? '';
     const localAppData = process.env.LOCALAPPDATA ?? '';
     const home = process.env.USERPROFILE ?? process.env.HOME ?? '';
@@ -90,14 +92,19 @@ export function resolveCommand(command: string): string {
       `${appData}\\npm\\${command}`,
       `${localAppData}\\Programs\\claude\\${command}.exe`,
       `${home}\\.claude\\local\\${command}.cmd`,
-      `${home}\\.claude\\local\\${command}`
+      `${home}\\.claude\\local\\${command}`,
     ];
     for (const c of winCandidates) if (existsSync(c)) return c;
     return command;
   }
   const which = captureFromLoginShell(`which ${command}`);
   if (which) {
-    const path = which.trim().split('\n').map((l) => l.trim()).filter(Boolean).pop();
+    const path = which
+      .trim()
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .pop();
     if (path && existsSync(path)) return path;
   }
   const candidates = [
@@ -105,7 +112,7 @@ export function resolveCommand(command: string): string {
     `/usr/local/bin/${command}`,
     `${process.env.HOME ?? ''}/.local/bin/${command}`,
     `${process.env.HOME ?? ''}/.claude/local/${command}`,
-    `${process.env.HOME ?? ''}/.volta/bin/${command}`
+    `${process.env.HOME ?? ''}/.volta/bin/${command}`,
   ];
   for (const c of candidates) if (existsSync(c)) return c;
   return command;

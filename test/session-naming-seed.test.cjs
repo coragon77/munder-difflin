@@ -26,26 +26,31 @@ const { HiveManager, deriveSpawnLabel } = loadTs('src/main/hive.ts');
 // ——— deriveSpawnLabel ————————————————————————————————————————————————
 
 test('explicit label wins verbatim (trimmed)', () => {
-  assert.equal(deriveSpawnLabel('  vacation-state implementation ', 'whatever the objective says'), 'vacation-state implementation');
+  assert.equal(
+    deriveSpawnLabel('  vacation-state implementation ', 'whatever the objective says'),
+    'vacation-state implementation',
+  );
 });
 
 test('no explicit label → first sentence of the objective, whitespace collapsed', () => {
   assert.equal(
     deriveSpawnLabel(undefined, 'Fix DIVA ticket 42. More contract detail follows. Even more.'),
-    'Fix DIVA ticket 42'
+    'Fix DIVA ticket 42',
   );
 });
 
 test('multi-line objective: only the first line is considered', () => {
   assert.equal(
     deriveSpawnLabel(undefined, 'Draft a CONTRIBUTING.md for the repo.\nSEQUENCE — do X then Y.'),
-    'Draft a CONTRIBUTING.md for the repo'
+    'Draft a CONTRIBUTING.md for the repo',
   );
 });
 
 test('long objective is capped at 80 chars on a word boundary with an ellipsis', () => {
-  const label = deriveSpawnLabel(undefined,
-    'implement the approved vacation-state spec (munder-difflin main 89a2987, docs/superpowers/specs/2026-08-16-vacation-state-design.md) — parked agent pool for human-created agents, god-autonomous park/fetch, VACATION section above ARCHIVED, delete only after end-vacation');
+  const label = deriveSpawnLabel(
+    undefined,
+    'implement the approved vacation-state spec (munder-difflin main 89a2987, docs/superpowers/specs/2026-08-16-vacation-state-design.md) — parked agent pool for human-created agents, god-autonomous park/fetch, VACATION section above ARCHIVED, delete only after end-vacation',
+  );
   assert.ok(label.length <= 81, `label too long: ${label.length}`);
   assert.ok(label.endsWith('…'));
   assert.ok(!label.includes('\n'));
@@ -55,7 +60,13 @@ test('long objective is capped at 80 chars on a word boundary with an ellipsis',
 });
 
 test('short objective passes through unchanged', () => {
-  assert.equal(deriveSpawnLabel(undefined, 'Read the repo and draft a CONTRIBUTING.md; report to god when done'), 'Read the repo and draft a CONTRIBUTING.md; report to god when done');
+  assert.equal(
+    deriveSpawnLabel(
+      undefined,
+      'Read the repo and draft a CONTRIBUTING.md; report to god when done',
+    ),
+    'Read the repo and draft a CONTRIBUTING.md; report to god when done',
+  );
 });
 
 test('empty inputs → empty label (callers keep today’s generic first turn)', () => {
@@ -70,7 +81,14 @@ const injectedPrompt = HiveManager.prototype['injectedPrompt'];
 const META = { id: 'intern-x', name: 'X (Intern)', role: 'intern', cwd: '/w' };
 
 test('labeled meta: the injected prompt OPENS with the label line', () => {
-  const p = injectedPrompt.call(null, { ...META, spawnLabel: 'vacation-state implementation' }, '/agents/x', '/hive', false, false);
+  const p = injectedPrompt.call(
+    null,
+    { ...META, spawnLabel: 'vacation-state implementation' },
+    '/agents/x',
+    '/hive',
+    false,
+    false,
+  );
   const first = p.split('\n')[0];
   assert.ok(first.startsWith('vacation-state implementation'), `first line was: ${first}`);
   assert.ok(first.includes('full dispatch in your hive inbox'));
@@ -88,7 +106,14 @@ test('unlabeled meta: prompt is exactly today’s shape (no label line)', () => 
 // ——— god-briefing amendment: skill-driven dispatches must set execution mode ———
 
 test('godLine tells god to set the execution mode on skill-driven dispatches', () => {
-  const p = injectedPrompt.call(null, { ...META, isGod: true }, '/agents/god', '/hive', false, false);
+  const p = injectedPrompt.call(
+    null,
+    { ...META, isGod: true },
+    '/agents/god',
+    '/hive',
+    false,
+    false,
+  );
   assert.ok(/SKILL-DRIVEN WORK:/.test(p), 'god briefing must carry the SKILL-DRIVEN WORK rule');
   assert.ok(/execution mode explicitly/.test(p));
   assert.ok(/SUBAGENT-DRIVEN/.test(p) && /inline execution only for trivial plans/.test(p));

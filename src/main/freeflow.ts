@@ -81,7 +81,7 @@ export async function transcribeWithGroq(opts: TranscribeOptions): Promise<Trans
       method: 'POST',
       headers: { Authorization: `Bearer ${opts.apiKey}` },
       body: form,
-      signal: controller.signal
+      signal: controller.signal,
     });
     const raw = await res.text();
     if (!res.ok) {
@@ -113,7 +113,9 @@ function extractError(raw: string): string {
     const j = JSON.parse(raw) as { error?: { message?: string } | string };
     if (typeof j.error === 'string') return j.error;
     if (j.error && typeof j.error.message === 'string') return j.error.message;
-  } catch { /* not json */ }
+  } catch {
+    /* not json */
+  }
   return '';
 }
 

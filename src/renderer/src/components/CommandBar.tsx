@@ -33,13 +33,13 @@ export function CommandBar({ accent, busy, blocked, onSend }: CommandBarProps) {
   const inputBorder = blocked
     ? 'var(--cth-coral)'
     : busy
-    ? 'var(--cth-lemon)'
-    : 'var(--cth-ink-700)';
+      ? 'var(--cth-lemon)'
+      : 'var(--cth-ink-700)';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', gap: 4 }}>
-        {(['free', 'slash', 'quick'] as Mode[]).map(m => (
+        {(['free', 'slash', 'quick'] as Mode[]).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
@@ -48,12 +48,13 @@ export function CommandBar({ accent, busy, blocked, onSend }: CommandBarProps) {
               border: 'none',
               background: mode === m ? `var(--cth-${accent})` : 'var(--cth-cream-200)',
               color: 'var(--cth-ink-900)',
-              boxShadow: mode === m
-                ? 'inset 0 0 0 1px var(--cth-ink-300), 0 -2px 0 var(--cth-ink-900) inset'
-                : 'inset 0 0 0 1px var(--cth-ink-100)',
+              boxShadow:
+                mode === m
+                  ? 'inset 0 0 0 1px var(--cth-ink-300), 0 -2px 0 var(--cth-ink-900) inset'
+                  : 'inset 0 0 0 1px var(--cth-ink-100)',
               fontFamily: 'var(--cth-font-ui)',
               fontSize: 13,
-              cursor: 'pointer'
+              cursor: 'pointer',
             }}
           >
             {m === 'free' ? 'free' : m === 'slash' ? '/skill' : 'quick'}
@@ -62,18 +63,24 @@ export function CommandBar({ accent, busy, blocked, onSend }: CommandBarProps) {
       </div>
       <PixelPanel variant="inset" noPadding style={{ padding: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{
-            fontFamily: 'var(--cth-font-mono)',
-            fontSize: 18,
-            color: `var(--cth-${accent})`,
-            lineHeight: '20px',
-            paddingLeft: 2
-          }}>{'>'}</span>
+          <span
+            style={{
+              fontFamily: 'var(--cth-font-mono)',
+              fontSize: 18,
+              color: `var(--cth-${accent})`,
+              lineHeight: '20px',
+              paddingLeft: 2,
+            }}
+          >
+            {'>'}
+          </span>
           <input
             value={text}
-            onChange={e => setText(e.target.value)}
+            onChange={(e) => setText(e.target.value)}
             onKeyDown={onKey}
-            placeholder={blocked ? "Ada needs you..." : busy ? "Ada is working..." : "Type a command"}
+            placeholder={
+              blocked ? 'Ada needs you...' : busy ? 'Ada is working...' : 'Type a command'
+            }
             style={{
               flex: 1,
               padding: '4px 6px 2px',
@@ -84,7 +91,7 @@ export function CommandBar({ accent, busy, blocked, onSend }: CommandBarProps) {
               fontSize: 18,
               lineHeight: '20px',
               color: 'var(--cth-ink-900)',
-              outline: 'none'
+              outline: 'none',
             }}
           />
           <PixelButton variant="primary" size="md" onClick={send}>
@@ -94,7 +101,11 @@ export function CommandBar({ accent, busy, blocked, onSend }: CommandBarProps) {
           </PixelButton>
         </div>
       </PixelPanel>
-      {busy && <span style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>Ada is mid-tool. Queue or hit pause.</span>}
+      {busy && (
+        <span style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>
+          Ada is mid-tool. Queue or hit pause.
+        </span>
+      )}
       {blocked && <span style={{ fontSize: 12, color: 'var(--cth-coral)' }}>Approval needed.</span>}
     </div>
   );

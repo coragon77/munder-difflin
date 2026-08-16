@@ -33,7 +33,7 @@ function snapshot(agents = [], extra = {}) {
     restorable: [],
     queues: {},
     selectedId: null,
-    ...extra
+    ...extra,
   };
 }
 
@@ -86,8 +86,9 @@ test('every previous version is kept, even within the same millisecond', () => {
 
   // Three writes, two of which had a previous file to copy first.
   assert.equal(backupsIn(home).length, 2);
-  const sizes = backupsIn(home).map((f) =>
-    JSON.parse(fs.readFileSync(path.join(rosterBackupDir(home), f), 'utf8')).agents.length);
+  const sizes = backupsIn(home).map(
+    (f) => JSON.parse(fs.readFileSync(path.join(rosterBackupDir(home), f), 'utf8')).agents.length,
+  );
   assert.deepEqual(sizes.sort(), [1, 2], 'both prior versions survived, not just the last');
 });
 
@@ -146,7 +147,7 @@ test('worktree paths and notes survive the round trip verbatim', () => {
     name: 'Jim',
     cwd: '/Users/x/HarnessAgents/worktrees/w1',
     worktreePath: '/Users/x/HarnessAgents/worktrees/w1',
-    note: '- shipping the queue fix\n- then the roster'
+    note: '- shipping the queue fix\n- then the roster',
   };
   const store = storeAt(home);
   store.write(snapshot([agent]));
@@ -156,10 +157,12 @@ test('worktree paths and notes survive the round trip verbatim', () => {
 test('queues and selection round-trip, and a bad queues field degrades to empty', () => {
   const home = tmpHome();
   const store = storeAt(home);
-  store.write(snapshot([{ id: 'a' }], {
-    queues: { a: [{ id: 'q1', text: 'ship it' }] },
-    selectedId: 'a'
-  }));
+  store.write(
+    snapshot([{ id: 'a' }], {
+      queues: { a: [{ id: 'q1', text: 'ship it' }] },
+      selectedId: 'a',
+    }),
+  );
   const back = store.read();
   assert.equal(back.queues.a[0].text, 'ship it');
   assert.equal(back.selectedId, 'a');

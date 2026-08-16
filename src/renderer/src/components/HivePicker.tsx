@@ -37,7 +37,10 @@ export function HivePicker({ config, onOpenCurrent }: HivePickerProps) {
   // A different folder → changeHome('fresh') re-points + relaunches the process.
   const openHive = async (path: string) => {
     if (!path) return;
-    if (current && path === current) { onOpenCurrent(); return; }
+    if (current && path === current) {
+      onOpenCurrent();
+      return;
+    }
     setError(undefined);
     setBusy(path);
     try {
@@ -64,46 +67,84 @@ export function HivePicker({ config, onOpenCurrent }: HivePickerProps) {
   };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: 'var(--cth-cream-200)',
-      backgroundImage:
-        `repeating-linear-gradient(45deg, rgba(232, 217, 160, 0.4) 0 1px, transparent 1px 8px)`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 200,
-      padding: 32
-    }}>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'var(--cth-cream-200)',
+        backgroundImage: `repeating-linear-gradient(45deg, rgba(232, 217, 160, 0.4) 0 1px, transparent 1px 8px)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 200,
+        padding: 32,
+      }}
+    >
       <div style={{ width: 560, maxWidth: '94vw' }}>
         <PixelPanel variant="dialog" title="SELECT A HARNESS CONFIG" noPadding>
           <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <p style={{ margin: 0, fontSize: 12, lineHeight: '19px', color: 'var(--cth-ink-700)' }}>
               A <strong>harness config</strong> is the folder where the app keeps everything for one
               workspace — its settings, your agents and their memory, tasks, triggers, and history.
-              Each config is separate and self-contained, so you can run different setups side by side.
-              Open the one you were working in, switch to another, or start a new one.
+              Each config is separate and self-contained, so you can run different setups side by
+              side. Open the one you were working in, switch to another, or start a new one.
             </p>
 
             {/* CURRENT — the last-used home, the one-click default. */}
             {current && (
               <div>
-                <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 9, color: 'var(--cth-ink-500)', marginBottom: 4 }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--cth-font-display)',
+                    fontSize: 9,
+                    color: 'var(--cth-ink-500)',
+                    marginBottom: 4,
+                  }}
+                >
                   CURRENT
                 </div>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                  background: 'var(--cth-mint-light)', boxShadow: 'inset 0 0 0 2px var(--cth-mint)'
-                }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    background: 'var(--cth-mint-light)',
+                    boxShadow: 'inset 0 0 0 2px var(--cth-mint)',
+                  }}
+                >
                   <Icon name="folder" />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 11, lineHeight: '15px' }}>
+                    <div
+                      style={{
+                        fontFamily: 'var(--cth-font-display)',
+                        fontSize: 11,
+                        lineHeight: '15px',
+                      }}
+                    >
                       {folderName(current)}
                     </div>
-                    <div style={{
-                      fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-500)',
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left'
-                    }}>{current}</div>
+                    <div
+                      style={{
+                        fontFamily: 'var(--cth-font-mono)',
+                        fontSize: 11,
+                        color: 'var(--cth-ink-500)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        direction: 'rtl',
+                        textAlign: 'left',
+                      }}
+                    >
+                      {current}
+                    </div>
                   </div>
-                  <PixelButton variant="primary" size="md" onClick={onOpenCurrent} disabled={!!busy}>
+                  <PixelButton
+                    variant="primary"
+                    size="md"
+                    onClick={onOpenCurrent}
+                    disabled={!!busy}
+                  >
                     open
                   </PixelButton>
                 </div>
@@ -113,10 +154,25 @@ export function HivePicker({ config, onOpenCurrent }: HivePickerProps) {
             {/* RECENTS — other homes this install has opened before. */}
             {recents.length > 0 && (
               <div>
-                <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 9, color: 'var(--cth-ink-500)', marginBottom: 4 }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--cth-font-display)',
+                    fontSize: 9,
+                    color: 'var(--cth-ink-500)',
+                    marginBottom: 4,
+                  }}
+                >
                   RECENT
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    maxHeight: 220,
+                    overflowY: 'auto',
+                  }}
+                >
                   {recents.map((h) => (
                     <button
                       key={h}
@@ -124,21 +180,44 @@ export function HivePicker({ config, onOpenCurrent }: HivePickerProps) {
                       disabled={!!busy}
                       title={`Switch to ${h} (reloads the app)`}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-                        background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                        border: 'none', cursor: busy ? 'default' : 'pointer', textAlign: 'left',
-                        opacity: busy && busy !== h ? 0.5 : 1
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '8px 12px',
+                        background: 'var(--cth-paper-100)',
+                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                        border: 'none',
+                        cursor: busy ? 'default' : 'pointer',
+                        textAlign: 'left',
+                        opacity: busy && busy !== h ? 0.5 : 1,
                       }}
                     >
                       <Icon name="folder" />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontFamily: 'var(--cth-font-ui)', fontSize: 12, fontWeight: 600, color: 'var(--cth-ink-900)' }}>
+                        <div
+                          style={{
+                            fontFamily: 'var(--cth-font-ui)',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: 'var(--cth-ink-900)',
+                          }}
+                        >
                           {folderName(h)}
                         </div>
-                        <div style={{
-                          fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-500)',
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'rtl', textAlign: 'left'
-                        }}>{h}</div>
+                        <div
+                          style={{
+                            fontFamily: 'var(--cth-font-mono)',
+                            fontSize: 11,
+                            color: 'var(--cth-ink-500)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            direction: 'rtl',
+                            textAlign: 'left',
+                          }}
+                        >
+                          {h}
+                        </div>
                       </div>
                       <span style={{ fontSize: 11, color: 'var(--cth-ink-500)', flexShrink: 0 }}>
                         {busy === h ? 'opening…' : 'switch →'}
@@ -150,10 +229,17 @@ export function HivePicker({ config, onOpenCurrent }: HivePickerProps) {
             )}
 
             {error && (
-              <div style={{
-                padding: '6px 10px', background: 'var(--cth-coral-light)',
-                boxShadow: 'inset 0 0 0 1px var(--cth-coral)', fontSize: 12, color: 'var(--cth-ink-900)'
-              }}>{error}</div>
+              <div
+                style={{
+                  padding: '6px 10px',
+                  background: 'var(--cth-coral-light)',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-coral)',
+                  fontSize: 12,
+                  color: 'var(--cth-ink-900)',
+                }}
+              >
+                {error}
+              </div>
             )}
 
             {busy && (

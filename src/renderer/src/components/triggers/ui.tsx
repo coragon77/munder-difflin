@@ -13,112 +13,205 @@ import { TRIGGER_MODES, type TriggerMode } from '@shared/triggers';
 /* ───────────────────────────── shared styles ─────────────────────────────── */
 
 export const inputStyle: CSSProperties = {
-  width: '100%', boxSizing: 'border-box', padding: '6px 8px',
-  background: 'var(--cth-paper-100)', border: 'none',
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '6px 8px',
+  background: 'var(--cth-paper-100)',
+  border: 'none',
   boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-  fontFamily: 'var(--cth-font-ui)', fontSize: 12, lineHeight: '17px',
-  color: 'var(--cth-ink-900)', outline: 'none'
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 12,
+  lineHeight: '17px',
+  color: 'var(--cth-ink-900)',
+  outline: 'none',
 };
 
 export const monoInputStyle: CSSProperties = {
   ...inputStyle,
-  fontFamily: 'var(--cth-font-mono)'
+  fontFamily: 'var(--cth-font-mono)',
 };
 
 export const textareaStyle: CSSProperties = {
   ...monoInputStyle,
-  resize: 'vertical'
+  resize: 'vertical',
 };
 
 export const selectStyle: CSSProperties = {
-  padding: '3px 6px', background: 'var(--cth-paper-100)', border: 'none',
+  padding: '3px 6px',
+  background: 'var(--cth-paper-100)',
+  border: 'none',
   boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-  fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)',
-  cursor: 'pointer', minWidth: 0, maxWidth: '100%'
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 12,
+  color: 'var(--cth-ink-900)',
+  cursor: 'pointer',
+  minWidth: 0,
+  maxWidth: '100%',
 };
 
 /* ───────────────────────────── text helpers ──────────────────────────────── */
 
 export function Muted({ children }: { children: ReactNode }) {
-  return <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>{children}</div>;
+  return (
+    <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>{children}</div>
+  );
 }
 
 /** One line of explanation under a control. Smaller than Muted, never a tooltip —
  *  a sidebar hides tooltips behind the window edge half the time. */
 export function Hint({ children }: { children: ReactNode }) {
-  return <div style={{ fontSize: 11, lineHeight: '15px', color: 'var(--cth-ink-500)', marginTop: 3 }}>{children}</div>;
-}
-
-export function Chip({ children, tone = 'plain' }: { children: ReactNode; tone?: 'plain' | 'on' | 'off' }) {
-  const bg = tone === 'on' ? 'var(--cth-lemon)' : tone === 'off' ? 'var(--cth-cream-200)' : 'var(--cth-cream-100)';
-  const line = tone === 'on' ? 'var(--cth-ink-900)' : 'var(--cth-ink-100)';
   return (
-    <span style={{
-      flexShrink: 0, padding: '2px 5px 1px',
-      fontFamily: 'var(--cth-font-display)', fontSize: 8, lineHeight: '12px',
-      background: bg, boxShadow: `inset 0 0 0 1px ${line}`, color: 'var(--cth-ink-900)'
-    }}>{children}</span>
+    <div style={{ fontSize: 11, lineHeight: '15px', color: 'var(--cth-ink-500)', marginTop: 3 }}>
+      {children}
+    </div>
   );
 }
 
-export function Callout({ children, tone = 'warn' }: { children: ReactNode; tone?: 'warn' | 'note' }) {
+export function Chip({
+  children,
+  tone = 'plain',
+}: {
+  children: ReactNode;
+  tone?: 'plain' | 'on' | 'off';
+}) {
+  const bg =
+    tone === 'on'
+      ? 'var(--cth-lemon)'
+      : tone === 'off'
+        ? 'var(--cth-cream-200)'
+        : 'var(--cth-cream-100)';
+  const line = tone === 'on' ? 'var(--cth-ink-900)' : 'var(--cth-ink-100)';
+  return (
+    <span
+      style={{
+        flexShrink: 0,
+        padding: '2px 5px 1px',
+        fontFamily: 'var(--cth-font-display)',
+        fontSize: 8,
+        lineHeight: '12px',
+        background: bg,
+        boxShadow: `inset 0 0 0 1px ${line}`,
+        color: 'var(--cth-ink-900)',
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function Callout({
+  children,
+  tone = 'warn',
+}: {
+  children: ReactNode;
+  tone?: 'warn' | 'note';
+}) {
   const warn = tone === 'warn';
   return (
-    <div style={{
-      marginTop: 6, padding: '6px 8px',
-      fontSize: 11, lineHeight: '15px', color: 'var(--cth-ink-900)',
-      background: warn ? 'var(--cth-coral-light)' : 'var(--cth-cream-200)',
-      boxShadow: `inset 0 0 0 1px ${warn ? 'var(--cth-coral)' : 'var(--cth-ink-100)'}`
-    }}>{children}</div>
+    <div
+      style={{
+        marginTop: 6,
+        padding: '6px 8px',
+        fontSize: 11,
+        lineHeight: '15px',
+        color: 'var(--cth-ink-900)',
+        background: warn ? 'var(--cth-coral-light)' : 'var(--cth-cream-200)',
+        boxShadow: `inset 0 0 0 1px ${warn ? 'var(--cth-coral)' : 'var(--cth-ink-100)'}`,
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
 /* ─────────────────────────────── controls ────────────────────────────────── */
 
-export function Toggle({ on, onClick, onLabel = 'on', offLabel = 'off' }: {
-  on: boolean; onClick: () => void; onLabel?: string; offLabel?: string;
+export function Toggle({
+  on,
+  onClick,
+  onLabel = 'on',
+  offLabel = 'off',
+}: {
+  on: boolean;
+  onClick: () => void;
+  onLabel?: string;
+  offLabel?: string;
 }) {
   return (
     <button
       onClick={onClick}
       style={{
-        padding: '2px 8px 1px', border: 'none', cursor: 'pointer', flexShrink: 0,
+        padding: '2px 8px 1px',
+        border: 'none',
+        cursor: 'pointer',
+        flexShrink: 0,
         background: on ? 'var(--cth-lemon)' : 'var(--cth-cream-200)',
         boxShadow: `inset 0 0 0 1px ${on ? 'var(--cth-ink-900)' : 'var(--cth-ink-700)'}`,
-        fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)'
+        fontFamily: 'var(--cth-font-ui)',
+        fontSize: 12,
+        color: 'var(--cth-ink-900)',
       }}
-    >{on ? onLabel : offLabel}</button>
+    >
+      {on ? onLabel : offLabel}
+    </button>
   );
 }
 
-export function MiniButton({ children, onClick, tone = 'plain', disabled }: {
-  children: ReactNode; onClick: () => void; tone?: 'plain' | 'danger' | 'good'; disabled?: boolean;
+export function MiniButton({
+  children,
+  onClick,
+  tone = 'plain',
+  disabled,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  tone?: 'plain' | 'danger' | 'good';
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       style={{
-        flexShrink: 0, padding: '2px 7px 1px', border: 'none',
+        flexShrink: 0,
+        padding: '2px 7px 1px',
+        border: 'none',
         cursor: disabled ? 'default' : 'pointer',
         background: tone === 'good' ? 'var(--cth-mint)' : 'var(--cth-cream-200)',
         boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-        fontFamily: 'var(--cth-font-ui)', fontSize: 11,
-        color: disabled ? 'var(--cth-ink-300)' : tone === 'danger' ? 'var(--cth-coral)' : 'var(--cth-ink-900)'
+        fontFamily: 'var(--cth-font-ui)',
+        fontSize: 11,
+        color: disabled
+          ? 'var(--cth-ink-300)'
+          : tone === 'danger'
+            ? 'var(--cth-coral)'
+            : 'var(--cth-ink-900)',
       }}
-    >{children}</button>
+    >
+      {children}
+    </button>
   );
 }
 
-export function Select({ value, onChange, children, style }: {
-  value: string; onChange: (v: string) => void; children: ReactNode; style?: CSSProperties;
+export function Select({
+  value,
+  onChange,
+  children,
+  style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: ReactNode;
+  style?: CSSProperties;
 }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
       style={{ ...selectStyle, ...style }}
-    >{children}</select>
+    >
+      {children}
+    </select>
   );
 }
 
@@ -127,10 +220,17 @@ export function Select({ value, onChange, children, style }: {
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{
-        fontFamily: 'var(--cth-font-display)', fontSize: 8, lineHeight: '12px',
-        color: 'var(--cth-ink-500)', marginBottom: 4
-      }}>{label}</div>
+      <div
+        style={{
+          fontFamily: 'var(--cth-font-display)',
+          fontSize: 8,
+          lineHeight: '12px',
+          color: 'var(--cth-ink-500)',
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </div>
       {children}
     </div>
   );
@@ -140,10 +240,19 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 
 export function Scroll({ children }: { children: ReactNode }) {
   return (
-    <div style={{
-      flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
-      padding: 10, background: 'var(--cth-paper-200)'
-    }}>{children}</div>
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        padding: 10,
+        background: 'var(--cth-paper-200)',
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -156,29 +265,76 @@ export function Scroll({ children }: { children: ReactNode }) {
  * the summary chip is fed by the section itself and would go blank the moment
  * you closed it, and a section's own open rows survive collapsing its parent.
  */
-export function TriggerCard({ title, blurb, summary, defaultOpen = false, children }: {
-  title: string; blurb: string; summary?: ReactNode; defaultOpen?: boolean; children: ReactNode;
+export function TriggerCard({
+  title,
+  blurb,
+  summary,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  blurb: string;
+  summary?: ReactNode;
+  defaultOpen?: boolean;
+  children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{ marginBottom: 8, background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)' }}>
+    <div
+      style={{
+        marginBottom: 8,
+        background: 'var(--cth-paper-100)',
+        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+      }}
+    >
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
-          width: '100%', display: 'flex', alignItems: 'flex-start', gap: 6, textAlign: 'left',
-          padding: '8px 10px', border: 'none', cursor: 'pointer',
-          background: 'var(--cth-cream-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)'
+          width: '100%',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 6,
+          textAlign: 'left',
+          padding: '8px 10px',
+          border: 'none',
+          cursor: 'pointer',
+          background: 'var(--cth-cream-200)',
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
         }}
       >
-        <span style={{ flexShrink: 0, width: 8, fontSize: 11, lineHeight: '13px', color: 'var(--cth-ink-500)' }}>
+        <span
+          style={{
+            flexShrink: 0,
+            width: 8,
+            fontSize: 11,
+            lineHeight: '13px',
+            color: 'var(--cth-ink-500)',
+          }}
+        >
           {open ? '▾' : '▸'}
         </span>
         <span style={{ flex: 1, minWidth: 0 }}>
-          <span style={{
-            display: 'block', fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '13px',
-            color: 'var(--cth-ink-900)'
-          }}>{title}</span>
-          <span style={{ display: 'block', fontFamily: 'var(--cth-font-ui)', fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)', marginTop: 2 }}>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--cth-font-display)',
+              fontSize: 9,
+              lineHeight: '13px',
+              color: 'var(--cth-ink-900)',
+            }}
+          >
+            {title}
+          </span>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--cth-font-ui)',
+              fontSize: 12,
+              lineHeight: '16px',
+              color: 'var(--cth-ink-500)',
+              marginTop: 2,
+            }}
+          >
             {blurb}
           </span>
         </span>
@@ -192,37 +348,82 @@ export function TriggerCard({ title, blurb, summary, defaultOpen = false, childr
 /** A card inside a card — one webhook, one context rule. */
 export function SubCard({ children }: { children: ReactNode }) {
   return (
-    <div style={{
-      marginBottom: 6, padding: '8px 10px 10px',
-      background: 'var(--cth-cream-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)'
-    }}>{children}</div>
+    <div
+      style={{
+        marginBottom: 6,
+        padding: '8px 10px 10px',
+        background: 'var(--cth-cream-100)',
+        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
 /** Header row inside a SubCard: a disclosure caret, a title, and controls. */
-export function SubHeader({ open, onToggle, title, sub, right }: {
-  open: boolean; onToggle: () => void; title: ReactNode; sub?: ReactNode; right?: ReactNode;
+export function SubHeader({
+  open,
+  onToggle,
+  title,
+  sub,
+  right,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  title: ReactNode;
+  sub?: ReactNode;
+  right?: ReactNode;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <button
         onClick={onToggle}
         style={{
-          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left',
-          padding: 0, border: 'none', background: 'transparent', cursor: 'pointer'
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          textAlign: 'left',
+          padding: 0,
+          border: 'none',
+          background: 'transparent',
+          cursor: 'pointer',
         }}
       >
-        <span style={{ flexShrink: 0, width: 8, fontSize: 11, color: 'var(--cth-ink-500)' }}>{open ? '▾' : '▸'}</span>
+        <span style={{ flexShrink: 0, width: 8, fontSize: 11, color: 'var(--cth-ink-500)' }}>
+          {open ? '▾' : '▸'}
+        </span>
         <span style={{ flex: 1, minWidth: 0 }}>
-          <span style={{
-            display: 'block', fontFamily: 'var(--cth-font-ui)', fontSize: 12, lineHeight: '16px',
-            color: 'var(--cth-ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-          }}>{title}</span>
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--cth-font-ui)',
+              fontSize: 12,
+              lineHeight: '16px',
+              color: 'var(--cth-ink-900)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {title}
+          </span>
           {sub !== undefined && (
-            <span style={{
-              display: 'block', fontSize: 11, lineHeight: '15px', color: 'var(--cth-ink-500)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-            }}>{sub}</span>
+            <span
+              style={{
+                display: 'block',
+                fontSize: 11,
+                lineHeight: '15px',
+                color: 'var(--cth-ink-500)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {sub}
+            </span>
           )}
         </span>
       </button>
@@ -235,12 +436,22 @@ export function SubHeader({ open, onToggle, title, sub, right }: {
 
 /** The shared `strict / allow-all / communication-only` gate. Labels and blurbs
  *  come from `TRIGGER_MODES` so webhooks and org can never drift apart. */
-export function ModePicker({ value, onChange }: { value: TriggerMode; onChange: (m: TriggerMode) => void }) {
+export function ModePicker({
+  value,
+  onChange,
+}: {
+  value: TriggerMode;
+  onChange: (m: TriggerMode) => void;
+}) {
   const current = TRIGGER_MODES.find((m) => m.value === value) ?? TRIGGER_MODES[0];
   return (
     <>
       <Select value={value} onChange={(v) => onChange(v as TriggerMode)} style={{ width: '100%' }}>
-        {TRIGGER_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+        {TRIGGER_MODES.map((m) => (
+          <option key={m.value} value={m.value}>
+            {m.label}
+          </option>
+        ))}
       </Select>
       <Hint>{current.blurb}</Hint>
     </>
@@ -262,7 +473,7 @@ export const INTERVAL_OPTS: { ms: number; label: string }[] = [
   { ms: 6 * HOUR, label: '6h' },
   { ms: 12 * HOUR, label: '12h' },
   { ms: DAY, label: '24h' },
-  { ms: WEEK, label: 'weekly' }
+  { ms: WEEK, label: 'weekly' },
 ];
 
 /** A truthful label for ANY stored interval, preset or not. Arbitrary intervals
@@ -286,8 +497,16 @@ const CUSTOM = '__custom';
  * put a label on screen that the saved value does not match. Schedules take any
  * interval and pass the default range.
  */
-export function IntervalPicker({ value, onChange, minMs = MINUTE, maxMs = Number.POSITIVE_INFINITY }: {
-  value: number; onChange: (ms: number) => void; minMs?: number; maxMs?: number;
+export function IntervalPicker({
+  value,
+  onChange,
+  minMs = MINUTE,
+  maxMs = Number.POSITIVE_INFINITY,
+}: {
+  value: number;
+  onChange: (ms: number) => void;
+  minMs?: number;
+  maxMs?: number;
 }) {
   const opts = INTERVAL_OPTS.filter((o) => o.ms >= minMs && o.ms <= maxMs);
   const preset = opts.some((o) => o.ms === value);
@@ -299,13 +518,20 @@ export function IntervalPicker({ value, onChange, minMs = MINUTE, maxMs = Number
       <Select
         value={showCustom ? CUSTOM : String(value)}
         onChange={(v) => {
-          if (v === CUSTOM) { setCustom(true); return; }
+          if (v === CUSTOM) {
+            setCustom(true);
+            return;
+          }
           setCustom(false);
           onChange(Number(v));
         }}
       >
         {!preset && <option value={CUSTOM}>{fmtInterval(value)} (custom)</option>}
-        {opts.map((o) => <option key={o.ms} value={String(o.ms)}>{o.label}</option>)}
+        {opts.map((o) => (
+          <option key={o.ms} value={String(o.ms)}>
+            {o.label}
+          </option>
+        ))}
         {preset && <option value={CUSTOM}>custom…</option>}
       </Select>
       {showCustom && (
@@ -346,11 +572,22 @@ export function PctField({ value, onChange }: { value: number; onChange: (pct: n
         style={{ ...monoInputStyle, width: 60, padding: '3px 5px' }}
       />
       <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>%</span>
-      <div style={{
-        flex: 1, minWidth: 40, height: 8,
-        background: 'var(--cth-cream-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)'
-      }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: pct === 0 ? 'var(--cth-ink-300)' : 'var(--cth-lemon)' }} />
+      <div
+        style={{
+          flex: 1,
+          minWidth: 40,
+          height: 8,
+          background: 'var(--cth-cream-200)',
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: '100%',
+            background: pct === 0 ? 'var(--cth-ink-300)' : 'var(--cth-lemon)',
+          }}
+        />
       </div>
     </div>
   );
@@ -360,7 +597,16 @@ export function PctField({ value, onChange }: { value: number; onChange: (pct: n
 
 /** Masked by default; reveals only on demand. The value never lands in a
  *  `title`/tooltip — those leak into screenshots and accessibility trees. */
-export function SecretField({ value, revealed, onReveal, onCopy, copied, placeholder, onChange, onBlur }: {
+export function SecretField({
+  value,
+  revealed,
+  onReveal,
+  onCopy,
+  copied,
+  placeholder,
+  onChange,
+  onBlur,
+}: {
   value: string;
   revealed: boolean;
   onReveal: () => void;
@@ -383,7 +629,11 @@ export function SecretField({ value, revealed, onReveal, onCopy, copied, placeho
         style={{ ...monoInputStyle, flex: 1, minWidth: 0, padding: '4px 6px' }}
       />
       <MiniButton onClick={onReveal}>{revealed ? 'hide' : 'show'}</MiniButton>
-      {onCopy && <MiniButton onClick={onCopy} tone={copied ? 'good' : 'plain'}>{copied ? 'copied' : 'copy'}</MiniButton>}
+      {onCopy && (
+        <MiniButton onClick={onCopy} tone={copied ? 'good' : 'plain'}>
+          {copied ? 'copied' : 'copy'}
+        </MiniButton>
+      )}
     </div>
   );
 }

@@ -16,7 +16,11 @@ test('auto-delivery pause is independent from tool pause and halt', () => {
   assert.equal(control.snapshot('dev1').halted, false);
 
   control.resume('dev1');
-  assert.equal(control.isAutoDeliveryPaused('dev1'), true, 'normal resume must not spend queued work');
+  assert.equal(
+    control.isAutoDeliveryPaused('dev1'),
+    true,
+    'normal resume must not spend queued work',
+  );
   control.pauseAutoDelivery('dev1', false);
   assert.equal(control.isAutoDeliveryPaused('dev1'), false);
 });

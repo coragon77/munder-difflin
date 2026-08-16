@@ -23,7 +23,12 @@
 const assert = require('assert');
 
 // ── matcher under test (mirror of realtimeActions.ts findCard) ───────────────
-const normMatch = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+const normMatch = (s) =>
+  (s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 const toksMatch = (s) => normMatch(s).split(' ').filter(Boolean);
 const AMBIGUOUS_MARGIN = 0.08;
 
@@ -38,7 +43,8 @@ function scoreCard(refNorm, refToks, c) {
   const coverage = refToks.length ? refToks.filter((w) => hay.has(w)).length / refToks.length : 0;
   const hayArr = [...hay];
   const prefixCov = refToks.length
-    ? refToks.filter((w) => hayArr.some((h) => h.startsWith(w) || w.startsWith(h))).length / refToks.length
+    ? refToks.filter((w) => hayArr.some((h) => h.startsWith(w) || w.startsWith(h))).length /
+      refToks.length
     : 0;
   if (coverage === 1) return 0.85;
   if (titleN.includes(refNorm) || idN.includes(refNorm)) return Math.max(0.7, coverage);
@@ -62,11 +68,31 @@ function findCard(tasks, ref) {
 
 // ── fixtures (same synthetic cards as bin/find-task.cjs --selftest) ──────────
 const TASKS = [
-  { id: 'build-orchestrator-message-visibility-cli-ab12', title: 'Build orchestrator message-visibility CLI (hive-msg.cjs)', status: 'done' },
-  { id: 'rt-2-realtime-session', title: 'Realtime Michael 2: WebRTC session — mic capture, VAD, barge-in', status: 'done' },
-  { id: 'rt-3-toggle-ui', title: 'Realtime Michael 3: mic toggle + live state dot on AgentCard', status: 'done' },
-  { id: 'test-3-playwright-e2e', title: 'Test harness 3: Playwright _electron E2E config + launch fixture', status: 'todo' },
-  { id: 'ondev-d-oss-model-catalog', title: 'On-device D: research the open-source model catalog', status: 'done' },
+  {
+    id: 'build-orchestrator-message-visibility-cli-ab12',
+    title: 'Build orchestrator message-visibility CLI (hive-msg.cjs)',
+    status: 'done',
+  },
+  {
+    id: 'rt-2-realtime-session',
+    title: 'Realtime Michael 2: WebRTC session — mic capture, VAD, barge-in',
+    status: 'done',
+  },
+  {
+    id: 'rt-3-toggle-ui',
+    title: 'Realtime Michael 3: mic toggle + live state dot on AgentCard',
+    status: 'done',
+  },
+  {
+    id: 'test-3-playwright-e2e',
+    title: 'Test harness 3: Playwright _electron E2E config + launch fixture',
+    status: 'todo',
+  },
+  {
+    id: 'ondev-d-oss-model-catalog',
+    title: 'On-device D: research the open-source model catalog',
+    status: 'done',
+  },
 ];
 const find = (q) => findCard(TASKS, q);
 

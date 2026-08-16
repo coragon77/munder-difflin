@@ -21,7 +21,7 @@ const { spawn, execFileSync } = require('node:child_process');
 const SRC = path.join(__dirname, '..', 'src', 'main', 'procKill.ts');
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'prockill-'));
 const js = ts.transpileModule(fs.readFileSync(SRC, 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 fs.writeFileSync(path.join(out, 'procKill.js'), js, 'utf8');
 const { isAlive, hardKillTree, ensureKilled } = require(path.join(out, 'procKill.js'));
@@ -37,21 +37,34 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function groupPids(pgid) {
   try {
     return execFileSync('pgrep', ['-g', String(pgid)], { encoding: 'utf8' })
-      .split('\n').map((s) => s.trim()).filter(Boolean).map(Number);
-  } catch { return []; } // pgrep exits 1 when no match
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map(Number);
+  } catch {
+    return [];
+  } // pgrep exits 1 when no match
 }
 
 /** Spawn a detached (own-process-group) leader that traps HUP, with a child. */
 function spawnStubbornTree() {
-  const proc = spawn('sh', ['-c', 'trap "" HUP; sleep 60 & wait'], { detached: true, stdio: 'ignore' });
+  const proc = spawn('sh', ['-c', 'trap "" HUP; sleep 60 & wait'], {
+    detached: true,
+    stdio: 'ignore',
+  });
   proc.unref();
   return proc.pid;
 }
 
 let failures = 0;
 async function test(name, fn) {
-  try { await fn(); console.log(`  ok  ${name}`); }
-  catch (e) { failures++; console.error(`FAIL  ${name}\n      ${e.message}`); }
+  try {
+    await fn();
+    console.log(`  ok  ${name}`);
+  } catch (e) {
+    failures++;
+    console.error(`FAIL  ${name}\n      ${e.message}`);
+  }
 }
 
 (async () => {
@@ -77,16 +90,27 @@ async function test(name, fn) {
   await test('SIGHUP alone does NOT kill the stubborn leader (the leak)', async () => {
     const pid = spawnStubbornTree();
     await sleep(200);
-    try { process.kill(pid, 'SIGHUP'); } catch { /* noop */ }
+    try {
+      process.kill(pid, 'SIGHUP');
+    } catch {
+      /* noop */
+    }
     await sleep(300);
-    assert.ok(isAlive(pid), 'a HUP-trapping leader survives a bare SIGHUP — this is the leaked-PID case');
+    assert.ok(
+      isAlive(pid),
+      'a HUP-trapping leader survives a bare SIGHUP — this is the leaked-PID case',
+    );
     hardKillTree(pid); // cleanup
   });
 
   await test('ensureKilled escalates after the grace and releases every PID', async () => {
     const pid = spawnStubbornTree();
     await sleep(200);
-    try { process.kill(pid, 'SIGHUP'); } catch { /* noop */ } // the polite kill that gets ignored
+    try {
+      process.kill(pid, 'SIGHUP');
+    } catch {
+      /* noop */
+    } // the polite kill that gets ignored
     ensureKilled(pid, 400);
     await sleep(1200);
     assert.ok(!isAlive(pid), 'leader must be gone after escalation');

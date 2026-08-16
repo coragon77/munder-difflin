@@ -14,7 +14,7 @@ import type { OfficeCharacterName } from './cast';
 /** Where an agent is lingering — picks a contextual line pool. */
 export type BreakSpot = 'coffee' | 'vending' | 'snack' | 'table';
 
-const pick = <T,>(arr: readonly T[], seed: number): T =>
+const pick = <T>(arr: readonly T[], seed: number): T =>
   arr[((seed % arr.length) + arr.length) % arr.length];
 
 // ─── solo lines, by spot ─────────────────────────────────────────────────────
@@ -55,33 +55,78 @@ const TABLE: readonly string[] = [
 ];
 
 const SPOT_POOL: Record<BreakSpot, readonly string[]> = {
-  coffee: COFFEE, vending: VENDING, snack: SNACK, table: TABLE,
+  coffee: COFFEE,
+  vending: VENDING,
+  snack: SNACK,
+  table: TABLE,
 };
 
 // ─── character flavour — overrides the generic pool when present ─────────────
 
 const BY_CHARACTER: Partial<Record<OfficeCharacterName, readonly string[]>> = {
-  michael:  ['I DECLARE… BANKRUPTCY!', "that's what she said", "I'm not superstitious. just a little stitious.", 'no meetings before coffee. that’s the rule.'],
-  dwight:   ['FALSE.', 'identity theft is not a joke', 'that mug is regulation', 'this fridge needs a beet drawer', 'Schrute Farms has better coffee'],
-  jim:      ["...that's what she said", 'bears. beets. Battlestar Galactica.', 'I moved Dwight’s stapler again', 'just here for the gossip'],
-  pam:      ['Dunder Mifflin, this is Pam', 'sketching the vending machine', 'the watercolor of the break room'],
-  kevin:    ['the chili is NOT ready', 'why waste time say lot word', 'me want snack', 'cookie? cookie.'],
-  angela:   ['this break room is filthy', 'party planning committee, 3pm', 'I’m judging the fridge'],
-  oscar:    ['actually, it’s “espresso”', 'well, actually…', 'the budget for snacks is concerning'],
-  stanley:  ['is it Pretzel Day?', 'did I stutter?', 'crossword and coffee. leave me be.', "I'll retire before this brews"],
-  phyllis:  ['Bob is picking me up at five', 'knitting and a nice cup of tea'],
-  andy:     ['Cornell, ever heard of it?', 'rit-dit-dit, coffee break!', 'Big Tuna, grab a chair'],
-  kelly:    ['did you HEAR what happened??', 'so. much. to tell you.', 'I am the GOSSIP queen'],
-  ryan:     ['I’m kind of a big deal', 'the temp needs caffeine', 'starting a coffee startup, actually'],
-  toby:     ['I should write that up…', 'HR-wise this break is fine', 'no one ever sits with me'],
-  creed:    ['which one of you is the new guy?', 'I’ve eaten worse out of that fridge', 'mung beans. under my desk.'],
+  michael: [
+    'I DECLARE… BANKRUPTCY!',
+    "that's what she said",
+    "I'm not superstitious. just a little stitious.",
+    'no meetings before coffee. that’s the rule.',
+  ],
+  dwight: [
+    'FALSE.',
+    'identity theft is not a joke',
+    'that mug is regulation',
+    'this fridge needs a beet drawer',
+    'Schrute Farms has better coffee',
+  ],
+  jim: [
+    "...that's what she said",
+    'bears. beets. Battlestar Galactica.',
+    'I moved Dwight’s stapler again',
+    'just here for the gossip',
+  ],
+  pam: [
+    'Dunder Mifflin, this is Pam',
+    'sketching the vending machine',
+    'the watercolor of the break room',
+  ],
+  kevin: [
+    'the chili is NOT ready',
+    'why waste time say lot word',
+    'me want snack',
+    'cookie? cookie.',
+  ],
+  angela: ['this break room is filthy', 'party planning committee, 3pm', 'I’m judging the fridge'],
+  oscar: ['actually, it’s “espresso”', 'well, actually…', 'the budget for snacks is concerning'],
+  stanley: [
+    'is it Pretzel Day?',
+    'did I stutter?',
+    'crossword and coffee. leave me be.',
+    "I'll retire before this brews",
+  ],
+  phyllis: ['Bob is picking me up at five', 'knitting and a nice cup of tea'],
+  andy: ['Cornell, ever heard of it?', 'rit-dit-dit, coffee break!', 'Big Tuna, grab a chair'],
+  kelly: ['did you HEAR what happened??', 'so. much. to tell you.', 'I am the GOSSIP queen'],
+  ryan: [
+    'I’m kind of a big deal',
+    'the temp needs caffeine',
+    'starting a coffee startup, actually',
+  ],
+  toby: ['I should write that up…', 'HR-wise this break is fine', 'no one ever sits with me'],
+  creed: [
+    'which one of you is the new guy?',
+    'I’ve eaten worse out of that fridge',
+    'mung beans. under my desk.',
+  ],
   meredith: ['is it 5 o’clock yet?', 'someone spike the coffee?'],
 };
 
 /** A solo break-room line. Character flavour ~60% of the time, else the line
  *  fits the spot the agent is standing at. `seed` keeps it deterministic per
  *  call site (avoids Math.random, which Pixi/Electron CSP-safe code prefers). */
-export function pickSoloLine(character: OfficeCharacterName, spot: BreakSpot, seed: number): string {
+export function pickSoloLine(
+  character: OfficeCharacterName,
+  spot: BreakSpot,
+  seed: number,
+): string {
   const flavour = BY_CHARACTER[character];
   if (flavour && seed % 5 < 3) return pick(flavour, Math.floor(seed / 5));
   return pick(SPOT_POOL[spot], seed);
@@ -178,7 +223,12 @@ const TWSS_EXCHANGES: readonly Exchange[] = [
   ['hours in and barely halfway done.', 'that’s what she said.'],
   ['surprisingly heavy for its size.', 'that’s what she said.'],
   ['be more precise. less sloppy.', 'that’s what she said.', 'I meant the spreadsheet.', 'I know.'],
-  ['how long was it?', 'that’s what she said.', '*the whole room goes quiet*', 'I’m sorry, I can’t help it.'],
+  [
+    'how long was it?',
+    'that’s what she said.',
+    '*the whole room goes quiet*',
+    'I’m sorry, I can’t help it.',
+  ],
   ['too tight, cutting off my circulation.', 'that’s what she said.', '*mouths thank you*'],
   ['I don’t think it’ll fit.', 'that’s what she said.', '*stands up and applauds*'],
   ['stop, you’re doing it wrong.', 'that’s what she said.', 'never been prouder.'],
@@ -187,27 +237,91 @@ const TWSS_EXCHANGES: readonly Exchange[] = [
   ['I can hold it a really long time.', 'that’s what she said.', 'my breath!', 'still.'],
   ['why is it taking so long?', 'that’s what she said.', 'I hate you.', 'then why set me up?'],
   ['I can’t do it with people watching.', 'that’s what she said.', 'the presentation!', 'sure.'],
-  ['it’s deeper than it looks.', 'that’s what she said.', 'the pothole, Michael!', 'doesn’t matter.'],
-  ['so much longer than last time.', 'that’s what she said.', 'the report, Michael.', 'right, right.'],
+  [
+    'it’s deeper than it looks.',
+    'that’s what she said.',
+    'the pothole, Michael!',
+    'doesn’t matter.',
+  ],
+  [
+    'so much longer than last time.',
+    'that’s what she said.',
+    'the report, Michael.',
+    'right, right.',
+  ],
   ['oh my god, it went on FOREVER.', 'that’s what she said.', 'the Twilight movie!', 'classic.'],
   ['can’t believe how thick this is.', 'that’s what she said.', 'the folder. *stares*'],
   ['I fit all THAT in one day?', 'that’s what she said.', 'that’s actually what I said!', 'meta.'],
   ['I went at it hard this morning.', 'that’s what she said.', 'at the gym!', 'irrelevant.'],
-  ['someone help me finish this off.', 'that’s what she said.', 'the leftover cake!', 'still works.'],
+  [
+    'someone help me finish this off.',
+    'that’s what she said.',
+    'the leftover cake!',
+    'still works.',
+  ],
   ['get in, do my thing, get out.', 'that’s what she said.', '*doesn’t look up from crossword*'],
-  ['can’t believe it took this long.', 'that’s what she said.', 'the raise. eight years.', 'that one’s on me.'],
-  ['do it slower, it’ll hurt less.', 'that’s what she said.', 'for the quarterly review.', 'sure, Oscar.'],
-  ['didn’t realize how big it’d be.', 'that’s what she said.', 'the calzone, it’s enormous!', 'I love this office.'],
+  [
+    'can’t believe it took this long.',
+    'that’s what she said.',
+    'the raise. eight years.',
+    'that one’s on me.',
+  ],
+  [
+    'do it slower, it’ll hurt less.',
+    'that’s what she said.',
+    'for the quarterly review.',
+    'sure, Oscar.',
+  ],
+  [
+    'didn’t realize how big it’d be.',
+    'that’s what she said.',
+    'the calzone, it’s enormous!',
+    'I love this office.',
+  ],
   ['*to no one* that’s what she said.', 'nobody said anything.', 'just thinking about earlier.'],
   ['*on the phone* that’s what she said.', 'who was that?', 'my mother. about a sandwich.'],
   ['too hot in here! that’s what she said.', 'you said both parts.', 'I contain multitudes.'],
   ['*at the TV* that’s what she said.', 'you’re alone, Michael.', 'she doesn’t know that.'],
-  ['you need to be more professional.', 'that’s what she said.', 'I am she.', '...that’s what she said.'],
-  ['stop. just stop. every time—', 'that’s what she said.', '*leaves the room*', '*whispers* that’s what she said.'],
-  ['as you can see, it’s going up.', 'that’s what she said.', '*everyone groans*', 'set that one up myself.'],
-  ['I declared bankruptcy once. felt good.', 'what does that have to do with—', 'that’s what she said.', 'it doesn’t.', 'I know.'],
-  ['you didn’t say it.', 'I know.', 'why not?', 'I’m growing.', '...that’s what she said.', 'there it is.'],
-  ['impressive you held back today.', 'thank you.', 'I counted zero times.', 'that’s what she said.', 'still counts.'],
+  [
+    'you need to be more professional.',
+    'that’s what she said.',
+    'I am she.',
+    '...that’s what she said.',
+  ],
+  [
+    'stop. just stop. every time—',
+    'that’s what she said.',
+    '*leaves the room*',
+    '*whispers* that’s what she said.',
+  ],
+  [
+    'as you can see, it’s going up.',
+    'that’s what she said.',
+    '*everyone groans*',
+    'set that one up myself.',
+  ],
+  [
+    'I declared bankruptcy once. felt good.',
+    'what does that have to do with—',
+    'that’s what she said.',
+    'it doesn’t.',
+    'I know.',
+  ],
+  [
+    'you didn’t say it.',
+    'I know.',
+    'why not?',
+    'I’m growing.',
+    '...that’s what she said.',
+    'there it is.',
+  ],
+  [
+    'impressive you held back today.',
+    'thank you.',
+    'I counted zero times.',
+    'that’s what she said.',
+    'still counts.',
+  ],
 ];
 
 // Everything any table-mate pair can draw from.
@@ -216,16 +330,16 @@ const PAIR_POOL: readonly Exchange[] = [...EXCHANGES, ...TWSS_EXCHANGES];
 // Keyed off the SPEAKER so, when the right character sits down first, they get
 // to open with their signature bit.
 const KEYED_EXCHANGES: Partial<Record<OfficeCharacterName, Exchange>> = {
-  michael:  ['that’s what she said.', '...there it is.'],
-  dwight:   ['identity theft is not a joke.', 'nobody touched your stapler, Dwight.'],
-  kevin:    ['why few word when lot word?', '...just use the words, Kevin.'],
-  kelly:    ['okay don’t freak out, but—', 'I’m already freaking out.'],
-  oscar:    ['well, actually—', '...here we go.'],
-  angela:   ['this table is filthy.', 'it’s a break room, Angela.'],
-  creed:    ['which one are you again?', '...we sit next to each other.'],
-  stanley:  ['is it Pretzel Day?', 'no, Stanley.', '...did I stutter?'],
-  andy:     ['I went to Cornell.', 'nobody cares.', '...I went to Cornell.'],
-  jim:      ['question.', 'yes.', 'nothing. just checking.'],
+  michael: ['that’s what she said.', '...there it is.'],
+  dwight: ['identity theft is not a joke.', 'nobody touched your stapler, Dwight.'],
+  kevin: ['why few word when lot word?', '...just use the words, Kevin.'],
+  kelly: ['okay don’t freak out, but—', 'I’m already freaking out.'],
+  oscar: ['well, actually—', '...here we go.'],
+  angela: ['this table is filthy.', 'it’s a break room, Angela.'],
+  creed: ['which one are you again?', '...we sit next to each other.'],
+  stanley: ['is it Pretzel Day?', 'no, Stanley.', '...did I stutter?'],
+  andy: ['I went to Cornell.', 'nobody cares.', '...I went to Cornell.'],
+  jim: ['question.', 'yes.', 'nothing. just checking.'],
 };
 
 /** A multi-beat exchange for two agents sharing a table. Beats alternate:

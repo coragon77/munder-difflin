@@ -16,17 +16,37 @@ export function ToolWaterfall({ agentId }: { agentId: string }) {
   const recent = spans.slice(-60); // keep the view legible
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--cth-paper-200)', overflow: 'hidden' }}>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--cth-paper-200)',
+        overflow: 'hidden',
+      }}
+    >
       {/* Header band: cumulative cost + cache-vs-fresh split */}
-      <div style={{
-        flexShrink: 0, padding: '8px 10px', background: 'var(--cth-cream-200)',
-        boxShadow: 'inset 0 -2px 0 var(--cth-ink-900)',
-        fontFamily: 'var(--cth-font-mono)', fontSize: 12, color: 'var(--cth-ink-900)',
-        display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'baseline'
-      }}>
+      <div
+        style={{
+          flexShrink: 0,
+          padding: '8px 10px',
+          background: 'var(--cth-cream-200)',
+          boxShadow: 'inset 0 -2px 0 var(--cth-ink-900)',
+          fontFamily: 'var(--cth-font-mono)',
+          fontSize: 12,
+          color: 'var(--cth-ink-900)',
+          display: 'flex',
+          gap: 14,
+          flexWrap: 'wrap',
+          alignItems: 'baseline',
+        }}
+      >
         {sample ? (
           <>
-            <span><strong>${sample.usd.toFixed(2)}</strong></span>
+            <span>
+              <strong>${sample.usd.toFixed(2)}</strong>
+            </span>
             <span style={{ color: 'var(--cth-ink-700)' }}>
               fresh {fmtTokens(sample.input + sample.cacheCreation)}t
             </span>
@@ -34,10 +54,14 @@ export function ToolWaterfall({ agentId }: { agentId: string }) {
               cache {fmtTokens(sample.cacheRead)}t ({Math.round(cacheFraction(sample) * 100)}%)
             </span>
             {sample.model && <span style={{ color: 'var(--cth-ink-500)' }}>{sample.model}</span>}
-            <span style={{ color: 'var(--cth-ink-500)' }}>{fmtTokens(totalTokens(sample))}t total</span>
+            <span style={{ color: 'var(--cth-ink-500)' }}>
+              {fmtTokens(totalTokens(sample))}t total
+            </span>
           </>
         ) : (
-          <span style={{ color: 'var(--cth-ink-500)' }}>no live telemetry yet — spawn / respawn this agent to instrument it</span>
+          <span style={{ color: 'var(--cth-ink-500)' }}>
+            no live telemetry yet — spawn / respawn this agent to instrument it
+          </span>
         )}
       </div>
 
@@ -45,7 +69,8 @@ export function ToolWaterfall({ agentId }: { agentId: string }) {
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 10 }}>
         {recent.length === 0 && (
           <div style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>
-            No tool calls captured yet. Each tool the agent runs appears here with its real duration.
+            No tool calls captured yet. Each tool the agent runs appears here with its real
+            duration.
           </div>
         )}
         {recent.map((s, i) => {
@@ -53,19 +78,59 @@ export function ToolWaterfall({ agentId }: { agentId: string }) {
           const ok = s.success && s.tool !== 'api_error';
           return (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-              <span style={{ width: 88, fontSize: 11, color: 'var(--cth-ink-700)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.error ?? s.tool}>
+              <span
+                style={{
+                  width: 88,
+                  fontSize: 11,
+                  color: 'var(--cth-ink-700)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+                title={s.error ?? s.tool}
+              >
                 {s.tool}
               </span>
-              <div style={{ flex: 1, height: 12, background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)' }}>
+              <div
+                style={{
+                  flex: 1,
+                  height: 12,
+                  background: 'var(--cth-paper-100)',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                }}
+              >
                 <div
-                  title={s.error ? `${s.tool}: ${s.error}` : `${s.tool} · ${s.durationMs}ms · ${ok ? 'ok' : 'failed'}`}
-                  style={{ width: `${pct}%`, height: '100%', background: ok ? 'var(--cth-mint)' : 'var(--cth-coral)' }}
+                  title={
+                    s.error
+                      ? `${s.tool}: ${s.error}`
+                      : `${s.tool} · ${s.durationMs}ms · ${ok ? 'ok' : 'failed'}`
+                  }
+                  style={{
+                    width: `${pct}%`,
+                    height: '100%',
+                    background: ok ? 'var(--cth-mint)' : 'var(--cth-coral)',
+                  }}
                 />
               </div>
-              <span style={{ width: 54, textAlign: 'right', fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-500)' }}>
+              <span
+                style={{
+                  width: 54,
+                  textAlign: 'right',
+                  fontFamily: 'var(--cth-font-mono)',
+                  fontSize: 11,
+                  color: 'var(--cth-ink-500)',
+                }}
+              >
                 {fmtDur(s.durationMs)}
               </span>
-              <span style={{ width: 12, textAlign: 'center', fontSize: 11, color: ok ? 'var(--cth-mint)' : 'var(--cth-coral)' }}>
+              <span
+                style={{
+                  width: 12,
+                  textAlign: 'center',
+                  fontSize: 11,
+                  color: ok ? 'var(--cth-mint)' : 'var(--cth-coral)',
+                }}
+              >
                 {ok ? '✓' : '✗'}
               </span>
             </div>

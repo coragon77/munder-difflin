@@ -6,9 +6,9 @@ import { Icon, type IconName } from './Icon';
 // full Monaco editor + file tree, which superseded the read-only browser.
 const TABS: { key: SidebarTab; label: string; icon: IconName }[] = [
   { key: 'terminal', label: 'terminal', icon: 'terminal' },
-  { key: 'git',      label: 'git',      icon: 'code' },
+  { key: 'git', label: 'git', icon: 'code' },
   { key: 'messages', label: 'messages', icon: 'bell' },
-  { key: 'traces',   label: 'traces',   icon: 'web' }
+  { key: 'traces', label: 'traces', icon: 'web' },
 ];
 
 export interface SidebarTabsProps {
@@ -19,14 +19,16 @@ export interface SidebarTabsProps {
 
 export function SidebarTabs({ current, accent, onChange }: SidebarTabsProps) {
   return (
-    <div style={{
-      display: 'flex',
-      gap: 0,
-      background: 'var(--cth-cream-200)',
-      boxShadow: 'inset 0 -2px 0 var(--cth-ink-900)',
-      flexShrink: 0
-    }}>
-      {TABS.map(t => {
+    <div
+      style={{
+        display: 'flex',
+        gap: 0,
+        background: 'var(--cth-cream-200)',
+        boxShadow: 'inset 0 -2px 0 var(--cth-ink-900)',
+        flexShrink: 0,
+      }}
+    >
+      {TABS.map((t) => {
         const active = current === t.key;
         return (
           <button
@@ -49,7 +51,7 @@ export function SidebarTabs({ current, accent, onChange }: SidebarTabsProps) {
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6
+              gap: 6,
             }}
           >
             <Icon name={t.icon} /> {t.label.toUpperCase()}

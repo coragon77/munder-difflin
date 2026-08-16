@@ -24,9 +24,24 @@ export interface ModelPrice {
 
 // Anthropic list prices, USD per million tokens. Approximate, fallback-only —
 // the live path uses Claude's own per-model cost, so drift here is harmless.
-const OPUS: ModelPrice = { inputPerM: 15, outputPerM: 75, cacheReadPerM: 1.5, cacheWritePerM: 18.75 };
-const SONNET: ModelPrice = { inputPerM: 3, outputPerM: 15, cacheReadPerM: 0.3, cacheWritePerM: 3.75 };
-const HAIKU: ModelPrice = { inputPerM: 0.8, outputPerM: 4, cacheReadPerM: 0.08, cacheWritePerM: 1.0 };
+const OPUS: ModelPrice = {
+  inputPerM: 15,
+  outputPerM: 75,
+  cacheReadPerM: 1.5,
+  cacheWritePerM: 18.75,
+};
+const SONNET: ModelPrice = {
+  inputPerM: 3,
+  outputPerM: 15,
+  cacheReadPerM: 0.3,
+  cacheWritePerM: 3.75,
+};
+const HAIKU: ModelPrice = {
+  inputPerM: 0.8,
+  outputPerM: 4,
+  cacheReadPerM: 0.08,
+  cacheWritePerM: 1.0,
+};
 
 /** When the model id is unknown, assume Sonnet (the historical default). */
 const DEFAULT_PRICE: ModelPrice = SONNET;

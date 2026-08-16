@@ -12,7 +12,18 @@ test('claude (monitor-capable) gets the 45s nudge grace so its monitor wins the 
 });
 
 test('providers without a monitor arm get NO grace — their nudge latency is unchanged', () => {
-  for (const p of ['codex', 'crush', 'pi', 'grok', 'kimi', 'opencode', 'qwen', 'antigravity', 'copilot', 'custom']) {
+  for (const p of [
+    'codex',
+    'crush',
+    'pi',
+    'grok',
+    'kimi',
+    'opencode',
+    'qwen',
+    'antigravity',
+    'copilot',
+    'custom',
+  ]) {
     assert.equal(nudgeGraceMsForProvider(p), 0, p);
   }
 });
@@ -21,4 +32,3 @@ test('hasInboxMonitor is true exactly for the providers the boot prompt arms', (
   assert.equal(hasInboxMonitor('claude'), true);
   for (const p of ['pi', 'codex', 'crush']) assert.equal(hasInboxMonitor(p), false, p);
 });
-

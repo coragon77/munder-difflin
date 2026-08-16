@@ -40,7 +40,7 @@ export function withHiveRuntimeFallback(path: string, hiveRoot?: string): string
 export function buildSpawnEnv(
   inherited: NodeJS.ProcessEnv,
   extra: Record<string, string> | undefined,
-  path: string
+  path: string,
 ): Record<string, string> {
   const env = {
     ...inherited,
@@ -50,7 +50,7 @@ export function buildSpawnEnv(
     // Help apps that look for a real interactive shell
     FORCE_COLOR: '1',
     // Per-agent hive identity (AGENT_ID, HIVE_ROOT, …) when provided.
-    ...(extra ?? {})
+    ...(extra ?? {}),
   } as Record<string, string>;
   if (extra?.AGENT_ID) {
     for (const k of [
@@ -58,8 +58,9 @@ export function buildSpawnEnv(
       'CLAUDE_PID',
       'CLAUDECODE',
       'CLAUDE_CODE_SESSION_ID',
-      'CLAUDE_CODE_ENTRYPOINT'
-    ]) delete env[k];
+      'CLAUDE_CODE_ENTRYPOINT',
+    ])
+      delete env[k];
     env.CLAUDE_CODE_FORCE_SESSION_PERSISTENCE = '1';
   }
   return env;
@@ -90,7 +91,7 @@ interface PtySession {
 export interface SpawnOptions {
   id: string;
   cwd: string;
-  command: string;       // e.g. 'claude'
+  command: string; // e.g. 'claude'
   args?: string[];
   cols?: number;
   rows?: number;
@@ -169,7 +170,9 @@ export class PtyManager {
           const pid = s.proc.pid;
           s.proc.kill();
           ensureKilled(pid);
-        } catch { /* already gone */ }
+        } catch {
+          /* already gone */
+        }
         void id;
       }
     }
@@ -192,7 +195,11 @@ export class PtyManager {
     // floor's stream private); fall back to the default attached sink otherwise.
     const wc = target ?? this.webContents;
     if (!wc || wc.isDestroyed()) return;
-    try { wc.send(channel, payload); } catch { /* window tore down mid-send */ }
+    try {
+      wc.send(channel, payload);
+    } catch {
+      /* window tore down mid-send */
+    }
   }
 
   /** Whether an engine CLI is actually installed/locatable on this machine.
@@ -242,7 +249,8 @@ export class PtyManager {
   private resolveCommandUncached(command: string): { path: string; found: boolean } {
     // Already an absolute/relative path (Unix `/` or Windows `\`) — pass through;
     // `found` reflects whether that path actually exists on disk.
-    if (command.includes('/') || command.includes('\\')) return { path: command, found: existsSync(command) };
+    if (command.includes('/') || command.includes('\\'))
+      return { path: command, found: existsSync(command) };
     if (process.platform === 'win32') {
       // `where` is the Windows equivalent of `which`; runs via cmd.exe (shell:true).
       // It can return MULTIPLE matches in PATH order; the first is often an
@@ -252,9 +260,15 @@ export class PtyManager {
       // spawn() routes them through `cmd.exe /c` (see below).
       try {
         const res = spawnSync('where', [command], { encoding: 'utf8', timeout: 3000, shell: true });
-        const lines = (res.stdout ?? '').trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const lines = (res.stdout ?? '')
+          .trim()
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
         const pathExts = (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
-          .split(';').map((e) => e.trim().toUpperCase()).filter(Boolean);
+          .split(';')
+          .map((e) => e.trim().toUpperCase())
+          .filter(Boolean);
         const isExecutable = (p: string): boolean => {
           const dot = p.lastIndexOf('.');
           const sep = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/'));
@@ -263,7 +277,9 @@ export class PtyManager {
         };
         const exe = lines.find((p) => isExecutable(p) && existsSync(p));
         if (exe) return { path: exe, found: true };
-      } catch { /* fall through */ }
+      } catch {
+        /* fall through */
+      }
       // Common Windows install locations (npm global = %APPDATA%\npm\<cmd>.cmd).
       const appData = process.env.APPDATA ?? '';
       const localAppData = process.env.LOCALAPPDATA ?? '';
@@ -273,7 +289,7 @@ export class PtyManager {
         `${appData}\\npm\\${command}`,
         `${localAppData}\\Programs\\claude\\${command}.exe`,
         `${home}\\.claude\\local\\${command}.cmd`,
-        `${home}\\.claude\\local\\${command}`
+        `${home}\\.claude\\local\\${command}`,
       ];
       for (const c of winCandidates) if (existsSync(c)) return { path: c, found: true };
       // Last resort — let node-pty try; will fail with ENOENT if missing.
@@ -283,7 +299,12 @@ export class PtyManager {
     // Fenced capture (shellEnv): rc-file chatter can't poison the which output.
     const which = captureFromLoginShell(`which ${command}`);
     if (which) {
-      const path = which.trim().split('\n').map((l) => l.trim()).filter(Boolean).pop();
+      const path = which
+        .trim()
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .pop();
       if (path && existsSync(path)) return { path, found: true };
     }
     // Common explicit locations
@@ -292,7 +313,7 @@ export class PtyManager {
       `/usr/local/bin/${command}`,
       `${process.env.HOME ?? ''}/.local/bin/${command}`,
       `${process.env.HOME ?? ''}/.claude/local/${command}`,
-      `${process.env.HOME ?? ''}/.volta/bin/${command}`
+      `${process.env.HOME ?? ''}/.volta/bin/${command}`,
     ];
     for (const c of candidates) if (existsSync(c)) return { path: c, found: true };
     // Last resort — let node-pty try; will fail with ENOENT if missing.
@@ -317,8 +338,8 @@ export class PtyManager {
       // the interactive-shell launch it replaces cost ~1s of main-thread freeze
       // on EVERY spawn.
       const userPath = withHiveRuntimeFallback(
-        process.platform === 'win32' ? (process.env.PATH || '') : userShellPath(),
-        opts.env?.HIVE_ROOT
+        process.platform === 'win32' ? process.env.PATH || '' : userShellPath(),
+        opts.env?.HIVE_ROOT,
       );
 
       // On Windows, .cmd/.bat files (and extensionless shims) cannot be executed
@@ -348,7 +369,7 @@ export class PtyManager {
           spawnArgs = ['-lc', opts.shellScript];
         }
       } else {
-        file = needsCmd ? (process.env.ComSpec || 'cmd.exe') : resolved;
+        file = needsCmd ? process.env.ComSpec || 'cmd.exe' : resolved;
         // #55: when routing through cmd.exe we must NOT pass `resolved` as a bare,
         // unquoted array element. A Program-Files path (`C:\Program Files\nodejs\node`)
         // would split on its space under cmd.exe → "C:\Program is not recognized" and
@@ -360,16 +381,14 @@ export class PtyManager {
         // `cmd.exe /d /s /c "<command>"`, wrapping the WHOLE inner command in one outer
         // quote pair — cmd's /s flag strips exactly that pair and runs the remainder
         // (where the resolved path keeps its own quotes) literally. /d skips AutoRun.
-        spawnArgs = needsCmd
-          ? buildCmdCommandLine(resolved, opts.args ?? [])
-          : (opts.args ?? []);
+        spawnArgs = needsCmd ? buildCmdCommandLine(resolved, opts.args ?? []) : (opts.args ?? []);
       }
       const proc = pty.spawn(file, spawnArgs, {
         name: 'xterm-256color',
         cols: opts.cols ?? 100,
         rows: opts.rows ?? 30,
         cwd: opts.cwd,
-        env: buildSpawnEnv(process.env, opts.env, userPath)
+        env: buildSpawnEnv(process.env, opts.env, userPath),
       });
 
       // Capture THIS session object so the proc's callbacks can tell whether the
@@ -387,7 +406,7 @@ export class PtyManager {
         command: resolved,
         lastOutputAt: Date.now(),
         hasOutput: false,
-        owner
+        owner,
       };
       this.sessions.set(opts.id, session);
 
@@ -408,7 +427,11 @@ export class PtyManager {
         this.sessions.delete(opts.id);
         // Natural exit must run the same lifecycle teardown as an explicit kill.
         // Guarded so a teardown error can never crash node-pty's exit callback.
-        try { this.exitHandler?.(opts.id, exitCode); } catch { /* never throw out of onExit */ }
+        try {
+          this.exitHandler?.(opts.id, exitCode);
+        } catch {
+          /* never throw out of onExit */
+        }
       });
 
       return { ok: true };
@@ -467,14 +490,21 @@ export class PtyManager {
     }
   }
 
-  list(): Array<{ id: string; cwd: string; command: string; pid: number; lastOutputAt: number; hasOutput: boolean }> {
-    return Array.from(this.sessions.values()).map(s => ({
+  list(): Array<{
+    id: string;
+    cwd: string;
+    command: string;
+    pid: number;
+    lastOutputAt: number;
+    hasOutput: boolean;
+  }> {
+    return Array.from(this.sessions.values()).map((s) => ({
       id: s.id,
       cwd: s.cwd,
       command: s.command,
       pid: s.proc.pid,
       lastOutputAt: s.lastOutputAt,
-      hasOutput: s.hasOutput
+      hasOutput: s.hasOutput,
     }));
   }
 
@@ -501,7 +531,9 @@ export class PtyManager {
         const pid = s.proc.pid;
         s.proc.kill();
         ensureKilled(pid);
-      } catch { /* noop */ }
+      } catch {
+        /* noop */
+      }
     }
     this.sessions.clear();
   }

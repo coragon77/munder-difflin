@@ -71,7 +71,9 @@ function extractLastAssistantText(cwd: string, spawnedAt: number): string | null
         // 5 s slack: include files that already existed at spawn but were
         // updated by this session. Sort by mtime and take the newest.
         if (mtime >= spawnedAt - 5000) candidates.push({ f, mtime });
-      } catch { /* file removed between readdir and stat — skip */ }
+      } catch {
+        /* file removed between readdir and stat — skip */
+      }
     }
     if (!candidates.length) return null;
     candidates.sort((a, b) => b.mtime - a.mtime);
@@ -81,7 +83,11 @@ function extractLastAssistantText(cwd: string, spawnedAt: number): string | null
       const trimmed = lines[i].trim();
       if (!trimmed) continue;
       let rec: { type?: unknown; message?: { content?: unknown[] } };
-      try { rec = JSON.parse(trimmed); } catch { continue; }
+      try {
+        rec = JSON.parse(trimmed);
+      } catch {
+        continue;
+      }
       if (rec.type !== 'assistant') continue;
       const content = rec.message?.content;
       if (!Array.isArray(content)) continue;
@@ -93,12 +99,20 @@ function extractLastAssistantText(cwd: string, spawnedAt: number): string | null
       }
     }
     return null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-export function runHiddenClaude(prompt: string, opts: HiddenClaudeOptions): Promise<HiddenClaudeResult> {
+export function runHiddenClaude(
+  prompt: string,
+  opts: HiddenClaudeOptions,
+): Promise<HiddenClaudeResult> {
   return new Promise((resolve) => {
-    if (!prompt.trim()) { resolve({ ok: false, error: 'empty prompt' }); return; }
+    if (!prompt.trim()) {
+      resolve({ ok: false, error: 'empty prompt' });
+      return;
+    }
     // Defense-in-depth: `~` is shell syntax, not a path Node understands.
     const cwd = opts.cwd ? expandTilde(opts.cwd) : opts.cwd;
     if (!cwd || !existsSync(cwd)) {
@@ -113,11 +127,16 @@ export function runHiddenClaude(prompt: string, opts: HiddenClaudeOptions): Prom
     const addDirs = (opts.addDirs ?? []).filter((d) => d && existsSync(d));
 
     const args: string[] = [
-      '--model', opts.model,
-      '--permission-mode', 'bypassPermissions',
-      '--disallowedTools', ...disallowed,
+      '--model',
+      opts.model,
+      '--permission-mode',
+      'bypassPermissions',
+      '--disallowedTools',
+      ...disallowed,
     ];
-    for (const d of addDirs) { args.push('--add-dir', d); }
+    for (const d of addDirs) {
+      args.push('--add-dir', d);
+    }
 
     const bootCapMs = opts.bootCapMs ?? 7000;
     const idleMs = opts.idleMs ?? 3500;
@@ -128,7 +147,7 @@ export function runHiddenClaude(prompt: string, opts: HiddenClaudeOptions): Prom
     // `claude` shim directly (ERROR_BAD_EXE_FORMAT, error 193) — route non-.exe
     // targets through cmd.exe. A real claude.exe (WinGet) launches directly. (#22)
     const winWrap = process.platform === 'win32' && !/\.(exe|com)$/i.test(exe);
-    const spawnFile = winWrap ? (process.env.ComSpec || 'cmd.exe') : exe;
+    const spawnFile = winWrap ? process.env.ComSpec || 'cmd.exe' : exe;
     const spawnArgs = winWrap ? ['/c', exe, ...args] : args;
     let ptyProc: pty.IPty;
     try {
@@ -160,15 +179,25 @@ export function runHiddenClaude(prompt: string, opts: HiddenClaudeOptions): Prom
     // every check releases its PIDs even if `claude` shrugs off the SIGHUP.
     const kill = () => {
       const pid = ptyProc.pid;
-      try { ptyProc.kill(); } catch { /* noop */ }
+      try {
+        ptyProc.kill();
+      } catch {
+        /* noop */
+      }
       ensureKilled(pid);
     };
 
     const finish = (r: HiddenClaudeResult) => {
       if (settled) return;
       settled = true;
-      if (bootTimer) { clearTimeout(bootTimer); bootTimer = null; }
-      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+      if (bootTimer) {
+        clearTimeout(bootTimer);
+        bootTimer = null;
+      }
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
       clearTimeout(bootMaxTimer);
       clearTimeout(globalTimer);
       kill();
@@ -177,18 +206,25 @@ export function runHiddenClaude(prompt: string, opts: HiddenClaudeOptions): Prom
 
     const captureAndFinish = () => {
       const text = extractLastAssistantText(opts.cwd, spawnedAt);
-      finish(text
-        ? { ok: true, text }
-        : { ok: false, error: 'no assistant response found in transcript' });
+      finish(
+        text
+          ? { ok: true, text }
+          : { ok: false, error: 'no assistant response found in transcript' },
+      );
     };
 
     const sendPrompt = () => {
       if (settled || promptSent) return;
       promptSent = true;
-      if (bootTimer) { clearTimeout(bootTimer); bootTimer = null; }
+      if (bootTimer) {
+        clearTimeout(bootTimer);
+        bootTimer = null;
+      }
       // Bracketed paste + enter — same mechanism as submitToPty in useHive.ts.
       ptyProc.write(`\x1b[200~${prompt}\x1b[201~`);
-      setTimeout(() => { if (!settled) ptyProc.write('\r'); }, 140);
+      setTimeout(() => {
+        if (!settled) ptyProc.write('\r');
+      }, 140);
     };
 
     bootMaxTimer = setTimeout(sendPrompt, bootCapMs);
@@ -210,6 +246,8 @@ export function runHiddenClaude(prompt: string, opts: HiddenClaudeOptions): Prom
     });
 
     // Session exited cleanly before idle — try to capture the transcript anyway.
-    ptyProc.onExit(() => { if (!settled) captureAndFinish(); });
+    ptyProc.onExit(() => {
+      if (!settled) captureAndFinish();
+    });
   });
 }

@@ -10,7 +10,7 @@ const {
   codexRemoteSocketFits,
   withCodexRemoteArgs,
   CODEX_REMOTE_SOCKET_MAX,
-  CODEX_REMOTE_SOCKET_RELATIVE
+  CODEX_REMOTE_SOCKET_RELATIVE,
 } = loadTs('src/shared/codexRemote.ts');
 
 test('Codex remote uses a short stable per-agent home alias', () => {
@@ -25,13 +25,12 @@ test('Codex remote uses a short stable per-agent home alias', () => {
 
 test('the default alias root yields a socket within sun_path', () => {
   // The real hive home that failed with "path must be shorter than SUN_LEN".
-  const realHome =
-    '/Users/vyapakgoyal/Documents/HarnessAgents/hive/agents/dev2-mrxb3l43/.codex';
+  const realHome = '/Users/vyapakgoyal/Documents/HarnessAgents/hive/agents/dev2-mrxb3l43/.codex';
   const socket =
     codexRemoteAliasPath(realHome, 'dev2-mrxb3l43') + '/' + CODEX_REMOTE_SOCKET_RELATIVE;
   assert.ok(
     socket.length < CODEX_REMOTE_SOCKET_MAX,
-    `socket path is ${socket.length} bytes: ${socket}`
+    `socket path is ${socket.length} bytes: ${socket}`,
   );
   // …and shorter than the home it replaces, which the $TMPDIR version was not.
   assert.ok(socket.length < (realHome + '/' + CODEX_REMOTE_SOCKET_RELATIVE).length);
@@ -45,16 +44,20 @@ test('an over-long alias root is rejected instead of failing at bind time', () =
 
 test('remote endpoint precedes both fresh and resumed Codex invocations', () => {
   const endpoint = 'unix:///tmp/munder-codex/a/app-server-control/app-server-control.sock';
-  assert.deepEqual(
-    withCodexRemoteArgs(['--model', 'gpt-5.6-sol', 'hello'], endpoint),
-    ['--remote', endpoint, '--model', 'gpt-5.6-sol', 'hello']
-  );
+  assert.deepEqual(withCodexRemoteArgs(['--model', 'gpt-5.6-sol', 'hello'], endpoint), [
+    '--remote',
+    endpoint,
+    '--model',
+    'gpt-5.6-sol',
+    'hello',
+  ]);
   assert.deepEqual(
     withCodexRemoteArgs(['resume', 'session-id', '--model', 'gpt-5.6-sol'], endpoint),
-    ['--remote', endpoint, 'resume', 'session-id', '--model', 'gpt-5.6-sol']
+    ['--remote', endpoint, 'resume', 'session-id', '--model', 'gpt-5.6-sol'],
   );
-  assert.deepEqual(
-    withCodexRemoteArgs(['--remote', endpoint, 'resume'], endpoint),
-    ['--remote', endpoint, 'resume']
-  );
+  assert.deepEqual(withCodexRemoteArgs(['--remote', endpoint, 'resume'], endpoint), [
+    '--remote',
+    endpoint,
+    'resume',
+  ]);
 });

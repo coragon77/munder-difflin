@@ -23,19 +23,21 @@ async function loadPlugin(posts) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'opencode-bridge-'));
   const plugin = match[1].replace(
     "import { createConnection } from 'node:net';",
-    'const { createConnection } = globalThis.__hiveNet;'
+    'const { createConnection } = globalThis.__hiveNet;',
   );
   const file = path.join(dir, 'hive-bridge.mjs');
   fs.writeFileSync(file, plugin, 'utf8');
   globalThis.__hiveNet = {
     createConnection(_socket, connected) {
       const connection = {
-        end(payload) { posts.push(JSON.parse(payload.replace(/\\n$/, ''))); },
-        on() {}
+        end(payload) {
+          posts.push(JSON.parse(payload.replace(/\\n$/, '')));
+        },
+        on() {},
       };
       queueMicrotask(connected);
       return connection;
-    }
+    },
   };
   const priorSock = process.env.HIVE_SOCK;
   const priorAgent = process.env.AGENT_ID;
@@ -51,7 +53,7 @@ async function loadPlugin(posts) {
       else process.env.HIVE_SOCK = priorSock;
       if (priorAgent === undefined) delete process.env.AGENT_ID;
       else process.env.AGENT_ID = priorAgent;
-    }
+    },
   };
 }
 
@@ -65,26 +67,36 @@ test('OpenCode PostToolUse retains the matching before-hook output.args', async 
   try {
     await plugin.hooks['tool.execute.before'](
       { tool: 'bash', sessionID: 's', callID: 'first' },
-      { args: { command: 'printf first' } }
+      { args: { command: 'printf first' } },
     );
     await plugin.hooks['tool.execute.before'](
       { tool: 'bash', sessionID: 's', callID: 'second' },
-      { args: { command: 'printf second' } }
+      { args: { command: 'printf second' } },
     );
     await plugin.hooks['tool.execute.after'](
       { tool: 'bash', sessionID: 's', callID: 'first' },
-      { title: '', output: '', metadata: {} }
+      { title: '', output: '', metadata: {} },
     );
     await plugin.hooks['tool.execute.after'](
       { tool: 'bash', sessionID: 's', callID: 'second' },
-      { title: '', output: '', metadata: {} }
+      { title: '', output: '', metadata: {} },
     );
     await flushPosts();
 
     const after = posts.filter((post) => post.hook_event_name === 'PostToolUse');
     assert.deepEqual(after, [
-      { hook_event_name: 'PostToolUse', tool_name: 'bash', tool_input: { command: 'printf first' }, agent_id: 'opencode-agent' },
-      { hook_event_name: 'PostToolUse', tool_name: 'bash', tool_input: { command: 'printf second' }, agent_id: 'opencode-agent' }
+      {
+        hook_event_name: 'PostToolUse',
+        tool_name: 'bash',
+        tool_input: { command: 'printf first' },
+        agent_id: 'opencode-agent',
+      },
+      {
+        hook_event_name: 'PostToolUse',
+        tool_name: 'bash',
+        tool_input: { command: 'printf second' },
+        agent_id: 'opencode-agent',
+      },
     ]);
   } finally {
     plugin.dispose();

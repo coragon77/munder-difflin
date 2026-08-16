@@ -22,14 +22,16 @@ export interface AgentDetailPanelProps {
 }
 
 export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
-  const [openTerminalState, setOpenTerminalState] = useState<'idle' | 'opening' | 'ok' | 'error'>('idle');
+  const [openTerminalState, setOpenTerminalState] = useState<'idle' | 'opening' | 'ok' | 'error'>(
+    'idle',
+  );
   const [openTerminalError, setOpenTerminalError] = useState<string | undefined>();
-  const archiveAgent = useStore(s => s.archiveAgent);
-  const updateAgent = useStore(s => s.updateAgent);
-  const setFullscreen = useStore(s => s.setFullscreen);
-  const fullscreenAgentId = useStore(s => s.fullscreenAgentId);
-  const sidebarTab = useStore(s => s.sidebarTab);
-  const setSidebarTab = useStore(s => s.setSidebarTab);
+  const archiveAgent = useStore((s) => s.archiveAgent);
+  const updateAgent = useStore((s) => s.updateAgent);
+  const setFullscreen = useStore((s) => s.setFullscreen);
+  const fullscreenAgentId = useStore((s) => s.fullscreenAgentId);
+  const sidebarTab = useStore((s) => s.sidebarTab);
+  const setSidebarTab = useStore((s) => s.setSidebarTab);
   const isReal = !!agent.ptyId;
   // While this agent is shown in the fullscreen overlay, the fullscreen view
   // owns the pty (it sizes it to fill the screen). Keeping the embedded terminal
@@ -43,7 +45,10 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
   // Kitty button only renders when kitty is installed (probed once, cached).
   const [kittyAvailable, setKittyAvailable] = useState<boolean | null>(null);
   useEffect(() => {
-    void window.cth.isKittyAvailable().then(setKittyAvailable).catch(() => setKittyAvailable(false));
+    void window.cth
+      .isKittyAvailable()
+      .then(setKittyAvailable)
+      .catch(() => setKittyAvailable(false));
   }, []);
   const openKitty = async () => {
     setOpenTerminalState('opening');
@@ -90,7 +95,12 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
 
   const onKill = async () => {
     if (!agent.ptyId) return;
-    if (!confirm(`Close ${agent.name}? The PTY process will terminate and the agent is archived (kept in history, off the floor).`)) return;
+    if (
+      !confirm(
+        `Close ${agent.name}? The PTY process will terminate and the agent is archived (kept in history, off the floor).`,
+      )
+    )
+      return;
     await window.cth.killPty(agent.ptyId);
     disposeTerminal(agent.ptyId);
     archiveAgent(agent.id);
@@ -101,7 +111,10 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
   const canPark = isReal && agentClassOf(agent) === 'human';
   const onPark = async () => {
     const res = await window.cth.hivePark(agent.id, 'parked from the agent pane');
-    if (!res.ok) { setOpenTerminalError(res.error ?? 'could not park this agent'); return; }
+    if (!res.ok) {
+      setOpenTerminalError(res.error ?? 'could not park this agent');
+      return;
+    }
     if (agent.ptyId) disposeTerminal(agent.ptyId);
     archiveAgent(agent.id, { vacation: true });
   };
@@ -114,25 +127,35 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
         flexDirection: 'column',
         height: '100%',
         padding: 0,
-        overflow: 'hidden'
+        overflow: 'hidden',
       }}
       noPadding
     >
       {/* Thin header strip */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '6px 8px',
-        background: 'var(--cth-cream-100)',
-        borderBottom: '1px solid var(--cth-ink-700)',
-        flexShrink: 0
-      }}>
-        <div style={{
-          width: 32, height: 32,
-          background: `var(--cth-${agent.accent}-light)`,
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden',
-          flexShrink: 0
-        }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 8px',
+          background: 'var(--cth-cream-100)',
+          borderBottom: '1px solid var(--cth-ink-700)',
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            background: `var(--cth-${agent.accent}-light)`,
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            flexShrink: 0,
+          }}
+        >
           <SpritePortrait character={agent.character} scale={1} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -141,48 +164,103 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
               (as on the card) so it never truncates the name. Humans — the
               default — and the god (own command center) show nothing here. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-            <span style={{
-              fontFamily: 'var(--cth-font-display)',
-              fontSize: 10, lineHeight: '14px',
-              color: 'var(--cth-ink-900)',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-            }}>{displayAgentName(agent).toUpperCase()}</span>
+            <span
+              style={{
+                fontFamily: 'var(--cth-font-display)',
+                fontSize: 10,
+                lineHeight: '14px',
+                color: 'var(--cth-ink-900)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {displayAgentName(agent).toUpperCase()}
+            </span>
             {agentClassOf(agent) === 'intern' && (
-              <span style={{
-                fontFamily: 'var(--cth-font-display)', fontSize: 7, lineHeight: '11px',
-                background: `var(--cth-${agent.accent})`, color: 'var(--cth-ink-900)',
-                padding: '1px 4px 0', flexShrink: 0
-              }}>INT</span>
+              <span
+                style={{
+                  fontFamily: 'var(--cth-font-display)',
+                  fontSize: 7,
+                  lineHeight: '11px',
+                  background: `var(--cth-${agent.accent})`,
+                  color: 'var(--cth-ink-900)',
+                  padding: '1px 4px 0',
+                  flexShrink: 0,
+                }}
+              >
+                INT
+              </span>
             )}
           </div>
-          <div style={{
-            display: 'flex', gap: 6, alignItems: 'center', marginTop: 1
-          }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 6,
+              alignItems: 'center',
+              marginTop: 1,
+            }}
+          >
             <PixelBadge status={agent.status} />
-            <span style={{
-              fontSize: 12, color: 'var(--cth-ink-500)',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-            }}>{agent.project}</span>
+            <span
+              style={{
+                fontSize: 12,
+                color: 'var(--cth-ink-500)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {agent.project}
+            </span>
           </div>
         </div>
         {/* v0.3.4: the IDE lives at agent level (replaces the old files tab) —
             opens the full-window Monaco editor rooted at this agent's workspace. */}
-        <PixelButton variant="secondary" size="sm" onClick={() => useStore.getState().setIdeOpen(true)}>
-          <span title={`Open the IDE — file editor + git diff for ${agent.project}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <PixelButton
+          variant="secondary"
+          size="sm"
+          onClick={() => useStore.getState().setIdeOpen(true)}
+        >
+          <span
+            title={`Open the IDE — file editor + git diff for ${agent.project}`}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          >
             <Icon name="code" /> IDE
           </span>
         </PixelButton>
-        <PixelButton variant="secondary" size="sm" onClick={openTerminal} disabled={openTerminalState === 'opening'}>
-          <span title={`open Terminal.app at ${agent.cwd}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <PixelButton
+          variant="secondary"
+          size="sm"
+          onClick={openTerminal}
+          disabled={openTerminalState === 'opening'}
+        >
+          <span
+            title={`open Terminal.app at ${agent.cwd}`}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          >
             <Icon name="terminal" />
-            {openTerminalState === 'opening' ? '...' : openTerminalState === 'ok' ? 'ok' : openTerminalState === 'error' ? 'err' : 'open'}
+            {openTerminalState === 'opening'
+              ? '...'
+              : openTerminalState === 'ok'
+                ? 'ok'
+                : openTerminalState === 'error'
+                  ? 'err'
+                  : 'open'}
           </span>
         </PixelButton>
         {kittyAvailable === true && (
-          <PixelButton variant="secondary" size="sm" onClick={openKitty} disabled={openTerminalState === 'opening'}>
-            <span title={`open Kitty at ${agent.cwd}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              🐱
-              {openTerminalState === 'opening' ? '...' : 'kitty'}
+          <PixelButton
+            variant="secondary"
+            size="sm"
+            onClick={openKitty}
+            disabled={openTerminalState === 'opening'}
+          >
+            <span
+              title={`open Kitty at ${agent.cwd}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              🐱{openTerminalState === 'opening' ? '...' : 'kitty'}
             </span>
           </PixelButton>
         )}
@@ -199,12 +277,19 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
       </div>
 
       {openTerminalError && (
-        <div style={{
-          fontSize: 12, color: 'var(--cth-coral)',
-          padding: '2px 8px',
-          background: 'var(--cth-coral-light)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-        }}>{openTerminalError}</div>
+        <div
+          style={{
+            fontSize: 12,
+            color: 'var(--cth-coral)',
+            padding: '2px 8px',
+            background: 'var(--cth-coral-light)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {openTerminalError}
+        </div>
       )}
 
       {/* #7C — operator control (pause / halt / steer) for live agents */}
@@ -215,52 +300,59 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
 
       {/* Active tab body — fills remaining space */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {sidebarTab === 'terminal' && (
-          isReal && agent.ptyId ? (
+        {sidebarTab === 'terminal' &&
+          (isReal && agent.ptyId ? (
             isFullscreenedHere ? (
               <EmptyTab title="In fullscreen">
-                This terminal is open in fullscreen. Press Esc or exit fullscreen to bring it back here.
+                This terminal is open in fullscreen. Press Esc or exit fullscreen to bring it back
+                here.
               </EmptyTab>
             ) : (
-            <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-                <PtyTerminalView
-                  key={terminalInstanceKey(agent.ptyId, agent.terminalGeneration)}
-                  ptyId={agent.ptyId}
-                  onStreamData={onPtyStream}
-                  onUserPrompt={(t) => {
-                    updateAgent(agent.id, { lastPrompt: t });
-                    if (t.trim().toLowerCase() === '/clear') {
-                      updateAgent(agent.id, { contextTokens: 0, contextLimit: undefined, progress: 0 });
-                    }
-                    void window.cth.historyAdd({ agentId: agent.id, cwd: agent.cwd, text: t });
-                  }}
-                  onToggleFullscreen={() => setFullscreen(agent.id)}
-                  fullscreen={false}
-                  embedded
-                />
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  minHeight: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+                  <PtyTerminalView
+                    key={terminalInstanceKey(agent.ptyId, agent.terminalGeneration)}
+                    ptyId={agent.ptyId}
+                    onStreamData={onPtyStream}
+                    onUserPrompt={(t) => {
+                      updateAgent(agent.id, { lastPrompt: t });
+                      if (t.trim().toLowerCase() === '/clear') {
+                        updateAgent(agent.id, {
+                          contextTokens: 0,
+                          contextLimit: undefined,
+                          progress: 0,
+                        });
+                      }
+                      void window.cth.historyAdd({ agentId: agent.id, cwd: agent.cwd, text: t });
+                    }}
+                    onToggleFullscreen={() => setFullscreen(agent.id)}
+                    fullscreen={false}
+                    embedded
+                  />
+                </div>
+                <MessageQueueComposer agent={agent} />
               </div>
-              <MessageQueueComposer agent={agent} />
-            </div>
             )
           ) : (
             <EmptyTab title="No PTY">
-              This agent has no live terminal. Spawn an agent through "add agent" to use the terminal tab.
+              This agent has no live terminal. Spawn an agent through "add agent" to use the
+              terminal tab.
             </EmptyTab>
-          )
-        )}
+          ))}
 
-        {sidebarTab === 'git' && (
-          <GitTab cwd={agent.cwd} />
-        )}
+        {sidebarTab === 'git' && <GitTab cwd={agent.cwd} />}
 
-        {sidebarTab === 'messages' && (
-          <ThreadsPanel agentId={agent.id} />
-        )}
+        {sidebarTab === 'messages' && <ThreadsPanel agentId={agent.id} />}
 
-        {sidebarTab === 'traces' && (
-          <ToolWaterfall agentId={agent.id} />
-        )}
+        {sidebarTab === 'traces' && <ToolWaterfall agentId={agent.id} />}
       </div>
     </PixelPanel>
   );
@@ -268,20 +360,39 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
 
 function EmptyTab({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{
-      flex: 1, display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      padding: 16, gap: 8,
-      background: 'var(--cth-paper-200)'
-    }}>
-      <div style={{
-        fontFamily: 'var(--cth-font-display)', fontSize: 10, lineHeight: '14px',
-        color: 'var(--cth-ink-500)'
-      }}>{title.toUpperCase()}</div>
-      <p style={{
-        margin: 0, fontSize: 13, textAlign: 'center', color: 'var(--cth-ink-700)',
-        maxWidth: 280
-      }}>{children}</p>
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        gap: 8,
+        background: 'var(--cth-paper-200)',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: 'var(--cth-font-display)',
+          fontSize: 10,
+          lineHeight: '14px',
+          color: 'var(--cth-ink-500)',
+        }}
+      >
+        {title.toUpperCase()}
+      </div>
+      <p
+        style={{
+          margin: 0,
+          fontSize: 13,
+          textAlign: 'center',
+          color: 'var(--cth-ink-700)',
+          maxWidth: 280,
+        }}
+      >
+        {children}
+      </p>
     </div>
   );
 }

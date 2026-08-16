@@ -91,16 +91,20 @@ function sortedPairKey(a: string, b: string): string {
 export function buildGraph(
   agents: MinimalAgent[],
   log: MessageLogEntry[],
-  opts: BuildOpts = {}
+  opts: BuildOpts = {},
 ): GraphData {
   const byId = new Map(agents.map((a) => [a.id, a]));
   const degree = new Map<string, number>();
 
   // ── message edges: aggregate per unordered pair, remember direction + latest ─
   interface PairAcc {
-    a: string; b: string;            // a < b
-    fwd: number; bwd: number;        // a->b, b->a counts
-    lastTs: number; lastAct?: MessageAct; lastSubject?: string;
+    a: string;
+    b: string; // a < b
+    fwd: number;
+    bwd: number; // a->b, b->a counts
+    lastTs: number;
+    lastAct?: MessageAct;
+    lastSubject?: string;
   }
   const pairs = new Map<string, PairAcc>();
   const pseudoUsed = new Set<'broadcast' | 'human'>();
@@ -108,8 +112,14 @@ export function buildGraph(
   const resolve = (ep?: string): string | null => {
     if (!ep) return null;
     if (byId.has(ep)) return ep;
-    if (ep === 'broadcast') { pseudoUsed.add('broadcast'); return 'broadcast'; }
-    if (ep === 'human') { pseudoUsed.add('human'); return 'human'; }
+    if (ep === 'broadcast') {
+      pseudoUsed.add('broadcast');
+      return 'broadcast';
+    }
+    if (ep === 'human') {
+      pseudoUsed.add('human');
+      return 'human';
+    }
     return null; // unknown id — skip defensively
   };
 
@@ -128,8 +138,13 @@ export function buildGraph(
       p = { a, b, fwd: 0, bwd: 0, lastTs: -1 };
       pairs.set(key, p);
     }
-    if (from === p.a) p.fwd++; else p.bwd++;
-    if (ts >= p.lastTs) { p.lastTs = ts; p.lastAct = e.act; p.lastSubject = e.subject; }
+    if (from === p.a) p.fwd++;
+    else p.bwd++;
+    if (ts >= p.lastTs) {
+      p.lastTs = ts;
+      p.lastAct = e.act;
+      p.lastSubject = e.subject;
+    }
 
     // degree counts agents only (pseudo nodes don't get sized)
     if (byId.has(from)) degree.set(from, (degree.get(from) ?? 0) + 1);
@@ -149,10 +164,11 @@ export function buildGraph(
       accent: a.accent,
       status: a.status,
       isGod: !!a.isGod,
-      degree: degree.get(a.id) ?? 0
+      degree: degree.get(a.id) ?? 0,
     });
   }
-  if (pseudoUsed.has('broadcast')) nodes.push({ kind: 'pseudo', id: 'broadcast', label: 'broadcast' });
+  if (pseudoUsed.has('broadcast'))
+    nodes.push({ kind: 'pseudo', id: 'broadcast', label: 'broadcast' });
   if (pseudoUsed.has('human')) nodes.push({ kind: 'pseudo', id: 'human', label: 'human' });
 
   for (const p of pairs.values()) {
@@ -165,7 +181,7 @@ export function buildGraph(
       weight: p.fwd + p.bwd,
       dir,
       lastAct: p.lastAct,
-      lastSubject: p.lastSubject
+      lastSubject: p.lastSubject,
     });
   }
 
@@ -180,7 +196,13 @@ export function buildGraph(
       nodes.push({ kind: 'topic', id: t.id, label: t.label, weight: t.weight });
       for (const agentId of t.agentIds) {
         if (!byId.has(agentId)) continue;
-        edges.push({ id: `topic:${agentId}\u0000${t.id}`, kind: 'topic', source: agentId, target: t.id, weight: 1 });
+        edges.push({
+          id: `topic:${agentId}\u0000${t.id}`,
+          kind: 'topic',
+          source: agentId,
+          target: t.id,
+          weight: 1,
+        });
       }
     }
   }

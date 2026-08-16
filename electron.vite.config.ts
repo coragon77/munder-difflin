@@ -15,7 +15,7 @@ const define = { __APP_VERSION__: JSON.stringify(pkg.version) };
 const defineMain = {
   ...define,
   __POSTHOG_KEY__: JSON.stringify(process.env.POSTHOG_KEY ?? ''),
-  __POSTHOG_HOST__: JSON.stringify(process.env.POSTHOG_HOST ?? 'https://us.i.posthog.com')
+  __POSTHOG_HOST__: JSON.stringify(process.env.POSTHOG_HOST ?? 'https://us.i.posthog.com'),
 };
 
 // Copy raw .cjs main-process sidecars into out/main after the main bundle is
@@ -30,7 +30,7 @@ function copyMainSidecars() {
     // Knowledge Graph core: required by knowledge.ts at runtime (pure-JS, no
     // native deps), so it must be emitted next to the main bundle like the
     // Slack sidecar above.
-    ['src/main/kg-core.cjs', 'out/main/kg-core.cjs']
+    ['src/main/kg-core.cjs', 'out/main/kg-core.cjs'],
   ];
   return {
     name: 'copy-main-cjs-sidecars',
@@ -45,7 +45,7 @@ function copyMainSidecars() {
           throw new Error(`Failed to copy main-process sidecar: ${fromRel} -> ${toRel}`);
         }
       }
-    }
+    },
   };
 }
 
@@ -55,34 +55,34 @@ export default defineConfig({
     define: defineMain,
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/main/index.ts') }
-      }
-    }
+        input: { index: resolve(__dirname, 'src/main/index.ts') },
+      },
+    },
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
     define,
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/preload/index.ts') }
-      }
-    }
+        input: { index: resolve(__dirname, 'src/preload/index.ts') },
+      },
+    },
   },
   renderer: {
     define,
     root: resolve(__dirname, 'src/renderer'),
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/renderer/index.html') }
-      }
+        input: { index: resolve(__dirname, 'src/renderer/index.html') },
+      },
     },
     plugins: [react()],
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src/renderer/src'),
         '@brand': resolve(__dirname, 'docs'),
-        '@shared': resolve(__dirname, 'src/shared')
-      }
-    }
-  }
+        '@shared': resolve(__dirname, 'src/shared'),
+      },
+    },
+  },
 });

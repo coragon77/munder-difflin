@@ -39,9 +39,9 @@ const art = loadTs('src/renderer/src/scene/office/portraitArt.ts');
 const SW = art.SCENE_W;
 
 // ── palette ───────────────────────────────────────────────────────────────
-const GROUND = [241, 181, 61];    // #F1B53D — brand yellow, sampled from the shipping icon
-const WHITE  = [250, 248, 244];
-const PUPIL  = [46, 38, 42];
+const GROUND = [241, 181, 61]; // #F1B53D — brand yellow, sampled from the shipping icon
+const WHITE = [250, 248, 244];
+const PUPIL = [46, 38, 42];
 
 // Two border weights, matching the pair the site already ships: near-black for
 // dark surfaces, warm brown for the light theme (sampled from logo-light.png).
@@ -64,7 +64,10 @@ function centreEyes(base) {
   const sp = Uint8ClampedArray.from(base);
   const set = (x, y, c) => {
     const i = (y * SW + x) * 4;
-    sp[i] = c[0]; sp[i + 1] = c[1]; sp[i + 2] = c[2]; sp[i + 3] = 255;
+    sp[i] = c[0];
+    sp[i + 1] = c[1];
+    sp[i + 2] = c[2];
+    sp[i + 3] = 255;
   };
   for (const x of [5, 6, 10, 11]) for (const y of [9, 10]) set(x, y, WHITE);
   set(6, 9, PUPIL);
@@ -94,7 +97,8 @@ const R_HEADROOM = 12 / 240;
  * fuses with the hair into a black mass.
  */
 function buildGrid(sprite) {
-  const gw = SW, gh = CROP_ROWS;
+  const gw = SW,
+    gh = CROP_ROWS;
   const cells = [];
   for (let gy = 0; gy < gh; gy++) {
     for (let gx = 0; gx < gw; gx++) {
@@ -103,11 +107,16 @@ function buildGrid(sprite) {
       cells.push({ gx, gy, c: [sprite[i], sprite[i + 1], sprite[i + 2]] });
     }
   }
-  const ys = cells.map((c) => c.gy), xs = cells.map((c) => c.gx);
+  const ys = cells.map((c) => c.gy),
+    xs = cells.map((c) => c.gx);
   return {
-    gw, gh, cells,
-    x0: Math.min(...xs), x1: Math.max(...xs) + 1,
-    y0: Math.min(...ys), y1: Math.max(...ys) + 1
+    gw,
+    gh,
+    cells,
+    x0: Math.min(...xs),
+    x1: Math.max(...xs) + 1,
+    y0: Math.min(...ys),
+    y1: Math.max(...ys) + 1,
   };
 }
 
@@ -123,9 +132,11 @@ function layout(N, grid, frame) {
   const scale = Math.max(1, Math.round((tile.w * R_FIGURE) / (grid.x1 - grid.x0)));
   const drawnW = (grid.x1 - grid.x0) * scale;
   return {
-    tile, stroke, scale,
+    tile,
+    stroke,
+    scale,
     ox: Math.round(tile.x + (tile.w - drawnW) / 2 - grid.x0 * scale),
-    oy: Math.round(tile.y + tile.h * R_HEADROOM - grid.y0 * scale)
+    oy: Math.round(tile.y + tile.h * R_HEADROOM - grid.y0 * scale),
   };
 }
 
@@ -135,30 +146,53 @@ function runs(grid) {
   const at = new Map(grid.cells.map((c) => [c.gy * grid.gw + c.gx, c.c]));
   const out = [];
   for (let gy = 0; gy < grid.gh; gy++) {
-    let start = null, cur = null;
-    const flush = (end) => { if (start !== null) out.push({ gy, gx: start, len: end - start, c: cur }); start = null; };
+    let start = null,
+      cur = null;
+    const flush = (end) => {
+      if (start !== null) out.push({ gy, gx: start, len: end - start, c: cur });
+      start = null;
+    };
     for (let gx = 0; gx <= grid.gw; gx++) {
       const c = at.get(gy * grid.gw + gx);
       const key = c ? c.join(',') : null;
-      if (key !== (cur ? cur.join(',') : null)) { flush(gx); if (c) { start = gx; cur = c; } else cur = null; }
+      if (key !== (cur ? cur.join(',') : null)) {
+        flush(gx);
+        if (c) {
+          start = gx;
+          cur = c;
+        } else cur = null;
+      }
     }
     flush(grid.gw);
   }
   return out;
 }
 
-const hex = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+const hex = (c) =>
+  '#' +
+  c
+    .map((v) => v.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
 
 function buildSvg(N, grid, frame, border) {
   const L = layout(N, grid, frame);
-  const t = L.tile, s = L.stroke;
+  const t = L.tile,
+    s = L.stroke;
   // Stroke straddles the path, so inset by half of it — otherwise the border
   // spills past the tile and gets clipped by the viewBox edge.
-  const rx = t.x + s / 2, ry = t.y + s / 2, rw = t.w - s, rh = t.h - s, rr = t.r - s / 2;
-  const body = runs(grid).map((r) => {
-    const x = L.ox + r.gx * L.scale, y = L.oy + r.gy * L.scale;
-    return `    <rect x="${x}" y="${y}" width="${r.len * L.scale}" height="${L.scale}" fill="${hex(r.c)}"/>`;
-  }).join('\n');
+  const rx = t.x + s / 2,
+    ry = t.y + s / 2,
+    rw = t.w - s,
+    rh = t.h - s,
+    rr = t.r - s / 2;
+  const body = runs(grid)
+    .map((r) => {
+      const x = L.ox + r.gx * L.scale,
+        y = L.oy + r.gy * L.scale;
+      return `    <rect x="${x}" y="${y}" width="${r.len * L.scale}" height="${L.scale}" fill="${hex(r.c)}"/>`;
+    })
+    .join('\n');
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${N}" height="${N}" viewBox="0 0 ${N} ${N}" shape-rendering="crispEdges">
   <!-- Munder Difflin — the brand mark, and the source of truth for every raster
@@ -196,9 +230,11 @@ const CRC = (() => {
 })();
 
 function chunk(type, data) {
-  const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
   const td = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-  const crc = Buffer.alloc(4); crc.writeUInt32BE(CRC(td));
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(CRC(td));
   return Buffer.concat([len, td, crc]);
 }
 
@@ -206,29 +242,34 @@ function encodePng(N, rgba) {
   const stride = N * 4 + 1;
   const raw = Buffer.alloc(N * stride);
   for (let y = 0; y < N; y++) {
-    raw[y * stride] = 0;                                       // filter: none
+    raw[y * stride] = 0; // filter: none
     rgba.copy(raw, y * stride + 1, y * N * 4, (y + 1) * N * 4);
   }
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(N, 0); ihdr.writeUInt32BE(N, 4);
-  ihdr[8] = 8; ihdr[9] = 6;                                    // 8-bit RGBA
+  ihdr.writeUInt32BE(N, 0);
+  ihdr.writeUInt32BE(N, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 6; // 8-bit RGBA
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),
     chunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
-    chunk('IEND', Buffer.alloc(0))
+    chunk('IEND', Buffer.alloc(0)),
   ]);
 }
 
 /** Signed distance to a rounded rect — negative inside. */
 function sdRoundRect(px, py, x, y, w, h, r) {
-  const cx = x + w / 2, cy = y + h / 2;
-  const qx = Math.abs(px - cx) - (w / 2 - r), qy = Math.abs(py - cy) - (h / 2 - r);
-  const ax = Math.max(qx, 0), ay = Math.max(qy, 0);
+  const cx = x + w / 2,
+    cy = y + h / 2;
+  const qx = Math.abs(px - cx) - (w / 2 - r),
+    qy = Math.abs(py - cy) - (h / 2 - r);
+  const ax = Math.max(qx, 0),
+    ay = Math.max(qy, 0);
   return Math.hypot(ax, ay) + Math.min(Math.max(qx, qy), 0) - r;
 }
 
-const SS = 4;   // 4x4 supersampling — smooth tile edge, hard pixel-art edges
+const SS = 4; // 4x4 supersampling — smooth tile edge, hard pixel-art edges
 
 /**
  * The tile is an analytic rounded rect, so its drop shadow is the SAME shape
@@ -237,29 +278,45 @@ const SS = 4;   // 4x4 supersampling — smooth tile edge, hard pixel-art edges
  */
 function rasterise(N, grid, frame, border) {
   const L = layout(N, grid, frame);
-  const t = L.tile, s = L.stroke;
-  const rx = t.x + s / 2, ry = t.y + s / 2, rw = t.w - s, rh = t.h - s, rr = t.r - s / 2;
-  const shadow = frame === 'icon' ? { dy: N * 0.020, blur: N * 0.030, a: 0.30 } : null;
+  const t = L.tile,
+    s = L.stroke;
+  const rx = t.x + s / 2,
+    ry = t.y + s / 2,
+    rw = t.w - s,
+    rh = t.h - s,
+    rr = t.r - s / 2;
+  const shadow = frame === 'icon' ? { dy: N * 0.02, blur: N * 0.03, a: 0.3 } : null;
 
   const at = new Map(grid.cells.map((c) => [c.gy * grid.gw + c.gx, c.c]));
   const spriteAt = (px, py) => {
-    const gx = Math.floor((px - L.ox) / L.scale), gy = Math.floor((py - L.oy) / L.scale);
+    const gx = Math.floor((px - L.ox) / L.scale),
+      gy = Math.floor((py - L.oy) / L.scale);
     return at.get(gy * grid.gw + gx) ?? null;
   };
 
   const out = Buffer.alloc(N * N * 4);
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
-      let cov = 0, ink = 0, rSum = 0, gSum = 0, bSum = 0;
+      let cov = 0,
+        ink = 0,
+        rSum = 0,
+        gSum = 0,
+        bSum = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const px = x + (sx + 0.5) / SS, py = y + (sy + 0.5) / SS;
+          const px = x + (sx + 0.5) / SS,
+            py = y + (sy + 0.5) / SS;
           const d = sdRoundRect(px, py, rx, ry, rw, rh, rr);
-          if (d > s / 2) continue;                    // outside the stroke entirely
+          if (d > s / 2) continue; // outside the stroke entirely
           cov++;
-          if (d > -s / 2) { ink++; continue; }        // within the border band
+          if (d > -s / 2) {
+            ink++;
+            continue;
+          } // within the border band
           const c = spriteAt(px, py) ?? GROUND;
-          rSum += c[0]; gSum += c[1]; bSum += c[2];
+          rSum += c[0];
+          gSum += c[1];
+          bSum += c[2];
         }
       }
       const tileA = cov / (SS * SS);
@@ -273,14 +330,15 @@ function rasterise(N, grid, frame, border) {
 
       // Tile over shadow, straight (un-premultiplied) output.
       const outA = tileA + sa * (1 - tileA);
-      const wT = tileA / outA, wS = 1 - wT;          // shadow colour is pure black
+      const wT = tileA / outA,
+        wS = 1 - wT; // shadow colour is pure black
       const i = (y * N + x) * 4;
       if (cov) {
         out[i] = Math.round(((rSum + ink * border[0]) / cov) * wT);
         out[i + 1] = Math.round(((gSum + ink * border[1]) / cov) * wT);
         out[i + 2] = Math.round(((bSum + ink * border[2]) / cov) * wT);
       }
-      void wS;                                        // black contributes nothing
+      void wS; // black contributes nothing
       out[i + 3] = Math.round(outA * 255);
     }
   }
@@ -291,17 +349,24 @@ function rasterise(N, grid, frame, border) {
 /** ICO container of PNG entries (Vista+). 256px is encoded as width byte 0. */
 function buildIco(pngs) {
   const dir = Buffer.alloc(6);
-  dir.writeUInt16LE(0, 0); dir.writeUInt16LE(1, 2); dir.writeUInt16LE(pngs.length, 4);
+  dir.writeUInt16LE(0, 0);
+  dir.writeUInt16LE(1, 2);
+  dir.writeUInt16LE(pngs.length, 4);
   let offset = 6 + pngs.length * 16;
-  const entries = [], bodies = [];
+  const entries = [],
+    bodies = [];
   for (const { size, data } of pngs) {
     const e = Buffer.alloc(16);
     e[0] = size >= 256 ? 0 : size;
     e[1] = size >= 256 ? 0 : size;
-    e[2] = 0; e[3] = 0;
-    e.writeUInt16LE(1, 4); e.writeUInt16LE(32, 6);
-    e.writeUInt32LE(data.length, 8); e.writeUInt32LE(offset, 12);
-    entries.push(e); bodies.push(data);
+    e[2] = 0;
+    e[3] = 0;
+    e.writeUInt16LE(1, 4);
+    e.writeUInt16LE(32, 6);
+    e.writeUInt32LE(data.length, 8);
+    e.writeUInt32LE(offset, 12);
+    entries.push(e);
+    bodies.push(data);
     offset += data.length;
   }
   return Buffer.concat([dir, ...entries, ...bodies]);
@@ -326,23 +391,38 @@ write('docs/apple-touch-icon.png', rasterise(180, grid, 'mark', BORDERS.ink));
 // App icons.
 write('build/icon.svg', Buffer.from(buildSvg(1024, grid, 'icon', BORDERS.ink)));
 write('build/icon.png', rasterise(1024, grid, 'icon', BORDERS.ink));
-write('build/icon.ico', buildIco([16, 32, 48, 64, 128, 256].map((size) => ({
-  size, data: rasterise(size, grid, 'mark', BORDERS.ink)
-}))));
+write(
+  'build/icon.ico',
+  buildIco(
+    [16, 32, 48, 64, 128, 256].map((size) => ({
+      size,
+      data: rasterise(size, grid, 'mark', BORDERS.ink),
+    })),
+  ),
+);
 
 // macOS .icns via iconutil, from a margined+shadowed iconset.
 const setDir = D('build/icon.iconset');
 fs.rmSync(setDir, { recursive: true, force: true });
 fs.mkdirSync(setDir, { recursive: true });
 for (const [name, size] of [
-  ['icon_16x16', 16], ['icon_16x16@2x', 32], ['icon_32x32', 32], ['icon_32x32@2x', 64],
-  ['icon_128x128', 128], ['icon_128x128@2x', 256], ['icon_256x256', 256],
-  ['icon_256x256@2x', 512], ['icon_512x512', 512], ['icon_512x512@2x', 1024]
+  ['icon_16x16', 16],
+  ['icon_16x16@2x', 32],
+  ['icon_32x32', 32],
+  ['icon_32x32@2x', 64],
+  ['icon_128x128', 128],
+  ['icon_128x128@2x', 256],
+  ['icon_256x256', 256],
+  ['icon_256x256@2x', 512],
+  ['icon_512x512', 512],
+  ['icon_512x512@2x', 1024],
 ]) {
   fs.writeFileSync(path.join(setDir, `${name}.png`), rasterise(size, grid, 'icon', BORDERS.ink));
 }
 execFileSync('iconutil', ['-c', 'icns', setDir, '-o', D('build/icon.icns')]);
 fs.rmSync(setDir, { recursive: true, force: true });
-wrote.push(`build/icon.icns              ${(fs.statSync(D('build/icon.icns')).size / 1024).toFixed(1)} KB`);
+wrote.push(
+  `build/icon.icns              ${(fs.statSync(D('build/icon.icns')).size / 1024).toFixed(1)} KB`,
+);
 
 console.log(wrote.join('\n'));

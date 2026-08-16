@@ -53,7 +53,7 @@ test('DOTS are dashed too, not just slashes', () => {
     // the harness's own stale twin, the miss looks like a hit.
     assert.equal(
       path.basename(projectDir('/Users/me/Documents/MDv0.3.0')),
-      '-Users-me-Documents-MDv0-3-0'
+      '-Users-me-Documents-MDv0-3-0',
     );
   });
 });
@@ -62,7 +62,7 @@ test('every other non-alphanumeric is dashed as well', () => {
   withHome(() => {
     assert.equal(
       path.basename(projectDir('/Users/me/my_proj (old)/v1.2')),
-      '-Users-me-my-proj--old--v1-2'
+      '-Users-me-my-proj--old--v1-2',
     );
   });
 });
@@ -113,9 +113,6 @@ test('the real failing path resolves to the dir Claude Code actually writes', ()
     const cwd = '/Users/vyapakgoyal/Documents/HarnessAgents';
     mkProject('-Users-vyapakgoyal-Documents-HarnessAgents');
     mkProject('Users-vyapakgoyal-Documents-HarnessAgents');
-    assert.equal(
-      path.basename(projectDir(cwd)),
-      '-Users-vyapakgoyal-Documents-HarnessAgents'
-    );
+    assert.equal(path.basename(projectDir(cwd)), '-Users-vyapakgoyal-Documents-HarnessAgents');
   });
 });

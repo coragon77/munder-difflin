@@ -9,7 +9,11 @@ import { useEffect, useState } from 'react';
  * @param seed  Any value; changing it restarts the typewriter.
  * @param cps   Characters per second. Default 90.
  */
-export function useTypewriter(text: string, seed: unknown, cps = 90): {
+export function useTypewriter(
+  text: string,
+  seed: unknown,
+  cps = 90,
+): {
   shown: string;
   done: boolean;
 } {
@@ -19,7 +23,10 @@ export function useTypewriter(text: string, seed: unknown, cps = 90): {
   useEffect(() => {
     setShown('');
     setDone(false);
-    if (!text) { setDone(true); return; }
+    if (!text) {
+      setDone(true);
+      return;
+    }
     let i = 0;
     const intervalMs = Math.max(8, Math.floor(1000 / cps));
     const id = window.setInterval(() => {

@@ -9,7 +9,7 @@ const {
   normalizePtyChunk,
   requestInitialPtyRedraw,
   scheduleWebglRecovery,
-  terminalInstanceKey
+  terminalInstanceKey,
 } = loadTs('src/renderer/src/components/terminalRecovery.ts');
 
 test('terminal generation creates a new instance for the same PTY', () => {
@@ -26,8 +26,18 @@ test('terminal output accepts current and pre-revert message shapes', () => {
 test('initial attach requests exactly one PTY redraw', () => {
   const state = createTerminalRecoveryState();
   let redraws = 0;
-  assert.equal(requestInitialPtyRedraw(state, () => { redraws++; }), true);
-  assert.equal(requestInitialPtyRedraw(state, () => { redraws++; }), false);
+  assert.equal(
+    requestInitialPtyRedraw(state, () => {
+      redraws++;
+    }),
+    true,
+  );
+  assert.equal(
+    requestInitialPtyRedraw(state, () => {
+      redraws++;
+    }),
+    false,
+  );
   assert.equal(redraws, 1);
 });
 
@@ -37,8 +47,18 @@ test('WebGL recovery is deduped and repaints after two frames', () => {
   let repaints = 0;
   const requestFrame = (cb) => frames.push(cb);
 
-  assert.equal(scheduleWebglRecovery(state, requestFrame, () => { repaints++; }), true);
-  assert.equal(scheduleWebglRecovery(state, requestFrame, () => { repaints++; }), false);
+  assert.equal(
+    scheduleWebglRecovery(state, requestFrame, () => {
+      repaints++;
+    }),
+    true,
+  );
+  assert.equal(
+    scheduleWebglRecovery(state, requestFrame, () => {
+      repaints++;
+    }),
+    false,
+  );
   assert.equal(frames.length, 1);
   frames.shift()();
   assert.equal(repaints, 0);

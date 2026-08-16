@@ -1,6 +1,11 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useStore, type Agent } from '@/store/store';
-import { buildSpawnCommand, inferAgentProvider, tokenizeCommand, type HarnessConfig } from '@/store/config';
+import {
+  buildSpawnCommand,
+  inferAgentProvider,
+  tokenizeCommand,
+  type HarnessConfig,
+} from '@/store/config';
 
 /** "Restore team" — respawn every worker from the previous session.
  *
@@ -37,7 +42,9 @@ function emit(): void {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 // useSyncExternalStore requires a stable snapshot identity — returning a fresh
@@ -48,8 +55,14 @@ const getAutoRestoring = (): boolean => autoRestoring;
 
 /** Ids currently on vacation, per the registry. Pulled out of restoreTeam so it
  *  can be unit-tested without mounting the hook (see vacation-restore-skip.test.cjs). */
-export function parkedAgentIds(reg: { agents: Record<string, { vacation?: boolean }> }): Set<string> {
-  return new Set(Object.entries(reg.agents).filter(([, a]) => a.vacation).map(([id]) => id));
+export function parkedAgentIds(reg: {
+  agents: Record<string, { vacation?: boolean }>;
+}): Set<string> {
+  return new Set(
+    Object.entries(reg.agents)
+      .filter(([, a]) => a.vacation)
+      .map(([id]) => id),
+  );
 }
 
 export interface RestoreTeamState {
@@ -121,98 +134,105 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
       // the roster order — and that order is persisted, so a slow provider or a
       // slow git probe silently overwrote the sequence the user had dragged the
       // cards into.
-      const restoredInOrder = await Promise.all([...restorableAgents].map(async (a): Promise<Agent | null> => {
-        // Per-agent guard: one agent's failure (or a rejected IPC call) must NEVER
-        // abort the others — an unhandled rejection here used to make the
-        // entire restore a silent no-op after the first bad agent.
-        try {
-          const provider = inferAgentProvider(a.command, a.provider);
-          const command = (a.command ?? '').trim() || (config ? buildSpawnCommand(config, a.model, provider) : '');
-          if (!command || !a.cwd) {
-            // No spawn recipe (an old entry persisted before `command`, with no
-            // config to rebuild one). Keep it restorable and SAY why rather than
-            // silently dropping it — silent removal read as "nothing happened".
-            failures.push(`${a.name}: no saved command`);
-            return null;
-          }
-          const [exe, ...args] = tokenizeCommand(command);
-          const ptyId = a.ptyId ?? `pty-${a.id}`;
-          // ROLE IS IDENTITY, SET AT HIRE — a respawn must NOT echo the
-          // renderer `description` (a live status field: usePtyParser rewrites
-          // it to 'on standby' on idle) into the registry role. No role here;
-          // ensureAgent preserves the hired one.
-          //
-          // NO pre-spawn `archived` check here. `archived` is a LIVENESS flag,
-          // not a retirement one: archiveOrphanedAgents (main/index.ts) flips
-          // every PTY-less agent to archived:true at boot, and a restorable
-          // agent is BY DEFINITION one whose terminal died with the last
-          // session — so such a check rejects 100% of restores and the button
-          // goes inert. Retirement is tracked where it is actually known: an
-          // archive/fire drops the agent from `restorableAgents` (store's
-          // archiveAgent), so a retired agent never reaches this loop.
-          // An isolated agent's worktree SURVIVES an app restart on disk (it's only
-          // torn down on per-tab close / mid-session exit, not on quit). So re-enter
-          // that exact worktree as the cwd rather than re-isolating — `git worktree
-          // add` would conflict with the existing path/branch, and re-isolating would
-          // also lose the worktree's uncommitted work. cwd = the worktree means
-          // resume + seedSessionTranscript land in the CORRECT checkout.
-          // But the user may have manually pruned/deleted the worktree between runs —
-          // gitIsRepo (git rev-parse) returns false for a missing/invalid dir, so
-          // fall back to the base repo cwd rather than spawning into a dead path.
-          let cwd = a.cwd;
-          let worktreeGone = false;
-          if (a.worktreePath) {
-            if (await window.cth.gitIsRepo(a.worktreePath)) {
-              cwd = a.worktreePath;
-            } else {
-              worktreeGone = true;
-              console.warn(`[restore] worktree gone for ${a.id} (${a.worktreePath}); falling back to base repo ${a.cwd}`);
-            }
-          }
-          const res = await window.cth.spawnPty({
-            id: ptyId,
-            cwd,
-            command: exe,
-            provider,
-            args,
-            cols: 100,
-            rows: 30,
-            // Worktree (if any) already exists on disk — cd into it, don't create a
-            // new one (re-isolating would conflict on the existing path/branch and
-            // lose its uncommitted work).
-            isolate: false,
-            // Continue the worker's prior CLI session if one was recorded — the
-            // main process picks the provider's resume flag (Claude --resume,
-            // agy --conversation) and for Claude reattaches the transcript. The
-            // agent id is preserved across restart, so its registry entry,
-            // memory.md and inbox reattach by id. No-op without a recorded session.
-            resume: true,
-            // The agent's OWN hire-time choice rides every respawn (card
-            // permission-mode-config-20260816); a legacy pre-selector agent has
-            // none and spawnAgentCore defaults it to Claude Auto.
-            permissionMode: a.permissionMode,
-            hive: { id: a.id, name: a.name, provider, cwd, spawnLabel: a.spawnLabel }
-          });
-          if (res.ok) {
-            // The card must reflect the REGISTRY (source of truth), not just the
-            // PTY spawn result: spawnAgentCore has ok-without-registration paths
-            // (the missing-CLI installer short-circuit; hive provisioning is
-            // best-effort and never blocks a spawn), so an ARCHIVED agent can
-            // "restore" green while the registry still lists it archived — a
-            // phantom floor card with no backing agent (observed live:
-            // intern-chip-test after the 13:26 restart; its later fire-request
-            // answered "already archived; nothing to tear down"). Only enforced
-            // when the registry is actually populated — with the hive disabled
-            // there is nothing to verify against and restores behave as before.
-            const reg = await window.cth.hiveRegistry().catch(() => null);
-            const entry = reg?.agents?.[a.id];
-            if (reg && Object.keys(reg.agents).length > 0 && (!entry || entry.archived)) {
-              failures.push(`${a.name}: ${entry?.archived ? 'registry still has them archived' : 'spawn did not register them'} — not restored`);
-              console.error('[restore] spawn reported ok but the registry disagrees for', a.id);
+      const restoredInOrder = await Promise.all(
+        [...restorableAgents].map(async (a): Promise<Agent | null> => {
+          // Per-agent guard: one agent's failure (or a rejected IPC call) must NEVER
+          // abort the others — an unhandled rejection here used to make the
+          // entire restore a silent no-op after the first bad agent.
+          try {
+            const provider = inferAgentProvider(a.command, a.provider);
+            const command =
+              (a.command ?? '').trim() ||
+              (config ? buildSpawnCommand(config, a.model, provider) : '');
+            if (!command || !a.cwd) {
+              // No spawn recipe (an old entry persisted before `command`, with no
+              // config to rebuild one). Keep it restorable and SAY why rather than
+              // silently dropping it — silent removal read as "nothing happened".
+              failures.push(`${a.name}: no saved command`);
               return null;
             }
-            restored++;
-            return {
+            const [exe, ...args] = tokenizeCommand(command);
+            const ptyId = a.ptyId ?? `pty-${a.id}`;
+            // ROLE IS IDENTITY, SET AT HIRE — a respawn must NOT echo the
+            // renderer `description` (a live status field: usePtyParser rewrites
+            // it to 'on standby' on idle) into the registry role. No role here;
+            // ensureAgent preserves the hired one.
+            //
+            // NO pre-spawn `archived` check here. `archived` is a LIVENESS flag,
+            // not a retirement one: archiveOrphanedAgents (main/index.ts) flips
+            // every PTY-less agent to archived:true at boot, and a restorable
+            // agent is BY DEFINITION one whose terminal died with the last
+            // session — so such a check rejects 100% of restores and the button
+            // goes inert. Retirement is tracked where it is actually known: an
+            // archive/fire drops the agent from `restorableAgents` (store's
+            // archiveAgent), so a retired agent never reaches this loop.
+            // An isolated agent's worktree SURVIVES an app restart on disk (it's only
+            // torn down on per-tab close / mid-session exit, not on quit). So re-enter
+            // that exact worktree as the cwd rather than re-isolating — `git worktree
+            // add` would conflict with the existing path/branch, and re-isolating would
+            // also lose the worktree's uncommitted work. cwd = the worktree means
+            // resume + seedSessionTranscript land in the CORRECT checkout.
+            // But the user may have manually pruned/deleted the worktree between runs —
+            // gitIsRepo (git rev-parse) returns false for a missing/invalid dir, so
+            // fall back to the base repo cwd rather than spawning into a dead path.
+            let cwd = a.cwd;
+            let worktreeGone = false;
+            if (a.worktreePath) {
+              if (await window.cth.gitIsRepo(a.worktreePath)) {
+                cwd = a.worktreePath;
+              } else {
+                worktreeGone = true;
+                console.warn(
+                  `[restore] worktree gone for ${a.id} (${a.worktreePath}); falling back to base repo ${a.cwd}`,
+                );
+              }
+            }
+            const res = await window.cth.spawnPty({
+              id: ptyId,
+              cwd,
+              command: exe,
+              provider,
+              args,
+              cols: 100,
+              rows: 30,
+              // Worktree (if any) already exists on disk — cd into it, don't create a
+              // new one (re-isolating would conflict on the existing path/branch and
+              // lose its uncommitted work).
+              isolate: false,
+              // Continue the worker's prior CLI session if one was recorded — the
+              // main process picks the provider's resume flag (Claude --resume,
+              // agy --conversation) and for Claude reattaches the transcript. The
+              // agent id is preserved across restart, so its registry entry,
+              // memory.md and inbox reattach by id. No-op without a recorded session.
+              resume: true,
+              // The agent's OWN hire-time choice rides every respawn (card
+              // permission-mode-config-20260816); a legacy pre-selector agent has
+              // none and spawnAgentCore defaults it to Claude Auto.
+              permissionMode: a.permissionMode,
+              hive: { id: a.id, name: a.name, provider, cwd, spawnLabel: a.spawnLabel },
+            });
+            if (res.ok) {
+              // The card must reflect the REGISTRY (source of truth), not just the
+              // PTY spawn result: spawnAgentCore has ok-without-registration paths
+              // (the missing-CLI installer short-circuit; hive provisioning is
+              // best-effort and never blocks a spawn), so an ARCHIVED agent can
+              // "restore" green while the registry still lists it archived — a
+              // phantom floor card with no backing agent (observed live:
+              // intern-chip-test after the 13:26 restart; its later fire-request
+              // answered "already archived; nothing to tear down"). Only enforced
+              // when the registry is actually populated — with the hive disabled
+              // there is nothing to verify against and restores behave as before.
+              const reg = await window.cth.hiveRegistry().catch(() => null);
+              const entry = reg?.agents?.[a.id];
+              if (reg && Object.keys(reg.agents).length > 0 && (!entry || entry.archived)) {
+                failures.push(
+                  `${a.name}: ${entry?.archived ? 'registry still has them archived' : 'spawn did not register them'} — not restored`,
+                );
+                console.error('[restore] spawn reported ok but the registry disagrees for', a.id);
+                return null;
+              }
+              restored++;
+              return {
                 ...a,
                 provider,
                 ptyId,
@@ -230,26 +250,27 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
                 seedPrompt: res.seedPrompt,
                 carrying: undefined,
                 currentStation: 'desk',
-                recentTextTs: Date.now()
-            };
-          } else if ((res.error ?? '').includes('already exists')) {
-            // A live PTY with this id is already running (e.g. respawned at boot or
-            // by another path) — the agent isn't actually missing, so retire it from
-            // the restorable list rather than reporting a phantom failure.
-            alreadyLive++;
-            useStore.getState().removeRestorableAgent(a.id);
-          } else {
-            // Leave it restorable so the user can retry — but record WHY so the
-            // outcome is shown on the floor, not buried in the devtools console.
-            failures.push(`${a.name}: ${res.error ?? 'spawn failed'}`);
-            console.error('[restore] spawn failed for', a.id, res.error);
+                recentTextTs: Date.now(),
+              };
+            } else if ((res.error ?? '').includes('already exists')) {
+              // A live PTY with this id is already running (e.g. respawned at boot or
+              // by another path) — the agent isn't actually missing, so retire it from
+              // the restorable list rather than reporting a phantom failure.
+              alreadyLive++;
+              useStore.getState().removeRestorableAgent(a.id);
+            } else {
+              // Leave it restorable so the user can retry — but record WHY so the
+              // outcome is shown on the floor, not buried in the devtools console.
+              failures.push(`${a.name}: ${res.error ?? 'spawn failed'}`);
+              console.error('[restore] spawn failed for', a.id, res.error);
+            }
+          } catch (e) {
+            failures.push(`${a.name}: ${e instanceof Error ? e.message : String(e)}`);
+            console.error('[restore] error for', a.id, e);
           }
-        } catch (e) {
-          failures.push(`${a.name}: ${e instanceof Error ? e.message : String(e)}`);
-          console.error('[restore] error for', a.id, e);
-        }
-        return null;
-      }));
+          return null;
+        }),
+      );
       // Add in the ORIGINAL roster order, not completion order.
       for (const restoredAgent of restoredInOrder) {
         if (restoredAgent) useStore.getState().addAgent(restoredAgent);
@@ -295,13 +316,19 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
         autoStarted = true;
         autoRestoring = true;
         emit();
-        void restoreTeam().finally(() => { autoRestoring = false; emit(); });
+        void restoreTeam().finally(() => {
+          autoRestoring = false;
+          emit();
+        });
       }, AUTO_RESTORE_DELAY_MS);
     };
 
     check();
     const unsub = useStore.subscribe(check);
-    return () => { unsub(); if (timer) clearTimeout(timer); };
+    return () => {
+      unsub();
+      if (timer) clearTimeout(timer);
+    };
     // restoreTeam is rebuilt every render but only ever called from inside the
     // timer, so it is read fresh at call time and does not belong in the deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps

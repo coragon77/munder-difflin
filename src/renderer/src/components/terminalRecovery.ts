@@ -33,7 +33,7 @@ export function normalizePtyChunk(value: unknown): string {
  *  so the next attach tries again. */
 export function requestInitialPtyRedraw(
   state: TerminalRecoveryState,
-  requestRedraw: () => void | Promise<unknown>
+  requestRedraw: () => void | Promise<unknown>,
 ): boolean {
   if (state.initialRedrawRequested) return false;
   // Set before awaiting so two attaches in the same tick can't both fire; a
@@ -63,14 +63,16 @@ export function requestInitialPtyRedraw(
 export function scheduleWebglRecovery(
   state: TerminalRecoveryState,
   requestFrame: (cb: () => void) => void,
-  recover: () => void
+  recover: () => void,
 ): boolean {
   if (state.webglRecoveryPending) return false;
   state.webglRecoveryPending = true;
-  requestFrame(() => requestFrame(() => {
-    state.webglRecoveryPending = false;
-    recover();
-  }));
+  requestFrame(() =>
+    requestFrame(() => {
+      state.webglRecoveryPending = false;
+      recover();
+    }),
+  );
   return true;
 }
 
@@ -107,7 +109,9 @@ export function releaseWebglContexts(canvases: readonly ReleasableCanvas[]): num
       // that already holds a 2D one, and every canvas xterm leaves behind holds
       // one or the other.
       const lose = canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context') as
-        { loseContext(): void } | null | undefined;
+        | { loseContext(): void }
+        | null
+        | undefined;
       if (!lose) continue;
       lose.loseContext();
       released += 1;

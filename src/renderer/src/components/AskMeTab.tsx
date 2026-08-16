@@ -25,9 +25,10 @@ import { type HiveTask, openQuestion, waitsOnHuman } from './TasksKanban';
 const POLL_MS = 5000;
 
 function parse(raw: unknown): HiveTask[] {
-  const list = (raw && typeof raw === 'object' && Array.isArray((raw as { tasks?: unknown }).tasks))
-    ? (raw as { tasks: HiveTask[] }).tasks
-    : [];
+  const list =
+    raw && typeof raw === 'object' && Array.isArray((raw as { tasks?: unknown }).tasks)
+      ? (raw as { tasks: HiveTask[] }).tasks
+      : [];
   return list.filter((t) => !!t && typeof t === 'object');
 }
 
@@ -35,7 +36,9 @@ function parse(raw: unknown): HiveTask[] {
 function dependentsTree(id: string, all: HiveTask[], seen = new Set<string>()): HiveTask[] {
   if (seen.has(id)) return [];
   seen.add(id);
-  const direct = all.filter((t) => Array.isArray(t.dependsOn) && t.dependsOn.includes(id) && t.status !== 'done');
+  const direct = all.filter(
+    (t) => Array.isArray(t.dependsOn) && t.dependsOn.includes(id) && t.status !== 'done',
+  );
   return direct.flatMap((d) => [d, ...dependentsTree(d.id, all, seen)]);
 }
 
@@ -52,17 +55,25 @@ export function AskMeTab() {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
-    try { setTasks(parse(await window.cth.hiveTasks())); } catch { /* keep last good */ }
+    try {
+      setTasks(parse(await window.cth.hiveTasks()));
+    } catch {
+      /* keep last good */
+    }
   }, []);
 
   useEffect(() => {
     refresh();
     timer.current = setInterval(refresh, POLL_MS);
-    return () => { if (timer.current) clearInterval(timer.current); };
+    return () => {
+      if (timer.current) clearInterval(timer.current);
+    };
   }, [refresh]);
 
   const nameFor = (id?: string): string | undefined =>
-    id ? (agents.find((a) => a.id === id)?.name ?? restorable.find((a) => a.id === id)?.name ?? id) : undefined;
+    id
+      ? (agents.find((a) => a.id === id)?.name ?? restorable.find((a) => a.id === id)?.name ?? id)
+      : undefined;
 
   const waiting = tasks.filter(waitsOnHuman);
 
@@ -78,26 +89,31 @@ export function AskMeTab() {
         const qa = (t.humanQA ?? []).map((e) =>
           e === open || (e.q === open.q && !e.a)
             ? { ...e, a: text, answeredAt: new Date().toISOString() }
-            : e
+            : e,
         );
         return { ...t, humanQA: qa };
       });
       await window.cth.hiveWriteTasks(next);
       setTasks(next);
       // 2) Tell the god, so the card gets unblocked and work continues.
-      await window.cth.hiveSend({
-        to: 'god',
-        act: 'inform',
-        subject: `HUMAN ANSWER on task "${task.title}"`,
-        body: [
-          `The human answered the open question on task ${task.id} ("${task.title}"):`,
-          `Q: ${open.q}`,
-          `A: ${text}`,
-          'The answer is also recorded in the card\'s humanQA. Act on it, unblock the card, and continue the work.'
-        ].join('\n')
-      }, 'human');
+      await window.cth.hiveSend(
+        {
+          to: 'god',
+          act: 'inform',
+          subject: `HUMAN ANSWER on task "${task.title}"`,
+          body: [
+            `The human answered the open question on task ${task.id} ("${task.title}"):`,
+            `Q: ${open.q}`,
+            `A: ${text}`,
+            "The answer is also recorded in the card's humanQA. Act on it, unblock the card, and continue the work.",
+          ].join('\n'),
+        },
+        'human',
+      );
       setAnswerDraft(task.id, '');
-    } catch { /* leave the draft so the user can retry */ }
+    } catch {
+      /* leave the draft so the user can retry */
+    }
     setSending(null);
   };
 
@@ -115,7 +131,7 @@ export function AskMeTab() {
       const qa = (t.humanQA ?? []).map((e) =>
         e === open || (e.q === open.q && !e.a && !e.dismissedAt)
           ? { ...e, dismissedAt: new Date().toISOString() }
-          : e
+          : e,
       );
       return { ...t, humanQA: qa };
     });
@@ -131,13 +147,32 @@ export function AskMeTab() {
     // Body text is set in the mono face (VT323) — the same readable font the
     // memory viewer uses. Pixelify Sans (font-ui) is too chunky for prose like
     // questions and answers. Display/badge bits keep their explicit faces.
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: 'var(--cth-paper-200)', padding: 10, display: 'flex', flexDirection: 'column', gap: 10, fontFamily: 'var(--cth-font-mono)' }}>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        overflowY: 'auto',
+        background: 'var(--cth-paper-200)',
+        padding: 10,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        fontFamily: 'var(--cth-font-mono)',
+      }}
+    >
       {waiting.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--cth-ink-500)', fontSize: 12 }}>
+        <div
+          style={{
+            textAlign: 'center',
+            padding: '24px 12px',
+            color: 'var(--cth-ink-500)',
+            fontSize: 12,
+          }}
+        >
           Nothing needs you right now. 🌿<br />
           <span style={{ fontSize: 11, color: 'var(--cth-ink-300)' }}>
-            When the team blocks a task on your input — a question to answer or a to-do only
-            you can perform — it shows up here (and on the ASK ME board on the floor).
+            When the team blocks a task on your input — a question to answer or a to-do only you can
+            perform — it shows up here (and on the ASK ME board on the floor).
           </span>
         </div>
       )}
@@ -145,22 +180,43 @@ export function AskMeTab() {
         const open = openQuestion(t)!;
         const stuck = dependentsTree(t.id, tasks);
         return (
-          <div key={t.id} style={{
-            background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-            display: 'flex', flexDirection: 'column'
-          }}>
+          <div
+            key={t.id}
+            style={{
+              background: 'var(--cth-paper-100)',
+              boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
             {/* header: title + assignee */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px',
-              background: 'var(--cth-lilac-light, #ece2f5)', boxShadow: 'inset 0 -1px 0 var(--cth-ink-700)'
-            }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 9px',
+                background: 'var(--cth-lilac-light, #ece2f5)',
+                boxShadow: 'inset 0 -1px 0 var(--cth-ink-700)',
+              }}
+            >
               <button
                 onClick={() => openTaskDetail(t.id)}
                 title="open the full task detail"
                 style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, textAlign: 'left',
-                  fontFamily: 'var(--cth-font-mono)', fontSize: 15, color: 'var(--cth-ink-900)',
-                  flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  padding: 0,
+                  textAlign: 'left',
+                  fontFamily: 'var(--cth-font-mono)',
+                  fontSize: 15,
+                  color: 'var(--cth-ink-900)',
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {t.title}
@@ -175,20 +231,43 @@ export function AskMeTab() {
                 title="dismiss — clear this off the ASK ME board without answering (history kept)"
                 aria-label="dismiss this ask"
                 style={{
-                  flexShrink: 0, width: 18, height: 18, padding: 0, marginLeft: 2,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
-                  border: 'none', cursor: sending === t.id ? 'default' : 'pointer',
-                  background: 'transparent', color: 'var(--cth-ink-500)',
-                  fontFamily: 'var(--cth-font-ui)', fontSize: 13
+                  flexShrink: 0,
+                  width: 18,
+                  height: 18,
+                  padding: 0,
+                  marginLeft: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: 1,
+                  border: 'none',
+                  cursor: sending === t.id ? 'default' : 'pointer',
+                  background: 'transparent',
+                  color: 'var(--cth-ink-500)',
+                  fontFamily: 'var(--cth-font-ui)',
+                  fontSize: 13,
                 }}
-                onMouseEnter={(e) => { if (sending !== t.id) e.currentTarget.style.color = 'var(--cth-coral)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--cth-ink-500)'; }}
-              >✕</button>
+                onMouseEnter={(e) => {
+                  if (sending !== t.id) e.currentTarget.style.color = 'var(--cth-coral)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--cth-ink-500)';
+                }}
+              >
+                ✕
+              </button>
             </div>
 
             <div style={{ padding: 9, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {/* the question */}
-              <div style={{ fontSize: 15, lineHeight: '19px', color: 'var(--cth-ink-900)', whiteSpace: 'pre-wrap' }}>
+              <div
+                style={{
+                  fontSize: 15,
+                  lineHeight: '19px',
+                  color: 'var(--cth-ink-900)',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
                 {open.q}
               </div>
 
@@ -196,20 +275,30 @@ export function AskMeTab() {
               <textarea
                 value={drafts[t.id] ?? ''}
                 onChange={(e) => setAnswerDraft(t.id, e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void sendAnswer(t); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void sendAnswer(t);
+                }}
                 rows={3}
                 placeholder="Your answer — or 'done', with the result… (Ctrl+Enter to send)"
                 style={{
-                  width: '100%', boxSizing: 'border-box', padding: '6px 8px', resize: 'vertical',
-                  background: 'var(--cth-paper-100)', border: 'none',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '6px 8px',
+                  resize: 'vertical',
+                  background: 'var(--cth-paper-100)',
+                  border: 'none',
                   boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                  fontFamily: 'var(--cth-font-mono)', fontSize: 15, lineHeight: '18px',
-                  color: 'var(--cth-ink-900)', outline: 'none'
+                  fontFamily: 'var(--cth-font-mono)',
+                  fontSize: 15,
+                  lineHeight: '18px',
+                  color: 'var(--cth-ink-900)',
+                  outline: 'none',
                 }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <PixelButton
-                  variant="primary" size="sm"
+                  variant="primary"
+                  size="sm"
                   disabled={!(drafts[t.id] ?? '').trim() || sending === t.id}
                   onClick={() => void sendAnswer(t)}
                 >
@@ -220,12 +309,18 @@ export function AskMeTab() {
                     onClick={() => openTaskDetail(t.id)}
                     title="open the task detail with the full Q&A history"
                     style={{
-                      border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
-                      fontSize: 10, color: 'var(--cth-ink-700)', fontFamily: 'var(--cth-font-display)',
-                      textDecoration: 'underline'
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontSize: 10,
+                      color: 'var(--cth-ink-700)',
+                      fontFamily: 'var(--cth-font-display)',
+                      textDecoration: 'underline',
                     }}
                   >
-                    VIEW {t.humanQA!.filter((e) => e.a).length} EARLIER ANSWER{t.humanQA!.filter((e) => e.a).length === 1 ? '' : 'S'}
+                    VIEW {t.humanQA!.filter((e) => e.a).length} EARLIER ANSWER
+                    {t.humanQA!.filter((e) => e.a).length === 1 ? '' : 'S'}
                   </button>
                 )}
               </div>
@@ -233,23 +328,58 @@ export function AskMeTab() {
               {/* the cascade: what's stuck behind this answer */}
               {stuck.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 8, color: 'var(--cth-coral)' }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--cth-font-display)',
+                      fontSize: 8,
+                      color: 'var(--cth-coral)',
+                    }}
+                  >
                     BLOCKING {stuck.length} DOWNSTREAM TASK{stuck.length === 1 ? '' : 'S'}
                   </div>
                   {stuck.slice(0, 6).map((d, i) => (
-                    <div key={d.id} style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      paddingLeft: 8 + Math.min(i, 3) * 8,
-                      fontSize: 12, color: 'var(--cth-ink-700)'
-                    }}>
+                    <div
+                      key={d.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingLeft: 8 + Math.min(i, 3) * 8,
+                        fontSize: 12,
+                        color: 'var(--cth-ink-700)',
+                      }}
+                    >
                       <span style={{ color: 'var(--cth-ink-300)' }}>└</span>
-                      <span style={{ width: 7, height: 7, flexShrink: 0, background: d.status === 'blocked' ? 'var(--cth-coral)' : 'var(--cth-sky)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)' }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
-                      {nameFor(d.assignee) && <span style={{ fontSize: 10, color: 'var(--cth-ink-500)' }}>({nameFor(d.assignee)})</span>}
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          flexShrink: 0,
+                          background:
+                            d.status === 'blocked' ? 'var(--cth-coral)' : 'var(--cth-sky)',
+                          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                        }}
+                      />
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {d.title}
+                      </span>
+                      {nameFor(d.assignee) && (
+                        <span style={{ fontSize: 10, color: 'var(--cth-ink-500)' }}>
+                          ({nameFor(d.assignee)})
+                        </span>
+                      )}
                     </div>
                   ))}
                   {stuck.length > 6 && (
-                    <div style={{ paddingLeft: 14, fontSize: 11, color: 'var(--cth-ink-300)' }}>… +{stuck.length - 6} more</div>
+                    <div style={{ paddingLeft: 14, fontSize: 11, color: 'var(--cth-ink-300)' }}>
+                      … +{stuck.length - 6} more
+                    </div>
                   )}
                 </div>
               )}

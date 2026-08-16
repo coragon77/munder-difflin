@@ -8,7 +8,7 @@ import {
   type GraphData,
   type GraphNode,
   type GraphEdge,
-  type MessageLogEntry
+  type MessageLogEntry,
 } from './memoryGraph/buildGraph';
 import { forceLayout, type Positions } from './memoryGraph/forceLayout';
 
@@ -20,7 +20,7 @@ import { forceLayout, type Positions } from './memoryGraph/forceLayout';
  *  hiveMemory. No new IPC. Click an agent to jump to its memory; hover to peek. */
 export function MemoryGraphPanel({
   godId,
-  onJumpToMemory
+  onJumpToMemory,
 }: {
   godId: string;
   onJumpToMemory: (agentId: string) => void;
@@ -34,7 +34,11 @@ export function MemoryGraphPanel({
 
   // ── poll the message log (same cadence as the Activity tab) ──────────────────
   const refresh = useCallback(async () => {
-    try { setLog((await window.cth.hiveLog(200)) as MessageLogEntry[]); } catch { /* noop */ }
+    try {
+      setLog((await window.cth.hiveLog(200)) as MessageLogEntry[]);
+    } catch {
+      /* noop */
+    }
   }, []);
   useEffect(() => {
     refresh();
@@ -47,7 +51,9 @@ export function MemoryGraphPanel({
     try {
       const text = await window.cth.hiveMemory(id);
       setMemories((m) => ({ ...m, [id]: text ?? '' }));
-    } catch { setMemories((m) => ({ ...m, [id]: '' })); }
+    } catch {
+      setMemories((m) => ({ ...m, [id]: '' }));
+    }
   }, []);
 
   useEffect(() => {
@@ -55,10 +61,14 @@ export function MemoryGraphPanel({
     const missing = agents.map((a) => a.id).filter((id) => !(id in memories));
     if (missing.length === 0) return;
     setLoadingTopics(true);
-    Promise.all(missing.map((id) => window.cth.hiveMemory(id).then(
-      (t) => [id, t ?? ''] as const,
-      () => [id, ''] as const
-    ))).then((pairs) => {
+    Promise.all(
+      missing.map((id) =>
+        window.cth.hiveMemory(id).then(
+          (t) => [id, t ?? ''] as const,
+          () => [id, ''] as const,
+        ),
+      ),
+    ).then((pairs) => {
       setMemories((m) => ({ ...m, ...Object.fromEntries(pairs) }));
       setLoadingTopics(false);
     });
@@ -67,7 +77,7 @@ export function MemoryGraphPanel({
   // ── graph model ──────────────────────────────────────────────────────────────
   const graph: GraphData = useMemo(
     () => buildGraph(agents, log, { showTopics, memories }),
-    [agents, log, showTopics, memories]
+    [agents, log, showTopics, memories],
   );
 
   // ── canvas sizing ─────────────────────────────────────────────────────────────
@@ -78,7 +88,8 @@ export function MemoryGraphPanel({
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const r = entries[0]?.contentRect;
-      if (r && r.width > 0 && r.height > 0) setDims({ w: Math.round(r.width), h: Math.round(r.height) });
+      if (r && r.width > 0 && r.height > 0)
+        setDims({ w: Math.round(r.width), h: Math.round(r.height) });
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -90,18 +101,18 @@ export function MemoryGraphPanel({
   // recompute layout only when structure / size / pins change (not on every poll)
   const structKey = useMemo(
     () => graph.nodes.map((n) => n.id).join(',') + '|' + graph.edges.map((e) => e.id).join(','),
-    [graph]
+    [graph],
   );
   const pinnedKey = useMemo(() => JSON.stringify(pinned), [pinned]);
   const layout: Positions = useMemo(() => {
     const lnodes = graph.nodes.map((n) => ({
       id: n.id,
-      gravityBias: n.kind === 'topic' ? 0.6 : n.kind === 'pseudo' ? 1.4 : n.id === godId ? 2.4 : 1
+      gravityBias: n.kind === 'topic' ? 0.6 : n.kind === 'pseudo' ? 1.4 : n.id === godId ? 2.4 : 1,
     }));
     const ledges = graph.edges.map((e) => ({
       source: e.source,
       target: e.target,
-      strength: e.kind === 'topic' ? 0.35 : 0.7 + Math.min(e.weight, 5) * 0.06
+      strength: e.kind === 'topic' ? 0.35 : 0.7 + Math.min(e.weight, 5) * 0.06,
     }));
     return forceLayout(lnodes, ledges, { width: dims.w, height: dims.h, pinned });
     // structKey/pinnedKey capture the relevant graph identity; intentional.
@@ -120,18 +131,21 @@ export function MemoryGraphPanel({
 
   const posOf = useCallback(
     (id: string) => (live && live.id === id ? { x: live.x, y: live.y } : layout.get(id)),
-    [live, layout]
+    [live, layout],
   );
 
-  const startDrag = useCallback((e: React.MouseEvent, id: string) => {
-    e.preventDefault();
-    const p = posOf(id);
-    if (!p) return;
-    const s = toSvg(e.clientX, e.clientY);
-    dragOffset.current = { x: s.x - p.x, y: s.y - p.y };
-    moved.current = false;
-    setLive({ id, x: p.x, y: p.y });
-  }, [posOf, toSvg]);
+  const startDrag = useCallback(
+    (e: React.MouseEvent, id: string) => {
+      e.preventDefault();
+      const p = posOf(id);
+      if (!p) return;
+      const s = toSvg(e.clientX, e.clientY);
+      dragOffset.current = { x: s.x - p.x, y: s.y - p.y };
+      moved.current = false;
+      setLive({ id, x: p.x, y: p.y });
+    },
+    [posOf, toSvg],
+  );
 
   useEffect(() => {
     if (!live) return;
@@ -158,21 +172,25 @@ export function MemoryGraphPanel({
 
   // ── hover / tooltip ─────────────────────────────────────────────────────────
   const [hover, setHover] = useState<
-    | { kind: 'node'; node: GraphNode }
-    | { kind: 'edge'; edge: GraphEdge }
-    | null
+    { kind: 'node'; node: GraphNode } | { kind: 'edge'; edge: GraphEdge } | null
   >(null);
   const [cursor, setCursor] = useState({ x: 0, y: 0 });
 
-  const onCanvasMove = useCallback((e: React.MouseEvent) => {
-    const s = toSvg(e.clientX, e.clientY);
-    setCursor(s);
-  }, [toSvg]);
+  const onCanvasMove = useCallback(
+    (e: React.MouseEvent) => {
+      const s = toSvg(e.clientX, e.clientY);
+      setCursor(s);
+    },
+    [toSvg],
+  );
 
-  const hoverNode = useCallback((node: GraphNode) => {
-    setHover({ kind: 'node', node });
-    if (node.kind === 'agent' && !(node.id in memories)) fetchMemory(node.id);
-  }, [memories, fetchMemory]);
+  const hoverNode = useCallback(
+    (node: GraphNode) => {
+      setHover({ kind: 'node', node });
+      if (node.kind === 'agent' && !(node.id in memories)) fetchMemory(node.id);
+    },
+    [memories, fetchMemory],
+  );
 
   const hoverNodeId = hover?.kind === 'node' ? hover.node.id : null;
   const nodeById = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph]);
@@ -180,12 +198,28 @@ export function MemoryGraphPanel({
   const messageEdgeCount = graph.edges.filter((e) => e.kind === 'message').length;
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--cth-paper-200)' }}>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--cth-paper-200)',
+      }}
+    >
       {/* toolbar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', flexShrink: 0,
-        borderBottom: '1px solid var(--cth-ink-300)', background: 'var(--cth-cream-100)', flexWrap: 'wrap'
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 8px',
+          flexShrink: 0,
+          borderBottom: '1px solid var(--cth-ink-300)',
+          background: 'var(--cth-cream-100)',
+          flexWrap: 'wrap',
+        }}
+      >
         <Toggle on={showTopics} onClick={() => setShowTopics((v) => !v)} label="topics" />
         <button onClick={refresh} title="Refresh" style={iconBtn}>
           <Icon name="gear" /> refresh
@@ -193,13 +227,18 @@ export function MemoryGraphPanel({
         <div style={{ flex: 1 }} />
         {showTopics && (
           <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
-            {loadingTopics ? 'reading memory…' : `showing ${graph.topicShown} of ${graph.topicTotal} topics`}
+            {loadingTopics
+              ? 'reading memory…'
+              : `showing ${graph.topicShown} of ${graph.topicTotal} topics`}
           </span>
         )}
       </div>
 
       {/* canvas */}
-      <div ref={wrapRef} style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div
+        ref={wrapRef}
+        style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }}
+      >
         <svg
           width={dims.w}
           height={dims.h}
@@ -214,8 +253,11 @@ export function MemoryGraphPanel({
               <marker
                 key={act}
                 id={`mg-arrow-${act}`}
-                viewBox="0 0 8 8" refX={7} refY={4}
-                markerWidth={7} markerHeight={7}
+                viewBox="0 0 8 8"
+                refX={7}
+                refY={4}
+                markerWidth={7}
+                markerHeight={7}
                 markerUnits="userSpaceOnUse"
                 orient="auto-start-reverse"
               >
@@ -255,7 +297,10 @@ export function MemoryGraphPanel({
               return (
                 <line
                   key={e.id}
-                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
                   stroke={stroke}
                   strokeWidth={w}
                   strokeDasharray={isTopic ? '3 3' : undefined}
@@ -277,7 +322,8 @@ export function MemoryGraphPanel({
               if (!p) return null;
               const s = nodeSize(n);
               const half = s / 2;
-              const dim = hoverNodeId && hoverNodeId !== n.id && !isNeighbor(graph, hoverNodeId, n.id);
+              const dim =
+                hoverNodeId && hoverNodeId !== n.id && !isNeighbor(graph, hoverNodeId, n.id);
               const navigable = n.kind === 'agent';
               return (
                 <g
@@ -287,27 +333,53 @@ export function MemoryGraphPanel({
                   onMouseEnter={() => hoverNode(n)}
                   onMouseLeave={() => setHover(null)}
                   onMouseDown={(e) => startDrag(e, n.id)}
-                  onClick={() => { if (navigable && !moved.current) onJumpToMemory(n.id); }}
+                  onClick={() => {
+                    if (navigable && !moved.current) onJumpToMemory(n.id);
+                  }}
                   style={{ cursor: navigable ? 'pointer' : 'grab' }}
                 >
                   {/* hard offset shadow */}
-                  <rect x={-half + 2} y={-half + 2} width={s} height={s} fill="var(--cth-ink-900)" />
+                  <rect
+                    x={-half + 2}
+                    y={-half + 2}
+                    width={s}
+                    height={s}
+                    fill="var(--cth-ink-900)"
+                  />
                   {/* body */}
                   <rect
-                    x={-half} y={-half} width={s} height={s}
+                    x={-half}
+                    y={-half}
+                    width={s}
+                    height={s}
                     fill={nodeFill(n)}
                     stroke="var(--cth-ink-900)"
                     strokeWidth={n.kind === 'agent' && n.isGod ? 2 : 1.5}
                   />
                   {/* double border for god + human */}
-                  {((n.kind === 'agent' && n.isGod) || (n.kind === 'pseudo' && n.id === 'human')) && (
-                    <rect x={-half + 3} y={-half + 3} width={s - 6} height={s - 6}
-                      fill="none" stroke="var(--cth-ink-900)" strokeWidth={1} />
+                  {((n.kind === 'agent' && n.isGod) ||
+                    (n.kind === 'pseudo' && n.id === 'human')) && (
+                    <rect
+                      x={-half + 3}
+                      y={-half + 3}
+                      width={s - 6}
+                      height={s - 6}
+                      fill="none"
+                      stroke="var(--cth-ink-900)"
+                      strokeWidth={1}
+                    />
                   )}
                   {/* status ring for agents */}
                   {n.kind === 'agent' && (
-                    <rect x={-half - 2} y={-half - 2} width={s + 4} height={s + 4}
-                      fill="none" stroke={`var(--cth-status-${n.status})`} strokeWidth={1.5} />
+                    <rect
+                      x={-half - 2}
+                      y={-half - 2}
+                      width={s + 4}
+                      height={s + 4}
+                      fill="none"
+                      stroke={`var(--cth-status-${n.status})`}
+                      strokeWidth={1.5}
+                    />
                   )}
                 </g>
               );
@@ -319,21 +391,25 @@ export function MemoryGraphPanel({
             {graph.nodes.map((n) => {
               const p = posOf(n.id);
               if (!p) return null;
-              const dim = hoverNodeId && hoverNodeId !== n.id && !isNeighbor(graph, hoverNodeId, n.id);
+              const dim =
+                hoverNodeId && hoverNodeId !== n.id && !isNeighbor(graph, hoverNodeId, n.id);
               const below = nodeSize(n) / 2 + 12;
               const isTopic = n.kind === 'topic';
               return (
                 <text
                   key={n.id}
-                  x={p.x} y={p.y + below}
+                  x={p.x}
+                  y={p.y + below}
                   textAnchor="middle"
                   opacity={dim ? 0.25 : 1}
                   style={{
                     fontFamily: isTopic ? 'var(--cth-font-mono)' : 'var(--cth-font-ui)',
                     fontSize: isTopic ? 12 : 11,
-                    fill: isTopic ? 'var(--cth-ink-700)' : 'var(--cth-ink-900)'
+                    fill: isTopic ? 'var(--cth-ink-700)' : 'var(--cth-ink-900)',
                   }}
-                >{truncate(n.label, isTopic ? 20 : 16)}</text>
+                >
+                  {truncate(n.label, isTopic ? 20 : 16)}
+                </text>
               );
             })}
           </g>
@@ -341,18 +417,30 @@ export function MemoryGraphPanel({
 
         {/* empty hint */}
         {messageEdgeCount === 0 && !showTopics && (
-          <div style={{
-            position: 'absolute', top: 10, left: 0, right: 0, textAlign: 'center',
-            fontSize: 12, color: 'var(--cth-ink-500)', pointerEvents: 'none'
-          }}>No messages logged yet — the hive is quiet. Agents shown as roster.</div>
+          <div
+            style={{
+              position: 'absolute',
+              top: 10,
+              left: 0,
+              right: 0,
+              textAlign: 'center',
+              fontSize: 12,
+              color: 'var(--cth-ink-500)',
+              pointerEvents: 'none',
+            }}
+          >
+            No messages logged yet — the hive is quiet. Agents shown as roster.
+          </div>
         )}
 
         {/* tooltip */}
         {hover && (
           <Tooltip x={cursor.x} y={cursor.y} wrap={dims}>
-            {hover.kind === 'node'
-              ? <NodeTip node={hover.node} memories={memories} />
-              : <EdgeTip edge={hover.edge} nodeById={nodeById} />}
+            {hover.kind === 'node' ? (
+              <NodeTip node={hover.node} memories={memories} />
+            ) : (
+              <EdgeTip edge={hover.edge} nodeById={nodeById} />
+            )}
           </Tooltip>
         )}
 
@@ -374,7 +462,9 @@ function NodeTip({ node, memories }: { node: GraphNode; memories: Record<string,
         <div style={tipTitle}>{node.label}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '2px 0 4px' }}>
           <PixelBadge status={node.status} />
-          <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>{node.degree} message link{node.degree === 1 ? '' : 's'}</span>
+          <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
+            {node.degree} message link{node.degree === 1 ? '' : 's'}
+          </span>
         </div>
         <div style={tipBody}>{snippet}</div>
       </>
@@ -391,7 +481,9 @@ function NodeTip({ node, memories }: { node: GraphNode; memories: Record<string,
   return (
     <>
       <div style={tipTitle}>{node.label}</div>
-      <div style={tipBody}>{node.id === 'human' ? 'escalations to the human' : 'broadcast to everyone'}</div>
+      <div style={tipBody}>
+        {node.id === 'human' ? 'escalations to the human' : 'broadcast to everyone'}
+      </div>
     </>
   );
 }
@@ -400,12 +492,18 @@ function EdgeTip({ edge, nodeById }: { edge: GraphEdge; nodeById: Map<string, Gr
   const a = nodeById.get(edge.source)?.label ?? edge.source;
   const b = nodeById.get(edge.target)?.label ?? edge.target;
   if (edge.kind === 'topic') {
-    return <div style={tipBody}>{a} knows about “{b}”</div>;
+    return (
+      <div style={tipBody}>
+        {a} knows about “{b}”
+      </div>
+    );
   }
   const arrow = edge.dir === 'both' ? '↔' : edge.dir === 'bwd' ? '←' : '→';
   return (
     <>
-      <div style={tipTitle}>{a} {arrow} {b}</div>
+      <div style={tipTitle}>
+        {a} {arrow} {b}
+      </div>
       <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', margin: '2px 0' }}>
         {edge.weight} message{edge.weight === 1 ? '' : 's'} · last: {edge.lastAct ?? '—'}
       </div>
@@ -421,34 +519,74 @@ function Legend() {
     { c: actColor('propose'), label: 'propose' },
     { c: actColor('agree'), label: 'agree/done' },
     { c: actColor('refuse'), label: 'refuse' },
-    { c: 'var(--cth-ink-300)', label: 'inform/topic' }
+    { c: 'var(--cth-ink-300)', label: 'inform/topic' },
   ];
   return (
-    <div style={{
-      position: 'absolute', bottom: 8, left: 8, padding: '5px 7px',
-      background: 'var(--cth-cream-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-      display: 'flex', flexWrap: 'wrap', gap: '2px 10px', maxWidth: 280, pointerEvents: 'none'
-    }}>
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 8,
+        left: 8,
+        padding: '5px 7px',
+        background: 'var(--cth-cream-100)',
+        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '2px 10px',
+        maxWidth: 280,
+        pointerEvents: 'none',
+      }}
+    >
       {items.map((it) => (
-        <span key={it.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--cth-ink-700)' }}>
-          <span style={{ width: 9, height: 3, background: it.c, display: 'inline-block' }} /> {it.label}
+        <span
+          key={it.label}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 10,
+            color: 'var(--cth-ink-700)',
+          }}
+        >
+          <span style={{ width: 9, height: 3, background: it.c, display: 'inline-block' }} />{' '}
+          {it.label}
         </span>
       ))}
     </div>
   );
 }
 
-function Tooltip({ x, y, wrap, children }: { x: number; y: number; wrap: { w: number; h: number }; children: React.ReactNode }) {
+function Tooltip({
+  x,
+  y,
+  wrap,
+  children,
+}: {
+  x: number;
+  y: number;
+  wrap: { w: number; h: number };
+  children: React.ReactNode;
+}) {
   const W = 240;
   const left = Math.min(x + 14, wrap.w - W - 6);
   const flipUp = y > wrap.h - 120;
   return (
-    <div style={{
-      position: 'absolute', left: Math.max(6, left), top: flipUp ? undefined : y + 14,
-      bottom: flipUp ? wrap.h - y + 14 : undefined,
-      width: W, padding: 8, pointerEvents: 'none', zIndex: 5,
-      background: 'var(--cth-cream-50)', boxShadow: '2px 2px 0 var(--cth-ink-900), inset 0 0 0 1px var(--cth-ink-300)'
-    }}>{children}</div>
+    <div
+      style={{
+        position: 'absolute',
+        left: Math.max(6, left),
+        top: flipUp ? undefined : y + 14,
+        bottom: flipUp ? wrap.h - y + 14 : undefined,
+        width: W,
+        padding: 8,
+        pointerEvents: 'none',
+        zIndex: 5,
+        background: 'var(--cth-cream-50)',
+        boxShadow: '2px 2px 0 var(--cth-ink-900), inset 0 0 0 1px var(--cth-ink-300)',
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -457,10 +595,17 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
     <button
       onClick={onClick}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px 2px', border: 'none', cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '3px 9px 2px',
+        border: 'none',
+        cursor: 'pointer',
         background: on ? 'var(--cth-lilac)' : 'var(--cth-cream-200)',
         boxShadow: on ? 'inset 0 0 0 1px var(--cth-ink-300)' : 'inset 0 0 0 1px var(--cth-ink-100)',
-        fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)'
+        fontFamily: 'var(--cth-font-ui)',
+        fontSize: 12,
+        color: 'var(--cth-ink-900)',
       }}
     >
       <Icon name={on ? 'check' : 'plus'} /> {label}
@@ -470,20 +615,35 @@ function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; labe
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-const MARKER_ACTS: MessageAct[] = ['request', 'inform', 'propose', 'query', 'agree', 'refuse', 'done'];
+const MARKER_ACTS: MessageAct[] = [
+  'request',
+  'inform',
+  'propose',
+  'query',
+  'agree',
+  'refuse',
+  'done',
+];
 
 /** Speech-act → colour. Mirrors ACT_COLOR in MessageEnvelope.ts so the graph
  *  speaks the same visual language as the floor's flying envelopes. */
 function actColor(act?: MessageAct): string {
   switch (act) {
-    case 'request': return 'var(--cth-sky)';
-    case 'query': return 'var(--cth-lilac)';
-    case 'propose': return 'var(--cth-lemon)';
-    case 'agree': return 'var(--cth-mint)';
-    case 'done': return 'var(--cth-mint)';
-    case 'refuse': return 'var(--cth-coral)';
+    case 'request':
+      return 'var(--cth-sky)';
+    case 'query':
+      return 'var(--cth-lilac)';
+    case 'propose':
+      return 'var(--cth-lemon)';
+    case 'agree':
+      return 'var(--cth-mint)';
+    case 'done':
+      return 'var(--cth-mint)';
+    case 'refuse':
+      return 'var(--cth-coral)';
     case 'inform':
-    default: return 'var(--cth-ink-300)';
+    default:
+      return 'var(--cth-ink-300)';
   }
 }
 
@@ -492,7 +652,9 @@ function nodeSize(n: GraphNode): number {
   if (n.kind === 'topic') return 12 + Math.min(n.weight, 6) * 1.4;
   return 17; // pseudo
 }
-function nodeRadius(n: GraphNode): number { return nodeSize(n) / 2; }
+function nodeRadius(n: GraphNode): number {
+  return nodeSize(n) / 2;
+}
 
 function nodeFill(n: GraphNode): string {
   if (n.kind === 'agent') return `var(--cth-${n.accent})`;
@@ -522,14 +684,27 @@ function memorySnippet(text: string): string {
 }
 
 const iconBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px 2px', border: 'none', cursor: 'pointer',
-  background: 'var(--cth-cream-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-  fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)'
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '3px 9px 2px',
+  border: 'none',
+  cursor: 'pointer',
+  background: 'var(--cth-cream-200)',
+  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 12,
+  color: 'var(--cth-ink-900)',
 };
 
 const tipTitle: React.CSSProperties = {
-  fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)', lineHeight: '16px'
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 12,
+  color: 'var(--cth-ink-900)',
+  lineHeight: '16px',
 };
 const tipBody: React.CSSProperties = {
-  fontSize: 11, lineHeight: '15px', color: 'var(--cth-ink-700)'
+  fontSize: 11,
+  lineHeight: '15px',
+  color: 'var(--cth-ink-700)',
 };

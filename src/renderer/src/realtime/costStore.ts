@@ -16,7 +16,11 @@
  * which this store does not own).
  */
 import { useSyncExternalStore } from 'react';
-import { computeRealtimeUsd, normalizeRealtimeUsage, type RealtimeUsage } from '@shared/realtimePricing';
+import {
+  computeRealtimeUsd,
+  normalizeRealtimeUsage,
+  type RealtimeUsage,
+} from '@shared/realtimePricing';
 
 export interface RealtimeCostState {
   /** Running session cost in USD (conservative upper bound — see realtimePricing). */
@@ -40,7 +44,7 @@ const initial: RealtimeCostState = {
   capUsd: null,
   overCap: false,
   lastActivityTs: null,
-  startedTs: null
+  startedTs: null,
 };
 
 let state: RealtimeCostState = { ...initial };
@@ -66,7 +70,7 @@ export function resetRealtimeCost(startedAtMs: number): void {
     outputTokens: 0,
     overCap: false,
     lastActivityTs: null,
-    startedTs: startedAtMs
+    startedTs: startedAtMs,
   });
 }
 
@@ -85,7 +89,7 @@ export function recordRealtimeUsage(usage: RealtimeUsage, nowMs: number): void {
     inputTokens: state.inputTokens + inputTokens,
     outputTokens: state.outputTokens + outputTokens,
     overCap: recomputeOverCap(usd, state.capUsd),
-    lastActivityTs: nowMs
+    lastActivityTs: nowMs,
   });
 }
 

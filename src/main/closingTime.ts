@@ -27,8 +27,7 @@ import type { WebContents } from 'electron';
 import type { HiveManager, HiveMessage } from './hive';
 import type { ControlRegistry } from './control';
 
-export type ClosingTimePhase =
-  | 'started' | 'progress' | 'complete' | 'timeout' | 'cancelled';
+export type ClosingTimePhase = 'started' | 'progress' | 'complete' | 'timeout' | 'cancelled';
 
 export interface ClosingTimeEvent {
   phase: ClosingTimePhase;
@@ -71,7 +70,7 @@ export class ClosingTimeController {
     /** Mid-run steering (#7C.2): lets closing time reach DEEPLY BUSY agents at
      *  their next hook boundary instead of waiting for the Stop-hook inbox
      *  drain — the graceful interrupt. Optional so tests can omit it. */
-    private control?: ControlRegistry
+    private control?: ControlRegistry,
   ) {}
 
   isActive(): boolean {
@@ -91,7 +90,11 @@ export class ClosingTimeController {
     this.godId = reg.godId ?? 'god';
     const live = new Set(this.getLiveAgentIds());
     if (!reg.agents[this.godId] || !live.has(this.godId)) {
-      return { ok: false, error: 'No orchestrator is running — closing time needs the god agent to collect the reports.' };
+      return {
+        ok: false,
+        error:
+          'No orchestrator is running — closing time needs the god agent to collect the reports.',
+      };
     }
 
     // Only agents with a live terminal are waited on — the registry is just
@@ -100,34 +103,37 @@ export class ClosingTimeController {
       [...live].filter((id) => {
         const a = reg.agents[id];
         return id !== this.godId && !!a && !a.isGod;
-      })
+      }),
     );
     this.acked = new Set();
     this.active = true;
 
-    const names = [...this.workers]
-      .map((id) => `${reg.agents[id]?.name ?? id} (${id})`)
-      .join(', ') || '(none — the floor is just you)';
+    const names =
+      [...this.workers].map((id) => `${reg.agents[id]?.name ?? id} (${id})`).join(', ') ||
+      '(none — the floor is just you)';
 
-    this.hive.send({
-      to: 'god',
-      act: 'request',
-      subject: 'CLOSING TIME — run the shutdown protocol now',
-      body: [
-        'The human pressed "closing time": the harness will close as soon as you confirm the floor is safe. Run this protocol now, before anything else:',
-        '',
-        `1. BROADCAST closing time to the team (message with "to":"broadcast"). Current workers: ${names}.`,
-        '   Tell each worker to immediately: park or commit any work-in-progress safely, append its current state + concrete next steps to its memory.md, and then reply to you with a message whose subject is exactly "CLOSING-TIME-ACK".',
-        '2. WAIT and keep draining your inbox until EVERY worker above has sent its CLOSING-TIME-ACK. Nudge stragglers once if needed.',
-        '3. Save your own state: update board.md and append your shift summary to your memory.md.',
-        `4. CONCLUDE by sending a message with "to":"human" and the subject exactly "CLOSING-TIME-COMPLETE" — the harness watches for it and closes the app. Do not send it before every worker has acked: the harness independently verifies the ACKs and will reject a premature conclusion.`,
-        '',
-        this.workers.size === 0
-          ? 'There are no workers on the floor right now — do steps 3 and 4 immediately.'
-          : 'The prep assistant saves its own memory separately — do NOT wait for it and do not message it.',
-        'This is a shutdown: do not start new work and do not accept new tasks.'
-      ].join('\n')
-    }, 'human');
+    this.hive.send(
+      {
+        to: 'god',
+        act: 'request',
+        subject: 'CLOSING TIME — run the shutdown protocol now',
+        body: [
+          'The human pressed "closing time": the harness will close as soon as you confirm the floor is safe. Run this protocol now, before anything else:',
+          '',
+          `1. BROADCAST closing time to the team (message with "to":"broadcast"). Current workers: ${names}.`,
+          '   Tell each worker to immediately: park or commit any work-in-progress safely, append its current state + concrete next steps to its memory.md, and then reply to you with a message whose subject is exactly "CLOSING-TIME-ACK".',
+          '2. WAIT and keep draining your inbox until EVERY worker above has sent its CLOSING-TIME-ACK. Nudge stragglers once if needed.',
+          '3. Save your own state: update board.md and append your shift summary to your memory.md.',
+          `4. CONCLUDE by sending a message with "to":"human" and the subject exactly "CLOSING-TIME-COMPLETE" — the harness watches for it and closes the app. Do not send it before every worker has acked: the harness independently verifies the ACKs and will reject a premature conclusion.`,
+          '',
+          this.workers.size === 0
+            ? 'There are no workers on the floor right now — do steps 3 and 4 immediately.'
+            : 'The prep assistant saves its own memory separately — do NOT wait for it and do not message it.',
+          'This is a shutdown: do not start new work and do not accept new tasks.',
+        ].join('\n'),
+      },
+      'human',
+    );
 
     // Graceful interrupt for the deeply busy (#7C.2): the inbox brief above
     // only lands when an agent next STOPS — a worker hours into a task would
@@ -135,11 +141,15 @@ export class ClosingTimeController {
     // (PostToolUse/UserPromptSubmit) instead, so every live agent learns about
     // closing time within one tool call. Idle agents are covered by the
     // inbox-wake nudge; busy ones by the steer — both rails, no PTY typing.
-    this.control?.steer(this.godId,
-      'CLOSING TIME was pressed by the human: pause your current work at the next sensible point and drain your inbox NOW — a shutdown brief is waiting there. Coordinate the floor shutdown before anything else.');
+    this.control?.steer(
+      this.godId,
+      'CLOSING TIME was pressed by the human: pause your current work at the next sensible point and drain your inbox NOW — a shutdown brief is waiting there. Coordinate the floor shutdown before anything else.',
+    );
     for (const id of this.workers) {
-      this.control?.steer(id,
-        'CLOSING TIME — the office is shutting down. Finish your current step but do NOT start new work. Park or commit your work-in-progress safely, append your current state + concrete next steps to your memory.md, then reply to god with a message whose subject is exactly "CLOSING-TIME-ACK".');
+      this.control?.steer(
+        id,
+        'CLOSING TIME — the office is shutting down. Finish your current step but do NOT start new work. Park or commit your work-in-progress safely, append your current state + concrete next steps to your memory.md, then reply to god with a message whose subject is exactly "CLOSING-TIME-ACK".',
+      );
     }
 
     this.armTimeout();
@@ -158,13 +168,18 @@ export class ClosingTimeController {
     for (const id of this.workers) this.control?.clearSteers(id);
     this.emitState('cancelled');
     try {
-      this.hive.send({
-        to: 'god',
-        act: 'inform',
-        subject: 'CLOSING TIME CANCELLED',
-        body: 'The human cancelled the shutdown — disregard the closing-time protocol and resume normal operation. Any memory saves already done are a bonus, not a problem.'
-      }, 'human');
-    } catch { /* best-effort */ }
+      this.hive.send(
+        {
+          to: 'god',
+          act: 'inform',
+          subject: 'CLOSING TIME CANCELLED',
+          body: 'The human cancelled the shutdown — disregard the closing-time protocol and resume normal operation. Any memory saves already done are a bonus, not a problem.',
+        },
+        'human',
+      );
+    } catch {
+      /* best-effort */
+    }
   }
 
   /** Router observer — called by the hive for every routed message. */
@@ -190,20 +205,23 @@ export class ClosingTimeController {
       const reg = this.hive.registry();
       const liveNow = new Set(this.getLiveAgentIds());
       const pending = [...this.workers].filter(
-        (id) => !this.acked.has(id) && liveNow.has(id) && !reg.agents[id]?.archived
+        (id) => !this.acked.has(id) && liveNow.has(id) && !reg.agents[id]?.archived,
       );
       if (pending.length > 0) {
         const names = pending.map((id) => `${reg.agents[id]?.name ?? id} (${id})`).join(', ');
-        this.hive.send({
-          to: 'god',
-          act: 'refuse',
-          subject: 'CLOSING TIME — conclusion rejected, workers still missing',
-          body: [
-            `The harness is still missing a CLOSING-TIME-ACK from: ${names}.`,
-            'The app stays open until every worker has confirmed its memory is saved.',
-            'Chase the stragglers (re-send the closing-time instruction to each), wait for their ACKs, then send CLOSING-TIME-COMPLETE again.'
-          ].join('\n')
-        }, 'human');
+        this.hive.send(
+          {
+            to: 'god',
+            act: 'refuse',
+            subject: 'CLOSING TIME — conclusion rejected, workers still missing',
+            body: [
+              `The harness is still missing a CLOSING-TIME-ACK from: ${names}.`,
+              'The app stays open until every worker has confirmed its memory is saved.',
+              'Chase the stragglers (re-send the closing-time instruction to each), wait for their ACKs, then send CLOSING-TIME-COMPLETE again.',
+            ].join('\n'),
+          },
+          'human',
+        );
         this.emitState('progress');
         return;
       }
@@ -225,13 +243,23 @@ export class ClosingTimeController {
   }
 
   private cleanup(): void {
-    if (this.timeoutTimer) { clearTimeout(this.timeoutTimer); this.timeoutTimer = null; }
-    if (this.teardownTimer) { clearTimeout(this.teardownTimer); this.teardownTimer = null; }
+    if (this.timeoutTimer) {
+      clearTimeout(this.timeoutTimer);
+      this.timeoutTimer = null;
+    }
+    if (this.teardownTimer) {
+      clearTimeout(this.teardownTimer);
+      this.teardownTimer = null;
+    }
     this.active = false;
   }
 
   private emitState(phase: ClosingTimePhase): void {
     const ev: ClosingTimeEvent = { phase, acked: this.acked.size, total: this.workers.size };
-    try { this.getWebContents()?.send('app:closingTime', ev); } catch { /* window tore down */ }
+    try {
+      this.getWebContents()?.send('app:closingTime', ev);
+    } catch {
+      /* window tore down */
+    }
   }
 }

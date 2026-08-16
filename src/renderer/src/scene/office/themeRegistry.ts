@@ -31,21 +31,17 @@ import brooklyn99MapRaw from '@/assets/maps/brooklyn99.tmj?raw';
 
 /** Theme identifiers. Only `office` exists in Phase 0; the five TV-show themes
  *  (friends, brooklyn99, siliconvalley, got, hogwarts) land in later phases. */
-export type ThemeId =
-  | 'office'
-  | 'friends'
-  | 'brooklyn99'
-  | 'siliconvalley'
-  | 'got'
-  | 'hogwarts';
+export type ThemeId = 'office' | 'friends' | 'brooklyn99' | 'siliconvalley' | 'got' | 'hogwarts';
 
-export interface Tile { x: number; y: number; }
+export interface Tile {
+  x: number;
+  y: number;
+}
 export type Facing = 'up' | 'down' | 'left' | 'right';
 
 /** Kinds of small idle errands around the office (incl. plant watering).
  *  'smoke' is the boss special: cigar at the open window, god only. */
-export type ErrandKind =
-  | 'water' | 'window' | 'dispenser' | 'fridge' | 'shelf' | 'bin' | 'smoke';
+export type ErrandKind = 'water' | 'window' | 'dispenser' | 'fridge' | 'shelf' | 'bin' | 'smoke';
 
 /** One idle-errand anchor: a stand tile + facing, an `fx` tile for the ambient
  *  animation, a duration, and an optional god-only restriction. */
@@ -147,15 +143,46 @@ export const OFFICE_THEME: ThemeConfig = {
   tilesets: [
     // office-tileset.png — embedded in the map (firstgid 1); keep the map's copy.
     { url: officeTilesetUrl, embedded: true },
-    { url: a5FloorsWallsUrl, firstgid: 513, image: 'a5', imagewidth: 256, imageheight: 512, tilewidth: 16, tileheight: 16, columns: 16, tilecount: 512 },
-    { url: interiorsUrl, firstgid: 1025, image: 'interiors', imagewidth: 256, imageheight: 1424, tilewidth: 16, tileheight: 16, columns: 16, tilecount: 1424 },
+    {
+      url: a5FloorsWallsUrl,
+      firstgid: 513,
+      image: 'a5',
+      imagewidth: 256,
+      imageheight: 512,
+      tilewidth: 16,
+      tileheight: 16,
+      columns: 16,
+      tilecount: 512,
+    },
+    {
+      url: interiorsUrl,
+      firstgid: 1025,
+      image: 'interiors',
+      imagewidth: 256,
+      imageheight: 1424,
+      tilewidth: 16,
+      tileheight: 16,
+      columns: 16,
+      tilecount: 1424,
+    },
   ],
   primarySeatNames: [
     'desk-ceo',
-    'pc-1', 'pc-2', 'pc-3', 'pc-4', 'pc-5', 'pc-6',
-    'desk-chief-architect', 'desk-product-manager', 'desk-team-lead',
-    'desk-backend-engineer', 'desk-ui-ux-expert', 'desk-data-engineer',
-    'desk-project-manager', 'desk-market-researcher', 'desk-agent-organizer',
+    'pc-1',
+    'pc-2',
+    'pc-3',
+    'pc-4',
+    'pc-5',
+    'pc-6',
+    'desk-chief-architect',
+    'desk-product-manager',
+    'desk-team-lead',
+    'desk-backend-engineer',
+    'desk-ui-ux-expert',
+    'desk-data-engineer',
+    'desk-project-manager',
+    'desk-market-researcher',
+    'desk-agent-organizer',
   ],
   cafeSeatNames: ['cafe-seat-1', 'cafe-seat-2', 'cafe-seat-3', 'cafe-seat-4'],
   cafeStands: [
@@ -163,10 +190,10 @@ export const OFFICE_THEME: ThemeConfig = {
     ['cafe-stand-vending', 'vending'],
   ],
   coffee: {
-    trayTile: { x: 29, y: 15 },     // the sideboard (counter piece)
+    trayTile: { x: 29, y: 15 }, // the sideboard (counter piece)
     trayStand: { x: 29, y: 16 },
     machineStand: { x: 26, y: 20 }, // below the counter machine
-    sinkTile: { x: 28, y: 18 },     // free counter top, right end
+    sinkTile: { x: 28, y: 18 }, // free counter top, right end
     sinkStand: { x: 28, y: 20 },
     maxCups: 4,
   },
@@ -178,18 +205,50 @@ export const OFFICE_THEME: ThemeConfig = {
   errandSpots: [
     // plants (droplets ride on the character via startWatering)
     { kind: 'water', stand: { x: 2, y: 20 }, facing: 'left', fx: { x: 1, y: 20 }, duration: 4.5 },
-    { kind: 'water', stand: { x: 22, y: 20 }, facing: 'right', fx: { x: 23, y: 20 }, duration: 4.5 },
-    { kind: 'water', stand: { x: 30, y: 20 }, facing: 'right', fx: { x: 31, y: 20 }, duration: 4.5 },
+    {
+      kind: 'water',
+      stand: { x: 22, y: 20 },
+      facing: 'right',
+      fx: { x: 23, y: 20 },
+      duration: 4.5,
+    },
+    {
+      kind: 'water',
+      stand: { x: 30, y: 20 },
+      facing: 'right',
+      fx: { x: 31, y: 20 },
+      duration: 4.5,
+    },
     // the CEO office is the god's domain: its plant, window, cigar. Workers
     // never set foot in there for errands.
-    { kind: 'water', stand: { x: 6, y: 4 }, facing: 'up', fx: { x: 6, y: 3 }, duration: 4.5, godOnly: true },
-    { kind: 'smoke', stand: { x: 2, y: 3 }, facing: 'up', fx: { x: 2, y: 1 }, duration: 18, godOnly: true },
+    {
+      kind: 'water',
+      stand: { x: 6, y: 4 },
+      facing: 'up',
+      fx: { x: 6, y: 3 },
+      duration: 4.5,
+      godOnly: true,
+    },
+    {
+      kind: 'smoke',
+      stand: { x: 2, y: 3 },
+      facing: 'up',
+      fx: { x: 2, y: 1 },
+      duration: 18,
+      godOnly: true,
+    },
     { kind: 'water', stand: { x: 17, y: 4 }, facing: 'up', fx: { x: 17, y: 3 }, duration: 4.5 },
     // the two public wall windows — wind streaks drift into the room
     { kind: 'window', stand: { x: 10, y: 3 }, facing: 'up', fx: { x: 10, y: 1 }, duration: 5 },
     { kind: 'window', stand: { x: 15, y: 3 }, facing: 'up', fx: { x: 14, y: 1 }, duration: 5 },
     // water dispensers (hallway + the top-right corner one)
-    { kind: 'dispenser', stand: { x: 16, y: 3 }, facing: 'down', fx: { x: 16, y: 4 }, duration: 3.5 },
+    {
+      kind: 'dispenser',
+      stand: { x: 16, y: 3 },
+      facing: 'down',
+      fx: { x: 16, y: 4 },
+      duration: 3.5,
+    },
     { kind: 'dispenser', stand: { x: 32, y: 4 }, facing: 'up', fx: { x: 32, y: 3 }, duration: 3.5 },
     // the café fridge (door light spills out) + the shelf beside it
     { kind: 'fridge', stand: { x: 29, y: 20 }, facing: 'up', fx: { x: 29, y: 19 }, duration: 3.2 },
@@ -201,8 +260,10 @@ export const OFFICE_THEME: ThemeConfig = {
   monitor: {
     offTopLeftGid: 365,
     onGids: [
-      [367, 0, 0], [368, 1, 0],
-      [383, 0, 1], [384, 1, 1],
+      [367, 0, 0],
+      [368, 1, 0],
+      [383, 0, 1],
+      [384, 1, 1],
     ],
   },
   palette: {
@@ -232,9 +293,15 @@ export const BROOKLYN99_THEME: ThemeConfig = {
   // (office-tileset embedded @1, a5 @513, interiors @1025) resolve every tile.
   tilesets: OFFICE_THEME.tilesets,
   primarySeatNames: [
-    'desk-ceo',                                            // Captain Holt's glass office
-    'pc-1', 'pc-2', 'pc-3', 'pc-4',                        // bullpen — front row
-    'pc-5', 'pc-6', 'pc-7', 'pc-8',                        // bullpen — back row
+    'desk-ceo', // Captain Holt's glass office
+    'pc-1',
+    'pc-2',
+    'pc-3',
+    'pc-4', // bullpen — front row
+    'pc-5',
+    'pc-6',
+    'pc-7',
+    'pc-8', // bullpen — back row
   ],
   cafeSeatNames: ['cafe-seat-1', 'cafe-seat-2', 'cafe-seat-3', 'cafe-seat-4'],
   cafeStands: [
@@ -250,9 +317,9 @@ export const BROOKLYN99_THEME: ThemeConfig = {
     maxCups: 4,
   },
   anchors: {
-    calendar: { x: 4, y: 1 },   // briefing-room top wall → TRIGGERS
-    boards: { x: 14, y: 1 },    // over the bullpen → TASKS
-    clock: { x: 1, y: 1 },      // top-left corner → CLOSING TIME
+    calendar: { x: 4, y: 1 }, // briefing-room top wall → TRIGGERS
+    boards: { x: 14, y: 1 }, // over the bullpen → TASKS
+    clock: { x: 1, y: 1 }, // top-left corner → CLOSING TIME
   },
   // Placeholder errand anchors authored to brooklyn99.tmj's open floor (verified
   // walkable against the map's collision layer + desk stamps). The godOnly spots
@@ -260,17 +327,49 @@ export const BROOKLYN99_THEME: ThemeConfig = {
   errandSpots: [
     // public plants around the bullpen
     { kind: 'water', stand: { x: 2, y: 13 }, facing: 'left', fx: { x: 1, y: 13 }, duration: 4.5 },
-    { kind: 'water', stand: { x: 24, y: 15 }, facing: 'right', fx: { x: 25, y: 15 }, duration: 4.5 },
+    {
+      kind: 'water',
+      stand: { x: 24, y: 15 },
+      facing: 'right',
+      fx: { x: 25, y: 15 },
+      duration: 4.5,
+    },
     { kind: 'water', stand: { x: 13, y: 15 }, facing: 'down', fx: { x: 13, y: 16 }, duration: 4.5 },
     // Captain Holt's glass office — god's domain (plant + cigar at the window)
-    { kind: 'water', stand: { x: 28, y: 6 }, facing: 'up', fx: { x: 28, y: 5 }, duration: 4.5, godOnly: true },
-    { kind: 'smoke', stand: { x: 34, y: 2 }, facing: 'up', fx: { x: 34, y: 0 }, duration: 18, godOnly: true },
+    {
+      kind: 'water',
+      stand: { x: 28, y: 6 },
+      facing: 'up',
+      fx: { x: 28, y: 5 },
+      duration: 4.5,
+      godOnly: true,
+    },
+    {
+      kind: 'smoke',
+      stand: { x: 34, y: 2 },
+      facing: 'up',
+      fx: { x: 34, y: 0 },
+      duration: 18,
+      godOnly: true,
+    },
     // public windows on the north wall — wind streaks drift in
     { kind: 'window', stand: { x: 14, y: 1 }, facing: 'up', fx: { x: 14, y: 0 }, duration: 5 },
     { kind: 'window', stand: { x: 22, y: 1 }, facing: 'up', fx: { x: 22, y: 0 }, duration: 5 },
     // water dispensers (bullpen + entrance corridor)
-    { kind: 'dispenser', stand: { x: 8, y: 15 }, facing: 'down', fx: { x: 8, y: 16 }, duration: 3.5 },
-    { kind: 'dispenser', stand: { x: 17, y: 20 }, facing: 'down', fx: { x: 17, y: 21 }, duration: 3.5 },
+    {
+      kind: 'dispenser',
+      stand: { x: 8, y: 15 },
+      facing: 'down',
+      fx: { x: 8, y: 16 },
+      duration: 3.5,
+    },
+    {
+      kind: 'dispenser',
+      stand: { x: 17, y: 20 },
+      facing: 'down',
+      fx: { x: 17, y: 21 },
+      duration: 3.5,
+    },
     // break-room fridge + shelf (by the coffee economy)
     { kind: 'fridge', stand: { x: 29, y: 21 }, facing: 'up', fx: { x: 29, y: 20 }, duration: 3.2 },
     { kind: 'shelf', stand: { x: 34, y: 18 }, facing: 'up', fx: { x: 34, y: 17 }, duration: 4 },

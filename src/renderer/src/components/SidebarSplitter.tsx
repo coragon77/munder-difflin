@@ -16,7 +16,11 @@ export interface SidebarSplitterProps {
  * (right). Drag left → wider sidebar. Cursor + pixel-stripe affordance.
  */
 export function SidebarSplitter({
-  width, onChange, viewportWidth, min = 320, max = 1200
+  width,
+  onChange,
+  viewportWidth,
+  min = 320,
+  max = 1200,
 }: SidebarSplitterProps) {
   const startRef = useRef<{ clientX: number; width: number } | null>(null);
   const [active, setActive] = useState(false);
@@ -61,22 +65,33 @@ export function SidebarSplitter({
         cursor: 'ew-resize',
         flexShrink: 0,
         position: 'relative',
-        background: active ? 'var(--cth-cream-300)' : 'transparent'
+        background: active ? 'var(--cth-cream-300)' : 'transparent',
       }}
     >
       {/* The visible 2px stripe with hash marks in the middle */}
-      <div style={{
-        position: 'absolute',
-        top: 0, bottom: 0, left: 4,
-        width: 2,
-        background: active ? 'var(--cth-ink-900)' : 'var(--cth-ink-300)'
-      }} />
-      <div style={{
-        position: 'absolute',
-        top: '50%', left: 2, transform: 'translateY(-50%)',
-        width: 6, height: 24,
-        display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
-      }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 4,
+          width: 2,
+          background: active ? 'var(--cth-ink-900)' : 'var(--cth-ink-300)',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: 2,
+          transform: 'translateY(-50%)',
+          width: 6,
+          height: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+        }}
+      >
         <span style={{ height: 2, background: 'var(--cth-ink-900)' }} />
         <span style={{ height: 2, background: 'var(--cth-ink-900)' }} />
         <span style={{ height: 2, background: 'var(--cth-ink-900)' }} />

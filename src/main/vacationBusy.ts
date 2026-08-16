@@ -1,5 +1,3 @@
-
-
 /**
  * parkAgent's busy gate (card vacation-busy-check-tui-repaint-20260816).
  * Extracted from index.ts so the rule is testable — the Electron main entry
@@ -29,7 +27,7 @@ export const VACATION_BUSY_MS = 60_000;
  *  when there is no telemetry row at all. undefined = signal absent. */
 export function vacationBusy(
   telemetryAgeMs: number | undefined,
-  ptyIdleMs: number | undefined
+  ptyIdleMs: number | undefined,
 ): boolean {
   if (telemetryAgeMs !== undefined) return telemetryAgeMs < VACATION_BUSY_MS;
   if (ptyIdleMs !== undefined) return ptyIdleMs < VACATION_BUSY_MS;

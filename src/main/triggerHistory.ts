@@ -25,13 +25,15 @@ import { randomBytes } from 'node:crypto';
 import {
   TRIGGER_HISTORY_LIMIT,
   type InboundKind,
-  type TriggerHistoryEntry
+  type TriggerHistoryEntry,
 } from '../shared/triggers';
 
 /** What a caller must supply; `id` and `at` are stamped for them unless the
  *  caller has its own (a replayed/reconstructed entry keeps its identity). */
-export type TriggerHistoryInput =
-  Omit<TriggerHistoryEntry, 'id' | 'at'> & { id?: string; at?: number };
+export type TriggerHistoryInput = Omit<TriggerHistoryEntry, 'id' | 'at'> & {
+  id?: string;
+  at?: number;
+};
 
 /** Only these may be changed after the fact. The ledger is append-only in spirit:
  *  an entry's source, direction and body are the record of what happened and are
@@ -65,7 +67,9 @@ function writeAll(entries: TriggerHistoryEntry[]): void {
     const p = historyPath();
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, JSON.stringify(entries, null, 2), 'utf8');
-  } catch { /* best-effort; a ledger write must never fail the event it records */ }
+  } catch {
+    /* best-effort; a ledger write must never fail the event it records */
+  }
 }
 
 /** Structural guard for one persisted row. A hand-edited or partially-written
@@ -73,11 +77,13 @@ function writeAll(entries: TriggerHistoryEntry[]): void {
 function isEntry(v: unknown): v is TriggerHistoryEntry {
   if (!v || typeof v !== 'object') return false;
   const e = v as Partial<TriggerHistoryEntry>;
-  return typeof e.id === 'string'
-    && (e.source === 'webhook' || e.source === 'org')
-    && (e.direction === 'inbound' || e.direction === 'outbound')
-    && typeof e.body === 'string'
-    && typeof e.at === 'number';
+  return (
+    typeof e.id === 'string' &&
+    (e.source === 'webhook' || e.source === 'org') &&
+    (e.direction === 'inbound' || e.direction === 'outbound') &&
+    typeof e.body === 'string' &&
+    typeof e.at === 'number'
+  );
 }
 
 function normaliseKind(kind: unknown): InboundKind {
@@ -106,7 +112,7 @@ export function appendTriggerHistory(input: TriggerHistoryInput): TriggerHistory
     decision: input.decision,
     correlationId: input.correlationId,
     taskId: input.taskId,
-    at: input.at ?? Date.now()
+    at: input.at ?? Date.now(),
   };
   writeAll([entry, ...readAll()].slice(0, TRIGGER_HISTORY_LIMIT));
   return entry;
@@ -126,7 +132,7 @@ export function listTriggerHistory(): TriggerHistoryEntry[] {
  */
 export function updateTriggerHistory(
   id: string,
-  patch: TriggerHistoryPatch
+  patch: TriggerHistoryPatch,
 ): TriggerHistoryEntry | null {
   const all = readAll();
   const i = all.findIndex((e) => e.id === id);
@@ -146,7 +152,11 @@ export function updateTriggerHistory(
  *  outright on a full clear keeps a stale-but-unreadable file from lingering. */
 export function clearTriggerHistory(source?: 'webhook' | 'org'): void {
   if (!source) {
-    try { rmSync(historyPath(), { force: true }); } catch { /* best-effort */ }
+    try {
+      rmSync(historyPath(), { force: true });
+    } catch {
+      /* best-effort */
+    }
     return;
   }
   writeAll(readAll().filter((e) => e.source !== source));

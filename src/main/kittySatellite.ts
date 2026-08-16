@@ -37,7 +37,7 @@ export function kittyBinPath(): string | null {
   const candidates = [
     join(homedir(), '.local/bin/kitty'),
     '/usr/local/bin/kitty',
-    '/usr/bin/kitty'
+    '/usr/bin/kitty',
   ];
   for (const c of candidates) if (existsSync(c)) return c;
   return null;
@@ -52,9 +52,13 @@ async function firstWindowId(socket: string, kitty: string): Promise<string | nu
   for (let attempt = 0; attempt < 20; attempt++) {
     try {
       const res = await new Promise<{ code: number; out: string }>((resolve) => {
-        const p = spawn(kitty, ['@', '--to', `unix:${socket}`, 'ls'], { stdio: ['ignore', 'pipe', 'ignore'] });
+        const p = spawn(kitty, ['@', '--to', `unix:${socket}`, 'ls'], {
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
         let out = '';
-        p.stdout.on('data', (d) => { out += d.toString(); });
+        p.stdout.on('data', (d) => {
+          out += d.toString();
+        });
         p.on('error', () => resolve({ code: 1, out: '' }));
         p.on('close', (code) => resolve({ code: code ?? 1, out }));
       });
@@ -62,7 +66,9 @@ async function firstWindowId(socket: string, kitty: string): Promise<string | nu
         const m = res.out.match(/"id":\s*(\d+)/);
         if (m) return m[1];
       }
-    } catch { /* retry */ }
+    } catch {
+      /* retry */
+    }
     await new Promise((r) => setTimeout(r, 250));
   }
   return null;
@@ -75,12 +81,14 @@ async function firstWindowId(socket: string, kitty: string): Promise<string | nu
 export function godCommand(): { file: string; args: string[]; cwd: string | null } {
   try {
     const cfgPath = join(
-      (process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config')),
-      'munder-difflin', 'config.json'
+      process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'),
+      'munder-difflin',
+      'config.json',
     );
     if (!existsSync(cfgPath)) return { file: 'bash', args: [], cwd: null };
     const cfg = JSON.parse(readFileSync(cfgPath, 'utf8')) as {
-      defaultCommand?: string; harnessHome?: string | null;
+      defaultCommand?: string;
+      harnessHome?: string | null;
     };
     const cmd = (cfg.defaultCommand ?? '').trim() || 'bash';
     const parts = cmd.split(/\s+/);
@@ -96,7 +104,11 @@ export function godCommand(): { file: string; args: string[]; cwd: string | null
     }
     // Claude at the hive root finds the god's memory/board/inbox via its cwd.
     const godCwd = hive ? join(hive, 'agents', 'god') : null;
-    return { file: parts[0], args: parts.slice(1), cwd: godCwd && existsSync(godCwd) ? godCwd : hive };
+    return {
+      file: parts[0],
+      args: parts.slice(1),
+      cwd: godCwd && existsSync(godCwd) ? godCwd : hive,
+    };
   } catch {
     return { file: 'bash', args: [], cwd: null };
   }
@@ -119,25 +131,38 @@ export async function startKittySatellite(): Promise<void> {
   const socket = kittySocketPath();
   // A listening kitty from a previous app run still works — reuse it (kitty is
   // single-instance per socket), just re-read the window id.
-  const child = spawn(kitty, [
-    '--listen-on', `unix:${socket}`,
-    // Socket-only remote control matches the user's own kitty.conf posture.
-    // NOTE: --override takes 'key value' (config-file syntax), NOT 'key=value' —
-    // the '=' form is an invalid line → kitty's "error parsing configuration"
-    // dialog at startup (seen live, kitty 0.48). 
-    '--override', 'allow_remote_control socket-only',
-    '--override', 'enabled_layouts splits',
-    '--title', 'MD satellite',
-    // The initial window is a THROWAWAY shell whose tab title we set via an OSC
-    // escape (bash rcfiles would otherwise rewrite it to user@host:cwd — verified
-    // live). `--noprofile --norc` keeps our title; close-tab later matches it.
-    '--', 'bash', '--noprofile', '--norc', '-c',
-    'printf "\\e]2;md-shell-placeholder\\a"; exec bash --noprofile --norc'
-  ], {
-    detached: true, stdio: 'ignore',
-    // Inherit DISPLAY so the window opens on the user's desktop.
-    env: { ...process.env }
-  }, );
+  const child = spawn(
+    kitty,
+    [
+      '--listen-on',
+      `unix:${socket}`,
+      // Socket-only remote control matches the user's own kitty.conf posture.
+      // NOTE: --override takes 'key value' (config-file syntax), NOT 'key=value' —
+      // the '=' form is an invalid line → kitty's "error parsing configuration"
+      // dialog at startup (seen live, kitty 0.48).
+      '--override',
+      'allow_remote_control socket-only',
+      '--override',
+      'enabled_layouts splits',
+      '--title',
+      'MD satellite',
+      // The initial window is a THROWAWAY shell whose tab title we set via an OSC
+      // escape (bash rcfiles would otherwise rewrite it to user@host:cwd — verified
+      // live). `--noprofile --norc` keeps our title; close-tab later matches it.
+      '--',
+      'bash',
+      '--noprofile',
+      '--norc',
+      '-c',
+      'printf "\\e]2;md-shell-placeholder\\a"; exec bash --noprofile --norc',
+    ],
+    {
+      detached: true,
+      stdio: 'ignore',
+      // Inherit DISPLAY so the window opens on the user's desktop.
+      env: { ...process.env },
+    },
+  );
   child.unref();
   const winId = await firstWindowId(socket, kitty);
   if (!winId) {
@@ -153,13 +178,24 @@ export async function startKittySatellite(): Promise<void> {
   try {
     const tabCwd = god.cwd ?? process.cwd();
     await new Promise<void>((resolve) => {
-      const p = spawn(kitty, [
-        '@', '--to', `unix:${socket}`, 'launch', '--type=tab',
-        `--match=window_id:${winId}`, `--cwd=${tabCwd}`,
-        '--title', 'Michael',
-        '--hold',
-        god.file, ...god.args
-      ], { stdio: 'ignore' });
+      const p = spawn(
+        kitty,
+        [
+          '@',
+          '--to',
+          `unix:${socket}`,
+          'launch',
+          '--type=tab',
+          `--match=window_id:${winId}`,
+          `--cwd=${tabCwd}`,
+          '--title',
+          'Michael',
+          '--hold',
+          god.file,
+          ...god.args,
+        ],
+        { stdio: 'ignore' },
+      );
       p.on('error', () => resolve());
       p.on('close', () => resolve());
     });
@@ -167,16 +203,35 @@ export async function startKittySatellite(): Promise<void> {
     // (set via OSC escape at launch — see above; verified live against kitty
     // 0.48: user rcfiles rewrite tab titles, --noprofile --norc keeps ours).
     await new Promise<void>((resolve) => {
-      const p = spawn(kitty, [
-        '@', '--to', `unix:${socket}`, 'close-tab',
-        '--match', `window_id:${winId}`,
-        '--match', 'title:md-shell-placeholder'
-      ], { stdio: 'ignore' });
+      const p = spawn(
+        kitty,
+        [
+          '@',
+          '--to',
+          `unix:${socket}`,
+          'close-tab',
+          '--match',
+          `window_id:${winId}`,
+          '--match',
+          'title:md-shell-placeholder',
+        ],
+        { stdio: 'ignore' },
+      );
       p.on('error', () => resolve());
       p.on('close', () => resolve());
     });
-  } catch { /* best-effort: satellite with a shell is still fine */ }
+  } catch {
+    /* best-effort: satellite with a shell is still fine */
+  }
   process.env.KITTY_LISTEN_ON = `unix:${socket}`;
   process.env.KITTY_WINDOW_ID = winId;
-  log('handoff env exported:', process.env.KITTY_LISTEN_ON, 'window', winId, '(Michael tab:', god.file, ')');
+  log(
+    'handoff env exported:',
+    process.env.KITTY_LISTEN_ON,
+    'window',
+    winId,
+    '(Michael tab:',
+    god.file,
+    ')',
+  );
 }

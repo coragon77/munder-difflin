@@ -2,8 +2,17 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ContextRule, ContextTriggerConfig } from '@shared/triggers';
 import { getContextTrigger, setContextTrigger } from './api';
 import {
-  Callout, Field, Hint, IntervalPicker, Muted, PctField, SubCard, SubHeader, Toggle,
-  fmtInterval, textareaStyle
+  Callout,
+  Field,
+  Hint,
+  IntervalPicker,
+  Muted,
+  PctField,
+  SubCard,
+  SubHeader,
+  Toggle,
+  fmtInterval,
+  textareaStyle,
 } from './ui';
 
 /**
@@ -20,7 +29,13 @@ export function ContextSection({ onSummary }: { onSummary?: (s: string) => void 
 
   useEffect(() => {
     let alive = true;
-    getContextTrigger().then((c) => { if (alive) setCfg(c); }).catch(() => { /* defaults */ });
+    getContextTrigger()
+      .then((c) => {
+        if (alive) setCfg(c);
+      })
+      .catch(() => {
+        /* defaults */
+      });
     return () => {
       alive = false;
       if (timer.current) clearTimeout(timer.current);
@@ -29,7 +44,9 @@ export function ContextSection({ onSummary }: { onSummary?: (s: string) => void 
 
   useEffect(() => {
     if (!cfg) return;
-    const on = [cfg.compact.enabled ? 'compact' : null, cfg.clear.enabled ? 'clear' : null].filter(Boolean);
+    const on = [cfg.compact.enabled ? 'compact' : null, cfg.clear.enabled ? 'clear' : null].filter(
+      Boolean,
+    );
     onSummary?.(on.length ? on.join(' + ') : 'both off');
   }, [cfg, onSummary]);
 
@@ -84,7 +101,16 @@ export function ContextSection({ onSummary }: { onSummary?: (s: string) => void 
   );
 }
 
-function RuleCard({ title, blurb, rule, messageLabel, messageHint, messagePlaceholder, caution, onPatch }: {
+function RuleCard({
+  title,
+  blurb,
+  rule,
+  messageLabel,
+  messageHint,
+  messagePlaceholder,
+  caution,
+  onPatch,
+}: {
   title: string;
   blurb: string;
   rule: ContextRule;
@@ -110,9 +136,13 @@ function RuleCard({ title, blurb, rule, messageLabel, messageHint, messagePlaceh
       {caution && <Callout tone={rule.enabled ? 'warn' : 'note'}>{caution}</Callout>}
       {!open && (
         <Hint>
-          {rule.enabled
-            ? <>Every {fmtInterval(rule.everyMs)}, once context passes {rule.minContextPct}%.</>
-            : <>Off.</>}
+          {rule.enabled ? (
+            <>
+              Every {fmtInterval(rule.everyMs)}, once context passes {rule.minContextPct}%.
+            </>
+          ) : (
+            <>Off.</>
+          )}
         </Hint>
       )}
       {open && (
@@ -129,7 +159,10 @@ function RuleCard({ title, blurb, rule, messageLabel, messageHint, messagePlaceh
             />
           </Field>
           <Field label="CONTEXT BAR">
-            <PctField value={rule.minContextPct} onChange={(minContextPct) => onPatch({ minContextPct })} />
+            <PctField
+              value={rule.minContextPct}
+              onChange={(minContextPct) => onPatch({ minContextPct })}
+            />
             <Hint>How full the window must be before this may run. 0% = time alone.</Hint>
           </Field>
           <Field label="BAR ON BIG WINDOWS">
@@ -137,7 +170,9 @@ function RuleCard({ title, blurb, rule, messageLabel, messageHint, messagePlaceh
               value={rule.minContextPctLargeWindow}
               onChange={(minContextPctLargeWindow) => onPatch({ minContextPctLargeWindow })}
             />
-            <Hint>Used on ~1M-token windows, where a smaller slice is still an enormous amount of text.</Hint>
+            <Hint>
+              Used on ~1M-token windows, where a smaller slice is still an enormous amount of text.
+            </Hint>
           </Field>
           <Field label={messageLabel}>
             <textarea

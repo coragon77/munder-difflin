@@ -29,8 +29,16 @@ export type TriggerMode = 'strict' | 'allow-all' | 'communication-only';
 
 export const TRIGGER_MODES: { value: TriggerMode; label: string; blurb: string }[] = [
   { value: 'strict', label: 'strict', blurb: 'Ask me before anything reaches the hive.' },
-  { value: 'allow-all', label: 'allow all', blurb: 'Messages, directives and communication all flow.' },
-  { value: 'communication-only', label: 'communication only', blurb: 'Chatter flows; directives need my approval.' }
+  {
+    value: 'allow-all',
+    label: 'allow all',
+    blurb: 'Messages, directives and communication all flow.',
+  },
+  {
+    value: 'communication-only',
+    label: 'communication only',
+    blurb: 'Chatter flows; directives need my approval.',
+  },
 ];
 
 export const DEFAULT_TRIGGER_MODE: TriggerMode = 'strict';
@@ -61,9 +69,12 @@ export function classifyInboundKind(text: string): InboundKind {
   const t = text.trim().toLowerCase();
   if (!t) return 'communication';
   // A leading question with no imperative reads as someone asking, not tasking.
-  const asksOnly = /^(what|how|when|where|who|why|is|are|do|does|did|can|could|status|any)\b/.test(t)
-    && t.endsWith('?')
-    && !/\b(fix|build|ship|deploy|run|write|create|add|remove|delete|refactor|implement|update|merge|revert)\b/.test(t);
+  const asksOnly =
+    /^(what|how|when|where|who|why|is|are|do|does|did|can|could|status|any)\b/.test(t) &&
+    t.endsWith('?') &&
+    !/\b(fix|build|ship|deploy|run|write|create|add|remove|delete|refactor|implement|update|merge|revert)\b/.test(
+      t,
+    );
   return asksOnly ? 'communication' : 'directive';
 }
 
@@ -136,15 +147,15 @@ export const DEFAULT_CONTEXT_TRIGGER: ContextTriggerConfig = {
     everyMs: 7_200_000, // 2h — was 1h
     minContextPct: 60, // was a documented-but-unenforced 30
     minContextPctLargeWindow: 40, // was a documented-but-unenforced 20
-    message: DEFAULT_COMPACTION_FOCUS
+    message: DEFAULT_COMPACTION_FOCUS,
   },
   clear: {
     enabled: false,
     everyMs: 7_200_000,
     minContextPct: 90,
     minContextPctLargeWindow: 80,
-    message: ''
-  }
+    message: '',
+  },
 };
 
 /* ──────────────────────────── webhook triggers ───────────────────────────── */
@@ -182,10 +193,10 @@ export const DEFAULT_WEBHOOK_SCHEMA_OBJECT = {
     kind: {
       type: 'string',
       enum: ['directive', 'communication'],
-      description: 'directive = asks the hive to act; communication = informational.'
+      description: 'directive = asks the hive to act; communication = informational.',
     },
-    from: { type: 'string', description: 'Who is sending, for the trigger history.' }
-  }
+    from: { type: 'string', description: 'Who is sending, for the trigger history.' },
+  },
 } as const;
 
 export const DEFAULT_WEBHOOK_SCHEMA = JSON.stringify(DEFAULT_WEBHOOK_SCHEMA_OBJECT, null, 2);
@@ -208,14 +219,14 @@ export interface OrgTriggerConfig {
 export const DEFAULT_ORG_TRIGGER: OrgTriggerConfig = {
   apiKey: '',
   enabled: false,
-  mode: DEFAULT_TRIGGER_MODE
+  mode: DEFAULT_TRIGGER_MODE,
 };
 
 /** Copy shown under the org key field. Kept here so Settings and Triggers agree. */
 export const CLONE_NODE_BLURB =
-  'Set an organisation key and your teammates can message your clone node — the copy of '
-  + 'Munder Difflin running on your machine. Each teammate runs their own, so an org key '
-  + 'is how two installs find each other.';
+  'Set an organisation key and your teammates can message your clone node — the copy of ' +
+  'Munder Difflin running on your machine. Each teammate runs their own, so an org key ' +
+  'is how two installs find each other.';
 
 /* ──────────────────────────── trigger history ────────────────────────────── */
 
@@ -258,7 +269,7 @@ export const TRIGGER_HISTORY_LIMIT = 500;
  */
 export function validateAgainstSchema(
   value: unknown,
-  schema: unknown
+  schema: unknown,
 ): { ok: true } | { ok: false; error: string } {
   if (!schema || typeof schema !== 'object') return { ok: true };
   const s = schema as Record<string, unknown>;
@@ -293,14 +304,22 @@ export function validateAgainstSchema(
 
 function matchesType(value: unknown, type: string): boolean {
   switch (type) {
-    case 'string': return typeof value === 'string';
-    case 'number': return typeof value === 'number' && Number.isFinite(value);
-    case 'integer': return typeof value === 'number' && Number.isInteger(value);
-    case 'boolean': return typeof value === 'boolean';
-    case 'array': return Array.isArray(value);
-    case 'object': return isPlainObject(value);
-    case 'null': return value === null;
-    default: return true; // unknown type keyword — don't fail the caller over it
+    case 'string':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'integer':
+      return typeof value === 'number' && Number.isInteger(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'array':
+      return Array.isArray(value);
+    case 'object':
+      return isPlainObject(value);
+    case 'null':
+      return value === null;
+    default:
+      return true; // unknown type keyword — don't fail the caller over it
   }
 }
 

@@ -48,7 +48,7 @@ function rosterScale(zoom: number) {
     group: clamp(zoom * 0.45, 7, 13),
     note: clamp(zoom * 0.68, 10, 20),
     portraitScale,
-    portrait: Math.round(PORTRAIT_W * portraitScale)
+    portrait: Math.round(PORTRAIT_W * portraitScale),
   };
 }
 
@@ -94,7 +94,7 @@ function useResolvedRepoNames(agents: Agent[]): number {
   const [version, setVersion] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    const pending = [...new Set(agents.map(a => a.cwd).filter(Boolean))]
+    const pending = [...new Set(agents.map((a) => a.cwd).filter(Boolean))]
       // `has` (not a truthiness check) so a resolved-to-null path — a cwd that
       // is not a git repo — counts as answered. Caching only successes meant
       // every agent outside a repo re-asked on each pass, and this effect
@@ -102,21 +102,27 @@ function useResolvedRepoNames(agents: Agent[]): number {
       // terminal output: one such agent spawned `git rev-parse` continuously
       // for as long as it was talking. In-flight paths are skipped too, so a
       // re-render mid-lookup doesn't stack a second round of subprocesses.
-      .filter(cwd => !repoRootByCwd.has(cwd) && !repoLookupsInFlight.has(cwd));
+      .filter((cwd) => !repoRootByCwd.has(cwd) && !repoLookupsInFlight.has(cwd));
     if (pending.length === 0) return;
-    pending.forEach(cwd => repoLookupsInFlight.add(cwd));
-    void Promise.all(pending.map(async (cwd) => {
-      try {
-        repoRootByCwd.set(cwd, (await window.cth.gitMainRepo(cwd)) || null);
-      } catch {
-        // Record the failure as answered as well — retrying a path that throws
-        // is what the unbounded-subprocess bug was made of.
-        repoRootByCwd.set(cwd, null);
-      } finally {
-        repoLookupsInFlight.delete(cwd);
-      }
-    })).then(() => { if (!cancelled) setVersion(v => v + 1); });
-    return () => { cancelled = true; };
+    pending.forEach((cwd) => repoLookupsInFlight.add(cwd));
+    void Promise.all(
+      pending.map(async (cwd) => {
+        try {
+          repoRootByCwd.set(cwd, (await window.cth.gitMainRepo(cwd)) || null);
+        } catch {
+          // Record the failure as answered as well — retrying a path that throws
+          // is what the unbounded-subprocess bug was made of.
+          repoRootByCwd.set(cwd, null);
+        } finally {
+          repoLookupsInFlight.delete(cwd);
+        }
+      }),
+    ).then(() => {
+      if (!cancelled) setVersion((v) => v + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [agents]);
   return version;
 }
@@ -145,21 +151,21 @@ export interface FullscreenTerminalProps {
 }
 
 export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
-  const agents = useStore(s => s.agents);
-  const restorableAgents = useStore(s => s.restorableAgents);
-  const fullscreenAgentId = useStore(s => s.fullscreenAgentId);
-  const setFullscreen = useStore(s => s.setFullscreen);
-  const select = useStore(s => s.select);
-  const setAddAgentOpen = useStore(s => s.setAddAgentOpen);
-  const addAgentOpen = useStore(s => s.addAgentOpen);
-  const setAgentNote = useStore(s => s.setAgentNote);
-  const updateAgent = useStore(s => s.updateAgent);
+  const agents = useStore((s) => s.agents);
+  const restorableAgents = useStore((s) => s.restorableAgents);
+  const fullscreenAgentId = useStore((s) => s.fullscreenAgentId);
+  const setFullscreen = useStore((s) => s.setFullscreen);
+  const select = useStore((s) => s.select);
+  const setAddAgentOpen = useStore((s) => s.setAddAgentOpen);
+  const addAgentOpen = useStore((s) => s.addAgentOpen);
+  const setAgentNote = useStore((s) => s.setAgentNote);
+  const updateAgent = useStore((s) => s.updateAgent);
   // The floor strip (and with it the restore button) is hidden behind the
   // overlay, so the roster carries restore too.
   const { restoring, autoRestoring, restoreTeam } = useRestoreTeam(config);
   const termThemeNow = useTerminalTheme();
 
-  const agent = agents.find(a => a.id === fullscreenAgentId);
+  const agent = agents.find((a) => a.id === fullscreenAgentId);
   const parser = usePtyParser(agent?.id ?? '__none__');
 
   const repoVersion = useResolvedRepoNames(agents);
@@ -170,19 +176,27 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
   // the dragged agent's OWN group: the repo header comes from its cwd, so a
   // cross-group drop would reorder the array and then snap the row straight back
   // under its own header, which just reads as "reordering is broken".
-  const reorderAgents = useStore(s => s.reorderAgents);
+  const reorderAgents = useStore((s) => s.reorderAgents);
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   // Roster collapse. Persisted because it is a working preference, not a mode:
   // someone who hides the rail to read wide terminal output wants it still hidden
   // the next time they go fullscreen, not to re-hide it every single time.
   const [rosterCollapsed, setRosterCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem(ROSTER_COLLAPSED_KEY) === '1'; } catch { return false; }
+    try {
+      return localStorage.getItem(ROSTER_COLLAPSED_KEY) === '1';
+    } catch {
+      return false;
+    }
   });
   const toggleRoster = (): void => {
     setRosterCollapsed((v) => {
       const next = !v;
-      try { localStorage.setItem(ROSTER_COLLAPSED_KEY, next ? '1' : '0'); } catch { /* private mode */ }
+      try {
+        localStorage.setItem(ROSTER_COLLAPSED_KEY, next ? '1' : '0');
+      } catch {
+        /* private mode */
+      }
       return next;
     });
   };
@@ -194,14 +208,17 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
     leave: (id) => setOverId((prev) => (prev === id ? null : prev)),
     drop: (id) => {
       if (dragId && dragId !== id) {
-        const from = agents.find(a => a.id === dragId);
-        const to = agents.find(a => a.id === id);
+        const from = agents.find((a) => a.id === dragId);
+        const to = agents.find((a) => a.id === id);
         if (from && to && groupKey(from) === groupKey(to)) reorderAgents(dragId, id);
       }
       setDragId(null);
       setOverId(null);
     },
-    end: () => { setDragId(null); setOverId(null); }
+    end: () => {
+      setDragId(null);
+      setOverId(null);
+    },
   };
 
   // Roster: god agents first and ungrouped, everyone else bucketed by repo.
@@ -214,7 +231,10 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
     // two same-named repos stay two groups but still read by name.
     const byRepo = new Map<string, { label: string; members: Agent[] }>();
     for (const a of agents) {
-      if (a.isGod) { godList.push(a); continue; }
+      if (a.isGod) {
+        godList.push(a);
+        continue;
+      }
       const key = repoKeyOf(a);
       const bucket = byRepo.get(key);
       if (bucket) bucket.members.push(a);
@@ -251,33 +271,52 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
   // mis-click waiting to happen. Exiting fullscreen is likewise already covered
   // twice over (Esc, and the terminal toolbar's own fullscreen toggle).
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: 'var(--cth-cream-100)',
-      zIndex: 250,
-      display: 'flex',
-      flexDirection: 'column',
-      paddingTop: 36  // leave room for macOS traffic lights / drag region
-    }}>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'var(--cth-cream-100)',
+        zIndex: 250,
+        display: 'flex',
+        flexDirection: 'column',
+        paddingTop: 36, // leave room for macOS traffic lights / drag region
+      }}
+    >
       {/* Title bar drag region (so the user can still move the window) */}
       <div
         className="cth-titlebar-drag"
         style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 36,
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 36,
           background: 'linear-gradient(180deg, var(--cth-cream-100) 0%, var(--cth-cream-200) 100%)',
           borderBottom: '1px solid var(--cth-ink-300)',
-          display: 'flex', alignItems: 'center',
-          paddingLeft: 96, paddingRight: 12, gap: 12,
-          userSelect: 'none'
+          display: 'flex',
+          alignItems: 'center',
+          paddingLeft: 96,
+          paddingRight: 12,
+          gap: 12,
+          userSelect: 'none',
         }}
       >
-        <span style={{
-          fontFamily: 'var(--cth-font-display)', fontSize: 12, lineHeight: '20px',
-          color: 'var(--cth-ink-900)'
-        }}>MUNDER DIFFLIN · FULLSCREEN</span>
+        <span
+          style={{
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 12,
+            lineHeight: '20px',
+            color: 'var(--cth-ink-900)',
+          }}
+        >
+          MUNDER DIFFLIN · FULLSCREEN
+        </span>
         {/* Same top-right controls as the main title bar — fullscreen covers
             it, so theme / exit-fullscreen / IDE must live here too. */}
-        <div className="cth-titlebar-nodrag" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div
+          className="cth-titlebar-nodrag"
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 }}
+        >
           {/* Fullscreen shows (almost) nothing but the terminal, so this ☾
               flips the TERMINAL palette — the decoupled one — not the app
               chrome. The Claude session theme mirror rides along. */}
@@ -286,33 +325,53 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
               const next = toggleTerminalTheme();
               void window.cth.updateConfig({ terminalTheme: next });
             }}
-            title={termThemeNow === 'dark' ? 'Switch the terminal to the light palette' : 'Switch the terminal to the dark palette'}
+            title={
+              termThemeNow === 'dark'
+                ? 'Switch the terminal to the light palette'
+                : 'Switch the terminal to the dark palette'
+            }
             aria-label="Toggle terminal palette"
             style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              padding: 0,
               background: 'var(--cth-paper-100)',
               boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-              border: 'none', borderRadius: 2, cursor: 'pointer',
-              color: 'var(--cth-ink-900)', fontSize: 13, lineHeight: 1
+              border: 'none',
+              borderRadius: 2,
+              cursor: 'pointer',
+              color: 'var(--cth-ink-900)',
+              fontSize: 13,
+              lineHeight: 1,
             }}
           >
             {termThemeNow === 'dark' ? '☀' : '☾'}
           </button>
           <button
             onClick={toggleRoster}
-            title={rosterCollapsed ? 'Show the agent list' : 'Hide the agent list — full-width terminal'}
+            title={
+              rosterCollapsed ? 'Show the agent list' : 'Hide the agent list — full-width terminal'
+            }
             aria-label={rosterCollapsed ? 'Show the agent list' : 'Hide the agent list'}
             aria-pressed={rosterCollapsed}
             style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              padding: 0,
               // Pressed-in when collapsed, so the rail's absence reads as a state
               // this button is holding rather than something that broke.
               background: rosterCollapsed ? 'var(--cth-lemon)' : 'var(--cth-paper-100)',
               boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-              border: 'none', borderRadius: 2, cursor: 'pointer',
-              color: rosterCollapsed ? 'var(--cth-ink-900)' : 'var(--cth-ink-900)'
+              border: 'none',
+              borderRadius: 2,
+              cursor: 'pointer',
+              color: rosterCollapsed ? 'var(--cth-ink-900)' : 'var(--cth-ink-900)',
             }}
           >
             <Icon name="sidebar" size={1} style={{ width: 16, height: 16 }} />
@@ -322,12 +381,18 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
             title="Exit fullscreen (Esc)"
             aria-label="Exit fullscreen"
             style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              padding: 0,
               background: 'var(--cth-paper-100)',
               boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-              border: 'none', borderRadius: 2, cursor: 'pointer',
-              color: 'var(--cth-ink-900)'
+              border: 'none',
+              borderRadius: 2,
+              cursor: 'pointer',
+              color: 'var(--cth-ink-900)',
             }}
           >
             <Icon name="minimize" size={1} style={{ width: 16, height: 16 }} />
@@ -347,162 +412,228 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
             on doing that work for a rail nobody can see. Remounting is cheap; the
             terminals live in the pool and are untouched by this. */}
         {!rosterCollapsed && (
-        <aside style={{
-          width: SIDEBAR_WIDTH, flexShrink: 0,
-          display: 'flex', flexDirection: 'column',
-          background: 'var(--cth-cream-200)',
-          borderRight: '1px solid var(--cth-ink-300)'
-        }}>
-          <div style={{ padding: 8, borderBottom: '1px solid var(--cth-ink-300)' }}>
-            <button
-              onClick={() => setAddAgentOpen(true)}
-              title="Add agent"
-              style={{
-                width: '100%', height: 32,
-                background: 'var(--cth-cream-100)',
-                border: 'none',
-                boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                fontFamily: 'var(--cth-font-ui)',
-                fontSize: 'clamp(14px, 0.7vw, 15px)',
-                color: 'var(--cth-ink-900)',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                cursor: 'pointer'
-              }}
-            >
-              <Icon name="plus" /> agent
-            </button>
-          </div>
+          <aside
+            style={{
+              width: SIDEBAR_WIDTH,
+              flexShrink: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--cth-cream-200)',
+              borderRight: '1px solid var(--cth-ink-300)',
+            }}
+          >
+            <div style={{ padding: 8, borderBottom: '1px solid var(--cth-ink-300)' }}>
+              <button
+                onClick={() => setAddAgentOpen(true)}
+                title="Add agent"
+                style={{
+                  width: '100%',
+                  height: 32,
+                  background: 'var(--cth-cream-100)',
+                  border: 'none',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                  fontFamily: 'var(--cth-font-ui)',
+                  fontSize: 'clamp(14px, 0.7vw, 15px)',
+                  color: 'var(--cth-ink-900)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  cursor: 'pointer',
+                }}
+              >
+                <Icon name="plus" /> agent
+              </button>
+            </div>
 
-          <div className="cth-scroll-hidden" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '6px 0' }}>
-            {/* The god agent runs the floor rather than a checkout, so it gets no
+            <div
+              className="cth-scroll-hidden"
+              style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '6px 0' }}
+            >
+              {/* The god agent runs the floor rather than a checkout, so it gets no
                 repository header — it sits alone at the top of the roster. */}
-            {gods.map(a => (
-              <SidebarRow
-                key={a.id}
-                agent={a}
-                active={a.id === agent.id}
-                onClick={() => { select(a.id); setFullscreen(a.id); }}
-                onNoteChange={(note) => setAgentNote(a.id, note)}
-                drag={drag}
-                scale={scale}
-              />
-            ))}
-            {groups.map(([repoKey, { label, members }]) => (
-              // Repos are the roster's real structure, so they get real
-              // separation — a hairline plus air above, not just a label.
-              <div key={repoKey} style={{ marginTop: 16, paddingTop: 10, borderTop: '1px solid var(--cth-ink-300)' }}>
+              {gods.map((a) => (
+                <SidebarRow
+                  key={a.id}
+                  agent={a}
+                  active={a.id === agent.id}
+                  onClick={() => {
+                    select(a.id);
+                    setFullscreen(a.id);
+                  }}
+                  onNoteChange={(note) => setAgentNote(a.id, note)}
+                  drag={drag}
+                  scale={scale}
+                />
+              ))}
+              {groups.map(([repoKey, { label, members }]) => (
+                // Repos are the roster's real structure, so they get real
+                // separation — a hairline plus air above, not just a label.
                 <div
-                  title={repoKey}
+                  key={repoKey}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '0 10px 6px',
-                    fontFamily: 'var(--cth-font-display)',
-                    fontSize: scale.group, lineHeight: 1.5,
-                    color: 'var(--cth-ink-500)'
+                    marginTop: 16,
+                    paddingTop: 10,
+                    borderTop: '1px solid var(--cth-ink-300)',
                   }}
                 >
-                  {/* Native 16px, never a fraction of it: this is pixel art on
+                  <div
+                    title={repoKey}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '0 10px 6px',
+                      fontFamily: 'var(--cth-font-display)',
+                      fontSize: scale.group,
+                      lineHeight: 1.5,
+                      color: 'var(--cth-ink-500)',
+                    }}
+                  >
+                    {/* Native 16px, never a fraction of it: this is pixel art on
                       a 16-unit grid, so squeezing it to match a 7px label
                       merged the outline into mush. Dimmed instead of shrunk. */}
-                  <span style={{ flexShrink: 0, display: 'inline-flex', opacity: 0.7 }}>
-                    <Icon name="folder" size={scale.group >= 13 ? 2 : 1} />
-                  </span>
-                  <span style={{
-                    minWidth: 0,
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                  }}>{label.toUpperCase()}</span>
-                </div>
-                {members.map(a => (
-                  <SidebarRow
-                    key={a.id}
-                    agent={a}
-                    active={a.id === agent.id}
-                    onClick={() => { select(a.id); setFullscreen(a.id); }}
-                    onNoteChange={(note) => setAgentNote(a.id, note)}
-                    drag={drag}
-                    scale={scale}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
-
-          {/* Last session's team, same as the floor strip — pinned to the bottom
-              so it can't be scrolled out of reach behind a long roster. */}
-          {(restorableAgents.length > 0 || autoRestoring) && (
-            <div style={{
-              flexShrink: 0, padding: 8, display: 'flex', flexDirection: 'column', gap: 6,
-              borderTop: '1px solid var(--cth-ink-300)'
-            }}>
-              {autoRestoring && (
-                // Same banner as the floor strip: terminals that open by
-                // themselves need to say why.
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '4px 8px',
-                  fontFamily: 'var(--cth-font-ui)', fontSize: 11,
-                  color: 'var(--cth-ink-900)',
-                  background: 'var(--cth-status-working)',
-                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-                }}>
-                  <Icon name="play" /> restoring your team…
-                </div>
-              )}
-              {!autoRestoring && restorableAgents.length > 0 && (
-                <PixelButton
-                  variant="primary"
-                  size="sm"
-                  onClick={restoreTeam}
-                  disabled={restoring}
-                  style={{ width: '100%' }}
-                  title={`Respawn from last session: ${restorableAgents.map((a: Agent) => a.name).join(', ')} — same ids, memory and inboxes reattach automatically`}
-                >
-                  <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                    <Icon name="play" /> {restoring ? 'restoring…' : `restore team (${restorableAgents.length})`}
-                  </span>
-                </PixelButton>
-              )}
-              {!autoRestoring && restorableAgents.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {restorableAgents.map((a: Agent) => (
+                    <span style={{ flexShrink: 0, display: 'inline-flex', opacity: 0.7 }}>
+                      <Icon name="folder" size={scale.group >= 13 ? 2 : 1} />
+                    </span>
                     <span
-                      key={a.id}
-                      title={`${a.name} — restorable from last session`}
                       style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 2,
-                        height: 20, padding: '0 2px 0 6px',
-                        fontFamily: 'var(--cth-font-ui)', fontSize: 11,
-                        color: 'var(--cth-ink-700)', background: 'var(--cth-paper-100)',
-                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
+                        minWidth: 0,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
                       }}
                     >
-                      {a.name}
-                      <button
-                        onClick={() => useStore.getState().removeRestorableAgent(a.id)}
-                        title={`Dismiss ${a.name} — remove permanently from the restore list`}
-                        aria-label={`Dismiss ${a.name}`}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          width: 14, height: 14, padding: 0, lineHeight: 1,
-                          fontFamily: 'var(--cth-font-ui)', fontSize: 11,
-                          color: 'var(--cth-ink-500)', background: 'transparent',
-                          border: 'none', cursor: 'pointer'
-                        }}
-                      >✕</button>
+                      {label.toUpperCase()}
                     </span>
+                  </div>
+                  {members.map((a) => (
+                    <SidebarRow
+                      key={a.id}
+                      agent={a}
+                      active={a.id === agent.id}
+                      onClick={() => {
+                        select(a.id);
+                        setFullscreen(a.id);
+                      }}
+                      onNoteChange={(note) => setAgentNote(a.id, note)}
+                      drag={drag}
+                      scale={scale}
+                    />
                   ))}
                 </div>
-              )}
+              ))}
             </div>
-          )}
-        </aside>
+
+            {/* Last session's team, same as the floor strip — pinned to the bottom
+              so it can't be scrolled out of reach behind a long roster. */}
+            {(restorableAgents.length > 0 || autoRestoring) && (
+              <div
+                style={{
+                  flexShrink: 0,
+                  padding: 8,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  borderTop: '1px solid var(--cth-ink-300)',
+                }}
+              >
+                {autoRestoring && (
+                  // Same banner as the floor strip: terminals that open by
+                  // themselves need to say why.
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '4px 8px',
+                      fontFamily: 'var(--cth-font-ui)',
+                      fontSize: 11,
+                      color: 'var(--cth-ink-900)',
+                      background: 'var(--cth-status-working)',
+                      boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                    }}
+                  >
+                    <Icon name="play" /> restoring your team…
+                  </div>
+                )}
+                {!autoRestoring && restorableAgents.length > 0 && (
+                  <PixelButton
+                    variant="primary"
+                    size="sm"
+                    onClick={restoreTeam}
+                    disabled={restoring}
+                    style={{ width: '100%' }}
+                    title={`Respawn from last session: ${restorableAgents.map((a: Agent) => a.name).join(', ')} — same ids, memory and inboxes reattach automatically`}
+                  >
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      <Icon name="play" />{' '}
+                      {restoring ? 'restoring…' : `restore team (${restorableAgents.length})`}
+                    </span>
+                  </PixelButton>
+                )}
+                {!autoRestoring && restorableAgents.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {restorableAgents.map((a: Agent) => (
+                      <span
+                        key={a.id}
+                        title={`${a.name} — restorable from last session`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 2,
+                          height: 20,
+                          padding: '0 2px 0 6px',
+                          fontFamily: 'var(--cth-font-ui)',
+                          fontSize: 11,
+                          color: 'var(--cth-ink-700)',
+                          background: 'var(--cth-paper-100)',
+                          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                        }}
+                      >
+                        {a.name}
+                        <button
+                          onClick={() => useStore.getState().removeRestorableAgent(a.id)}
+                          title={`Dismiss ${a.name} — remove permanently from the restore list`}
+                          aria-label={`Dismiss ${a.name}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 14,
+                            height: 14,
+                            padding: 0,
+                            lineHeight: 1,
+                            fontFamily: 'var(--cth-font-ui)',
+                            fontSize: 11,
+                            color: 'var(--cth-ink-500)',
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </aside>
         )}
 
-        <div style={{
-          flex: 1, minWidth: 0, minHeight: 0,
-          display: 'flex', flexDirection: 'column',
-          padding: 12, gap: 10
-        }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: 12,
+            gap: 10,
+          }}
+        >
           {agent.isGod ? (
             // Michael runs the floor from the command center — its tabs (tasks,
             // ask me, triggers, memory, graph…) are the whole point of selecting
@@ -529,7 +660,11 @@ export function FullscreenTerminal({ config }: FullscreenTerminalProps) {
                     onUserPrompt={(t) => {
                       updateAgent(agent.id, { lastPrompt: t });
                       if (t.trim().toLowerCase() === '/clear') {
-                        updateAgent(agent.id, { contextTokens: 0, contextLimit: undefined, progress: 0 });
+                        updateAgent(agent.id, {
+                          contextTokens: 0,
+                          contextLimit: undefined,
+                          progress: 0,
+                        });
                       }
                       void window.cth.historyAdd({ agentId: agent.id, cwd: agent.cwd, text: t });
                     }}
@@ -553,7 +688,7 @@ function SidebarRow({
   onClick,
   onNoteChange,
   drag,
-  scale
+  scale,
 }: {
   agent: Agent;
   active: boolean;
@@ -578,7 +713,10 @@ function SidebarRow({
   const popoverHeight = noteHeight + noteLabelSize * 2 + 40;
 
   // One line of the note = one bullet on the row.
-  const bullets = (agent.note ?? '').split('\n').map(s => s.trim()).filter(Boolean);
+  const bullets = (agent.note ?? '')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   const typing = useHasTerminalDraft(agent.ptyId);
 
@@ -586,7 +724,10 @@ function SidebarRow({
    *  the summary, this is where you write them. EXPLICIT open only (v0.3.4):
    *  hovering the roster no longer pops editors under the pointer. */
   const toggleEditor = () => {
-    if (notePosition) { setNotePosition(null); return; }
+    if (notePosition) {
+      setNotePosition(null);
+      return;
+    }
     // An editor popping up mid-drag just gets in the way.
     if (drag.dragId) return;
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -595,7 +736,7 @@ function SidebarRow({
     // Clamp so rows near an edge stay fully on screen.
     setNotePosition({
       left: Math.min(rect.right + 6, window.innerWidth - noteWidth - 8),
-      top: Math.max(8, Math.min(rect.top, window.innerHeight - popoverHeight - 8))
+      top: Math.max(8, Math.min(rect.top, window.innerHeight - popoverHeight - 8)),
     });
   };
 
@@ -604,7 +745,10 @@ function SidebarRow({
       <button
         ref={buttonRef}
         draggable
-        onDragStart={(e) => { drag.start(agent.id); e.dataTransfer.effectAllowed = 'move'; }}
+        onDragStart={(e) => {
+          drag.start(agent.id);
+          e.dataTransfer.effectAllowed = 'move';
+        }}
         onDragOver={(e) => {
           if (!drag.dragId || drag.dragId === agent.id) return;
           e.preventDefault();
@@ -612,7 +756,10 @@ function SidebarRow({
           drag.over(agent.id);
         }}
         onDragLeave={() => drag.leave(agent.id)}
-        onDrop={(e) => { e.preventDefault(); drag.drop(agent.id); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          drag.drop(agent.id);
+        }}
         onDragEnd={drag.end}
         onClick={onClick}
         aria-label={`${agent.name} · ${agent.project}`}
@@ -624,41 +771,58 @@ function SidebarRow({
           border: 'none',
           boxShadow: active
             ? 'inset 3px 0 0 var(--cth-ink-900), inset 0 0 0 1px var(--cth-ink-100)'
-            // Insertion cue on the hovered drop target.
-            : drag.overId === agent.id && drag.dragId && drag.dragId !== agent.id
-            ? 'inset 0 2px 0 var(--cth-ink-900)'
-            : 'none',
+            : // Insertion cue on the hovered drop target.
+              drag.overId === agent.id && drag.dragId && drag.dragId !== agent.id
+              ? 'inset 0 2px 0 var(--cth-ink-900)'
+              : 'none',
           opacity: drag.dragId === agent.id ? 0.4 : 1,
-          display: 'flex', alignItems: 'flex-start', gap: 8,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 8,
           cursor: drag.dragId ? 'grabbing' : 'grab',
           position: 'relative',
           textAlign: 'left',
-          fontFamily: 'var(--cth-font-ui)', fontSize: 13,
+          fontFamily: 'var(--cth-font-ui)',
+          fontSize: 13,
           color: 'var(--cth-ink-900)',
-          transition: 'opacity 120ms ease'
+          transition: 'opacity 120ms ease',
         }}
       >
-        <div style={{
-          width: scale.portrait, height: Math.round(scale.portrait * 1.3), flexShrink: 0,
-          background: `var(--cth-${agent.accent}-light)`,
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-          // Anchor the sprite's TOP: the portrait is taller than this tile, and
-          // bottom-anchoring cropped the head — crop feet, not face (v0.3.4).
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-          overflow: 'hidden'
-        }}>
+        <div
+          style={{
+            width: scale.portrait,
+            height: Math.round(scale.portrait * 1.3),
+            flexShrink: 0,
+            background: `var(--cth-${agent.accent}-light)`,
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+            // Anchor the sprite's TOP: the portrait is taller than this tile, and
+            // bottom-anchoring cropped the head — crop feet, not face (v0.3.4).
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            overflow: 'hidden',
+          }}
+        >
           {/* The sprite is drawn at exactly the tile's width, so the figure
               grows with the tile instead of floating in it. */}
           <SpritePortrait character={agent.character} scale={scale.portraitScale} />
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            <span style={{
-              flex: 1, minWidth: 0,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              fontFamily: 'var(--cth-font-display)',
-              fontSize: scale.name, lineHeight: 1.5
-            }}>{agent.name.toUpperCase()}</span>
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                fontFamily: 'var(--cth-font-display)',
+                fontSize: scale.name,
+                lineHeight: 1.5,
+              }}
+            >
+              {agent.name.toUpperCase()}
+            </span>
             {/* Your unsent text outranks the agent's own state here: an idle
                 agent with a draft on its prompt is not idle-and-free, it is
                 idle-and-held, and nothing else on screen said so. */}
@@ -668,21 +832,36 @@ function SidebarRow({
             <span
               role="button"
               tabIndex={0}
-              onClick={(e) => { e.stopPropagation(); toggleEditor(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleEditor();
+              }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); toggleEditor(); }
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  toggleEditor();
+                }
               }}
               title={agent.note ? 'Edit private note' : 'Add private note'}
               aria-label={`Edit note for ${agent.name}`}
               style={{
-                flexShrink: 0, width: 20, height: 20,
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 12, lineHeight: 1, color: 'var(--cth-ink-500)',
+                flexShrink: 0,
+                width: 20,
+                height: 20,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 12,
+                lineHeight: 1,
+                color: 'var(--cth-ink-500)',
                 background: notePosition ? 'var(--cth-cream-200)' : 'var(--cth-paper-100)',
                 boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                cursor: 'pointer'
+                cursor: 'pointer',
               }}
-            >✎</span>
+            >
+              ✎
+            </span>
           </div>
           {/* Every line of every agent, always on screen — the roster's job is
               to answer "who is on what" without a single interaction. */}
@@ -692,97 +871,123 @@ function SidebarRow({
                 key={i}
                 title={line}
                 style={{
-                  display: 'flex', gap: 5, alignItems: 'baseline',
-                  fontSize: scale.note, lineHeight: 1.35,
-                  color: 'var(--cth-ink-500)'
+                  display: 'flex',
+                  gap: 5,
+                  alignItems: 'baseline',
+                  fontSize: scale.note,
+                  lineHeight: 1.35,
+                  color: 'var(--cth-ink-500)',
                 }}
               >
                 <span style={{ flexShrink: 0, color: 'var(--cth-ink-300)' }}>•</span>
                 {/* Exactly one line per bullet — a wrapping row would make the
                     roster's height jump around as notes are typed. The full
                     text is on hover (title, and the editor beside it). */}
-                <span style={{
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                }}>{line}</span>
+                <span
+                  style={{
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {line}
+                </span>
               </span>
             ))}
             {bullets.length === 0 && (
-              <span style={{
-                fontSize: scale.note, lineHeight: 1.35,
-                color: 'var(--cth-ink-300)', fontStyle: 'italic'
-              }}>no note</span>
+              <span
+                style={{
+                  fontSize: scale.note,
+                  lineHeight: 1.35,
+                  color: 'var(--cth-ink-300)',
+                  fontStyle: 'italic',
+                }}
+              >
+                no note
+              </span>
             )}
           </div>
         </div>
       </button>
-      {notePosition && createPortal(
-        <>
-        {/* click-away backdrop — the editor stays until dismissed on purpose */}
-        <div
-          onClick={() => setNotePosition(null)}
-          style={{ position: 'fixed', inset: 0, zIndex: 449, background: 'transparent' }}
-        />
-        <div
-          ref={noteRef}
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            left: notePosition.left,
-            top: notePosition.top,
-            width: noteWidth,
-            zIndex: 450,
-            padding: 8,
-            background: 'var(--cth-paper-100)',
-            boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500), 4px 4px 0 rgba(26,19,32,0.25)',
-            boxSizing: 'border-box'
-          }}
-        >
-          <div style={{
-            marginBottom: 6,
-            fontFamily: 'var(--cth-font-display)',
-            fontSize: noteLabelSize,
-            lineHeight: `${Math.round(noteLabelSize * 1.5)}px`,
-            color: 'var(--cth-ink-700)'
-          }}>PRIVATE NOTE</div>
-          {/* A textarea, not an input: the note is a bullet list, so Enter has
+      {notePosition &&
+        createPortal(
+          <>
+            {/* click-away backdrop — the editor stays until dismissed on purpose */}
+            <div
+              onClick={() => setNotePosition(null)}
+              style={{ position: 'fixed', inset: 0, zIndex: 449, background: 'transparent' }}
+            />
+            <div
+              ref={noteRef}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: 'fixed',
+                left: notePosition.left,
+                top: notePosition.top,
+                width: noteWidth,
+                zIndex: 450,
+                padding: 8,
+                background: 'var(--cth-paper-100)',
+                boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500), 4px 4px 0 rgba(26,19,32,0.25)',
+                boxSizing: 'border-box',
+              }}
+            >
+              <div
+                style={{
+                  marginBottom: 6,
+                  fontFamily: 'var(--cth-font-display)',
+                  fontSize: noteLabelSize,
+                  lineHeight: `${Math.round(noteLabelSize * 1.5)}px`,
+                  color: 'var(--cth-ink-700)',
+                }}
+              >
+                PRIVATE NOTE
+              </div>
+              {/* A textarea, not an input: the note is a bullet list, so Enter has
               to make a new line rather than doing nothing. autoFocus is safe
               now that opening is an explicit click, not a pointer fly-by. */}
-          <textarea
-            autoFocus
-            value={agent.note ?? ''}
-            onChange={(e) => onNoteChange(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation(); // don't let Esc/typing reach the fullscreen handler
-              if (e.key === 'Escape') {
-                setNotePosition(null);
-                buttonRef.current?.focus();
-              }
-            }}
-            placeholder="one line per bullet…"
-            aria-label={`Note for ${agent.name}`}
-            style={{
-              width: '100%',
-              height: noteHeight,
-              padding: '5px 7px',
-              border: 'none',
-              outline: 'none',
-              resize: 'vertical',
-              boxSizing: 'border-box',
-              background: 'var(--cth-cream-100)',
-              boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-              fontFamily: 'var(--cth-font-mono)',
-              fontSize: noteFontSize,
-              lineHeight: `${Math.round(noteFontSize * 1.6)}px`,
-              color: 'var(--cth-ink-900)'
-            }}
-          />
-          <div style={{
-            marginTop: 5, fontSize: 10, color: 'var(--cth-ink-500)'
-          }}>one line = one bullet · esc to close</div>
-        </div>
-        </>,
-        document.body
-      )}
+              <textarea
+                autoFocus
+                value={agent.note ?? ''}
+                onChange={(e) => onNoteChange(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation(); // don't let Esc/typing reach the fullscreen handler
+                  if (e.key === 'Escape') {
+                    setNotePosition(null);
+                    buttonRef.current?.focus();
+                  }
+                }}
+                placeholder="one line per bullet…"
+                aria-label={`Note for ${agent.name}`}
+                style={{
+                  width: '100%',
+                  height: noteHeight,
+                  padding: '5px 7px',
+                  border: 'none',
+                  outline: 'none',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                  background: 'var(--cth-cream-100)',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                  fontFamily: 'var(--cth-font-mono)',
+                  fontSize: noteFontSize,
+                  lineHeight: `${Math.round(noteFontSize * 1.6)}px`,
+                  color: 'var(--cth-ink-900)',
+                }}
+              />
+              <div
+                style={{
+                  marginTop: 5,
+                  fontSize: 10,
+                  color: 'var(--cth-ink-500)',
+                }}
+              >
+                one line = one bullet · esc to close
+              </div>
+            </div>
+          </>,
+          document.body,
+        )}
     </>
   );
 }
@@ -790,30 +995,59 @@ function SidebarRow({
 function Header({ agent }: { agent: Agent }) {
   const typing = useHasTerminalDraft(agent.ptyId);
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '6px 10px',
-      background: 'var(--cth-cream-50)',
-      boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)'
-    }}>
-      <span style={{
-        fontFamily: 'var(--cth-font-display)', fontSize: 10, lineHeight: '16px',
-        color: 'var(--cth-ink-900)'
-      }}>{agent.name.toUpperCase()}</span>
-      <span style={{
-        fontSize: 12, color: 'var(--cth-ink-500)',
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        maxWidth: 300
-      }}>{agent.cwd}</span>
-      <span style={{
-        fontSize: 12, color: 'var(--cth-ink-700)',
-        fontStyle: 'italic'
-      }}>“{agent.description}”</span>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '6px 10px',
+        background: 'var(--cth-cream-50)',
+        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: 'var(--cth-font-display)',
+          fontSize: 10,
+          lineHeight: '16px',
+          color: 'var(--cth-ink-900)',
+        }}
+      >
+        {agent.name.toUpperCase()}
+      </span>
+      <span
+        style={{
+          fontSize: 12,
+          color: 'var(--cth-ink-500)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          maxWidth: 300,
+        }}
+      >
+        {agent.cwd}
+      </span>
+      <span
+        style={{
+          fontSize: 12,
+          color: 'var(--cth-ink-700)',
+          fontStyle: 'italic',
+        }}
+      >
+        “{agent.description}”
+      </span>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
         {/* v0.3.4: the IDE opens from agent level — full Monaco editor + git
             diff over this agent's workspace. */}
-        <PixelButton variant="secondary" size="sm" onClick={() => useStore.getState().setIdeOpen(true)}>
-          <span title="Open the IDE — file editor + git diff" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <PixelButton
+          variant="secondary"
+          size="sm"
+          onClick={() => useStore.getState().setIdeOpen(true)}
+        >
+          <span
+            title="Open the IDE — file editor + git diff"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          >
             <Icon name="code" /> IDE
           </span>
         </PixelButton>

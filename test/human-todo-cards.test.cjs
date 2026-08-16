@@ -31,7 +31,16 @@ test('addHumanTask appends a human-origin todo card without disturbing god cards
   const hive = new HiveManager(() => home);
   hive.ensureAgent({ id: 'god1', name: 'God', provider: 'claude', cwd: home, isGod: true });
 
-  hive.writeTasks([{ id: 'god-card', title: 'god work', status: 'doing', dependsOn: [], priority: 2, createdAt: '2026-08-16T00:00:00.000Z' }]);
+  hive.writeTasks([
+    {
+      id: 'god-card',
+      title: 'god work',
+      status: 'doing',
+      dependsOn: [],
+      priority: 2,
+      createdAt: '2026-08-16T00:00:00.000Z',
+    },
+  ]);
 
   const card = hive.addHumanTask('Fix the Login Flow!!', 'noticed it twice');
   assert.ok(card, 'a valid title yields a card');
@@ -66,9 +75,32 @@ test('deleteHumanTask: only human-origin todo cards go; god cards and progressed
   hive.ensureAgent({ id: 'god1', name: 'God', provider: 'claude', cwd: home, isGod: true });
 
   hive.writeTasks([
-    { id: 'god-card', title: 'god', status: 'todo', dependsOn: [], priority: 2, createdAt: '2026-08-16T00:00:00.000Z' },
-    { id: 'human-1', title: 'kept', status: 'todo', dependsOn: [], priority: 3, createdAt: '2026-08-16T00:00:00.000Z', origin: 'human' },
-    { id: 'human-2', title: 'picked up', status: 'doing', dependsOn: [], priority: 3, createdAt: '2026-08-16T00:00:00.000Z', origin: 'human' }
+    {
+      id: 'god-card',
+      title: 'god',
+      status: 'todo',
+      dependsOn: [],
+      priority: 2,
+      createdAt: '2026-08-16T00:00:00.000Z',
+    },
+    {
+      id: 'human-1',
+      title: 'kept',
+      status: 'todo',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-16T00:00:00.000Z',
+      origin: 'human',
+    },
+    {
+      id: 'human-2',
+      title: 'picked up',
+      status: 'doing',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-16T00:00:00.000Z',
+      origin: 'human',
+    },
   ]);
 
   assert.equal(hive.deleteHumanTask('god-card'), false, 'god card: never UI-deletable');
@@ -88,6 +120,8 @@ test('addHumanTask never wakes the god (amendment 1: heartbeat triage, no inbox 
 
   hive.addHumanTask('quiet card');
   const inbox = path.join(home, 'hive', 'agents', 'god1', 'inbox');
-  const files = fs.existsSync(inbox) ? fs.readdirSync(inbox).filter((f) => f.endsWith('.json')) : [];
+  const files = fs.existsSync(inbox)
+    ? fs.readdirSync(inbox).filter((f) => f.endsWith('.json'))
+    : [];
   assert.equal(files.length, 0, 'card creation must not deliver any message');
 });

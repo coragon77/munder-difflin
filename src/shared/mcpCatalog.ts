@@ -57,7 +57,7 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     description: 'Structured step-by-step reasoning scratchpad. No I/O, no secrets.',
     spec: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-sequential-thinking'] },
     tier: 'safe-readonly',
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   {
     id: 'time',
@@ -66,7 +66,7 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     // Reference time server ships as Python. // TODO-verify transport (uvx vs an npm port)
     spec: { command: 'uvx', args: ['mcp-server-time'] },
     tier: 'safe-readonly',
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   {
     id: 'fetch',
@@ -75,7 +75,7 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     // Reference fetch server ships as Python. // TODO-verify transport (uvx vs an npm port)
     spec: { command: 'uvx', args: ['mcp-server-fetch'] },
     tier: 'safe-readonly',
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   {
     id: 'context7',
@@ -83,7 +83,7 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     description: 'Up-to-date library/framework documentation lookups.',
     spec: { command: 'npx', args: ['-y', '@upstash/context7-mcp'] },
     tier: 'safe-readonly',
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   {
     id: 'filesystem',
@@ -93,7 +93,7 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     // with the agent cwd at merge time so it is NEVER whole-disk.
     spec: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '<cwd>'] },
     tier: 'safe-readonly',
-    defaultEnabled: true
+    defaultEnabled: true,
   },
   {
     id: 'git',
@@ -103,7 +103,7 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     // TODO-verify transport (uvx vs an npm port).
     spec: { command: 'uvx', args: ['mcp-server-git', '--repository', '<cwd>'] },
     tier: 'safe-readonly',
-    defaultEnabled: true
+    defaultEnabled: true,
   },
 
   // ─── Write / secret — shipped OFF, consent-gated ──────────────────────────
@@ -114,10 +114,10 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     spec: {
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-github'],
-      env: { GITHUB_PERSONAL_ACCESS_TOKEN: '' }
+      env: { GITHUB_PERSONAL_ACCESS_TOKEN: '' },
     },
     tier: 'secret',
-    defaultEnabled: false
+    defaultEnabled: false,
   },
   {
     id: 'db',
@@ -127,29 +127,37 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     spec: {
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-postgres'],
-      env: { DATABASE_URL: '' }
+      env: { DATABASE_URL: '' },
     },
     tier: 'secret',
-    defaultEnabled: false
+    defaultEnabled: false,
   },
   {
     id: 'email-calendar',
     label: 'Email & Calendar',
     description: 'Read/send mail and read/write calendar events. Requires account credentials.',
     // TODO-verify provider package (Gmail/Google Calendar assumed).
-    spec: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-gsuite'], env: { GOOGLE_OAUTH_TOKEN: '' } },
+    spec: {
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-gsuite'],
+      env: { GOOGLE_OAUTH_TOKEN: '' },
+    },
     tier: 'secret',
-    defaultEnabled: false
+    defaultEnabled: false,
   },
   {
     id: 'search-with-key',
     label: 'Web Search',
     description: 'Keyed web search. Requires a search-provider API key.',
     // TODO-verify provider package (Brave Search assumed).
-    spec: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-brave-search'], env: { BRAVE_API_KEY: '' } },
+    spec: {
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-brave-search'],
+      env: { BRAVE_API_KEY: '' },
+    },
     tier: 'secret',
-    defaultEnabled: false
-  }
+    defaultEnabled: false,
+  },
 ];
 
 /** Look up a catalog entry by id. */

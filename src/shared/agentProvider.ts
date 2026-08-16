@@ -193,9 +193,9 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // The only rung of the ladder that works on a machine with no Node at all.
     nativeInstallCommand: {
       posix: 'curl -fsSL https://claude.ai/install.sh | bash',
-      win32: 'powershell -c irm https://claude.ai/install.ps1 ^| iex'
+      win32: 'powershell -c irm https://claude.ai/install.ps1 ^| iex',
     },
-    docsUrl: 'https://docs.claude.com/en/docs/claude-code'
+    docsUrl: 'https://docs.claude.com/en/docs/claude-code',
   },
   {
     id: 'codex',
@@ -243,7 +243,7 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     resumeSubcommand: 'resume',
     // Official OpenAI Codex CLI install (npm global). Used by the missing-CLI auto-install.
     installCommand: 'npm install -g @openai/codex',
-    docsUrl: 'https://github.com/openai/codex'
+    docsUrl: 'https://github.com/openai/codex',
   },
   {
     id: 'grok',
@@ -267,7 +267,7 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // `grok [PROMPT]` accepts the initial hive protocol as a positional prompt.
     positionalInitialPrompt: true,
     // Grok resumes interactively with `grok --resume <session-id-or-title>`.
-    resumeFlag: '--resume'
+    resumeFlag: '--resume',
   },
   {
     id: 'kimi',
@@ -284,7 +284,7 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // Kimi's interactive TUI has no positional initial-prompt form. It supports
     // lifecycle hooks, but Munder Difflin does not yet install a Kimi hook bridge,
     // so mail must bounce rather than being delivered with no drain path.
-    canReceiveInbox: false
+    canReceiveInbox: false,
   },
   {
     id: 'antigravity',
@@ -300,7 +300,7 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     canReceiveInbox: true, // via the agy-hook bridge (Stop→drain); verified agy honors hook decisions
     initialPromptFlag: '-i', // agy --prompt-interactive: orient the session, then continue
     recommendedOrchestratorModel: 'Gemini 3.1 Pro (High)', // agy takes the display-name label
-    resumeFlag: '--conversation' // agy: resume a previous conversation by ID
+    resumeFlag: '--conversation', // agy: resume a previous conversation by ID
   },
   {
     // qwen-code — the Qwen CLI (a gemini-cli fork) driving any OpenAI-compatible
@@ -318,13 +318,18 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     hiveAware: false,
     // SPIKE/TODO-verify: confirm qwen-code reads OPENAI_BASE_URL for its upstream
     // ('serve' inboxDelivery is reserved for a later qwen-serve HTTP push path).
-    bridge: { kind: 'proxy', api: 'openai', baseUrlEnv: 'OPENAI_BASE_URL', inboxDelivery: 'terminal' },
+    bridge: {
+      kind: 'proxy',
+      api: 'openai',
+      baseUrlEnv: 'OPENAI_BASE_URL',
+      inboxDelivery: 'terminal',
+    },
     canReceiveInbox: true,
     // gemini-cli style interactive-orient flag. // TODO-verify
     initialPromptFlag: '-i',
     // Qwen's long-context coder model for the orchestrator. // TODO-verify
     recommendedOrchestratorModel: 'qwen3-coder-plus',
-    resumeFlag: undefined
+    resumeFlag: undefined,
   },
   {
     // OpenCode — the TypeScript AI coding agent (opencode.ai / anomalyco/opencode,
@@ -365,7 +370,7 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // (protocol re-injected as the initial prompt), matching codex.
     resumeFlag: undefined,
     installCommand: 'npm install -g opencode-ai@latest', // trusted, hardcoded
-    docsUrl: 'https://opencode.ai/docs'
+    docsUrl: 'https://opencode.ai/docs',
   },
   {
     // Crush — Charmbracelet's Go TUI coding agent (charmbracelet/crush), successor to
@@ -391,7 +396,12 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // Real routing is via a per-agent CRUSH_GLOBAL_CONFIG whose provider base_url
     // points at the loopback (installCrushConfig, special-cased in the proxy arm).
     // Do NOT "fix" this to a real env var — it would have no effect.
-    bridge: { kind: 'proxy', api: 'openai', baseUrlEnv: 'CRUSH_PROXY_BASE_URL', inboxDelivery: 'terminal' },
+    bridge: {
+      kind: 'proxy',
+      api: 'openai',
+      baseUrlEnv: 'CRUSH_PROXY_BASE_URL',
+      inboxDelivery: 'terminal',
+    },
     // OpenAI-WIRE default so the out-of-box Crush god routes through the proxy
     // cleanly (the proxy serves one wire-shape; an anthropic/* default would route to
     // the wrong upstream — Dwight verify-crush MF1). Advisory/editable; non-OpenAI-wire
@@ -410,7 +420,7 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     seedDelivery: 'type-into-tui',
     resumeFlag: '--session', // Crush supports resume by id (also --continue for most-recent)
     installCommand: 'npm install -g @charmland/crush', // trusted, hardcoded (brew/go/winget also valid)
-    docsUrl: 'https://github.com/charmbracelet/crush'
+    docsUrl: 'https://github.com/charmbracelet/crush',
   },
   {
     // Pi (Pi Coding Agent, earendil-works; npm @earendil-works/pi-coding-agent).
@@ -446,7 +456,7 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     resumeFlag: '--session',
     // --ignore-scripts: don't run the package's postinstall on the user's machine.
     installCommand: 'npm install -g --ignore-scripts @earendil-works/pi-coding-agent',
-    docsUrl: 'https://pi.dev/docs/latest'
+    docsUrl: 'https://pi.dev/docs/latest',
   },
   {
     // GitHub Copilot CLI (`copilot`, npm @github/copilot). Driven in print mode:
@@ -476,7 +486,7 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // copilot worker can't receive routed inbox mail (it bounces to the god).
     canReceiveInbox: false,
     installCommand: 'npm install -g @github/copilot', // trusted, hardcoded
-    docsUrl: 'https://docs.github.com/copilot/concepts/agents/about-copilot-cli'
+    docsUrl: 'https://docs.github.com/copilot/concepts/agents/about-copilot-cli',
   },
   {
     id: 'custom',
@@ -487,8 +497,8 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     supportsModel: false,
     autoFlag: '',
     hiveAware: false,
-    canReceiveInbox: false // no inbox-drain path → mail bounces to the god
-  }
+    canReceiveInbox: false, // no inbox-drain path → mail bounces to the god
+  },
 ];
 
 export function isAgentProvider(value: unknown): value is AgentProvider {
@@ -544,15 +554,15 @@ export const DEFAULT_HIRE_PERMISSION_MODE: HirePermissionMode = 'auto';
 export function permissionModeArgs(
   command: string,
   provider: AgentProvider | undefined,
-  mode: HirePermissionMode | undefined
+  mode: HirePermissionMode | undefined,
 ): string[] {
   if (mode !== 'auto' && mode !== 'bypass') return [];
   const preset = providerPreset(inferAgentProvider(command, provider));
   const claude = isClaudeProvider(preset.id);
   const tokens = claude
-    ? (mode === 'bypass'
-        ? (preset.autoFlag ?? '').split(/\s+/).filter(Boolean)
-        : ['--permission-mode', 'auto'])
+    ? mode === 'bypass'
+      ? (preset.autoFlag ?? '').split(/\s+/).filter(Boolean)
+      : ['--permission-mode', 'auto']
     : (preset.autoFlag ?? '').split(/\s+/).filter(Boolean);
   if (!tokens.length) return [];
   // ponytail: string includes-guard, not argv-aware matching — a flag glued
@@ -650,7 +660,7 @@ export interface ProviderInstallInfo {
 
 export function installInfoForProvider(
   provider: AgentProvider,
-  platform: string = process.platform
+  platform: string = process.platform,
 ): ProviderInstallInfo {
   const p = providerPreset(provider);
   const native = p.nativeInstallCommand;
@@ -658,6 +668,6 @@ export function installInfoForProvider(
     command: p.installCommand,
     nativeCommand: native ? (platform === 'win32' ? native.win32 : native.posix) : undefined,
     label: p.label,
-    docsUrl: p.docsUrl
+    docsUrl: p.docsUrl,
   };
 }

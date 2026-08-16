@@ -21,7 +21,11 @@ export function MonacoDiff({ path, original, modified }: MonacoDiffProps) {
       language={languageForPath(path)}
       original={original}
       modified={modified}
-      loading={<div style={{ padding: 12, color: 'var(--cth-ink-500)', fontFamily: 'var(--cth-font-ui)' }}>loading diff…</div>}
+      loading={
+        <div style={{ padding: 12, color: 'var(--cth-ink-500)', fontFamily: 'var(--cth-font-ui)' }}>
+          loading diff…
+        </div>
+      }
       options={{
         readOnly: true,
         renderSideBySide: true,
@@ -32,7 +36,7 @@ export function MonacoDiff({ path, original, modified }: MonacoDiffProps) {
         scrollBeyondLastLine: false,
         automaticLayout: true,
         ignoreTrimWhitespace: false,
-        renderOverviewRuler: false
+        renderOverviewRuler: false,
       }}
     />
   );

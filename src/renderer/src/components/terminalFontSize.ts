@@ -20,7 +20,9 @@ function load(): number {
   try {
     const n = parseInt(window.localStorage.getItem(LS_FONT_SIZE) ?? '', 10);
     if (!Number.isNaN(n) && n >= MIN_TERMINAL_FONT_SIZE && n <= MAX_TERMINAL_FONT_SIZE) return n;
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
   return DEFAULT_TERMINAL_FONT_SIZE;
 }
 
@@ -34,17 +36,26 @@ export function getTerminalFontSize(): number {
 /** Set the shared zoom level (clamped) and persist it. No-op when unchanged, so
  *  a redundant set can't churn every subscriber's effects. */
 export function setTerminalFontSize(next: number): number {
-  const clamped = Math.min(MAX_TERMINAL_FONT_SIZE, Math.max(MIN_TERMINAL_FONT_SIZE, Math.round(next)));
+  const clamped = Math.min(
+    MAX_TERMINAL_FONT_SIZE,
+    Math.max(MIN_TERMINAL_FONT_SIZE, Math.round(next)),
+  );
   if (clamped === current) return current;
   current = clamped;
-  try { window.localStorage.setItem(LS_FONT_SIZE, String(clamped)); } catch { /* noop */ }
+  try {
+    window.localStorage.setItem(LS_FONT_SIZE, String(clamped));
+  } catch {
+    /* noop */
+  }
   for (const l of [...listeners]) l();
   return clamped;
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /** Live terminal font size. Re-renders the caller whenever the zoom changes,

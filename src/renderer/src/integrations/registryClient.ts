@@ -28,7 +28,7 @@ import {
   secretRefFor,
   validateIntegrationRecord,
   type IntegrationRecord,
-  type IntegrationTemplate
+  type IntegrationTemplate,
 } from '@shared/integrations';
 
 export type { IntegrationRecord, IntegrationTemplate } from '@shared/integrations';
@@ -62,7 +62,10 @@ interface IntegrationsBridge {
   integrationsList(): Promise<IntegrationRecordView[]>;
   integrationsTemplates(): Promise<IntegrationTemplate[]>;
   integrationsUpsert(record: IntegrationRecord): Promise<UpsertResult>;
-  integrationsSetSecret(req: { id: string; secret: string }): Promise<{ ok: boolean; error?: string }>;
+  integrationsSetSecret(req: {
+    id: string;
+    secret: string;
+  }): Promise<{ ok: boolean; error?: string }>;
   integrationsRemove(req: { id: string }): Promise<{ ok: boolean }>;
   integrationsTest(req: { id: string; path?: string }): Promise<TestResult>;
 }
@@ -93,7 +96,11 @@ const mockClient: IntegrationsClient = {
     if (!v.ok) return Promise.resolve({ ok: false, error: v.error });
     const now = Date.now();
     const prev = mockRecords.find((r) => r.id === v.value.id);
-    const full: IntegrationRecord = { ...v.value, createdAt: prev?.createdAt ?? now, updatedAt: now };
+    const full: IntegrationRecord = {
+      ...v.value,
+      createdAt: prev?.createdAt ?? now,
+      updatedAt: now,
+    };
     if (prev) mockRecords = mockRecords.map((r) => (r.id === full.id ? full : r));
     else mockRecords.push(full);
     if (secret && secret.length > 0 && full.secretRef) mockSecret.add(full.secretRef);
@@ -113,7 +120,7 @@ const mockClient: IntegrationsClient = {
       return Promise.resolve({ ok: false, status: 503, error: 'no secret set' });
     }
     return Promise.resolve({ ok: true, status: 200 });
-  }
+  },
 };
 
 // ───────────────────────── exported client (real → mock fallback) ─────────────────────────
@@ -145,13 +152,18 @@ export const integrationsClient: IntegrationsClient = {
   test: (id) => {
     const b = liveBridge();
     return b ? b.integrationsTest({ id }) : mockClient.test(id);
-  }
+  },
 };
 
 // ───────────────────────── small UI helper ─────────────────────────
 
 /** Best-effort slug from a label (server-side validateIntegrationRecord is authoritative). */
 export function slugify(label: string): string {
-  const base = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/g, '');
+  const base = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/g, '');
   return base.length >= 2 ? base : `${base || 'api'}-x`;
 }

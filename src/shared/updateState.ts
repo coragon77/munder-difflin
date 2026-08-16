@@ -36,7 +36,10 @@ export interface UpdateBadgeView {
 
 /** `1.2.3` / `v1.2.3` -> [1,2,3]; null for anything that isn't semver-ish. */
 export function parseVersion(v: string): [number, number, number] | null {
-  const m = String(v ?? '').trim().replace(/^v/, '').match(/^(\d+)\.(\d+)\.(\d+)/);
+  const m = String(v ?? '')
+    .trim()
+    .replace(/^v/, '')
+    .match(/^(\d+)\.(\d+)\.(\d+)/);
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
 }
 
@@ -62,14 +65,22 @@ export function clampPercent(n: number): number {
  *  replaced by an earlier one for the SAME version — see `reduceStatus`. */
 function rank(s: UpdateStatus): number {
   switch (s.state) {
-    case 'idle': return 0;
-    case 'checking': return 1;
-    case 'not-available': return 1;
-    case 'error': return 1;
-    case 'available-manual': return 2;
-    case 'available': return 3;
-    case 'downloading': return 4;
-    case 'downloaded': return 5;
+    case 'idle':
+      return 0;
+    case 'checking':
+      return 1;
+    case 'not-available':
+      return 1;
+    case 'error':
+      return 1;
+    case 'available-manual':
+      return 2;
+    case 'available':
+      return 3;
+    case 'downloading':
+      return 4;
+    case 'downloaded':
+      return 5;
   }
 }
 
@@ -90,8 +101,8 @@ export function reduceStatus(prev: UpdateStatus | null, next: UpdateStatus): Upd
   if (!prev) return next;
   const pv = versionOf(prev);
   const nv = versionOf(next);
-  if (pv && nv && isNewer(nv, pv)) return next;   // a newer release supersedes
-  if (pv && nv && pv !== nv) return next;         // different (e.g. rolled back) release
+  if (pv && nv && isNewer(nv, pv)) return next; // a newer release supersedes
+  if (pv && nv && pv !== nv) return next; // different (e.g. rolled back) release
   return rank(next) >= rank(prev) ? next : prev;
 }
 
@@ -101,43 +112,79 @@ export function reduceStatus(prev: UpdateStatus | null, next: UpdateStatus): Upd
  * `currentVersion` is the running app's version — it is always rendered next to
  * the logo, so every one of these views is "v0.3.6" plus at most one extra chip.
  */
-export function describeUpdate(status: UpdateStatus | null, currentVersion: string): UpdateBadgeView {
+export function describeUpdate(
+  status: UpdateStatus | null,
+  currentVersion: string,
+): UpdateBadgeView {
   const v = currentVersion;
   switch (status?.state) {
     case 'checking':
-      return { label: 'checking…', action: 'none', tone: 'busy', busy: true, title: `Checking for updates (you're on v${v})` };
+      return {
+        label: 'checking…',
+        action: 'none',
+        tone: 'busy',
+        busy: true,
+        title: `Checking for updates (you're on v${v})`,
+      };
     case 'available':
       return {
-        label: `v${status.version} ready to install`, action: 'download', tone: 'ready', busy: false,
-        title: `Version ${status.version} is available — click to download it`
+        label: `v${status.version} ready to install`,
+        action: 'download',
+        tone: 'ready',
+        busy: false,
+        title: `Version ${status.version} is available — click to download it`,
       };
     case 'downloading':
       return {
-        label: `downloading ${clampPercent(status.percent)}%`, action: 'none', tone: 'busy', busy: true,
-        title: `Downloading v${status.version}… ${clampPercent(status.percent)}%`
+        label: `downloading ${clampPercent(status.percent)}%`,
+        action: 'none',
+        tone: 'busy',
+        busy: true,
+        title: `Downloading v${status.version}… ${clampPercent(status.percent)}%`,
       };
     case 'downloaded':
       return {
-        label: `restart to update to v${status.version}`, action: 'restart', tone: 'ready', busy: false,
-        title: `v${status.version} is downloaded and ready — click to restart and apply it`
+        label: `restart to update to v${status.version}`,
+        action: 'restart',
+        tone: 'ready',
+        busy: false,
+        title: `v${status.version} is downloaded and ready — click to restart and apply it`,
       };
     case 'available-manual':
       return {
-        label: `v${status.version} — get it manually`, action: 'open-release', tone: 'warn', busy: false,
+        label: `v${status.version} — get it manually`,
+        action: 'open-release',
+        tone: 'warn',
+        busy: false,
         title: status.reason
           ? `This install couldn't update itself (${status.reason}) — click to open the release page`
-          : `This install can't update itself — click to open the release page`
+          : `This install can't update itself — click to open the release page`,
       };
     case 'error':
       return {
-        label: 'update check failed', action: 'check', tone: 'warn', busy: false,
-        title: `${status.message} — click to try again`
+        label: 'update check failed',
+        action: 'check',
+        tone: 'warn',
+        busy: false,
+        title: `${status.message} — click to try again`,
       };
     case 'not-available':
-      return { label: null, action: 'check', tone: 'idle', busy: false, title: `v${v} is the latest version — click to check again` };
+      return {
+        label: null,
+        action: 'check',
+        tone: 'idle',
+        busy: false,
+        title: `v${v} is the latest version — click to check again`,
+      };
     case 'idle':
     default:
-      return { label: null, action: 'check', tone: 'idle', busy: false, title: `v${v} — click to check for updates` };
+      return {
+        label: null,
+        action: 'check',
+        tone: 'idle',
+        busy: false,
+        title: `v${v} — click to check for updates`,
+      };
   }
 }
 
@@ -167,7 +214,7 @@ export interface UpdateSettingsView {
  */
 export function describeUpdateSettings(
   status: UpdateStatus | null,
-  currentVersion: string
+  currentVersion: string,
 ): UpdateSettingsView {
   const v = currentVersion;
   switch (status?.state) {
@@ -175,25 +222,37 @@ export function describeUpdateSettings(
       return {
         headline: `You're on v${v}`,
         detail: 'Checking for a newer release…',
-        button: null, action: 'none', busy: true, tone: 'busy'
+        button: null,
+        action: 'none',
+        busy: true,
+        tone: 'busy',
       };
     case 'available':
       return {
         headline: `v${status.version} is available`,
         detail: `You're on v${v}. Download it now — you'll be asked to restart once it's ready.`,
-        button: `Download v${status.version}`, action: 'download', busy: false, tone: 'ready'
+        button: `Download v${status.version}`,
+        action: 'download',
+        busy: false,
+        tone: 'ready',
       };
     case 'downloading':
       return {
         headline: `Downloading v${status.version}`,
         detail: `${clampPercent(status.percent)}% done. You can keep working; the restart is yours to trigger.`,
-        button: null, action: 'none', busy: true, tone: 'busy'
+        button: null,
+        action: 'none',
+        busy: true,
+        tone: 'busy',
       };
     case 'downloaded':
       return {
         headline: `v${status.version} is ready to install`,
         detail: `Restart Munder Difflin to finish updating from v${v}.`,
-        button: 'Restart to update', action: 'restart', busy: false, tone: 'ready'
+        button: 'Restart to update',
+        action: 'restart',
+        busy: false,
+        tone: 'ready',
       };
     case 'available-manual':
       return {
@@ -201,26 +260,39 @@ export function describeUpdateSettings(
         detail: status.reason
           ? `This install can't update itself (${status.reason}) — download it from the release page.`
           : `This install can't update itself — download it from the release page.`,
-        button: 'Open release page', action: 'open-release', busy: false, tone: 'warn'
+        button: 'Open release page',
+        action: 'open-release',
+        busy: false,
+        tone: 'warn',
       };
     case 'error':
       return {
         headline: 'Update check failed',
         detail: `${status.message} (you're on v${v}).`,
-        button: 'Try again', action: 'check', busy: false, tone: 'warn'
+        button: 'Try again',
+        action: 'check',
+        busy: false,
+        tone: 'warn',
       };
     case 'not-available':
       return {
         headline: `v${v} is the latest version`,
         detail: "You're already up to date — nothing to install.",
-        button: 'Check again', action: 'check', busy: false, tone: 'idle'
+        button: 'Check again',
+        action: 'check',
+        busy: false,
+        tone: 'idle',
       };
     case 'idle':
     default:
       return {
         headline: `You're on v${v}`,
-        detail: 'Updates are checked automatically every 6 hours. Check now if you want to be sure.',
-        button: 'Check for updates', action: 'check', busy: false, tone: 'idle'
+        detail:
+          'Updates are checked automatically every 6 hours. Check now if you want to be sure.',
+        button: 'Check for updates',
+        action: 'check',
+        busy: false,
+        tone: 'idle',
       };
   }
 }

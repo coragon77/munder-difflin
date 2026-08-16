@@ -18,8 +18,13 @@ const CLI = path.join(__dirname, '..', 'resources', 'kg.cjs');
 
 let failures = 0;
 function test(name, fn) {
-  try { fn(); console.log(`  ✓ ${name}`); }
-  catch (err) { failures++; console.log(`  ✗ ${name}\n     ${err && err.message}`); }
+  try {
+    fn();
+    console.log(`  ✓ ${name}`);
+  } catch (err) {
+    failures++;
+    console.log(`  ✗ ${name}\n     ${err && err.message}`);
+  }
 }
 
 function tmpRoot() {
@@ -76,10 +81,22 @@ function writeFixture(dir, name, content) {
   // ─── scoreChunk ─────────────────────────────────────────────────────────
   test('scoreChunk: 0 when no term matches, higher for title + phrase matches', () => {
     const terms = kg.tokenize('refund policy');
-    const none = kg.scoreChunk({ title: 'Holidays', text: 'office closed friday' }, terms, 'refund policy');
+    const none = kg.scoreChunk(
+      { title: 'Holidays', text: 'office closed friday' },
+      terms,
+      'refund policy',
+    );
     assert.strictEqual(none, 0);
-    const body = kg.scoreChunk({ title: 'Holidays', text: 'our refund policy is generous' }, terms, 'refund policy');
-    const titled = kg.scoreChunk({ title: 'Refund Policy', text: 'our refund policy is generous' }, terms, 'refund policy');
+    const body = kg.scoreChunk(
+      { title: 'Holidays', text: 'our refund policy is generous' },
+      terms,
+      'refund policy',
+    );
+    const titled = kg.scoreChunk(
+      { title: 'Refund Policy', text: 'our refund policy is generous' },
+      terms,
+      'refund policy',
+    );
     assert.ok(body > 0, 'body match scores');
     assert.ok(titled > body, 'title match boosts above body-only');
   });
@@ -87,10 +104,16 @@ function writeFixture(dir, name, content) {
   // ─── ingest → search round-trip: TEXT modality ──────────────────────────
   test('ingest a markdown doc, then search finds it with a snippet', () => {
     const root = tmpRoot();
-    const src = writeFixture(root, 'refund-policy.md',
-      '# Refund Policy 2026\n\nCustomers may request a full refund within 30 days of purchase. '
-      + 'Refunds for enterprise plans require manager approval.\n');
-    const { docId, chunkCount, meta } = kg.ingest(root, { srcPath: src, tags: ['policy', 'support'] });
+    const src = writeFixture(
+      root,
+      'refund-policy.md',
+      '# Refund Policy 2026\n\nCustomers may request a full refund within 30 days of purchase. ' +
+        'Refunds for enterprise plans require manager approval.\n',
+    );
+    const { docId, chunkCount, meta } = kg.ingest(root, {
+      srcPath: src,
+      tags: ['policy', 'support'],
+    });
     assert.ok(docId, 'returns a docId');
     assert.ok(chunkCount >= 1, 'at least one chunk');
     assert.strictEqual(meta.modality, 'text');
@@ -114,25 +137,41 @@ function writeFixture(dir, name, content) {
     const img = path.join(root, 'org-chart.png');
     fs.writeFileSync(img, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     const { docId, meta } = kg.ingest(root, {
-      srcPath: img, title: 'Company Org Chart',
+      srcPath: img,
+      title: 'Company Org Chart',
       caption: 'Engineering reports to the CTO; Sales reports to the CRO.',
-      tags: ['orgchart', 'leadership']
+      tags: ['orgchart', 'leadership'],
     });
     assert.strictEqual(meta.modality, 'image');
     assert.strictEqual(meta.extractor, 'image-meta@1');
-    assert.ok(fs.existsSync(path.join(root, 'docs', docId, 'original.png')), 'binary retained for future OCR');
+    assert.ok(
+      fs.existsSync(path.join(root, 'docs', docId, 'original.png')),
+      'binary retained for future OCR',
+    );
 
     const byCaption = kg.search(root, 'who does engineering report to');
-    assert.ok(byCaption.some((h) => h.docId === docId), 'found via caption text');
+    assert.ok(
+      byCaption.some((h) => h.docId === docId),
+      'found via caption text',
+    );
     const byTag = kg.search(root, 'orgchart leadership');
-    assert.ok(byTag.some((h) => h.docId === docId), 'found via tags');
+    assert.ok(
+      byTag.some((h) => h.docId === docId),
+      'found via tags',
+    );
   });
 
   // ─── list / getDoc / removeDoc ──────────────────────────────────────────
   test('list, get, and remove manage the corpus and prune the index', () => {
     const root = tmpRoot();
-    const a = kg.ingest(root, { text: 'Alpha document about onboarding new hires.', title: 'Onboarding' });
-    const b = kg.ingest(root, { text: 'Beta document about the deployment runbook.', title: 'Runbook' });
+    const a = kg.ingest(root, {
+      text: 'Alpha document about onboarding new hires.',
+      title: 'Onboarding',
+    });
+    const b = kg.ingest(root, {
+      text: 'Beta document about the deployment runbook.',
+      title: 'Runbook',
+    });
 
     const docs = kg.list(root);
     assert.strictEqual(docs.length, 2, 'two docs listed');
@@ -144,7 +183,10 @@ function writeFixture(dir, name, content) {
     assert.strictEqual(kg.removeDoc(root, a.docId), true);
     assert.strictEqual(kg.list(root).length, 1, 'one doc after remove');
     assert.strictEqual(kg.search(root, 'onboarding').length, 0, 'removed doc no longer searchable');
-    assert.ok(kg.search(root, 'deployment runbook').some((h) => h.docId === b.docId), 'other doc intact');
+    assert.ok(
+      kg.search(root, 'deployment runbook').some((h) => h.docId === b.docId),
+      'other doc intact',
+    );
 
     const s = kg.stats(root);
     assert.strictEqual(s.docCount, 1);
@@ -163,13 +205,18 @@ function writeFixture(dir, name, content) {
   test('agent runs `kg search` against KG_ROOT and gets ranked, attributed results', () => {
     const root = tmpRoot();
     kg.ingest(root, {
-      srcPath: writeFixture(root, 'pto.md',
-        '# PTO Policy\n\nFull-time employees accrue 20 days of paid time off per year. '
-        + 'Unused PTO rolls over up to 5 days.\n'),
-      tags: ['hr', 'pto']
+      srcPath: writeFixture(
+        root,
+        'pto.md',
+        '# PTO Policy\n\nFull-time employees accrue 20 days of paid time off per year. ' +
+          'Unused PTO rolls over up to 5 days.\n',
+      ),
+      tags: ['hr', 'pto'],
     });
-    const res = spawnSync(process.execPath, [CLI, 'search', 'how much paid time off'],
-      { encoding: 'utf8', env: { ...process.env, KG_ROOT: root } });
+    const res = spawnSync(process.execPath, [CLI, 'search', 'how much paid time off'], {
+      encoding: 'utf8',
+      env: { ...process.env, KG_ROOT: root },
+    });
     assert.strictEqual(res.status, 0, `exit 0 (stderr: ${res.stderr})`);
     assert.ok(/PTO Policy/.test(res.stdout), 'CLI surfaces the title');
     assert.ok(/20 days/.test(res.stdout), 'CLI surfaces the matching passage');
@@ -179,8 +226,10 @@ function writeFixture(dir, name, content) {
   test('agent `kg search --json` is machine-parseable', () => {
     const root = tmpRoot();
     kg.ingest(root, { text: 'The wifi password is hunter2 for the guest network.', title: 'Wifi' });
-    const res = spawnSync(process.execPath, [CLI, 'search', 'guest wifi password', '--json'],
-      { encoding: 'utf8', env: { ...process.env, KG_ROOT: root } });
+    const res = spawnSync(process.execPath, [CLI, 'search', 'guest wifi password', '--json'], {
+      encoding: 'utf8',
+      env: { ...process.env, KG_ROOT: root },
+    });
     assert.strictEqual(res.status, 0, `exit 0 (stderr: ${res.stderr})`);
     const parsed = JSON.parse(res.stdout);
     assert.ok(Array.isArray(parsed) && parsed.length >= 1, 'JSON array of hits');
@@ -192,7 +241,10 @@ function writeFixture(dir, name, content) {
     delete env.KG_ROOT;
     const res = spawnSync(process.execPath, [CLI, 'search', 'anything'], { encoding: 'utf8', env });
     assert.strictEqual(res.status, 0, 'exits 0 (non-fatal) when KG is off');
-    assert.ok(/not configured|off|unavailable/i.test(res.stderr + res.stdout), 'explains it is off');
+    assert.ok(
+      /not configured|off|unavailable/i.test(res.stderr + res.stdout),
+      'explains it is off',
+    );
   });
 
   // ─── summary ────────────────────────────────────────────────────────────

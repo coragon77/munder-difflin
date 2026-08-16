@@ -45,7 +45,10 @@ test('bootstrap materializes a PATH-visible `node`', async (t) => {
 
   const body = fs.readFileSync(shim, 'utf8');
   assert.match(body, /ELECTRON_RUN_AS_NODE=1/, 'without this the binary opens a second app window');
-  assert.ok(body.includes(process.execPath), 'execPath is re-baked each bootstrap so an app move/update heals');
+  assert.ok(
+    body.includes(process.execPath),
+    'execPath is re-baked each bootstrap so an app move/update heals',
+  );
   if (POSIX) assert.ok(fs.statSync(shim).mode & 0o111, 'must be executable');
 });
 
@@ -55,32 +58,46 @@ test('npm and npx are deliberately NOT shimmed', async (t) => {
   // make `npm install` fail confusingly instead of being honestly absent — which
   // is what the missing-CLI ladder (cli-install-ladder.test.cjs) detects.
   const present = fs.readdirSync(hive.runtimeBinDir());
-  assert.deepEqual(present.filter((f) => /^(npm|npx)(\.cmd)?$/.test(f)), []);
+  assert.deepEqual(
+    present.filter((f) => /^(npm|npx)(\.cmd)?$/.test(f)),
+    [],
+  );
 });
 
-test('the runtime dir is APPENDED — the user\'s own node still wins', async (t) => {
+test("the runtime dir is APPENDED — the user's own node still wins", async (t) => {
   const { root } = await hiveIn(t);
   const dir = path.join(root, 'bin', 'runtime');
 
   const out = withHiveRuntimeFallback(`/usr/local/bin${SEP}/usr/bin`, root);
   assert.equal(out, `/usr/local/bin${SEP}/usr/bin${SEP}${dir}`);
-  assert.ok(out.indexOf('/usr/local/bin') < out.indexOf(dir),
-    'prepending would silently swap the node version under the user\'s own projects');
+  assert.ok(
+    out.indexOf('/usr/local/bin') < out.indexOf(dir),
+    "prepending would silently swap the node version under the user's own projects",
+  );
 
   assert.equal(withHiveRuntimeFallback(out, root), out, 'a respawn must not keep appending');
 });
 
 test('no hive root, or no runtime dir, leaves PATH exactly as it was', async (t) => {
   const original = `/usr/local/bin${SEP}/usr/bin`;
-  assert.equal(withHiveRuntimeFallback(original, undefined), original, 'plain terminals are untouched');
+  assert.equal(
+    withHiveRuntimeFallback(original, undefined),
+    original,
+    'plain terminals are untouched',
+  );
 
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'md-runtime-none-'));
   t.after(() => fs.rmSync(empty, { recursive: true, force: true }));
-  assert.equal(withHiveRuntimeFallback(original, empty), original,
-    'a pre-fix hive that never wrote the dir must degrade, not point PATH at nothing');
+  assert.equal(
+    withHiveRuntimeFallback(original, empty),
+    original,
+    'a pre-fix hive that never wrote the dir must degrade, not point PATH at nothing',
+  );
 });
 
-test('`node` resolves and RUNS with no node on PATH — the whole point', { skip: !POSIX }, async (t) => {
+test('`node` resolves and RUNS with no node on PATH — the whole point', {
+  skip: !POSIX,
+}, async (t) => {
   const { root } = await hiveIn(t);
 
   const bare = { PATH: STRIPPED_PATH };
@@ -90,7 +107,10 @@ test('`node` resolves and RUNS with no node on PATH — the whole point', { skip
     // assertion below still must hold.
     t.diagnostic(`node already on the stripped PATH at ${probe.stdout.trim()}`);
   } else {
-    const before = spawnSync('/bin/sh', ['-c', 'node -e "process.exit(0)"'], { env: bare, encoding: 'utf8' });
+    const before = spawnSync('/bin/sh', ['-c', 'node -e "process.exit(0)"'], {
+      env: bare,
+      encoding: 'utf8',
+    });
     assert.equal(before.status, 127, 'the bug: an agent-spawned `node` is not resolvable');
   }
 

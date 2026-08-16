@@ -78,7 +78,14 @@ test('TelemetryCollector snapshot rows feed the gate (hook plane, the blind-prov
     id: electron,
     filename: electron,
     loaded: true,
-    exports: { Notification: class { show() {} static isSupported() { return false; } } }
+    exports: {
+      Notification: class {
+        show() {}
+        static isSupported() {
+          return false;
+        }
+      },
+    },
   };
   const { TelemetryCollector } = loadTs('src/main/telemetry.ts');
 
@@ -88,6 +95,9 @@ test('TelemetryCollector snapshot rows feed the gate (hook plane, the blind-prov
   const row = c.snapshot().usage.find((u) => u.agentId === 'pam-1');
   assert.ok(row, 'hook activity must create a snapshot row the gate can read');
   assert.ok(typeof row.ts === 'number' && row.ts > 0, 'row carries a liveness ts');
-  assert.equal(vacationBusy(Date.now() - row.ts, 200), true,
-    'fresh hook row blocks the park even while the pane repaints');
+  assert.equal(
+    vacationBusy(Date.now() - row.ts, 200),
+    true,
+    'fresh hook row blocks the park even while the pane repaints',
+  );
 });

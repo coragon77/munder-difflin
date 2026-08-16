@@ -31,12 +31,14 @@ export function layoutGraph(commits: CommitInput[]): GraphLayout {
   // Initially nothing is expected; lanes get populated as commits introduce parents.
   for (const c of commits) {
     // Pick the lane for this commit
-    let lane = lanes.findIndex(s => s === c.sha);
+    let lane = lanes.findIndex((s) => s === c.sha);
     if (lane === -1) {
       // No descendant; allocate a fresh lane on the right of the busy area
-      lane = lanes.findIndex(s => s === undefined);
-      if (lane === -1) { lane = lanes.length; lanes.push(c.sha); }
-      else lanes[lane] = c.sha;
+      lane = lanes.findIndex((s) => s === undefined);
+      if (lane === -1) {
+        lane = lanes.length;
+        lanes.push(c.sha);
+      } else lanes[lane] = c.sha;
     }
     // The commit occupies `lane`; its parents will continue in lanes.
     // The first parent stays in our lane; additional parents go to fresh lanes.
@@ -51,9 +53,11 @@ export function layoutGraph(commits: CommitInput[]): GraphLayout {
           parents.push({ sha: p, lane });
         } else {
           // Place in new lane (leftmost free)
-          let pl = lanes.findIndex(s => s === undefined);
-          if (pl === -1) { pl = lanes.length; lanes.push(p); }
-          else lanes[pl] = p;
+          let pl = lanes.findIndex((s) => s === undefined);
+          if (pl === -1) {
+            pl = lanes.length;
+            lanes.push(p);
+          } else lanes[pl] = p;
           parents.push({ sha: p, lane: pl });
         }
       }
@@ -75,5 +79,5 @@ export const LANE_COLORS = [
   'var(--cth-mint)',
   'var(--cth-coral)',
   'var(--cth-lilac)',
-  'var(--cth-peach)'
+  'var(--cth-peach)',
 ];

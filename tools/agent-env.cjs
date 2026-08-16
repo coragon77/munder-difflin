@@ -46,12 +46,17 @@ function resolveHiveRoot(argv) {
 }
 
 function readJson(p, fallback) {
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; }
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    return fallback;
+  }
 }
 
 /** Validate a cwd the way a spawn would: absolute path that exists as a directory. */
 function cwdState(cwd) {
-  if (cwd == null || typeof cwd !== 'string' || cwd === '') return { valid: false, issue: 'missing' };
+  if (cwd == null || typeof cwd !== 'string' || cwd === '')
+    return { valid: false, issue: 'missing' };
   if (!path.isAbsolute(cwd)) return { valid: false, issue: 'not-absolute' };
   try {
     if (fs.statSync(cwd).isDirectory()) return { valid: true, issue: null };
@@ -65,7 +70,7 @@ function buildRecords(hiveRoot) {
   const reg = readJson(path.join(hiveRoot, 'registry.json'), { agents: {} });
   const fleet = readJson(path.join(hiveRoot, 'fleet.json'), { agents: [] });
   const live = new Map();
-  for (const a of (fleet.agents || [])) live.set(a.id, a);
+  for (const a of fleet.agents || []) live.set(a.id, a);
 
   const records = [];
   for (const [id, a] of Object.entries(reg.agents || {})) {
@@ -77,7 +82,7 @@ function buildRecords(hiveRoot) {
     records.push({
       id,
       name: a.name ?? null,
-      provider: a.provider ?? null,        // terminal/CLI engine: claude / codex / crush / ...
+      provider: a.provider ?? null, // terminal/CLI engine: claude / codex / crush / ...
       role: a.role ?? null,
       isGod: !!a.isGod,
       archived: !!a.archived,
@@ -86,7 +91,7 @@ function buildRecords(hiveRoot) {
       cwdValid: valid,
       cwdIssue: valid ? null : cs.issue,
       // --- session ---
-      sessionId: a.sessionId ?? null,      // non-secret `claude --resume` key (null = never started)
+      sessionId: a.sessionId ?? null, // non-secret `claude --resume` key (null = never started)
       status: a.status ?? null,
       lastSeen: a.lastSeen ?? null,
       // --- live telemetry (fleet.json; absent for never-run agents) ---
@@ -99,17 +104,35 @@ function buildRecords(hiveRoot) {
   return records;
 }
 
-function pad(s, n) { s = String(s ?? ''); return s.length >= n ? s : s + ' '.repeat(n - s.length); }
+function pad(s, n) {
+  s = String(s ?? '');
+  return s.length >= n ? s : s + ' '.repeat(n - s.length);
+}
 
 function printTable(records) {
-  const cols = [['ID', 22], ['NAME', 10], ['PROV', 7], ['STATUS', 8], ['CWD?', 13]];
+  const cols = [
+    ['ID', 22],
+    ['NAME', 10],
+    ['PROV', 7],
+    ['STATUS', 8],
+    ['CWD?', 13],
+  ];
   console.log(cols.map(([h, w]) => pad(h, w)).join(' ') + ' CWD');
   console.log(cols.map(([, w]) => '-'.repeat(w)).join(' ') + ' ' + '-'.repeat(40));
   for (const r of records) {
-    const ok = r.cwdValid ? 'ok' : (r.cwdIssue || 'bad');
+    const ok = r.cwdValid ? 'ok' : r.cwdIssue || 'bad';
     console.log(
-      pad(r.id, 22) + ' ' + pad(r.name, 10) + ' ' + pad(r.provider, 7) + ' ' +
-      pad(r.status, 8) + ' ' + pad(ok, 13) + ' ' + (r.cwd ?? '(none)')
+      pad(r.id, 22) +
+        ' ' +
+        pad(r.name, 10) +
+        ' ' +
+        pad(r.provider, 7) +
+        ' ' +
+        pad(r.status, 8) +
+        ' ' +
+        pad(ok, 13) +
+        ' ' +
+        (r.cwd ?? '(none)'),
     );
   }
 }
@@ -121,12 +144,12 @@ function main() {
     console.error('agent-env: no hive root — set $HIVE_ROOT or pass --hive <dir>');
     process.exit(2);
   }
-  const flags = new Set(argv.filter(a => a.startsWith('--')));
+  const flags = new Set(argv.filter((a) => a.startsWith('--')));
   const id = argv.find((a, idx) => !a.startsWith('--') && argv[idx - 1] !== '--hive');
   const includeArchived = flags.has('--all');
 
   let records = buildRecords(hiveRoot);
-  if (!includeArchived && !id) records = records.filter(r => !r.archived);
+  if (!includeArchived && !id) records = records.filter((r) => !r.archived);
 
   if (flags.has('--snapshot')) {
     const snap = { generatedBy: 'tools/agent-env.cjs', ts: Date.now(), agents: records };
@@ -137,13 +160,19 @@ function main() {
   }
 
   if (id) {
-    const rec = records.find(r => r.id === id) || buildRecords(hiveRoot).find(r => r.id === id);
-    if (!rec) { console.error(`agent-env: no agent with id "${id}"`); process.exit(2); }
+    const rec = records.find((r) => r.id === id) || buildRecords(hiveRoot).find((r) => r.id === id);
+    if (!rec) {
+      console.error(`agent-env: no agent with id "${id}"`);
+      process.exit(2);
+    }
     console.log(JSON.stringify(rec, null, 2));
     return;
   }
 
-  if (flags.has('--json')) { console.log(JSON.stringify(records, null, 2)); return; }
+  if (flags.has('--json')) {
+    console.log(JSON.stringify(records, null, 2));
+    return;
+  }
   if (!flags.has('--snapshot')) printTable(records);
 }
 

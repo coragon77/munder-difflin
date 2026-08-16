@@ -80,7 +80,10 @@ function buildExchanges(rows: TriggerHistoryEntry[]): Exchange[] {
     const key = e.correlationId ? `c:${e.correlationId}` : `e:${e.id}`;
     const bucket = buckets.get(key);
     if (bucket) bucket.push(e);
-    else { buckets.set(key, [e]); order.push(key); }
+    else {
+      buckets.set(key, [e]);
+      order.push(key);
+    }
   }
   const list = order.map<Exchange>((key) => {
     const msgs = (buckets.get(key) ?? []).slice().sort((a, b) => a.at - b.at);
@@ -91,7 +94,7 @@ function buildExchanges(rows: TriggerHistoryEntry[]): Exchange[] {
       head: inbound ?? msgs[0],
       pending: msgs.find((m) => m.direction === 'inbound' && m.decision === 'pending') ?? null,
       answered: msgs.some((m) => m.direction === 'outbound'),
-      latestAt: msgs.reduce((max, m) => Math.max(max, m.at), 0)
+      latestAt: msgs.reduce((max, m) => Math.max(max, m.at), 0),
     };
   });
   return list.sort((a, b) => {
@@ -108,7 +111,12 @@ function relTime(ms: number): string {
   const a = Math.abs(ms);
   if (a < 45_000) return 'just now';
   const mins = Math.round(a / 60_000);
-  const unit = mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.round(mins / 60)}h` : `${Math.round(mins / 1440)}d`;
+  const unit =
+    mins < 60
+      ? `${mins}m`
+      : mins < 1440
+        ? `${Math.round(mins / 60)}h`
+        : `${Math.round(mins / 1440)}d`;
   return past ? `${unit} ago` : `in ${unit}`;
 }
 
@@ -118,7 +126,8 @@ const CLAMP_LINES = 8;
 /** Collapse a long body for the resting state. Expanding always shows all of it. */
 function clampBody(body: string): { text: string; clipped: boolean } {
   const lines = body.split('\n');
-  if (body.length <= CLAMP_CHARS && lines.length <= CLAMP_LINES) return { text: body, clipped: false };
+  if (body.length <= CLAMP_CHARS && lines.length <= CLAMP_LINES)
+    return { text: body, clipped: false };
   const head = lines.slice(0, CLAMP_LINES).join('\n');
   const cut = head.length > CLAMP_CHARS ? head.slice(0, CLAMP_CHARS).replace(/\s+\S*$/, '') : head;
   return { text: `${cut.trimEnd()}…`, clipped: true };
@@ -127,45 +136,73 @@ function clampBody(body: string): { text: string; clipped: boolean } {
 /* ───────────────────────────────── styles ────────────────────────────────── */
 
 const tinyCaps: CSSProperties = {
-  fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '12px',
-  color: 'var(--cth-ink-500)'
+  fontFamily: 'var(--cth-font-display)',
+  fontSize: 9,
+  lineHeight: '12px',
+  color: 'var(--cth-ink-500)',
 };
 const uiText: CSSProperties = {
-  fontFamily: 'var(--cth-font-ui)', fontSize: 12, lineHeight: '17px',
-  color: 'var(--cth-ink-900)'
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 12,
+  lineHeight: '17px',
+  color: 'var(--cth-ink-900)',
 };
 const muted: CSSProperties = { ...uiText, color: 'var(--cth-ink-500)' };
-const ellipsis: CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+const ellipsis: CSSProperties = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
 
 const cardStyle: CSSProperties = {
   background: 'var(--cth-paper-100)',
   boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-  padding: 8, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0
+  padding: 8,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  minWidth: 0,
 };
 const pendingCardStyle: CSSProperties = {
   ...cardStyle,
   background: 'var(--cth-cream-100)',
-  boxShadow: 'inset 0 0 0 2px var(--cth-lemon)'
+  boxShadow: 'inset 0 0 0 2px var(--cth-lemon)',
 };
 const bodyBox: CSSProperties = {
   background: 'var(--cth-cream-200)',
   boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
   padding: '6px 8px',
-  fontFamily: 'var(--cth-font-mono)', fontSize: 12, lineHeight: '17px',
+  fontFamily: 'var(--cth-font-mono)',
+  fontSize: 12,
+  lineHeight: '17px',
   color: 'var(--cth-ink-900)',
-  whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word'
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
 };
 const linkButton: CSSProperties = {
-  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-  fontFamily: 'var(--cth-font-ui)', fontSize: 11, lineHeight: '16px',
-  color: 'var(--cth-ink-700)', textDecoration: 'underline', textAlign: 'left'
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  cursor: 'pointer',
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 11,
+  lineHeight: '16px',
+  color: 'var(--cth-ink-700)',
+  textDecoration: 'underline',
+  textAlign: 'left',
 };
 
 function badgeStyle(fill: string, line: string): CSSProperties {
   return {
-    fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '12px',
-    padding: '3px 5px 2px', background: fill, boxShadow: `inset 0 0 0 1px ${line}`,
-    color: 'var(--cth-ink-900)', flexShrink: 0
+    fontFamily: 'var(--cth-font-display)',
+    fontSize: 9,
+    lineHeight: '12px',
+    padding: '3px 5px 2px',
+    background: fill,
+    boxShadow: `inset 0 0 0 1px ${line}`,
+    color: 'var(--cth-ink-900)',
+    flexShrink: 0,
   };
 }
 
@@ -174,21 +211,43 @@ function Badge({ fill, line, children }: { fill: string; line: string; children:
 }
 
 function KindBadge({ kind }: { kind: TriggerHistoryEntry['kind'] }) {
-  return kind === 'directive'
-    ? <Badge fill="var(--cth-lemon-light)" line="var(--cth-lemon)">directive</Badge>
-    : <Badge fill="var(--cth-sky-light)" line="var(--cth-sky)">communication</Badge>;
+  return kind === 'directive' ? (
+    <Badge fill="var(--cth-lemon-light)" line="var(--cth-lemon)">
+      directive
+    </Badge>
+  ) : (
+    <Badge fill="var(--cth-sky-light)" line="var(--cth-sky)">
+      communication
+    </Badge>
+  );
 }
 
 function DecisionBadge({ decision }: { decision: NonNullable<TriggerHistoryEntry['decision']> }) {
   switch (decision) {
     case 'pending':
-      return <Badge fill="var(--cth-lemon-light)" line="var(--cth-lemon)">needs you</Badge>;
+      return (
+        <Badge fill="var(--cth-lemon-light)" line="var(--cth-lemon)">
+          needs you
+        </Badge>
+      );
     case 'approved':
-      return <Badge fill="var(--cth-mint-light)" line="var(--cth-mint)">approved</Badge>;
+      return (
+        <Badge fill="var(--cth-mint-light)" line="var(--cth-mint)">
+          approved
+        </Badge>
+      );
     case 'rejected':
-      return <Badge fill="var(--cth-coral-light)" line="var(--cth-coral)">rejected</Badge>;
+      return (
+        <Badge fill="var(--cth-coral-light)" line="var(--cth-coral)">
+          rejected
+        </Badge>
+      );
     default:
-      return <Badge fill="var(--cth-cream-200)" line="var(--cth-ink-300)">auto-allowed</Badge>;
+      return (
+        <Badge fill="var(--cth-cream-200)" line="var(--cth-ink-300)">
+          auto-allowed
+        </Badge>
+      );
   }
 }
 
@@ -198,7 +257,7 @@ function MessageBlock({
   msg,
   label,
   expanded,
-  onToggle
+  onToggle,
 }: {
   msg: TriggerHistoryEntry;
   label: string;
@@ -209,7 +268,9 @@ function MessageBlock({
   const { text, clipped } = useMemo(() => clampBody(body), [body]);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, justifyContent: 'space-between' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'baseline', gap: 8, justifyContent: 'space-between' }}
+      >
         <span style={tinyCaps}>{label}</span>
         <span style={{ ...tinyCaps, flexShrink: 0 }}>{relTime(Date.now() - msg.at)}</span>
       </div>
@@ -230,7 +291,7 @@ function ExchangeCard({
   expanded,
   toggle,
   busy,
-  onDecide
+  onDecide,
 }: {
   ex: Exchange;
   expanded: Record<string, boolean>;
@@ -255,16 +316,28 @@ function ExchangeCard({
   return (
     <div style={pending ? pendingCardStyle : cardStyle}>
       {pending && (
-        <div style={{
-          background: 'var(--cth-lemon-light)', boxShadow: 'inset 0 0 0 1px var(--cth-lemon)',
-          padding: '4px 6px 3px', ...tinyCaps, color: 'var(--cth-ink-900)'
-        }}>
+        <div
+          style={{
+            background: 'var(--cth-lemon-light)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-lemon)',
+            padding: '4px 6px 3px',
+            ...tinyCaps,
+            color: 'var(--cth-ink-900)',
+          }}
+        >
           WAITING FOR YOU
         </div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, justifyContent: 'space-between' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 8,
+            justifyContent: 'space-between',
+          }}
+        >
           <span style={{ ...uiText, ...ellipsis, minWidth: 0 }} title={head.sourceName}>
             {head.sourceName || 'unnamed source'}
           </span>
@@ -328,7 +401,9 @@ function ExchangeCard({
       {tail && <div style={{ ...muted, fontSize: 11 }}>{tail}</div>}
 
       {taskId && (
-        <div style={{ ...tinyCaps, ...ellipsis }} title={taskId}>TASK {taskId}</div>
+        <div style={{ ...tinyCaps, ...ellipsis }} title={taskId}>
+          TASK {taskId}
+        </div>
       )}
     </div>
   );
@@ -349,13 +424,13 @@ const SECTIONS: { key: Source; label: string; blurb: string }[] = [
   {
     key: 'webhook',
     label: 'Webhooks',
-    blurb: 'Everything posted to your webhook endpoints, next to what Michael sent back.'
+    blurb: 'Everything posted to your webhook endpoints, next to what Michael sent back.',
   },
   {
     key: 'org',
     label: 'Organization',
-    blurb: 'Messages from your teammates’ clone nodes, next to what Michael sent back.'
-  }
+    blurb: 'Messages from your teammates’ clone nodes, next to what Michael sent back.',
+  },
 ];
 
 /* ──────────────────────────────── the tab ────────────────────────────────── */
@@ -373,51 +448,70 @@ export function TriggerHistoryTab() {
     if (!list) return;
     list()
       .then((rows) => setEntries(Array.isArray(rows) ? rows : []))
-      .catch(() => { /* main not ready; the update event will bring us back */ });
+      .catch(() => {
+        /* main not ready; the update event will bring us back */
+      });
   }, []);
 
   useEffect(() => {
     load();
     // Same shape as onMissionsUpdated: subscribe, get an unsubscribe back.
     const off = api().onTriggerHistoryUpdated?.(load);
-    return () => { if (typeof off === 'function') off(); };
+    return () => {
+      if (typeof off === 'function') off();
+    };
   }, [load]);
 
   const toggle = useCallback((id: string) => {
     setExpanded((e) => ({ ...e, [id]: !e[id] }));
   }, []);
 
-  const decide = useCallback((id: string, decision: 'approved' | 'rejected') => {
-    const call = api().decideTriggerHistory;
-    if (!call) return;
-    setBusy((b) => ({ ...b, [id]: true }));
-    setError(null);
-    // Optimistic: the row's verdict is the operator's own input, so it should
-    // land the instant they click. The update event reconciles either way.
-    setEntries((rows) => rows.map((r) => (r.id === id ? { ...r, decision } : r)));
-    call({ id, decision })
-      .then((res) => {
-        if (res && res.ok === false) {
-          setError(res.error || 'That did not go through. Try again.');
+  const decide = useCallback(
+    (id: string, decision: 'approved' | 'rejected') => {
+      const call = api().decideTriggerHistory;
+      if (!call) return;
+      setBusy((b) => ({ ...b, [id]: true }));
+      setError(null);
+      // Optimistic: the row's verdict is the operator's own input, so it should
+      // land the instant they click. The update event reconciles either way.
+      setEntries((rows) => rows.map((r) => (r.id === id ? { ...r, decision } : r)));
+      call({ id, decision })
+        .then((res) => {
+          if (res && res.ok === false) {
+            setError(res.error || 'That did not go through. Try again.');
+            load();
+          }
+        })
+        .catch(() => {
+          setError('That did not go through. Try again.');
           load();
-        }
-      })
-      .catch(() => { setError('That did not go through. Try again.'); load(); })
-      .finally(() => setBusy((b) => { const n = { ...b }; delete n[id]; return n; }));
-  }, [load]);
+        })
+        .finally(() =>
+          setBusy((b) => {
+            const n = { ...b };
+            delete n[id];
+            return n;
+          }),
+        );
+    },
+    [load],
+  );
 
   const clear = useCallback(() => {
     const call = api().clearTriggerHistory;
     setConfirmClear(false);
     if (!call) return;
     setEntries((rows) => rows.filter((r) => r.source !== source));
-    call(source).catch(() => { setError('Could not clear it. Try again.'); load(); });
+    call(source).catch(() => {
+      setError('Could not clear it. Try again.');
+      load();
+    });
   }, [source, load]);
 
   const counts = useMemo(() => {
     const c: Record<Source, { total: number; pending: number }> = {
       webhook: { total: 0, pending: 0 },
-      org: { total: 0, pending: 0 }
+      org: { total: 0, pending: 0 },
     };
     for (const e of entries) {
       const bucket = c[e.source];
@@ -430,22 +524,31 @@ export function TriggerHistoryTab() {
 
   const exchanges = useMemo(
     () => buildExchanges(entries.filter((e) => e.source === source)),
-    [entries, source]
+    [entries, source],
   );
 
   const section = SECTIONS.find((s) => s.key === source) ?? SECTIONS[0];
   const pendingCount = counts[source].pending;
 
   return (
-    <div style={{
-      flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
-      background: 'var(--cth-paper-200)'
-    }}>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--cth-paper-200)',
+      }}
+    >
       {/* Section switcher — the panel is too narrow to stack both lists. */}
-      <div style={{
-        display: 'flex', flexShrink: 0,
-        background: 'var(--cth-cream-200)', boxShadow: 'inset 0 -1px 0 var(--cth-ink-300)'
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          flexShrink: 0,
+          background: 'var(--cth-cream-200)',
+          boxShadow: 'inset 0 -1px 0 var(--cth-ink-300)',
+        }}
+      >
         {SECTIONS.map((s) => {
           const active = s.key === source;
           const p = counts[s.key].pending;
@@ -453,40 +556,71 @@ export function TriggerHistoryTab() {
             <button
               key={s.key}
               type="button"
-              onClick={() => { setSource(s.key); setConfirmClear(false); setError(null); }}
+              onClick={() => {
+                setSource(s.key);
+                setConfirmClear(false);
+                setError(null);
+              }}
               style={{
-                flex: 1, height: 32, padding: '0 8px', border: 'none', cursor: 'pointer',
+                flex: 1,
+                height: 32,
+                padding: '0 8px',
+                border: 'none',
+                cursor: 'pointer',
                 background: active ? 'var(--cth-paper-200)' : 'transparent',
                 boxShadow: active ? 'inset 0 -2px 0 var(--cth-ink-900)' : 'none',
-                fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '12px',
+                fontFamily: 'var(--cth-font-display)',
+                fontSize: 9,
+                lineHeight: '12px',
                 color: active ? 'var(--cth-ink-900)' : 'var(--cth-ink-500)',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                minWidth: 0
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                minWidth: 0,
               }}
             >
               <span style={ellipsis}>{s.label.toUpperCase()}</span>
               {p > 0 && (
-                <span style={{
-                  ...badgeStyle('var(--cth-lemon-light)', 'var(--cth-lemon)'),
-                  padding: '2px 4px 1px'
-                }}>{p}</span>
+                <span
+                  style={{
+                    ...badgeStyle('var(--cth-lemon-light)', 'var(--cth-lemon)'),
+                    padding: '2px 4px 1px',
+                  }}
+                >
+                  {p}
+                </span>
               )}
             </button>
           );
         })}
       </div>
 
-      <div style={{
-        flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden',
-        padding: 8, display: 'flex', flexDirection: 'column', gap: 8
-      }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: 8,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
+      >
         <div style={{ ...muted, fontSize: 11, lineHeight: '16px' }}>{section.blurb}</div>
 
         {pendingCount > 0 && (
-          <div style={{
-            background: 'var(--cth-lemon-light)', boxShadow: 'inset 0 0 0 1px var(--cth-lemon)',
-            padding: '6px 8px', ...uiText, fontSize: 11, lineHeight: '16px'
-          }}>
+          <div
+            style={{
+              background: 'var(--cth-lemon-light)',
+              boxShadow: 'inset 0 0 0 1px var(--cth-lemon)',
+              padding: '6px 8px',
+              ...uiText,
+              fontSize: 11,
+              lineHeight: '16px',
+            }}
+          >
             {pendingCount === 1
               ? 'One message is held, waiting on your yes or no.'
               : `${pendingCount} messages are held, waiting on your yes or no.`}
@@ -494,26 +628,38 @@ export function TriggerHistoryTab() {
         )}
 
         {error && (
-          <div style={{
-            background: 'var(--cth-coral-light)', boxShadow: 'inset 0 0 0 1px var(--cth-coral)',
-            padding: '6px 8px', ...uiText, fontSize: 11, lineHeight: '16px'
-          }}>{error}</div>
+          <div
+            style={{
+              background: 'var(--cth-coral-light)',
+              boxShadow: 'inset 0 0 0 1px var(--cth-coral)',
+              padding: '6px 8px',
+              ...uiText,
+              fontSize: 11,
+              lineHeight: '16px',
+            }}
+          >
+            {error}
+          </div>
         )}
 
         {exchanges.length === 0 ? (
           source === 'org' ? (
             <EmptyState
               title="Nothing here yet, and nothing is broken."
-              body={'Teammate messaging is not built yet. You can set an org key and pick a mode '
-                + 'today, but no one’s clone node can reach yours until the transport ships. '
-                + 'When it does, their messages and our replies land here.'}
+              body={
+                'Teammate messaging is not built yet. You can set an org key and pick a mode ' +
+                'today, but no one’s clone node can reach yours until the transport ships. ' +
+                'When it does, their messages and our replies land here.'
+              }
             />
           ) : (
             <EmptyState
               title="No webhook messages yet."
-              body={'When something posts to one of your endpoints, it lands here with Michael’s '
-                + 'reply underneath. Nothing has called in so far. Add an endpoint under Webhooks to '
-                + 'get a URL you can hand out.'}
+              body={
+                'When something posts to one of your endpoints, it lands here with Michael’s ' +
+                'reply underneath. Nothing has called in so far. Add an endpoint under Webhooks to ' +
+                'get a URL you can hand out.'
+              }
             />
           )
         ) : (
@@ -534,11 +680,13 @@ export function TriggerHistoryTab() {
             {confirmClear ? (
               <>
                 <div style={{ ...muted, fontSize: 11, lineHeight: '16px' }}>
-                  Delete all {counts[source].total} {section.label.toLowerCase()} messages? The record
-                  is gone for good.
+                  Delete all {counts[source].total} {section.label.toLowerCase()} messages? The
+                  record is gone for good.
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
-                  <PixelButton variant="destructive" size="sm" onClick={clear}>delete them</PixelButton>
+                  <PixelButton variant="destructive" size="sm" onClick={clear}>
+                    delete them
+                  </PixelButton>
                   <PixelButton variant="ghost" size="sm" onClick={() => setConfirmClear(false)}>
                     keep them
                   </PixelButton>

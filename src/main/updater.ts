@@ -45,7 +45,7 @@ import { reduceStatus, clampPercent, isNewer, type UpdateStatus } from '../share
 
 const REPO = 'chaitanyagiri/munder-difflin';
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
-const FALLBACK_CACHE_MS = 60 * 60 * 1000;     // 1h between releases/latest polls
+const FALLBACK_CACHE_MS = 60 * 60 * 1000; // 1h between releases/latest polls
 
 export type { UpdateStatus };
 
@@ -64,12 +64,18 @@ function logLine(msg: string): void {
     const dir = app.getPath('userData');
     mkdirSync(dir, { recursive: true });
     appendFileSync(join(dir, 'updater.log'), line);
-  } catch { /* logging must never take the app down */ }
+  } catch {
+    /* logging must never take the app down */
+  }
 }
 
 function emit(status: UpdateStatus): void {
   lastStatus = reduceStatus(lastStatus, status);
-  try { sendTo?.()?.send('update:status', lastStatus); } catch { /* window tore down */ }
+  try {
+    sendTo?.()?.send('update:status', lastStatus);
+  } catch {
+    /* window tore down */
+  }
 }
 
 function autoUpdateEnabled(): boolean {
@@ -127,12 +133,15 @@ function fallbackCheck(reason: string | undefined, force = false): void {
         path: `/repos/${REPO}/releases/latest`,
         method: 'GET',
         headers: { 'User-Agent': 'munder-difflin-updater', Accept: 'application/vnd.github+json' },
-        timeout: 10_000
+        timeout: 10_000,
       },
       (res) => {
         let body = '';
         res.setEncoding('utf8');
-        res.on('data', (d) => { body += d; if (body.length > 262_144) req.destroy(); });
+        res.on('data', (d) => {
+          body += d;
+          if (body.length > 262_144) req.destroy();
+        });
         res.on('end', () => {
           try {
             const rel = JSON.parse(body) as { tag_name?: string; html_url?: string };
@@ -142,17 +151,23 @@ function fallbackCheck(reason: string | undefined, force = false): void {
                 state: 'available-manual',
                 version: tag.replace(/^v/, ''),
                 url: rel.html_url ?? `https://github.com/${REPO}/releases/latest`,
-                reason
+                reason,
               });
             }
-          } catch { /* malformed body — try again next interval */ }
+          } catch {
+            /* malformed body — try again next interval */
+          }
         });
-      }
+      },
     );
     req.on('timeout', () => req.destroy());
-    req.on('error', () => { /* offline — try again next interval */ });
+    req.on('error', () => {
+      /* offline — try again next interval */
+    });
     req.end();
-  } catch { /* never let the fallback take the app down */ }
+  } catch {
+    /* never let the fallback take the app down */
+  }
 }
 
 /**
@@ -217,11 +232,13 @@ export function initAutoUpdater(getWebContents: () => WebContents | null): void 
     }
   });
   ipcMain.handle('update:checkNow', async () => {
-    if (!app.isPackaged) return { ok: false, error: 'dev build — updates are only checked in packaged apps' };
+    if (!app.isPackaged)
+      return { ok: false, error: 'dev build — updates are only checked in packaged apps' };
     return runCheck();
   });
   ipcMain.handle('update:download', async () => {
-    if (!app.isPackaged) return { ok: false, error: 'dev build — updates are only downloaded in packaged apps' };
+    if (!app.isPackaged)
+      return { ok: false, error: 'dev build — updates are only downloaded in packaged apps' };
     return runDownload();
   });
   /** Re-serve the last known status to a freshly loaded window. */
@@ -245,15 +262,24 @@ export function initAutoUpdater(getWebContents: () => WebContents | null): void 
       autoUpdater.autoInstallOnAppQuit = false; // install ONLY on explicit restart
       autoUpdater.on('update-available', (info) => {
         logLine(`update available: ${info.version}`);
-        emit({ state: 'available', version: info.version, notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined });
+        emit({
+          state: 'available',
+          version: info.version,
+          notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+        });
       });
       autoUpdater.on('download-progress', (p) => {
-        const version = lastStatus && 'version' in lastStatus ? lastStatus.version : app.getVersion();
+        const version =
+          lastStatus && 'version' in lastStatus ? lastStatus.version : app.getVersion();
         emit({ state: 'downloading', version, percent: clampPercent(p.percent) });
       });
       autoUpdater.on('update-downloaded', (info) => {
         logLine(`update downloaded: ${info.version} — waiting for the user to restart`);
-        emit({ state: 'downloaded', version: info.version, notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined });
+        emit({
+          state: 'downloaded',
+          version: info.version,
+          notes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
+        });
       });
       autoUpdater.on('error', (err) => {
         const message = errText(err);
@@ -271,7 +297,9 @@ export function initAutoUpdater(getWebContents: () => WebContents | null): void 
       emit({ state: 'error', message });
     }
 
-    const tick = (): void => { if (autoUpdateEnabled()) void runCheck(); };
+    const tick = (): void => {
+      if (autoUpdateEnabled()) void runCheck();
+    };
     // First check shortly after boot (don't compete with spawn/startup I/O),
     // then every CHECK_INTERVAL_MS.
     setTimeout(tick, 30_000);

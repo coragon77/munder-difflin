@@ -22,26 +22,45 @@ const ts = require('typescript');
 const SRC = path.join(__dirname, '..', 'src', 'main', 'breaker.ts');
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'breaker-identity-'));
 const js = ts.transpileModule(fs.readFileSync(SRC, 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 fs.writeFileSync(path.join(out, 'breaker.js'), js, 'utf8');
 const { CircuitBreaker } = require(path.join(out, 'breaker.js'));
 
 let failures = 0;
 function test(name, fn) {
-  try { fn(); console.log(`  ok  ${name}`); }
-  catch (e) { failures++; console.error(`FAIL  ${name}\n      ${e.message}`); }
+  try {
+    fn();
+    console.log(`  ok  ${name}`);
+  } catch (e) {
+    failures++;
+    console.error(`FAIL  ${name}\n      ${e.message}`);
+  }
 }
 
 function makeBreaker(over = {}) {
   return new CircuitBreaker(() => ({
-    enabled: true, hardStop: false, repeatedToolLimit: 8, errorStormLimit: 5,
-    tokenVelocityPerMin: 60000, ...over
+    enabled: true,
+    hardStop: false,
+    repeatedToolLimit: 8,
+    errorStormLimit: 5,
+    tokenVelocityPerMin: 60000,
+    ...over,
   }));
 }
 
 function sample(agentId, ts, output, input = 1000) {
-  return { agentId, sessionId: 's1', ts, input, output, cacheRead: 0, cacheCreation: 0, model: 'm', usd: 0 };
+  return {
+    agentId,
+    sessionId: 's1',
+    ts,
+    input,
+    output,
+    cacheRead: 0,
+    cacheCreation: 0,
+    model: 'm',
+    usd: 0,
+  };
 }
 
 const T0 = 1_000_000_000_000;
@@ -81,7 +100,8 @@ test('distinct commands differing only AFTER the 250-char cap stay distinct', ()
   const b = makeBreaker();
   const prefix = `cd ${'/deeply/nested/monorepo/segment'.repeat(10)} && grep -rn `;
   assert.ok(prefix.length > 250, 'fixture must exceed the string cap');
-  for (let i = 0; i < 10; i++) b.recordToolUse('a', 'Bash', { command: `${prefix}needle${i} src/` });
+  for (let i = 0; i < 10; i++)
+    b.recordToolUse('a', 'Bash', { command: `${prefix}needle${i} src/` });
   const d = beat(b, 'a', null, true, T0, true);
   assert.equal(d.state.level, 'healthy', `reason: ${d.state.reason}`);
 });

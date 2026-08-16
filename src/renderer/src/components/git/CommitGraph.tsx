@@ -83,7 +83,7 @@ export function CommitGraph({ commits, currentBranch, onCommitClick }: CommitGra
     return {
       rows: layout.rows,
       railW: lanes * LANE_W + 8,
-      rowIndex: idx
+      rowIndex: idx,
     };
   }, [commits]);
 
@@ -116,23 +116,23 @@ export function CommitGraph({ commits, currentBranch, onCommitClick }: CommitGra
                 <path
                   key={`${r.sha}-${p.sha}`}
                   d={`M ${x1} ${y1} L ${x1} ${height}`}
-                  stroke={color} strokeWidth={1.5} fill="none" opacity={0.5}
+                  stroke={color}
+                  strokeWidth={1.5}
+                  fill="none"
+                  opacity={0.5}
                 />
               );
             }
             const x2 = laneX(p.lane);
             const y2 = rowY(j);
-            const d = x1 === x2
-              ? `M ${x1} ${y1} L ${x2} ${y2}`
-              // Straight down the child's lane, then a quarter-turn into the
-              // parent — the shape a git graph is expected to make.
-              : `M ${x1} ${y1} L ${x1} ${y2 - BEND} Q ${x1} ${y2} ${x2} ${y2}`;
+            const d =
+              x1 === x2
+                ? `M ${x1} ${y1} L ${x2} ${y2}`
+                : // Straight down the child's lane, then a quarter-turn into the
+                  // parent — the shape a git graph is expected to make.
+                  `M ${x1} ${y1} L ${x1} ${y2 - BEND} Q ${x1} ${y2} ${x2} ${y2}`;
             return (
-              <path
-                key={`${r.sha}-${p.sha}`}
-                d={d}
-                stroke={color} strokeWidth={1.5} fill="none"
-              />
+              <path key={`${r.sha}-${p.sha}`} d={d} stroke={color} strokeWidth={1.5} fill="none" />
             );
           });
         })}
@@ -169,30 +169,51 @@ export function CommitGraph({ commits, currentBranch, onCommitClick }: CommitGra
               cursor: onCommitClick ? 'pointer' : 'default',
               fontSize: 12,
               lineHeight: `${ROW_H}px`,
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
             }}
           >
-            <span style={{
-              fontFamily: 'var(--cth-font-mono)', color: 'var(--cth-ink-500)', flexShrink: 0
-            }}>{c.shortSha}</span>
+            <span
+              style={{
+                fontFamily: 'var(--cth-font-mono)',
+                color: 'var(--cth-ink-500)',
+                flexShrink: 0,
+              }}
+            >
+              {c.shortSha}
+            </span>
 
             {/* The subject is the point of the list, so it is the one thing that
                 gets the leftover width — and the only one allowed to ellipse. */}
-            <span style={{
-              flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
-              color: 'var(--cth-ink-900)'
-            }}>{c.subject}</span>
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                color: 'var(--cth-ink-900)',
+              }}
+            >
+              {c.subject}
+            </span>
 
             {head && (
-              <span style={{
-                flexShrink: 1, minWidth: 0, maxWidth: '38%',
-                overflow: 'hidden', textOverflow: 'ellipsis',
-                padding: '0 5px', fontSize: 11,
-                fontFamily: 'var(--cth-font-mono)',
-                color: isCurrent ? 'var(--cth-ink-900)' : 'var(--cth-ink-700)',
-                background: isCurrent ? 'var(--cth-lemon-light)' : 'transparent',
-                boxShadow: `inset 0 0 0 1px ${isCurrent ? 'var(--cth-lemon)' : 'var(--cth-ink-300)'}`
-              }}>{head}</span>
+              <span
+                style={{
+                  flexShrink: 1,
+                  minWidth: 0,
+                  maxWidth: '38%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  padding: '0 5px',
+                  fontSize: 11,
+                  fontFamily: 'var(--cth-font-mono)',
+                  color: isCurrent ? 'var(--cth-ink-900)' : 'var(--cth-ink-700)',
+                  background: isCurrent ? 'var(--cth-lemon-light)' : 'transparent',
+                  boxShadow: `inset 0 0 0 1px ${isCurrent ? 'var(--cth-lemon)' : 'var(--cth-ink-300)'}`,
+                }}
+              >
+                {head}
+              </span>
             )}
             {refs.length > 1 && (
               <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--cth-ink-500)' }}>
@@ -200,10 +221,16 @@ export function CommitGraph({ commits, currentBranch, onCommitClick }: CommitGra
               </span>
             )}
 
-            <span style={{
-              flexShrink: 0, fontFamily: 'var(--cth-font-mono)',
-              fontSize: 11, color: 'var(--cth-ink-500)'
-            }}>{relTime(c.time * 1000)}</span>
+            <span
+              style={{
+                flexShrink: 0,
+                fontFamily: 'var(--cth-font-mono)',
+                fontSize: 11,
+                color: 'var(--cth-ink-500)',
+              }}
+            >
+              {relTime(c.time * 1000)}
+            </span>
           </div>
         );
       })}

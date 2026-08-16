@@ -145,7 +145,10 @@ export class WebhookServer {
   private tunnelUrl: string | null = null;
   private readonly port: number;
   private endpoints = new Map<string, WebhookEndpoint>();
-  private readonly onMessage: (msg: WebhookInbound, endpoint: WebhookEndpointRef) => WebhookDispatch | null;
+  private readonly onMessage: (
+    msg: WebhookInbound,
+    endpoint: WebhookEndpointRef,
+  ) => WebhookDispatch | null;
   private readonly lookupStatus: (token: string) => WebhookTaskStatus | null;
   /** Compared against when the requested id doesn't exist, purely so the failure
    *  path does the same work as a wrong-secret failure. Random per process and
@@ -172,7 +175,8 @@ export class WebhookServer {
   setEndpoints(list: WebhookEndpoint[]): void {
     const next = new Map<string, WebhookEndpoint>();
     for (const e of list) {
-      if (!e || typeof e.id !== 'string' || !e.id || typeof e.secret !== 'string' || !e.secret) continue;
+      if (!e || typeof e.id !== 'string' || !e.id || typeof e.secret !== 'string' || !e.secret)
+        continue;
       next.set(e.id, e);
     }
     this.endpoints = next;
@@ -232,7 +236,11 @@ export class WebhookServer {
    *  Note: tunnelmole has no documented close handle; teardown is best-effort. */
   stop(): void {
     this.tunnelUrl = null;
-    try { this.server?.close(); } catch { /* noop */ }
+    try {
+      this.server?.close();
+    } catch {
+      /* noop */
+    }
     this.server = null;
   }
 
@@ -256,8 +264,14 @@ export class WebhookServer {
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('timed out')), TUNNEL_START_TIMEOUT_MS);
       tunnelmole({ port: this.port })
-        .then((url) => { clearTimeout(timer); resolve(url); })
-        .catch((e) => { clearTimeout(timer); reject(e); });
+        .then((url) => {
+          clearTimeout(timer);
+          resolve(url);
+        })
+        .catch((e) => {
+          clearTimeout(timer);
+          reject(e);
+        });
     });
   }
 
@@ -275,17 +289,28 @@ export class WebhookServer {
 
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
     // Rate limit first — cheapest possible rejection, ahead of any work.
-    if (!this.allowRequest('', RATE_LIMIT)) { json(res, 429, { ok: false, error: 'rate limited' }); return; }
+    if (!this.allowRequest('', RATE_LIMIT)) {
+      json(res, 429, { ok: false, error: 'rate limited' });
+      return;
+    }
     const id = readEndpointId(req);
-    const endpoint = id !== null ? this.endpoints.get(id) ?? null : null;
+    const endpoint = id !== null ? (this.endpoints.get(id) ?? null) : null;
     // Per-endpoint budget, with every unknown id sharing one bucket (see UNKNOWN_BUCKET).
     if (!this.allowRequest(endpoint ? endpoint.id : UNKNOWN_BUCKET, PER_ENDPOINT_RATE_LIMIT)) {
-      json(res, 429, { ok: false, error: 'rate limited' }); return;
+      json(res, 429, { ok: false, error: 'rate limited' });
+      return;
     }
     const method = req.method ?? '';
-    if (method === 'GET') { this.handleStatus(req, res, endpoint); return; }
-    if (method === 'POST') { this.handleCreate(req, res, endpoint); return; }
-    res.writeHead(405); res.end();
+    if (method === 'GET') {
+      this.handleStatus(req, res, endpoint);
+      return;
+    }
+    if (method === 'POST') {
+      this.handleCreate(req, res, endpoint);
+      return;
+    }
+    res.writeHead(405);
+    res.end();
   }
 
   /**
@@ -296,24 +321,50 @@ export class WebhookServer {
    * webhook" measurably cheaper than "no such token", which is exactly the signal
    * an id-enumeration probe is looking for.
    */
-  private handleStatus(req: IncomingMessage, res: ServerResponse, endpoint: WebhookEndpoint | null): void {
+  private handleStatus(
+    req: IncomingMessage,
+    res: ServerResponse,
+    endpoint: WebhookEndpoint | null,
+  ): void {
     const token = readToken(req);
-    if (!token) { json(res, 401, { ok: false, error: 'token required' }); return; }
+    if (!token) {
+      json(res, 401, { ok: false, error: 'token required' });
+      return;
+    }
     let status: WebhookTaskStatus | null = null;
-    try { status = this.lookupStatus(token); }
-    catch { json(res, 500, { ok: false, error: 'lookup failed' }); return; }
+    try {
+      status = this.lookupStatus(token);
+    } catch {
+      json(res, 500, { ok: false, error: 'lookup failed' });
+      return;
+    }
     // 404 for an unknown token — identical to a malformed one and to an unknown
     // endpoint id, so a probe can't distinguish any of the three (no enumeration).
-    if (!status || !endpoint) { json(res, 404, { ok: false, error: 'not found' }); return; }
-    json(res, 200, { ok: true, status: status.status, title: status.title, result: status.result ?? null });
+    if (!status || !endpoint) {
+      json(res, 404, { ok: false, error: 'not found' });
+      return;
+    }
+    json(res, 200, {
+      ok: true,
+      status: status.status,
+      title: status.title,
+      result: status.result ?? null,
+    });
   }
 
   /** POST — verify this endpoint's secret, then buffer + validate + dispatch. */
-  private handleCreate(req: IncomingMessage, res: ServerResponse, endpoint: WebhookEndpoint | null): void {
+  private handleCreate(
+    req: IncomingMessage,
+    res: ServerResponse,
+    endpoint: WebhookEndpoint | null,
+  ): void {
     // Authenticate BEFORE reading the body so an unauthenticated peer can't even
     // make us buffer (within the size cap). 401 on any failure — no detail leaked,
     // and an unknown id lands here too so it is answered identically.
-    if (!this.verifySecret(req, endpoint) || !endpoint) { json(res, 401, { ok: false, error: 'unauthorized' }); return; }
+    if (!this.verifySecret(req, endpoint) || !endpoint) {
+      json(res, 401, { ok: false, error: 'unauthorized' });
+      return;
+    }
 
     const chunks: Buffer[] = [];
     let size = 0;
@@ -321,27 +372,42 @@ export class WebhookServer {
     req.on('data', (c: Buffer) => {
       if (aborted) return;
       size += c.length;
-      if (size > MAX_BODY_BYTES) { aborted = true; json(res, 413, { ok: false, error: 'too large' }); req.destroy(); return; }
+      if (size > MAX_BODY_BYTES) {
+        aborted = true;
+        json(res, 413, { ok: false, error: 'too large' });
+        req.destroy();
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => {
       if (aborted) return;
       let parsed: unknown;
-      try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-      catch { json(res, 400, { ok: false, error: 'bad json' }); return; }
+      try {
+        parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      } catch {
+        json(res, 400, { ok: false, error: 'bad json' });
+        return;
+      }
 
       // The endpoint's own schema decides what a valid body is. Echoing the
       // validator's message is safe: it describes the CALLER's payload and can
       // never contain our secret (the schema is the operator's own document).
       const check = validateAgainstSchema(parsed, parseSchema(endpoint.schema));
-      if (!check.ok) { json(res, 400, { ok: false, error: check.error }); return; }
+      if (!check.ok) {
+        json(res, 400, { ok: false, error: check.error });
+        return;
+      }
 
       const body = (parsed ?? {}) as Record<string, unknown>;
       // `message` is required regardless of what the user's schema says — it is
       // the one field the router cannot work without, so a schema edited to drop
       // it fails here rather than producing an empty card.
       const message = typeof body.message === 'string' ? body.message.trim() : '';
-      if (!message) { json(res, 400, { ok: false, error: 'message required' }); return; }
+      if (!message) {
+        json(res, 400, { ok: false, error: 'message required' });
+        return;
+      }
       const inbound: WebhookInbound = { message };
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (title) inbound.title = title;
@@ -350,9 +416,16 @@ export class WebhookServer {
       if (from) inbound.from = from;
 
       let out: WebhookDispatch | null = null;
-      try { out = this.onMessage(inbound, { id: endpoint.id, name: endpoint.name }); }
-      catch { json(res, 500, { ok: false, error: 'could not create task' }); return; }
-      if (!out) { json(res, 500, { ok: false, error: 'could not create task' }); return; }
+      try {
+        out = this.onMessage(inbound, { id: endpoint.id, name: endpoint.name });
+      } catch {
+        json(res, 500, { ok: false, error: 'could not create task' });
+        return;
+      }
+      if (!out) {
+        json(res, 500, { ok: false, error: 'could not create task' });
+        return;
+      }
       // 202, not 200: the message was accepted but no work has started. The caller
       // still gets its token so it can poll the hold, and the GET reports the hold
       // honestly rather than pretending a task is queued.
@@ -362,13 +435,22 @@ export class WebhookServer {
           pending: true,
           status: 'awaiting-approval',
           token: out.token,
-          detail: 'accepted — waiting for the operator to approve it before the hive sees it'
+          detail: 'accepted — waiting for the operator to approve it before the hive sees it',
         });
         return;
       }
       json(res, 200, { ok: true, token: out.token, taskId: out.taskId });
     });
-    req.on('error', () => { if (!aborted) { try { res.writeHead(400); res.end(); } catch { /* socket gone */ } } });
+    req.on('error', () => {
+      if (!aborted) {
+        try {
+          res.writeHead(400);
+          res.end();
+        } catch {
+          /* socket gone */
+        }
+      }
+    });
   }
 
   /**
@@ -398,12 +480,19 @@ export class WebhookServer {
  */
 function readEndpointId(req: IncomingMessage): string | null {
   let pathname: string;
-  try { pathname = new URL(req.url ?? '/', 'http://localhost').pathname; }
-  catch { return null; }
+  try {
+    pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+  } catch {
+    return null;
+  }
   const segments = pathname.split('/').filter((s) => s.length > 0);
   if (segments.length === 0) return LEGACY_ENDPOINT_ID;
   if (segments.length > 1) return null;
-  try { return decodeURIComponent(segments[0]); } catch { return segments[0]; }
+  try {
+    return decodeURIComponent(segments[0]);
+  } catch {
+    return segments[0];
+  }
 }
 
 /** Parse the endpoint's stored schema. An unparseable one yields `undefined`,
@@ -411,7 +500,11 @@ function readEndpointId(req: IncomingMessage): string | null {
  *  lock a caller out of an endpoint they hold a valid secret for. */
 function parseSchema(schema: string): unknown {
   if (typeof schema !== 'string' || !schema.trim()) return undefined;
-  try { return JSON.parse(schema); } catch { return undefined; }
+  try {
+    return JSON.parse(schema);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Pull the capability token from the `x-md-webhook-token` header, falling back
@@ -423,7 +516,9 @@ function readToken(req: IncomingMessage): string {
     const url = new URL(req.url ?? '', 'http://localhost');
     const q = url.searchParams.get('token');
     if (q && q.trim()) return q.trim();
-  } catch { /* malformed url → no token */ }
+  } catch {
+    /* malformed url → no token */
+  }
   return '';
 }
 
@@ -431,7 +526,9 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   try {
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(body));
-  } catch { /* socket already gone */ }
+  } catch {
+    /* socket already gone */
+  }
 }
 
 function errMsg(e: unknown): string {

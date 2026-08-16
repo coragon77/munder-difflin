@@ -40,7 +40,7 @@ const SPEED = 48; // pixels/sec (tileSize=16)
 // are pushed into the desk instead.
 const SIT_OFFSET = 5;
 const SIT_OFFSET_DOWN = 12;
-const SIT_OFFSET_UP = 5;   // up-facing: drop the body down onto the chair
+const SIT_OFFSET_UP = 5; // up-facing: drop the body down onto the chair
 const SIT_OFFSET_SIDE = 4; // left/right: a smaller drop plus the sideways tuck
 // Pixels cropped off the bottom of the 32px sprite while seated. Up/side seats
 // trim just the feet so most of the torso shows and fills the chair seat; the
@@ -111,8 +111,8 @@ export class Character {
   // ── Office-life effects (cheer / coffee / watering) ────────────────────────
   /** Effect layer riding on the sprite: confetti, the carried cup, droplets. */
   private fx: Graphics;
-  private fxDirty = false;            // fx drew last frame → needs a clear when idle
-  private cheerT = -1;                // -1 = not cheering
+  private fxDirty = false; // fx drew last frame → needs a clear when idle
+  private cheerT = -1; // -1 = not cheering
   private confetti: Array<{ x: number; y: number; vx: number; vy: number; c: number }> = [];
   private carryingCup = false;
   /** The cup parked on this agent's desk (world-positioned, lives in the char
@@ -120,10 +120,10 @@ export class Character {
   private deskCup: Graphics;
   private deskCupOn = false;
   private cupSpot: { x: number; y: number } | null = null;
-  private waterT = -1;                // -1 = not watering
+  private waterT = -1; // -1 = not watering
   private waterDur = 0;
   private onWaterDone: (() => void) | null = null;
-  private smokeT = -1;                // -1 = not smoking (the boss's cigar)
+  private smokeT = -1; // -1 = not smoking (the boss's cigar)
   private smokeDur = 0;
   private onSmokeDone: (() => void) | null = null;
 
@@ -147,7 +147,7 @@ export class Character {
     // otherwise push his bubble off the top/left map edge.
     this.thoughtBubble.setBounds(
       this.mapRenderer.width * this.mapRenderer.tileSize,
-      this.mapRenderer.height * this.mapRenderer.tileSize
+      this.mapRenderer.height * this.mapRenderer.tileSize,
     );
 
     this.workGlow = new Graphics();
@@ -167,9 +167,15 @@ export class Character {
     this.deskCup.visible = false;
   }
 
-  getAnimation(): CharacterAnimation { return this.state; }
-  getDeskTile(): { x: number; y: number } { return this.deskTile; }
-  getPixelPosition(): { x: number; y: number } { return { x: this.px, y: this.py }; }
+  getAnimation(): CharacterAnimation {
+    return this.state;
+  }
+  getDeskTile(): { x: number; y: number } {
+    return this.deskTile;
+  }
+  getPixelPosition(): { x: number; y: number } {
+    return { x: this.px, y: this.py };
+  }
 
   getTilePosition(): { x: number; y: number } {
     return this.mapRenderer.pixelToTile(this.px, this.py - 1);
@@ -203,7 +209,7 @@ export class Character {
    *  `working` toggles the pulsing focus halo. This is the default pose — agents
    *  stay seated unless blocked. */
   sitAtDesk(working: boolean): void {
-    this.idleLoop = false;     // an explicit desk command ends the idle loop
+    this.idleLoop = false; // an explicit desk command ends the idle loop
     this.walkToDeskAndSit(working);
   }
 
@@ -240,12 +246,23 @@ export class Character {
     this.sprite.setAnimation('idle', dir);
     // Slide toward the desk so the agent tucks in instead of floating in the
     // aisle, then crop the legs so they read as seated (no standing legs).
-    let dx = 0, dy = 0;
+    let dx = 0,
+      dy = 0;
     switch (dir) {
-      case 'down':  dy = SIT_OFFSET_DOWN; break;
-      case 'up':    dy = SIT_OFFSET_UP; break;
-      case 'left':  dx = -SIT_OFFSET; dy = SIT_OFFSET_SIDE; break;
-      case 'right': dx = SIT_OFFSET; dy = SIT_OFFSET_SIDE; break;
+      case 'down':
+        dy = SIT_OFFSET_DOWN;
+        break;
+      case 'up':
+        dy = SIT_OFFSET_UP;
+        break;
+      case 'left':
+        dx = -SIT_OFFSET;
+        dy = SIT_OFFSET_SIDE;
+        break;
+      case 'right':
+        dx = SIT_OFFSET;
+        dy = SIT_OFFSET_SIDE;
+        break;
     }
     this.sprite.setPosition(this.px + dx, this.py + dy);
     this.sprite.setSeatedCrop(dir === 'down' ? SEAT_LEG_CROP : SEAT_BACK_CROP);
@@ -397,7 +414,7 @@ export class Character {
         y: -22 - Math.random() * 6,
         vx: (Math.random() - 0.5) * 46,
         vy: -30 - Math.random() * 40,
-        c: colors[i % colors.length]
+        c: colors[i % colors.length],
       });
     }
   }
@@ -497,7 +514,10 @@ export class Character {
   }
 
   show(parent: Container): void {
-    if (this.hideTimer) { clearTimeout(this.hideTimer); this.hideTimer = null; }
+    if (this.hideTimer) {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
     this.isVisible = true;
     this.sprite.setAlpha(0);
     parent.addChild(this.workGlow);
@@ -513,7 +533,10 @@ export class Character {
   }
 
   hide(delay = 0): void {
-    if (this.hideTimer) { clearTimeout(this.hideTimer); this.hideTimer = null; }
+    if (this.hideTimer) {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
     const begin = () => {
       this.hideTimer = null;
       this.fadeDirection = 'out';
@@ -594,20 +617,28 @@ export class Character {
   /** Carried-cup offset from the feet anchor, per facing direction. */
   private carryOffset(): { x: number; y: number } {
     switch (this.direction) {
-      case 'left':  return { x: -7, y: -9 };
-      case 'right': return { x: 7, y: -9 };
-      case 'up':    return { x: -5, y: -10 };
-      default:      return { x: 5, y: -9 };
+      case 'left':
+        return { x: -7, y: -9 };
+      case 'right':
+        return { x: 7, y: -9 };
+      case 'up':
+        return { x: -5, y: -10 };
+      default:
+        return { x: 5, y: -9 };
     }
   }
 
   /** Hand position while watering, per facing direction. */
   private handOffset(): { x: number; y: number } {
     switch (this.direction) {
-      case 'left':  return { x: -6, y: -9 };
-      case 'right': return { x: 6, y: -9 };
-      case 'up':    return { x: 0, y: -13 };
-      default:      return { x: 0, y: -6 };
+      case 'left':
+        return { x: -6, y: -9 };
+      case 'right':
+        return { x: 6, y: -9 };
+      case 'up':
+        return { x: 0, y: -13 };
+      default:
+        return { x: 0, y: -6 };
     }
   }
 
@@ -627,7 +658,8 @@ export class Character {
       // two staggered steam pixels drifting up and fading
       for (let i = 0; i < 2; i++) {
         const ph = (this.steamT * 0.7 + i * 0.5) % 1;
-        this.deskCup.rect(1 + i * 2, -5 - Math.round(ph * 5), 1, 1)
+        this.deskCup
+          .rect(1 + i * 2, -5 - Math.round(ph * 5), 1, 1)
           .fill({ color: 0xffffff, alpha: 0.5 * (1 - ph) });
       }
     }
@@ -635,7 +667,10 @@ export class Character {
     // ── Sprite-riding effects ────────────────────────────────────────────────
     const active = this.cheerT >= 0 || this.waterT >= 0 || this.smokeT >= 0 || this.carryingCup;
     if (!active) {
-      if (this.fxDirty) { this.fx.clear(); this.fxDirty = false; }
+      if (this.fxDirty) {
+        this.fx.clear();
+        this.fxDirty = false;
+      }
       return;
     }
     this.fx.clear();
@@ -668,7 +703,8 @@ export class Character {
       const o = this.carryOffset();
       this.drawCup(this.fx, o.x, o.y);
       const ph = (this.steamT * 0.9) % 1;
-      this.fx.rect(o.x + 2, o.y - 5 - Math.round(ph * 4), 1, 1)
+      this.fx
+        .rect(o.x + 2, o.y - 5 - Math.round(ph * 4), 1, 1)
         .fill({ color: 0xffffff, alpha: 0.5 * (1 - ph) });
     }
 
@@ -695,8 +731,7 @@ export class Character {
           const ph = (this.smokeT * 0.45 + i / 3) % 1;
           const px2 = tipX + Math.sin((this.smokeT + i * 2) * 1.7) * 2 + ph * 2 * (dirX || 1);
           const py2 = h.y - 3 - ph * 12;
-          this.fx.circle(px2, py2, 1 + ph * 1.5)
-            .fill({ color: 0xcfcad4, alpha: 0.45 * (1 - ph) });
+          this.fx.circle(px2, py2, 1 + ph * 1.5).fill({ color: 0xcfcad4, alpha: 0.45 * (1 - ph) });
         }
       }
     }
@@ -723,7 +758,8 @@ export class Character {
           const dx = dirX !== 0 ? reach * dirX : (i - 1.5) * 1.5;
           const dy = dirY !== 0 ? reach * dirY : 0;
           const fall = ph * ph * 9;
-          this.fx.rect(Math.round(h.x + dx), Math.round(h.y + dy + fall - 2), 1, 2)
+          this.fx
+            .rect(Math.round(h.x + dx), Math.round(h.y + dy + fall - 2), 1, 2)
             .fill({ color: 0x5bb7e8, alpha: 1 - ph * 0.45 });
         }
       }
@@ -757,7 +793,12 @@ export class Character {
     } else if (this.statusGlyph === 'looping') {
       // #5C — orange 4-dot warning ring with one lit dot spinning around it.
       const idx = Math.floor(this.glyphElapsed * 8) % 4;
-      const pts: [number, number][] = [[-3, yTop - 3], [3, yTop - 3], [3, yTop + 3], [-3, yTop + 3]];
+      const pts: [number, number][] = [
+        [-3, yTop - 3],
+        [3, yTop - 3],
+        [3, yTop + 3],
+        [-3, yTop + 3],
+      ];
       for (let i = 0; i < 4; i++) {
         const [x, y] = pts[i];
         g.rect(x - 1, y - 1, 2, 2).fill(i === idx ? 0xff9f43 : 0x6b5878);
@@ -808,7 +849,8 @@ export class Character {
     const step = Math.min(SPEED * dt, dist);
     this.px += (dx / dist) * step;
     this.py += (dy / dist) * step;
-    this.direction = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+    this.direction =
+      Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
     this.sprite.setAnimation('walk', this.direction);
     this.sprite.setPosition(this.px, this.py);
   }
@@ -863,15 +905,18 @@ export class Character {
       const ty = cur.y + Math.floor(Math.random() * range * 2) - range;
       if ((tx !== cur.x || ty !== cur.y) && this.mapRenderer.isWalkable(tx, ty)) {
         const wasWandering = this.wandering;
-        this.moveTo({ x: tx, y: ty });   // moveTo() leaves state='walk'
-        this.wandering = wasWandering;   // keep wandering through the walk
+        this.moveTo({ x: tx, y: ty }); // moveTo() leaves state='walk'
+        this.wandering = wasWandering; // keep wandering through the walk
         return;
       }
     }
   }
 
   destroy(): void {
-    if (this.hideTimer) { clearTimeout(this.hideTimer); this.hideTimer = null; }
+    if (this.hideTimer) {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
     this.thoughtBubble.destroy();
     this.sprite.destroy();
     this.workGlow.destroy();

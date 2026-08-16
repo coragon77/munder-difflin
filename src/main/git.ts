@@ -3,23 +3,39 @@ import { readFile, stat } from 'node:fs/promises';
 import { safeJoin } from './fs';
 
 /** Run git in `cwd` with `args`. Returns stdout text or an error. */
-function runGit(cwd: string, args: string[], timeoutMs = 8000): Promise<{
-  ok: true; stdout: string;
-} | { ok: false; error: string }> {
+function runGit(
+  cwd: string,
+  args: string[],
+  timeoutMs = 8000,
+): Promise<
+  | {
+      ok: true;
+      stdout: string;
+    }
+  | { ok: false; error: string }
+> {
   return new Promise((resolve) => {
     const proc = spawn('git', args, { cwd });
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {
-      try { proc.kill('SIGKILL'); } catch { /* noop */ }
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        /* noop */
+      }
     }, timeoutMs);
-    proc.stdout.on('data', d => { stdout += d.toString(); });
-    proc.stderr.on('data', d => { stderr += d.toString(); });
-    proc.on('error', e => {
+    proc.stdout.on('data', (d) => {
+      stdout += d.toString();
+    });
+    proc.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
+    proc.on('error', (e) => {
       clearTimeout(timer);
       resolve({ ok: false, error: e.message });
     });
-    proc.on('close', code => {
+    proc.on('close', (code) => {
       clearTimeout(timer);
       if (code === 0) resolve({ ok: true, stdout });
       else resolve({ ok: false, error: stderr.trim() || `git exited ${code}` });
@@ -33,7 +49,7 @@ export interface GitBranchInfo {
 }
 export interface GitStatusEntry {
   path: string;
-  index: string;   // staged status char
+  index: string; // staged status char
   worktree: string; // unstaged status char
 }
 export interface GitStatus {
@@ -79,15 +95,15 @@ export async function getStatus(cwd: string): Promise<GitStatus | { error: strin
     else entries.push({ path, index, worktree });
   }
   return {
-    staged: entries.filter(e => e.index !== ' ' && e.index !== '?'),
-    unstaged: entries.filter(e => e.worktree !== ' ' && e.worktree !== '?'),
-    untracked
+    staged: entries.filter((e) => e.index !== ' ' && e.index !== '?'),
+    unstaged: entries.filter((e) => e.worktree !== ' ' && e.worktree !== '?'),
+    untracked,
   };
 }
 
 export async function getLog(cwd: string, n: number): Promise<GitCommit[] | { error: string }> {
-  const sep = '\x1e';   // record separator
-  const fsep = '\x1f';  // field separator
+  const sep = '\x1e'; // record separator
+  const fsep = '\x1f'; // field separator
   const fmt = ['%H', '%P', '%s', '%an', '%at', '%D'].join(fsep) + sep;
   const res = await runGit(cwd, ['log', '--all', `--max-count=${n}`, `--pretty=format:${fmt}`]);
   if (!res.ok) return { error: res.error };
@@ -103,15 +119,23 @@ export async function getLog(cwd: string, n: number): Promise<GitCommit[] | { er
       subject: subject ?? '',
       author: author ?? '',
       time: parseInt(atime, 10) || 0,
-      refs: (refs ?? '').split(', ').map(s => s.trim()).filter(Boolean)
+      refs: (refs ?? '')
+        .split(', ')
+        .map((s) => s.trim())
+        .filter(Boolean),
     });
   }
   return out;
 }
 
-export async function getBranches(cwd: string): Promise<{
-  local: string[]; remote: string[]; current: string | null;
-} | { error: string }> {
+export async function getBranches(cwd: string): Promise<
+  | {
+      local: string[];
+      remote: string[];
+      current: string | null;
+    }
+  | { error: string }
+> {
   const res = await runGit(cwd, ['branch', '-a', '--format=%(HEAD)\x1f%(refname:short)']);
   if (!res.ok) return { error: res.error };
   let current: string | null = null;
@@ -134,7 +158,10 @@ export async function getAheadBehind(cwd: string): Promise<GitAheadBehind | { er
   const upstream = up.stdout.trim();
   const ab = await runGit(cwd, ['rev-list', '--left-right', '--count', `HEAD...${upstream}`]);
   if (!ab.ok) return { error: ab.error };
-  const [ahead, behind] = ab.stdout.trim().split('\t').map(n => parseInt(n, 10) || 0);
+  const [ahead, behind] = ab.stdout
+    .trim()
+    .split('\t')
+    .map((n) => parseInt(n, 10) || 0);
   return { ahead, behind, upstream };
 }
 
@@ -152,13 +179,13 @@ const MAX_DIFF_BYTES = 2 * 1024 * 1024; // 2 MB — keep the diff view responsiv
  *  Monaco's DiffEditor (original = head, modified = working). */
 export interface GitDiff {
   ok: true;
-  path: string;            // resolved absolute path (display only)
+  path: string; // resolved absolute path (display only)
   relPath: string;
   head: string;
   working: string;
-  headExists: boolean;     // file is tracked at HEAD
-  workingExists: boolean;  // file is present in the working tree
-  isBinary: boolean;       // either side is binary → not text-diffable
+  headExists: boolean; // file is tracked at HEAD
+  workingExists: boolean; // file is present in the working tree
+  isBinary: boolean; // either side is binary → not text-diffable
 }
 
 /**
@@ -168,7 +195,8 @@ export interface GitDiff {
  * stays in the main process — the renderer only ever receives the two text sides.
  */
 export async function getDiff(
-  cwd: string, relPath: string
+  cwd: string,
+  relPath: string,
 ): Promise<GitDiff | { ok: false; error: string }> {
   const abs = safeJoin(cwd, relPath);
   if (!abs) return { ok: false, error: 'path escapes repository root' };
@@ -177,7 +205,10 @@ export async function getDiff(
   let head = '';
   let headExists = false;
   const show = await runGit(cwd, ['show', `HEAD:${relPath}`]);
-  if (show.ok) { head = show.stdout; headExists = true; }
+  if (show.ok) {
+    head = show.stdout;
+    headExists = true;
+  }
 
   // Working side: read the on-disk file. ENOENT → deleted from the working tree.
   let working = '';
@@ -205,7 +236,7 @@ export async function getDiff(
     working: isBinary ? '' : working,
     headExists,
     workingExists,
-    isBinary
+    isBinary,
   };
 }
 
@@ -231,7 +262,11 @@ export async function mainRepoRoot(cwd: string): Promise<string | null> {
 /** Derive a safe `agent/<id>` branch name from a worktree path's basename. */
 function agentBranchFor(wtPath: string): string {
   const base = wtPath.split(/[\\/]/).filter(Boolean).pop() ?? 'agent';
-  const slug = base.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'agent';
+  const slug =
+    base
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'agent';
   return `agent/${slug}`;
 }
 
@@ -239,7 +274,9 @@ function agentBranchFor(wtPath: string): string {
  *  `baseBranch`. Tries to create a fresh `agent/<id>` branch first; if that
  *  branch already exists, falls back to checking out `baseBranch` directly. */
 export async function addWorktree(
-  cwd: string, wtPath: string, baseBranch: string
+  cwd: string,
+  wtPath: string,
+  baseBranch: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const branch = agentBranchFor(wtPath);
   const fresh = await runGit(cwd, ['worktree', 'add', wtPath, '-b', branch, baseBranch]);
@@ -253,7 +290,8 @@ export async function addWorktree(
 /** Best-effort removal of an agent's worktree. Forced so a dirty tree doesn't
  *  block teardown; failures are surfaced but callers may ignore them. */
 export async function removeWorktree(
-  cwd: string, wtPath: string
+  cwd: string,
+  wtPath: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await runGit(cwd, ['worktree', 'remove', '--force', wtPath]);
   if (res.ok) return { ok: true };
@@ -267,7 +305,8 @@ export async function removeWorktree(
  *  / open PR" work. Fails SAFE: any git query we can't run is treated as "there
  *  might be work" → keep, so an uncertain state never triggers an auto-remove. */
 export async function worktreeHasUnintegratedWork(
-  wtPath: string, baseBranch: string
+  wtPath: string,
+  baseBranch: string,
 ): Promise<{ keep: boolean; detail: string; branch: string; dirty: boolean; ahead: number }> {
   const br = await getBranch(wtPath);
   const branch = 'current' in br && br.current ? br.current : '(detached)';
@@ -308,7 +347,8 @@ export async function worktreeHasUnintegratedWork(
  *  to PRESERVE at teardown; this one decides whether a preserved worktree may now
  *  be reclaimed. */
 export async function worktreeIsGcSafe(
-  wtPath: string, baseBranch: string
+  wtPath: string,
+  baseBranch: string,
 ): Promise<{ gc: boolean; detail: string }> {
   // (1) Clean tree?
   const status = await runGit(wtPath, ['status', '--porcelain']);
@@ -318,12 +358,14 @@ export async function worktreeIsGcSafe(
   const rl = await runGit(wtPath, ['rev-list', '--count', `${baseBranch}..HEAD`]);
   if (rl.ok) {
     const n = parseInt(rl.stdout.trim(), 10);
-    if (Number.isFinite(n) && n === 0) return { gc: true, detail: `clean + 0 commits ahead of ${baseBranch}` };
+    if (Number.isFinite(n) && n === 0)
+      return { gc: true, detail: `clean + 0 commits ahead of ${baseBranch}` };
   }
   // (2b) base tree identical to HEAD tree (squash-merge / equivalent content)?
   // `git diff --quiet <base> HEAD` → exit 0 (ok) means NO differences.
   const diff = await runGit(wtPath, ['diff', '--quiet', baseBranch, 'HEAD']);
-  if (diff.ok) return { gc: true, detail: `clean + tree identical to ${baseBranch} (integrated/squashed)` };
+  if (diff.ok)
+    return { gc: true, detail: `clean + tree identical to ${baseBranch} (integrated/squashed)` };
   // Either there are real un-integrated commits, or a query failed → keep.
   return { gc: false, detail: `clean but content not yet in ${baseBranch}` };
 }
@@ -334,20 +376,37 @@ export async function worktreeIsGcSafe(
  *  charset git refs actually use, refuse leading '-' (option injection), and
  *  always pass '--' before any path arguments at call sites. */
 export function isSafeRev(rev: string): boolean {
-  return rev.length > 0 && rev.length <= 256 && !rev.startsWith('-') && /^[0-9A-Za-z._/^~@{}-]+$/.test(rev);
+  return (
+    rev.length > 0 &&
+    rev.length <= 256 &&
+    !rev.startsWith('-') &&
+    /^[0-9A-Za-z._/^~@{}-]+$/.test(rev)
+  );
 }
 
 /** Full-history DAG page for the commit graph. Same record shape as getLog but
  *  topologically ordered (the graph layout assumes it) and pageable. Run this
  *  against mainRepoRoot(cwd) so every agent worktree branch appears. */
-export async function getLogGraph(cwd: string, n: number, skip = 0): Promise<GitCommit[] | { error: string }> {
+export async function getLogGraph(
+  cwd: string,
+  n: number,
+  skip = 0,
+): Promise<GitCommit[] | { error: string }> {
   const sep = '\x1e';
   const fsep = '\x1f';
   const fmt = ['%H', '%P', '%s', '%an', '%at', '%D'].join(fsep) + sep;
-  const res = await runGit(cwd, [
-    'log', '--all', '--topo-order', `--max-count=${n}`, ...(skip > 0 ? [`--skip=${skip}`] : []),
-    `--pretty=format:${fmt}`
-  ], 15000);
+  const res = await runGit(
+    cwd,
+    [
+      'log',
+      '--all',
+      '--topo-order',
+      `--max-count=${n}`,
+      ...(skip > 0 ? [`--skip=${skip}`] : []),
+      `--pretty=format:${fmt}`,
+    ],
+    15000,
+  );
   if (!res.ok) return { error: res.error };
   const out: GitCommit[] = [];
   for (const rec of res.stdout.split(sep)) {
@@ -361,7 +420,10 @@ export async function getLogGraph(cwd: string, n: number, skip = 0): Promise<Git
       subject: subject ?? '',
       author: author ?? '',
       time: parseInt(atime, 10) || 0,
-      refs: (refs ?? '').split(', ').map(s => s.trim()).filter(Boolean)
+      refs: (refs ?? '')
+        .split(', ')
+        .map((s) => s.trim())
+        .filter(Boolean),
     });
   }
   return out;
@@ -369,8 +431,8 @@ export async function getLogGraph(cwd: string, n: number, skip = 0): Promise<Git
 
 export interface GitCommitFile {
   path: string;
-  status: string;      // A/M/D/R/C/T…
-  oldPath?: string;    // for renames/copies
+  status: string; // A/M/D/R/C/T…
+  oldPath?: string; // for renames/copies
 }
 
 /** Parse `-z --name-status` output shared by diff-tree and diff. Records are
@@ -397,9 +459,22 @@ function parseNameStatusZ(stdout: string): GitCommitFile[] {
 }
 
 /** Files touched by one commit (rename-aware). */
-export async function getCommitFiles(cwd: string, sha: string): Promise<GitCommitFile[] | { error: string }> {
+export async function getCommitFiles(
+  cwd: string,
+  sha: string,
+): Promise<GitCommitFile[] | { error: string }> {
   if (!isSafeRev(sha)) return { error: 'invalid revision' };
-  const res = await runGit(cwd, ['diff-tree', '--no-commit-id', '-r', '--root', '-z', '-M', '--name-status', sha, '--']);
+  const res = await runGit(cwd, [
+    'diff-tree',
+    '--no-commit-id',
+    '-r',
+    '--root',
+    '-z',
+    '-M',
+    '--name-status',
+    sha,
+    '--',
+  ]);
   if (!res.ok) return { error: res.error };
   return parseNameStatusZ(res.stdout);
 }
@@ -408,7 +483,11 @@ const MAX_SHOW_BYTES = 2 * 1024 * 1024; // match getDiff's cap
 
 /** One side of a rev-pinned diff: the file's content at `rev` ('' + exists:false
  *  when the path doesn't exist there — e.g. an added file's parent side). */
-export async function getFileAtRev(cwd: string, rev: string, relPath: string): Promise<
+export async function getFileAtRev(
+  cwd: string,
+  rev: string,
+  relPath: string,
+): Promise<
   { ok: true; exists: boolean; isBinary: boolean; content: string } | { ok: false; error: string }
 > {
   if (!isSafeRev(rev)) return { ok: false, error: 'invalid revision' };
@@ -425,30 +504,43 @@ export async function getFileAtRev(cwd: string, rev: string, relPath: string): P
 }
 
 export interface GitCompare {
-  ahead: number;        // commits in head, not base
-  behind: number;       // commits in base, not head
+  ahead: number; // commits in head, not base
+  behind: number; // commits in base, not head
   mergeBase: string | null;
   files: GitCommitFile[];
 }
 
 /** Compare two refs. mode 'three' (default, PR-style): what head adds since the
  *  merge base. mode 'two': the literal state difference base→head. */
-export async function compareRefs(cwd: string, base: string, head: string, mode: 'two' | 'three'): Promise<GitCompare | { error: string }> {
+export async function compareRefs(
+  cwd: string,
+  base: string,
+  head: string,
+  mode: 'two' | 'three',
+): Promise<GitCompare | { error: string }> {
   if (!isSafeRev(base) || !isSafeRev(head)) return { error: 'invalid revision' };
   const counts = await runGit(cwd, ['rev-list', '--left-right', '--count', `${base}...${head}`]);
   if (!counts.ok) return { error: counts.error };
-  const [behind, ahead] = counts.stdout.trim().split('\t').map((x) => parseInt(x, 10) || 0);
+  const [behind, ahead] = counts.stdout
+    .trim()
+    .split('\t')
+    .map((x) => parseInt(x, 10) || 0);
   const mb = await runGit(cwd, ['merge-base', base, head]);
   const mergeBase = mb.ok ? mb.stdout.trim() : null;
-  const diffArgs = mode === 'three'
-    ? ['diff', '-z', '-M', '--name-status', `${base}...${head}`, '--']
-    : ['diff', '-z', '-M', '--name-status', base, head, '--'];
+  const diffArgs =
+    mode === 'three'
+      ? ['diff', '-z', '-M', '--name-status', `${base}...${head}`, '--']
+      : ['diff', '-z', '-M', '--name-status', base, head, '--'];
   const res = await runGit(cwd, diffArgs, 15000);
   if (!res.ok) return { error: res.error };
   return { ahead, behind, mergeBase, files: parseNameStatusZ(res.stdout) };
 }
 
-export interface GitWorktreeInfo { path: string; head: string; branch: string | null }
+export interface GitWorktreeInfo {
+  path: string;
+  head: string;
+  branch: string | null;
+}
 
 export async function listWorktrees(cwd: string): Promise<GitWorktreeInfo[] | { error: string }> {
   const res = await runGit(cwd, ['worktree', 'list', '--porcelain']);
@@ -456,8 +548,10 @@ export async function listWorktrees(cwd: string): Promise<GitWorktreeInfo[] | { 
   const out: GitWorktreeInfo[] = [];
   let cur: Partial<GitWorktreeInfo> = {};
   for (const line of res.stdout.split('\n')) {
-    if (line.startsWith('worktree ')) { if (cur.path) out.push(cur as GitWorktreeInfo); cur = { path: line.slice(9), head: '', branch: null }; }
-    else if (line.startsWith('HEAD ')) cur.head = line.slice(5);
+    if (line.startsWith('worktree ')) {
+      if (cur.path) out.push(cur as GitWorktreeInfo);
+      cur = { path: line.slice(9), head: '', branch: null };
+    } else if (line.startsWith('HEAD ')) cur.head = line.slice(5);
     else if (line.startsWith('branch ')) cur.branch = line.slice(7).replace(/^refs\/heads\//, '');
   }
   if (cur.path) out.push(cur as GitWorktreeInfo);
@@ -467,21 +561,33 @@ export async function listWorktrees(cwd: string): Promise<GitWorktreeInfo[] | { 
 /** Guarded checkout (v0.3.4). FAIL-SAFE philosophy like worktreeHasUnintegratedWork:
  *  any doubt → refuse. Guards here cover the repo itself; the IPC layer adds the
  *  "no agent actively working in this tree" guard (it owns the pty registry). */
-export async function checkoutRef(cwd: string, ref: string, detach: boolean): Promise<{ ok: true; detached: boolean } | { ok: false; error: string }> {
+export async function checkoutRef(
+  cwd: string,
+  ref: string,
+  detach: boolean,
+): Promise<{ ok: true; detached: boolean } | { ok: false; error: string }> {
   if (!isSafeRev(ref)) return { ok: false, error: 'invalid revision' };
   const st = await getStatus(cwd);
   if ('error' in st) return { ok: false, error: `could not verify a clean tree: ${st.error}` };
   const dirty = st.staged.length + st.unstaged.length;
   if (dirty > 0) {
-    return { ok: false, error: `working tree has ${dirty} uncommitted change${dirty === 1 ? '' : 's'} — commit or stash first` };
+    return {
+      ok: false,
+      error: `working tree has ${dirty} uncommitted change${dirty === 1 ? '' : 's'} — commit or stash first`,
+    };
   }
   const res = await runGit(cwd, detach ? ['switch', '--detach', ref] : ['switch', ref], 15000);
   if (!res.ok) {
     // A branch held by another worktree: name the holder instead of raw stderr.
     if (/already checked out|already used by worktree/i.test(res.error)) {
       const wts = await listWorktrees(cwd);
-      const holder = Array.isArray(wts) ? wts.find((w) => w.branch === ref.replace(/^refs\/heads\//, '')) : undefined;
-      return { ok: false, error: holder ? `'${ref}' is checked out in another worktree: ${holder.path}` : res.error };
+      const holder = Array.isArray(wts)
+        ? wts.find((w) => w.branch === ref.replace(/^refs\/heads\//, ''))
+        : undefined;
+      return {
+        ok: false,
+        error: holder ? `'${ref}' is checked out in another worktree: ${holder.path}` : res.error,
+      };
     }
     return { ok: false, error: res.error };
   }

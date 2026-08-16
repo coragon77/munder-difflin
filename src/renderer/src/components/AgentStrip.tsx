@@ -13,14 +13,14 @@ export interface AgentStripProps {
 }
 
 export function AgentStrip({ config }: AgentStripProps) {
-  const agents = useStore(s => s.agents);
-  const restorableAgents = useStore(s => s.restorableAgents);
-  const selectedId = useStore(s => s.selectedId);
-  const select = useStore(s => s.select);
-  const setAddAgentOpen = useStore(s => s.setAddAgentOpen);
-  const openTaskDetail = useStore(s => s.openTaskDetail);
-  const reorderAgents = useStore(s => s.reorderAgents);
-  const setAgentNote = useStore(s => s.setAgentNote);
+  const agents = useStore((s) => s.agents);
+  const restorableAgents = useStore((s) => s.restorableAgents);
+  const selectedId = useStore((s) => s.selectedId);
+  const select = useStore((s) => s.select);
+  const setAddAgentOpen = useStore((s) => s.setAddAgentOpen);
+  const openTaskDetail = useStore((s) => s.openTaskDetail);
+  const reorderAgents = useStore((s) => s.reorderAgents);
+  const setAgentNote = useStore((s) => s.setAgentNote);
   // Shared with the fullscreen roster so both show one restore in progress.
   const { restoring, autoRestoring, restoreNote, restoreTeam } = useRestoreTeam(config);
   // ONE restore control (bottom-right): a button whose dropdown OPENS UPWARD and
@@ -28,19 +28,24 @@ export function AgentStrip({ config }: AgentStripProps) {
   // fixed (anchored off the button's rect) because the strip scrolls with
   // overflow hidden — an absolute child would be clipped.
   const [restoreMenuOpen, setRestoreMenuOpen] = useState(false);
-  const [restoreMenuPos, setRestoreMenuPos] = useState<{ right: number; bottom: number } | null>(null);
+  const [restoreMenuPos, setRestoreMenuPos] = useState<{ right: number; bottom: number } | null>(
+    null,
+  );
   const restoreBtnRef = useRef<HTMLSpanElement>(null);
   const restoreBusy = restoring || autoRestoring;
   useEffect(() => {
     if (restorableAgents.length === 0 || restoreBusy) setRestoreMenuOpen(false);
   }, [restorableAgents.length, restoreBusy]);
   const toggleRestoreMenu = (anchor: HTMLElement | null) => {
-    if (restoreMenuOpen) { setRestoreMenuOpen(false); return; }
+    if (restoreMenuOpen) {
+      setRestoreMenuOpen(false);
+      return;
+    }
     const rect = anchor?.getBoundingClientRect();
     if (!rect) return;
     setRestoreMenuPos({
       right: Math.max(8, window.innerWidth - rect.right),
-      bottom: Math.max(8, window.innerHeight - rect.top + 6)
+      bottom: Math.max(8, window.innerHeight - rect.top + 6),
     });
     setRestoreMenuOpen(true);
   };
@@ -60,70 +65,97 @@ export function AgentStrip({ config }: AgentStripProps) {
     let cancelled = false;
     const poll = async () => {
       try {
-        const raw = await window.cth.hiveTasks() as { tasks?: Array<{ id?: string; status?: string; assignee?: string }> } | null;
+        const raw = (await window.cth.hiveTasks()) as {
+          tasks?: Array<{ id?: string; status?: string; assignee?: string }>;
+        } | null;
         if (cancelled) return;
         const map: Record<string, string[]> = {};
-        for (const t of (raw && Array.isArray(raw.tasks)) ? raw.tasks : []) {
-          if (t?.status === 'doing' && typeof t.assignee === 'string' && t.assignee && typeof t.id === 'string') {
+        for (const t of raw && Array.isArray(raw.tasks) ? raw.tasks : []) {
+          if (
+            t?.status === 'doing' &&
+            typeof t.assignee === 'string' &&
+            t.assignee &&
+            typeof t.id === 'string'
+          ) {
             (map[t.assignee] = map[t.assignee] ?? []).push(t.id);
           }
         }
         setDoingByAgent(map);
-      } catch { /* keep last good */ }
+      } catch {
+        /* keep last good */
+      }
     };
     void poll();
-    const iv = setInterval(() => { void poll(); }, 5000);
-    return () => { cancelled = true; clearInterval(iv); };
+    const iv = setInterval(() => {
+      void poll();
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
   }, []);
 
   return (
-    <div style={{
-      display: 'flex',
-      gap: 12,
-      padding: '14px 16px',
-      overflowX: 'auto',
-      overflowY: 'hidden',
-      borderTop: '1px solid var(--cth-ink-300)',
-      background: 'var(--cth-cream-200)',
-      // Tall enough for the god card to stand proud of the row (it's taller and
-      // rides a drop shadow) plus the hover-lift on every card, without clipping.
-      height: 112,
-      minHeight: 112,
-      alignItems: 'center'
-    }}>
-      {agents.map(a => (
+    <div
+      style={{
+        display: 'flex',
+        gap: 12,
+        padding: '14px 16px',
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        borderTop: '1px solid var(--cth-ink-300)',
+        background: 'var(--cth-cream-200)',
+        // Tall enough for the god card to stand proud of the row (it's taller and
+        // rides a drop shadow) plus the hover-lift on every card, without clipping.
+        height: 112,
+        minHeight: 112,
+        alignItems: 'center',
+      }}
+    >
+      {agents.map((a) => (
         // Draggable wrapper: reorder the roster by dragging one card onto another.
         // Native HTML5 DnD (no dep). A plain click still selects — a drag only
         // starts on movement — so AgentCard's onClick is unaffected.
         <div
           key={a.id}
-          ref={(el) => { cardRefs.current[a.id] = el; }}
+          ref={(el) => {
+            cardRefs.current[a.id] = el;
+          }}
           draggable
-          onDragStart={(e) => { setDragId(a.id); e.dataTransfer.effectAllowed = 'move'; }}
+          onDragStart={(e) => {
+            setDragId(a.id);
+            e.dataTransfer.effectAllowed = 'move';
+          }}
           onDragOver={(e) => {
             if (!dragId || dragId === a.id) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             if (overId !== a.id) setOverId(a.id);
           }}
-          onDragLeave={() => { if (overId === a.id) setOverId(null); }}
+          onDragLeave={() => {
+            if (overId === a.id) setOverId(null);
+          }}
           onDrop={(e) => {
             e.preventDefault();
             if (dragId && dragId !== a.id) reorderAgents(dragId, a.id);
             setDragId(null);
             setOverId(null);
           }}
-          onDragEnd={() => { setDragId(null); setOverId(null); }}
+          onDragEnd={() => {
+            setDragId(null);
+            setOverId(null);
+          }}
           style={{
             position: 'relative',
             flexShrink: 0,
             cursor: 'grab',
             opacity: dragId === a.id ? 0.4 : 1,
             // Insertion-line cue on the hovered drop target.
-            boxShadow: overId === a.id && dragId && dragId !== a.id
-              ? 'inset 3px 0 0 0 var(--cth-ink-900)'
-              : 'none',
-            transition: 'opacity 120ms ease'
+            boxShadow:
+              overId === a.id && dragId && dragId !== a.id
+                ? 'inset 3px 0 0 0 var(--cth-ink-900)'
+                : 'none',
+            transition: 'opacity 120ms ease',
           }}
         >
           <AgentCard
@@ -154,75 +186,116 @@ export function AgentStrip({ config }: AgentStripProps) {
               This is the transient EDITOR: a fixed popover ABOVE the card —
               the compact card has no room for an inline box, and the strip
               clips overflow. ✎ opens it; Esc / ✕ / click-away closes. */}
-          {noteEditId === a.id && !dragId && (() => {
-            const rect = cardRefs.current[a.id]?.getBoundingClientRect();
-            if (!rect) return null;
-            const width = 280;
-            const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-            const bottom = Math.max(8, window.innerHeight - rect.top + 8);
-            return (
-              <>
-                {/* click-away backdrop */}
-                <div
-                  onClick={() => setNoteEditId(null)}
-                  style={{ position: 'fixed', inset: 0, zIndex: 349, background: 'transparent' }}
-                />
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  style={{
-                    position: 'fixed', left, bottom, width, zIndex: 350,
-                    padding: 10, boxSizing: 'border-box',
-                    background: 'var(--cth-paper-100)',
-                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-300), 3px 3px 0 rgba(26,19,32,0.14)',
-                    display: 'flex', flexDirection: 'column', gap: 6
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{
-                      fontFamily: 'var(--cth-font-display)', fontSize: 8, lineHeight: '12px',
-                      color: 'var(--cth-ink-500)'
-                    }}>PRIVATE NOTE · {displayAgentName(a).toUpperCase()}</span>
-                    <button
-                      onClick={() => setNoteEditId(null)}
-                      title="Done"
-                      aria-label="Close note editor"
+          {noteEditId === a.id &&
+            !dragId &&
+            (() => {
+              const rect = cardRefs.current[a.id]?.getBoundingClientRect();
+              if (!rect) return null;
+              const width = 280;
+              const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+              const bottom = Math.max(8, window.innerHeight - rect.top + 8);
+              return (
+                <>
+                  {/* click-away backdrop */}
+                  <div
+                    onClick={() => setNoteEditId(null)}
+                    style={{ position: 'fixed', inset: 0, zIndex: 349, background: 'transparent' }}
+                  />
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    style={{
+                      position: 'fixed',
+                      left,
+                      bottom,
+                      width,
+                      zIndex: 350,
+                      padding: 10,
+                      boxSizing: 'border-box',
+                      background: 'var(--cth-paper-100)',
+                      boxShadow:
+                        'inset 0 0 0 1px var(--cth-ink-300), 3px 3px 0 rgba(26,19,32,0.14)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6,
+                    }}
+                  >
+                    <div
                       style={{
-                        flexShrink: 0, width: 18, height: 18, padding: 0, lineHeight: 1,
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        fontFamily: 'var(--cth-font-ui)', fontSize: 11,
-                        color: 'var(--cth-ink-500)', background: 'transparent',
-                        border: 'none', cursor: 'pointer'
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                       }}
-                    >✕</button>
-                  </div>
-                  {/* A textarea, not an input: the note is a bullet list (one
+                    >
+                      <span
+                        style={{
+                          fontFamily: 'var(--cth-font-display)',
+                          fontSize: 8,
+                          lineHeight: '12px',
+                          color: 'var(--cth-ink-500)',
+                        }}
+                      >
+                        PRIVATE NOTE · {displayAgentName(a).toUpperCase()}
+                      </span>
+                      <button
+                        onClick={() => setNoteEditId(null)}
+                        title="Done"
+                        aria-label="Close note editor"
+                        style={{
+                          flexShrink: 0,
+                          width: 18,
+                          height: 18,
+                          padding: 0,
+                          lineHeight: 1,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontFamily: 'var(--cth-font-ui)',
+                          fontSize: 11,
+                          color: 'var(--cth-ink-500)',
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    {/* A textarea, not an input: the note is a bullet list (one
                       line per bullet) and the fullscreen roster renders every
                       line — an <input> would silently eat the newlines. */}
-                  <textarea
-                    autoFocus
-                    rows={3}
-                    value={a.note ?? ''}
-                    onChange={(e) => setAgentNote(a.id, e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Escape') setNoteEditId(null); }}
-                    placeholder="one line per bullet…"
-                    aria-label={`Note for ${a.name}`}
-                    style={{
-                      width: '100%', padding: '6px 8px',
-                      border: 'none', outline: 'none', resize: 'none', boxSizing: 'border-box',
-                      background: 'var(--cth-cream-100)',
-                      boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                      fontFamily: 'var(--cth-font-mono)', fontSize: 12,
-                      lineHeight: '18px', color: 'var(--cth-ink-900)'
-                    }}
-                  />
-                  <span style={{ fontSize: 10, color: 'var(--cth-ink-500)' }}>
-                    one line = one bullet · esc to close
-                  </span>
-                </div>
-              </>
-            );
-          })()}
+                    <textarea
+                      autoFocus
+                      rows={3}
+                      value={a.note ?? ''}
+                      onChange={(e) => setAgentNote(a.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setNoteEditId(null);
+                      }}
+                      placeholder="one line per bullet…"
+                      aria-label={`Note for ${a.name}`}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        border: 'none',
+                        outline: 'none',
+                        resize: 'none',
+                        boxSizing: 'border-box',
+                        background: 'var(--cth-cream-100)',
+                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                        fontFamily: 'var(--cth-font-mono)',
+                        fontSize: 12,
+                        lineHeight: '18px',
+                        color: 'var(--cth-ink-900)',
+                      }}
+                    />
+                    <span style={{ fontSize: 10, color: 'var(--cth-ink-500)' }}>
+                      one line = one bullet · esc to close
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
         </div>
       ))}
       <PixelButton
@@ -231,7 +304,9 @@ export function AgentStrip({ config }: AgentStripProps) {
         style={{ alignSelf: 'center', flexShrink: 0 }}
         onClick={() => setAddAgentOpen(true)}
       >
-        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}>
+        <span
+          style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}
+        >
           <Icon name="plus" /> add agent
         </span>
       </PixelButton>
@@ -244,12 +319,19 @@ export function AgentStrip({ config }: AgentStripProps) {
         <span
           ref={restoreBtnRef}
           style={{
-            alignSelf: 'center', flexShrink: 0, marginLeft: 'auto',
-            display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4
+            alignSelf: 'center',
+            flexShrink: 0,
+            marginLeft: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: 4,
           }}
-          title={restoreBusy
-            ? "Your previous session's agents are being respawned with their original ids, so memory and inboxes reattach."
-            : `Previous session: ${restorableAgents.map((a: Agent) => a.name).join(', ')}`}
+          title={
+            restoreBusy
+              ? "Your previous session's agents are being respawned with their original ids, so memory and inboxes reattach."
+              : `Previous session: ${restorableAgents.map((a: Agent) => a.name).join(', ')}`
+          }
         >
           {/* The outcome of the last run. A restore that spawned NOTHING used to
               be completely silent here — the note was computed and never
@@ -260,9 +342,13 @@ export function AgentStrip({ config }: AgentStripProps) {
             <span
               title={restoreNote}
               style={{
-                maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                fontFamily: 'var(--cth-font-ui)', fontSize: 11,
-                color: 'var(--cth-ink-700)'
+                maxWidth: 280,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                fontFamily: 'var(--cth-font-ui)',
+                fontSize: 11,
+                color: 'var(--cth-ink-700)',
               }}
             >
               {restoreNote}
@@ -274,7 +360,9 @@ export function AgentStrip({ config }: AgentStripProps) {
             disabled={restoreBusy}
             onClick={() => toggleRestoreMenu(restoreBtnRef.current)}
           >
-            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}>
+            <span
+              style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}
+            >
               <Icon name="play" />
               {restoreBusy ? 'restoring your team…' : `restore team (${restorableAgents.length}) ▴`}
             </span>
@@ -288,18 +376,33 @@ export function AgentStrip({ config }: AgentStripProps) {
             onClick={() => setRestoreMenuOpen(false)}
             style={{ position: 'fixed', inset: 0, zIndex: 349, background: 'transparent' }}
           />
-          <div style={{
-            position: 'fixed', right: restoreMenuPos.right, bottom: restoreMenuPos.bottom,
-            zIndex: 350, minWidth: 240, maxHeight: '50vh', overflowY: 'auto',
-            background: 'var(--cth-cream-50)',
-            boxShadow: '0 0 0 2px var(--cth-ink-900), 3px 4px 0 0 rgba(26,19,32,0.22)',
-            padding: 8, display: 'flex', flexDirection: 'column', gap: 6,
-            fontFamily: 'var(--cth-font-ui)'
-          }}>
-            <span style={{
-              fontFamily: 'var(--cth-font-display)', fontSize: 8, lineHeight: '12px',
-              color: 'var(--cth-ink-500)', textTransform: 'uppercase'
-            }}>
+          <div
+            style={{
+              position: 'fixed',
+              right: restoreMenuPos.right,
+              bottom: restoreMenuPos.bottom,
+              zIndex: 350,
+              minWidth: 240,
+              maxHeight: '50vh',
+              overflowY: 'auto',
+              background: 'var(--cth-cream-50)',
+              boxShadow: '0 0 0 2px var(--cth-ink-900), 3px 4px 0 0 rgba(26,19,32,0.22)',
+              padding: 8,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              fontFamily: 'var(--cth-font-ui)',
+            }}
+          >
+            <span
+              style={{
+                fontFamily: 'var(--cth-font-display)',
+                fontSize: 8,
+                lineHeight: '12px',
+                color: 'var(--cth-ink-500)',
+                textTransform: 'uppercase',
+              }}
+            >
               previous session
             </span>
             {/* Per-agent dismiss wires straight to removeRestorableAgent
@@ -310,14 +413,25 @@ export function AgentStrip({ config }: AgentStripProps) {
                 key={a.id}
                 title={`${a.name} — restorable from last session`}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  height: 26, padding: '0 4px 0 8px',
-                  fontSize: 12, color: 'var(--cth-ink-900)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  height: 26,
+                  padding: '0 4px 0 8px',
+                  fontSize: 12,
+                  color: 'var(--cth-ink-900)',
                   background: 'var(--cth-paper-100)',
-                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
                 }}
               >
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span
+                  style={{
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
                   {a.name}
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--cth-ink-500)', whiteSpace: 'nowrap' }}>
@@ -328,20 +442,40 @@ export function AgentStrip({ config }: AgentStripProps) {
                   title={`Dismiss ${a.name} — remove permanently from the restore list`}
                   aria-label={`Dismiss ${a.name}`}
                   style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 18, height: 18, padding: 0, lineHeight: 1,
-                    fontSize: 12, color: 'var(--cth-ink-500)',
-                    background: 'transparent', border: 'none', cursor: 'pointer'
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 18,
+                    height: 18,
+                    padding: 0,
+                    lineHeight: 1,
+                    fontSize: 12,
+                    color: 'var(--cth-ink-500)',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
                   }}
-                >✕</button>
+                >
+                  ✕
+                </button>
               </span>
             ))}
             <PixelButton
               variant="primary"
               size="sm"
-              onClick={() => { setRestoreMenuOpen(false); void restoreTeam(); }}
+              onClick={() => {
+                setRestoreMenuOpen(false);
+                void restoreTeam();
+              }}
             >
-              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  gap: 6,
+                  alignItems: 'center',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 <Icon name="play" /> restore all ({restorableAgents.length})
               </span>
             </PixelButton>

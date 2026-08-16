@@ -16,7 +16,10 @@ const laneOf = (out, sha) => out.rows.find((r) => r.sha === sha).lane;
 
 test('linear history stays in a single lane', () => {
   const out = layoutGraph([c('a', 'b'), c('b', 'c'), c('c')]);
-  assert.deepEqual(out.rows.map((r) => r.lane), [0, 0, 0]);
+  assert.deepEqual(
+    out.rows.map((r) => r.lane),
+    [0, 0, 0],
+  );
   assert.equal(out.maxLane, 0);
 });
 
@@ -33,10 +36,11 @@ test('a lane is reused once its branch is exhausted', () => {
   // side ends at its root, so the lane it held is free for a later fork.
   const out = layoutGraph([
     c('m', 'p1', 'side'),
-    c('side'),          // root — releases its lane
+    c('side'), // root — releases its lane
     c('p1', 'p2'),
-    c('p2', 'x', 'y'),  // forks again; should reclaim the freed lane
-    c('x'), c('y')
+    c('p2', 'x', 'y'), // forks again; should reclaim the freed lane
+    c('x'),
+    c('y'),
   ]);
   assert.ok(out.maxLane <= 1, `expected lanes to be reused, got maxLane ${out.maxLane}`);
 });

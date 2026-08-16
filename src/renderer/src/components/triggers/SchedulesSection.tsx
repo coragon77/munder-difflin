@@ -2,8 +2,19 @@ import { useEffect, useState } from 'react';
 import { PixelButton } from '../PixelButton';
 import { useStore } from '@/store/store';
 import {
-  Chip, Field, Hint, IntervalPicker, MiniButton, Muted, Select, SubCard, SubHeader,
-  Toggle, fmtInterval, inputStyle, textareaStyle
+  Chip,
+  Field,
+  Hint,
+  IntervalPicker,
+  MiniButton,
+  Muted,
+  Select,
+  SubCard,
+  SubHeader,
+  Toggle,
+  fmtInterval,
+  inputStyle,
+  textareaStyle,
 } from './ui';
 
 /**
@@ -39,7 +50,12 @@ function relTime(ms: number): string {
   const a = Math.abs(ms);
   if (a < 45_000) return 'just now';
   const mins = Math.round(a / 60_000);
-  const unit = mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.round(mins / 60)}h` : `${Math.round(mins / 1440)}d`;
+  const unit =
+    mins < 60
+      ? `${mins}m`
+      : mins < 1440
+        ? `${Math.round(mins / 60)}h`
+        : `${Math.round(mins / 1440)}d`;
   return past ? `${unit} ago` : `in ${unit}`;
 }
 
@@ -53,7 +69,14 @@ export function SchedulesSection({ onSummary }: { onSummary?: (s: string) => voi
   const [mBody, setMBody] = useState('');
 
   useEffect(() => {
-    const load = () => { window.cth.listMissions().then(setMissions).catch(() => { /* noop */ }); };
+    const load = () => {
+      window.cth
+        .listMissions()
+        .then(setMissions)
+        .catch(() => {
+          /* noop */
+        });
+    };
     load();
     // Refresh "last fired" when the scheduler stamps a beat/dispatch.
     return window.cth.onMissionsUpdated(load);
@@ -68,7 +91,9 @@ export function SchedulesSection({ onSummary }: { onSummary?: (s: string) => voi
   // write is fire-and-forget (the house pattern across the Command Center).
   const persist = (next: ScheduledMission[]) => {
     setMissions(next);
-    void window.cth.saveMissions(next).catch(() => { /* noop */ });
+    void window.cth.saveMissions(next).catch(() => {
+      /* noop */
+    });
   };
   const patch = (id: string, fields: Partial<ScheduledMission>) =>
     persist(missions.map((m) => (m.id === id ? { ...m, ...fields } : m)));
@@ -78,19 +103,28 @@ export function SchedulesSection({ onSummary }: { onSummary?: (s: string) => voi
 
   const add = () => {
     if (!mLabel.trim() || !mBody.trim()) return;
-    persist([...missions, {
-      id: `m_${Date.now().toString(36)}`,
-      label: mLabel.trim(),
-      intervalMs: mInterval,
-      to: mTo,
-      body: mBody.trim(),
-      enabled: true
-    }]);
-    setMLabel(''); setMBody(''); setAdding(false);
+    persist([
+      ...missions,
+      {
+        id: `m_${Date.now().toString(36)}`,
+        label: mLabel.trim(),
+        intervalMs: mInterval,
+        to: mTo,
+        body: mBody.trim(),
+        enabled: true,
+      },
+    ]);
+    setMLabel('');
+    setMBody('');
+    setAdding(false);
   };
 
   const targetName = (to: string) =>
-    to === 'broadcast' ? 'everyone' : to === 'god' ? 'Michael' : agents.find((a) => a.id === to)?.name ?? to;
+    to === 'broadcast'
+      ? 'everyone'
+      : to === 'god'
+        ? 'Michael'
+        : (agents.find((a) => a.id === to)?.name ?? to);
 
   return (
     <>
@@ -108,12 +142,22 @@ export function SchedulesSection({ onSummary }: { onSummary?: (s: string) => voi
 
       {!adding && (
         <div style={{ marginTop: 8 }}>
-          <PixelButton variant="secondary" size="sm" onClick={() => setAdding(true)}>add a schedule</PixelButton>
+          <PixelButton variant="secondary" size="sm" onClick={() => setAdding(true)}>
+            add a schedule
+          </PixelButton>
         </div>
       )}
       {adding && (
         <SubCard>
-          <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 8, color: 'var(--cth-ink-500)' }}>NEW SCHEDULE</div>
+          <div
+            style={{
+              fontFamily: 'var(--cth-font-display)',
+              fontSize: 8,
+              color: 'var(--cth-ink-500)',
+            }}
+          >
+            NEW SCHEDULE
+          </div>
           <Field label="LABEL">
             <input
               value={mLabel}
@@ -126,7 +170,13 @@ export function SchedulesSection({ onSummary }: { onSummary?: (s: string) => voi
             <Select value={mTo} onChange={setMTo} style={{ width: '100%' }}>
               <option value="broadcast">everyone</option>
               <option value="god">Michael</option>
-              {agents.filter((a) => !a.isGod).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {agents
+                .filter((a) => !a.isGod)
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
             </Select>
           </Field>
           <Field label="EVERY">
@@ -142,10 +192,23 @@ export function SchedulesSection({ onSummary }: { onSummary?: (s: string) => voi
             />
           </Field>
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <PixelButton variant="primary" size="sm" onClick={add} disabled={!mLabel.trim() || !mBody.trim()}>
+            <PixelButton
+              variant="primary"
+              size="sm"
+              onClick={add}
+              disabled={!mLabel.trim() || !mBody.trim()}
+            >
               add
             </PixelButton>
-            <PixelButton variant="ghost" size="sm" onClick={() => { setAdding(false); setMLabel(''); setMBody(''); }}>
+            <PixelButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setAdding(false);
+                setMLabel('');
+                setMBody('');
+              }}
+            >
               cancel
             </PixelButton>
           </div>
@@ -157,9 +220,19 @@ export function SchedulesSection({ onSummary }: { onSummary?: (s: string) => voi
 
 /* ─────────────────────────────── one mission ─────────────────────────────── */
 
-interface RosterAgent { id: string; name: string; isGod?: boolean }
+interface RosterAgent {
+  id: string;
+  name: string;
+  isGod?: boolean;
+}
 
-function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
+function MissionRow({
+  mission,
+  targetName,
+  agents,
+  onPatch,
+  onDelete,
+}: {
   mission: ScheduledMission;
   targetName: (to: string) => string;
   agents: RosterAgent[];
@@ -191,14 +264,20 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
   // The quiet-skip is dispatch-only: heartbeat and compact fire on their own
   // logic and never reach the guard in the scheduler.
   const dispatch = mission.kind !== 'heartbeat' && mission.kind !== 'compact';
-  const dirty = label !== mission.label || to !== mission.to
-    || intervalMs !== mission.intervalMs || body !== mission.body
-    || (dispatch && skipQuiet !== !!mission.skipWhenFloorQuiet);
+  const dirty =
+    label !== mission.label ||
+    to !== mission.to ||
+    intervalMs !== mission.intervalMs ||
+    body !== mission.body ||
+    (dispatch && skipQuiet !== !!mission.skipWhenFloorQuiet);
 
-  const fired = mission.lastFiredAt ? `fired ${relTime(Date.now() - mission.lastFiredAt)}` : 'not yet fired';
-  const next = mission.enabled && mission.lastFiredAt
-    ? ` · next ${relTime(Date.now() - (mission.lastFiredAt + mission.intervalMs))}`
-    : '';
+  const fired = mission.lastFiredAt
+    ? `fired ${relTime(Date.now() - mission.lastFiredAt)}`
+    : 'not yet fired';
+  const next =
+    mission.enabled && mission.lastFiredAt
+      ? ` · next ${relTime(Date.now() - (mission.lastFiredAt + mission.intervalMs))}`
+      : '';
 
   const save = () => {
     const trimmed = label.trim();
@@ -206,7 +285,13 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
     // Fold the trim back into the draft too, or the row would read as still
     // dirty against a label that was only ever going to be stored trimmed.
     setLabel(trimmed);
-    onPatch({ label: trimmed, to, intervalMs, body, ...(dispatch ? { skipWhenFloorQuiet: skipQuiet } : {}) });
+    onPatch({
+      label: trimmed,
+      to,
+      intervalMs,
+      body,
+      ...(dispatch ? { skipWhenFloorQuiet: skipQuiet } : {}),
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 1300);
   };
@@ -221,24 +306,50 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
             <Chip tone={mission.enabled ? 'on' : 'off'}>
               {heartbeat ? '♥ beat' : fmtInterval(mission.intervalMs)}
             </Chip>
-            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {mission.label}
             </span>
           </span>
         }
-        sub={<>→ {targetName(mission.to)} · {fired}{next}</>}
-        right={<Toggle on={mission.enabled} onClick={() => onPatch({ enabled: !mission.enabled })} />}
+        sub={
+          <>
+            → {targetName(mission.to)} · {fired}
+            {next}
+          </>
+        }
+        right={
+          <Toggle on={mission.enabled} onClick={() => onPatch({ enabled: !mission.enabled })} />
+        }
       />
 
       {/* The prompt is the mission. Closed, you get the first line of it; open,
           you get the whole thing in an editor. It used to be invisible. */}
       {!open && (
-        <div style={{
-          marginTop: 6, padding: '4px 6px',
-          background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-          fontFamily: 'var(--cth-font-mono)', fontSize: 11, lineHeight: '15px',
-          color: 'var(--cth-ink-700)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-        }}>{mission.body.trim() || 'No prompt set.'}</div>
+        <div
+          style={{
+            marginTop: 6,
+            padding: '4px 6px',
+            background: 'var(--cth-paper-100)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+            fontFamily: 'var(--cth-font-mono)',
+            fontSize: 11,
+            lineHeight: '15px',
+            color: 'var(--cth-ink-700)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {mission.body.trim() || 'No prompt set.'}
+        </div>
       )}
 
       {open && (
@@ -250,12 +361,23 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
             <Select value={to} onChange={setTo} style={{ width: '100%' }}>
               <option value="broadcast">everyone</option>
               <option value="god">Michael</option>
-              {agents.filter((a) => !a.isGod).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              {agents
+                .filter((a) => !a.isGod)
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
             </Select>
           </Field>
           <Field label="EVERY">
             <IntervalPicker value={intervalMs} onChange={setIntervalMs} />
-            {heartbeat && <Hint>The beat adapts to how quiet the floor is, so this is the ceiling, not the exact gap.</Hint>}
+            {heartbeat && (
+              <Hint>
+                The beat adapts to how quiet the floor is, so this is the ceiling, not the exact
+                gap.
+              </Hint>
+            )}
           </Field>
           {dispatch && (
             <Field label="QUIET FLOOR">
@@ -265,7 +387,10 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
                 onLabel="skip"
                 offLabel="fire anyway"
               />
-              <Hint>Skips a due fire when no agent was active since the last one and no task is in doing/blocked.</Hint>
+              <Hint>
+                Skips a due fire when no agent was active since the last one and no task is in
+                doing/blocked.
+              </Hint>
             </Field>
           )}
           <Field label="PROMPT">
@@ -278,11 +403,18 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
             />
           </Field>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-            <PixelButton variant="primary" size="sm" onClick={save} disabled={!dirty || !label.trim()}>
+            <PixelButton
+              variant="primary"
+              size="sm"
+              onClick={save}
+              disabled={!dirty || !label.trim()}
+            >
               {saved && !dirty ? 'saved' : 'save'}
             </PixelButton>
             <span style={{ flex: 1 }} />
-            <MiniButton tone="danger" onClick={onDelete}>delete</MiniButton>
+            <MiniButton tone="danger" onClick={onDelete}>
+              delete
+            </MiniButton>
           </div>
         </div>
       )}

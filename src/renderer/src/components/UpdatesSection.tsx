@@ -24,10 +24,17 @@ export function UpdatesSection() {
   useEffect(() => {
     // Subscribe before pulling: main may have emitted while this modal was
     // closed, and `update:current` re-serves the last known state.
-    const off = window.cth.onUpdateStatus?.((next) => setStatus((prev) => reduceStatus(prev, next)));
-    void window.cth.updateCurrent?.().then((cur) => {
-      if (cur) setStatus((prev) => reduceStatus(prev, cur));
-    }).catch(() => { /* older main without the handler — the push channel still works */ });
+    const off = window.cth.onUpdateStatus?.((next) =>
+      setStatus((prev) => reduceStatus(prev, next)),
+    );
+    void window.cth
+      .updateCurrent?.()
+      .then((cur) => {
+        if (cur) setStatus((prev) => reduceStatus(prev, cur));
+      })
+      .catch(() => {
+        /* older main without the handler — the push channel still works */
+      });
     return off;
   }, []);
 
@@ -41,28 +48,44 @@ export function UpdatesSection() {
       else if (view.action === 'download') await window.cth.updateDownload();
       else if (view.action === 'check') await window.cth.updateCheckNow();
       else if (view.action === 'open-release') {
-        await window.cth.updateOpenRelease(status?.state === 'available-manual' ? status.url : undefined);
+        await window.cth.updateOpenRelease(
+          status?.state === 'available-manual' ? status.url : undefined,
+        );
       }
-    } catch { /* the emitted status carries the failure — nothing to do here */ }
+    } catch {
+      /* the emitted status carries the failure — nothing to do here */
+    }
     setBusy(false);
   }, [view.action, busy, status]);
 
   return (
     <div>
-      <div style={{
-        fontFamily: 'var(--cth-font-display)', fontSize: 8, lineHeight: '12px',
-        color: 'var(--cth-ink-500)', textTransform: 'uppercase', marginBottom: 10
-      }}>
+      <div
+        style={{
+          fontFamily: 'var(--cth-font-display)',
+          fontSize: 8,
+          lineHeight: '12px',
+          color: 'var(--cth-ink-500)',
+          textTransform: 'uppercase',
+          marginBottom: 10,
+        }}
+      >
         Updates
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+      >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-          <span style={{
-            fontSize: 13, lineHeight: '20px', color: 'var(--cth-ink-900)',
-            // Only an actionable state earns emphasis; "you're up to date" is
-            // information, not a call to action.
-            fontWeight: view.tone === 'ready' ? 600 : 400
-          }}>
+          <span
+            style={{
+              fontSize: 13,
+              lineHeight: '20px',
+              color: 'var(--cth-ink-900)',
+              // Only an actionable state earns emphasis; "you're up to date" is
+              // information, not a call to action.
+              fontWeight: view.tone === 'ready' ? 600 : 400,
+            }}
+          >
             {view.headline}
           </span>
           <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
@@ -73,7 +96,9 @@ export function UpdatesSection() {
           <PixelButton
             variant={view.tone === 'ready' ? 'primary' : 'secondary'}
             size="sm"
-            onClick={() => { void onClick(); }}
+            onClick={() => {
+              void onClick();
+            }}
             disabled={busy || view.busy}
           >
             {view.button}

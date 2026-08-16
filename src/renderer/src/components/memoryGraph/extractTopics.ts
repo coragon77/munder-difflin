@@ -29,10 +29,41 @@ export interface TopicResult {
 
 // Generic words/phrases that show up as headings or bold but aren't real topics.
 const STOP = new Set([
-  'update', 'updates', 'done', 'note', 'notes', 'next', 'open', 'todo', 'todos',
-  'fixed', 'resolved', 'wip', 'status', 'context', 'memory', 'summary', 'decision',
-  'decisions', 'plan', 'plans', 'task', 'tasks', 'phase 1', 'phase 2', 'phase',
-  'why', 'how', 'what', 'gap', 'gaps', 'needed', 'open / next', 'important', 'fact', 'facts'
+  'update',
+  'updates',
+  'done',
+  'note',
+  'notes',
+  'next',
+  'open',
+  'todo',
+  'todos',
+  'fixed',
+  'resolved',
+  'wip',
+  'status',
+  'context',
+  'memory',
+  'summary',
+  'decision',
+  'decisions',
+  'plan',
+  'plans',
+  'task',
+  'tasks',
+  'phase 1',
+  'phase 2',
+  'phase',
+  'why',
+  'how',
+  'what',
+  'gap',
+  'gaps',
+  'needed',
+  'open / next',
+  'important',
+  'fact',
+  'facts',
 ]);
 
 /** Strip a leading `YYYY-MM-DD —`/`-`/`:` date prefix from a heading tail. */
@@ -43,9 +74,9 @@ function stripDatePrefix(s: string): string {
 /** Lowercase, collapse whitespace, drop surrounding markup/punctuation. */
 function normalise(raw: string): string {
   return raw
-    .replace(/[`*_~]/g, '')           // strip inline md markup
-    .replace(/\(.*?\)/g, '')          // drop parentheticals
-    .replace(/[#:.,;!?]+$/g, '')      // trailing punctuation
+    .replace(/[`*_~]/g, '') // strip inline md markup
+    .replace(/\(.*?\)/g, '') // drop parentheticals
+    .replace(/[#:.,;!?]+$/g, '') // trailing punctuation
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
@@ -65,8 +96,8 @@ function candidatesFrom(markdown: string): string[] {
 function isUsable(norm: string): boolean {
   if (norm.length < 3 || norm.length > 40) return false;
   if (STOP.has(norm)) return false;
-  if (/^[\d\s\-—.]+$/.test(norm)) return false;   // pure numbers/dates
-  if (!/[a-z]/.test(norm)) return false;          // must contain letters
+  if (/^[\d\s\-—.]+$/.test(norm)) return false; // pure numbers/dates
+  if (!/[a-z]/.test(norm)) return false; // must contain letters
   return true;
 }
 

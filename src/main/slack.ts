@@ -34,16 +34,16 @@ const {
   SeenEvents: _SeenEvents,
   dedupKey: _dedupKey,
 } = require('./slack-trigger.cjs') as {
-    shouldTrigger: (
-      ev: SlackPayload['event'],
-      botUserId: string | null,
-      channelId: string | undefined,
-      activatedThreads: _IActivatedThreads
-    ) => { trigger: boolean; text: string; files: _SlackEventFile[] };
-    ActivatedThreads: new (maxSize?: number) => _IActivatedThreads;
-    SeenEvents: new (maxSize?: number) => _ISeenEvents;
-    dedupKey: (ev: SlackPayload['event']) => string;
-  };
+  shouldTrigger: (
+    ev: SlackPayload['event'],
+    botUserId: string | null,
+    channelId: string | undefined,
+    activatedThreads: _IActivatedThreads,
+  ) => { trigger: boolean; text: string; files: _SlackEventFile[] };
+  ActivatedThreads: new (maxSize?: number) => _IActivatedThreads;
+  SeenEvents: new (maxSize?: number) => _ISeenEvents;
+  dedupKey: (ev: SlackPayload['event']) => string;
+};
 
 interface _IActivatedThreads {
   add(threadTs: string): void;
@@ -167,7 +167,11 @@ export class SlackWebhookServer {
    *  Note: tunnelmole has no documented close handle; teardown is best-effort. */
   stop(): void {
     this.tunnelUrl = null;
-    try { this.server?.close(); } catch { /* noop */ }
+    try {
+      this.server?.close();
+    } catch {
+      /* noop */
+    }
     this.server = null;
   }
 
@@ -191,15 +195,25 @@ export class SlackWebhookServer {
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('timed out')), TUNNEL_START_TIMEOUT_MS);
       tunnelmole({ port: this.port })
-        .then((url) => { clearTimeout(timer); resolve(url); })
-        .catch((e) => { clearTimeout(timer); reject(e); });
+        .then((url) => {
+          clearTimeout(timer);
+          resolve(url);
+        })
+        .catch((e) => {
+          clearTimeout(timer);
+          reject(e);
+        });
     });
   }
 
   /** Buffer the raw body (needed verbatim for the HMAC) under a size cap, then
    *  verify + dispatch. Only POST is accepted. */
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
-    if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+    if (req.method !== 'POST') {
+      res.writeHead(405);
+      res.end();
+      return;
+    }
     const chunks: Buffer[] = [];
     let size = 0;
     let aborted = false;
@@ -208,7 +222,8 @@ export class SlackWebhookServer {
       size += c.length;
       if (size > MAX_BODY_BYTES) {
         aborted = true;
-        res.writeHead(413); res.end();
+        res.writeHead(413);
+        res.end();
         req.destroy();
         return;
       }
@@ -220,17 +235,31 @@ export class SlackWebhookServer {
     });
     req.on('error', () => {
       if (aborted) return;
-      try { res.writeHead(400); res.end(); } catch { /* socket already gone */ }
+      try {
+        res.writeHead(400);
+        res.end();
+      } catch {
+        /* socket already gone */
+      }
     });
   }
 
   private handleBody(req: IncomingMessage, res: ServerResponse, rawBody: string): void {
     // 1) Authenticate over the RAW body BEFORE parsing. Any failure → 403.
-    if (!this.verify(req, rawBody)) { res.writeHead(403); res.end(); return; }
+    if (!this.verify(req, rawBody)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
 
     let payload: SlackPayload;
-    try { payload = JSON.parse(rawBody) as SlackPayload; }
-    catch { res.writeHead(400); res.end(); return; }
+    try {
+      payload = JSON.parse(rawBody) as SlackPayload;
+    } catch {
+      res.writeHead(400);
+      res.end();
+      return;
+    }
 
     // 2) URL verification handshake — echo the challenge back.
     if (payload.type === 'url_verification' && typeof payload.challenge === 'string') {
@@ -248,9 +277,11 @@ export class SlackWebhookServer {
       if (authUserId && !this.botUserId) this.botUserId = authUserId;
 
       const ev = payload.event;
-      const { trigger, text: rawText, files: rawFiles } = _shouldTrigger(
-        ev, this.botUserId, this.channelId, this.activatedThreads
-      );
+      const {
+        trigger,
+        text: rawText,
+        files: rawFiles,
+      } = _shouldTrigger(ev, this.botUserId, this.channelId, this.activatedThreads);
       if (trigger) {
         const text = stripLeadingMention(rawText);
         const channel = typeof ev.channel === 'string' ? ev.channel : '';
@@ -268,14 +299,19 @@ export class SlackWebhookServer {
           if (!isDuplicate) {
             const msg: SlackInboundMessage = { text, channel, ts, thread_ts };
             if (rawFiles.length > 0) msg._rawFiles = rawFiles;
-            try { void this.onMessage(msg); } catch { /* delivery is best-effort */ }
+            try {
+              void this.onMessage(msg);
+            } catch {
+              /* delivery is best-effort */
+            }
           }
         }
       }
     }
 
     // Always 200 so Slack treats the event as delivered and doesn't retry.
-    res.writeHead(200); res.end();
+    res.writeHead(200);
+    res.end();
   }
 
   /**
@@ -293,9 +329,8 @@ export class SlackWebhookServer {
     if (!Number.isFinite(tsNum)) return false;
     if (Math.abs(Date.now() / 1000 - tsNum) > REPLAY_WINDOW_SECONDS) return false;
 
-    const expected = 'v0=' + createHmac('sha256', this.signingSecret)
-      .update(`v0:${ts}:${rawBody}`)
-      .digest('hex');
+    const expected =
+      'v0=' + createHmac('sha256', this.signingSecret).update(`v0:${ts}:${rawBody}`).digest('hex');
     const provided = Buffer.from(sig);
     const computed = Buffer.from(expected);
     // timingSafeEqual throws on length mismatch — guard, and a differing length
@@ -357,7 +392,10 @@ export function postSlackReply(opts: {
   text: string;
 }): Promise<{ ok: boolean; error?: string }> {
   return new Promise((resolve) => {
-    if (!opts.botToken) { resolve({ ok: false, error: 'missing bot token' }); return; }
+    if (!opts.botToken) {
+      resolve({ ok: false, error: 'missing bot token' });
+      return;
+    }
     // CLAUSE-1 guard (fix-slack-integration): refuse any send that lacks an
     // EXPLICIT channel + thread target. A blank/whitespace thread_ts would post
     // to the channel root — an implicit destination the caller never named — so
@@ -365,28 +403,41 @@ export function postSlackReply(opts: {
     // The Slack-origin done-reply poller and the loopback /reply endpoint always
     // pass concrete values, so this never fires for them (no behaviour change).
     if (!opts.channel?.trim() || !opts.thread_ts?.trim()) {
-      resolve({ ok: false, error: 'missing explicit channel or thread_ts' }); return;
+      resolve({ ok: false, error: 'missing explicit channel or thread_ts' });
+      return;
     }
-    const body = JSON.stringify({ channel: opts.channel, thread_ts: opts.thread_ts, text: opts.text });
-    const req = httpsRequest({
-      method: 'POST',
-      hostname: 'slack.com',
-      path: '/api/chat.postMessage',
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'content-length': Buffer.byteLength(body),
-        authorization: `Bearer ${opts.botToken}`
-      }
-    }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on('data', (c: Buffer) => chunks.push(c));
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { ok?: boolean; error?: string };
-          resolve({ ok: json.ok === true, error: json.error });
-        } catch { resolve({ ok: false, error: 'bad response from Slack' }); }
-      });
+    const body = JSON.stringify({
+      channel: opts.channel,
+      thread_ts: opts.thread_ts,
+      text: opts.text,
     });
+    const req = httpsRequest(
+      {
+        method: 'POST',
+        hostname: 'slack.com',
+        path: '/api/chat.postMessage',
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          'content-length': Buffer.byteLength(body),
+          authorization: `Bearer ${opts.botToken}`,
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+              ok?: boolean;
+              error?: string;
+            };
+            resolve({ ok: json.ok === true, error: json.error });
+          } catch {
+            resolve({ ok: false, error: 'bad response from Slack' });
+          }
+        });
+      },
+    );
     req.on('error', (e) => resolve({ ok: false, error: errMsg(e) }));
     req.write(body);
     req.end();
@@ -429,9 +480,15 @@ export class SlackReplyServer {
   /** Bind a loopback port (0 ⇒ OS-assigned). Resolves the actual bound port. */
   start(preferredPort = 0): Promise<{ ok: boolean; port?: number; error?: string }> {
     return new Promise((resolve) => {
-      if (this.server) { resolve({ ok: false, error: 'already running' }); return; }
+      if (this.server) {
+        resolve({ ok: false, error: 'already running' });
+        return;
+      }
       const server = createServer((req, res) => this.handle(req, res));
-      const onError = (e: Error): void => { server.off('listening', onListening); resolve({ ok: false, error: errMsg(e) }); };
+      const onError = (e: Error): void => {
+        server.off('listening', onListening);
+        resolve({ ok: false, error: errMsg(e) });
+      };
       const onListening = (): void => {
         server.off('error', onError);
         this.server = server;
@@ -447,17 +504,31 @@ export class SlackReplyServer {
 
   /** Close the endpoint. Idempotent and best-effort. */
   stop(): void {
-    try { this.server?.close(); } catch { /* noop */ }
+    try {
+      this.server?.close();
+    } catch {
+      /* noop */
+    }
     this.server = null;
   }
 
   private handle(req: IncomingMessage, res: ServerResponse): void {
     // Defense in depth: even bound loopback-only, refuse any non-loopback peer.
-    if (!isLoopback(req.socket.remoteAddress ?? '')) { res.writeHead(403); res.end(); return; }
-    if (req.method !== 'POST' || (req.url ?? '').split('?')[0] !== '/reply') {
-      res.writeHead(404); res.end(); return;
+    if (!isLoopback(req.socket.remoteAddress ?? '')) {
+      res.writeHead(403);
+      res.end();
+      return;
     }
-    if (!this.checkToken(req.headers['x-md-reply-token'])) { res.writeHead(401); res.end(); return; }
+    if (req.method !== 'POST' || (req.url ?? '').split('?')[0] !== '/reply') {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    if (!this.checkToken(req.headers['x-md-reply-token'])) {
+      res.writeHead(401);
+      res.end();
+      return;
+    }
 
     const chunks: Buffer[] = [];
     let size = 0;
@@ -465,30 +536,66 @@ export class SlackReplyServer {
     req.on('data', (c: Buffer) => {
       if (aborted) return;
       size += c.length;
-      if (size > MAX_BODY_BYTES) { aborted = true; res.writeHead(413); res.end(); req.destroy(); return; }
+      if (size > MAX_BODY_BYTES) {
+        aborted = true;
+        res.writeHead(413);
+        res.end();
+        req.destroy();
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => {
       if (aborted) return;
       let parsed: { channel?: string; thread_ts?: string; text?: string };
-      try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-      catch { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'bad json' })); return; }
+      try {
+        parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: 'bad json' }));
+        return;
+      }
       const botToken = this.getBotToken();
-      if (!botToken) { res.writeHead(503); res.end(JSON.stringify({ ok: false, error: 'no bot token' })); return; }
+      if (!botToken) {
+        res.writeHead(503);
+        res.end(JSON.stringify({ ok: false, error: 'no bot token' }));
+        return;
+      }
       if (!parsed.channel || !parsed.thread_ts || !parsed.text) {
-        res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'channel, thread, text required' })); return;
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: 'channel, thread, text required' }));
+        return;
       }
       const thread_ts = parsed.thread_ts;
       postSlackReply({ botToken, channel: parsed.channel, thread_ts, text: parsed.text })
         .then((r) => {
           // A successful DIRECT reply means the agent already answered this thread —
           // tell main so the done-summary poller treats it as a fallback and skips it.
-          if (r.ok) { try { this.onReplied?.(thread_ts); } catch { /* never break the reply */ } }
-          res.writeHead(r.ok ? 200 : 502, { 'content-type': 'application/json' }); res.end(JSON.stringify(r));
+          if (r.ok) {
+            try {
+              this.onReplied?.(thread_ts);
+            } catch {
+              /* never break the reply */
+            }
+          }
+          res.writeHead(r.ok ? 200 : 502, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(r));
         })
-        .catch((e) => { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: errMsg(e) })); });
+        .catch((e) => {
+          res.writeHead(500);
+          res.end(JSON.stringify({ ok: false, error: errMsg(e) }));
+        });
     });
-    req.on('error', () => { if (!aborted) { try { res.writeHead(400); res.end(); } catch { /* socket gone */ } } });
+    req.on('error', () => {
+      if (!aborted) {
+        try {
+          res.writeHead(400);
+          res.end();
+        } catch {
+          /* socket gone */
+        }
+      }
+    });
   }
 
   /** Constant-time match of the request's reply token against the session token. */

@@ -21,8 +21,13 @@ const { tmpdir } = require('node:os');
 const { join, dirname } = require('node:path');
 const loadTs = require('./load-ts.cjs');
 
-const { TelegramTrigger, writeTelegramEnv, telegramEnvSummary, resolveTelegramRuntime, readTelegramEnv } =
-  loadTs('src/main/telegram.ts');
+const {
+  TelegramTrigger,
+  writeTelegramEnv,
+  telegramEnvSummary,
+  resolveTelegramRuntime,
+  readTelegramEnv,
+} = loadTs('src/main/telegram.ts');
 
 const envFile = () => join(mkdtempSync(join(tmpdir(), 'tg-')), '.env.telegram');
 
@@ -108,15 +113,19 @@ test('TelegramTrigger: stop() halts polling + cleans up; restart resumes polling
       polls++;
       return new Promise((resolve, reject) => {
         const t = setTimeout(() => resolve(mkResp({ ok: true, result: [] })), 5);
-        init?.signal?.addEventListener('abort', () => {
-          clearTimeout(t);
-          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
-        }, { once: true });
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t);
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+          },
+          { once: true },
+        );
       });
     }
-    return Promise.resolve(mkResp(method === 'getMe'
-      ? { ok: true, result: { username: 'testbot' } }
-      : { ok: true }));
+    return Promise.resolve(
+      mkResp(method === 'getMe' ? { ok: true, result: { username: 'testbot' } } : { ok: true }),
+    );
   };
   const quiet = { envFile: f, replyConfigFile, onMessage: () => {}, log: () => {} };
   try {

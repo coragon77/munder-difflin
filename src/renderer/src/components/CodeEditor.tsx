@@ -14,42 +14,45 @@ import { Icon } from './Icon';
 import { PixelButton } from './PixelButton';
 
 // ─── Theme matching CTH palette ─────────────────────────────────────────────
-const cthEditorTheme = EditorView.theme({
-  '&': {
-    background: '#FCFAF0',
-    color: '#1A1320',
-    height: '100%',
-    fontFamily: 'VT323, "JetBrains Mono", monospace',
-    fontSize: '16px'
+const cthEditorTheme = EditorView.theme(
+  {
+    '&': {
+      background: '#FCFAF0',
+      color: '#1A1320',
+      height: '100%',
+      fontFamily: 'VT323, "JetBrains Mono", monospace',
+      fontSize: '16px',
+    },
+    '.cm-content': { caretColor: '#FF6B6B', padding: '8px 0' },
+    '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#FF6B6B', borderLeftWidth: '2px' },
+    '.cm-scroller': { fontFamily: 'inherit', overflow: 'auto' },
+    '.cm-gutters': {
+      background: '#F0EAD2',
+      color: '#6B5878',
+      borderRight: '1px solid #D9CFE0',
+    },
+    '.cm-activeLineGutter': { background: '#FFEC99' },
+    '.cm-activeLine': { background: 'rgba(255, 217, 61, 0.10)' },
+    '.cm-selectionBackground, ::selection': { background: '#FFEC99 !important' },
+    '.cm-searchMatch': { background: '#A8E6E0', outline: '1px solid #1A1320' },
+    '.cm-searchMatch.cm-searchMatch-selected': { background: '#FFD93D' },
   },
-  '.cm-content': { caretColor: '#FF6B6B', padding: '8px 0' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#FF6B6B', borderLeftWidth: '2px' },
-  '.cm-scroller': { fontFamily: 'inherit', overflow: 'auto' },
-  '.cm-gutters': {
-    background: '#F0EAD2',
-    color: '#6B5878',
-    borderRight: '1px solid #D9CFE0'
-  },
-  '.cm-activeLineGutter': { background: '#FFEC99' },
-  '.cm-activeLine': { background: 'rgba(255, 217, 61, 0.10)' },
-  '.cm-selectionBackground, ::selection': { background: '#FFEC99 !important' },
-  '.cm-searchMatch': { background: '#A8E6E0', outline: '1px solid #1A1320' },
-  '.cm-searchMatch.cm-searchMatch-selected': { background: '#FFD93D' }
-}, { dark: false });
+  { dark: false },
+);
 
 const cthSyntax = HighlightStyle.define([
-  { tag: tags.keyword,        color: '#B197FC' },
-  { tag: tags.operator,       color: '#6B5878' },
+  { tag: tags.keyword, color: '#B197FC' },
+  { tag: tags.operator, color: '#6B5878' },
   { tag: [tags.string, tags.regexp], color: '#6BCF7F' },
   { tag: [tags.number, tags.bool, tags.null], color: '#FF6B6B' },
-  { tag: tags.comment,        color: '#6B5878', fontStyle: 'italic' },
-  { tag: tags.variableName,   color: '#1A1320' },
+  { tag: tags.comment, color: '#6B5878', fontStyle: 'italic' },
+  { tag: tags.variableName, color: '#1A1320' },
   { tag: tags.function(tags.variableName), color: '#FFA07A' },
   { tag: [tags.typeName, tags.className], color: '#4ECDC4' },
-  { tag: tags.propertyName,   color: '#3D2E4A' },
-  { tag: tags.heading,        color: '#1A1320', fontWeight: 'bold' as any },
-  { tag: tags.link,           color: '#4ECDC4', textDecoration: 'underline' as any },
-  { tag: tags.meta,           color: '#6B5878' }
+  { tag: tags.propertyName, color: '#3D2E4A' },
+  { tag: tags.heading, color: '#1A1320', fontWeight: 'bold' as any },
+  { tag: tags.link, color: '#4ECDC4', textDecoration: 'underline' as any },
+  { tag: tags.meta, color: '#6B5878' },
 ]);
 
 function extensionsFor(filename: string) {
@@ -75,7 +78,11 @@ export interface CodeEditorProps {
 }
 
 export function CodeEditor({
-  root, filePath, fullscreen, onToggleFullscreen, onCopyPath
+  root,
+  filePath,
+  fullscreen,
+  onToggleFullscreen,
+  onCopyPath,
 }: CodeEditorProps) {
   const [content, setContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
@@ -88,13 +95,15 @@ export function CodeEditor({
   useEffect(() => {
     let cancelled = false;
     if (!filePath) {
-      setContent(''); setOriginalContent(''); setError(undefined);
+      setContent('');
+      setOriginalContent('');
+      setError(undefined);
       setAbsPath(undefined);
       return;
     }
     setLoading(true);
     setError(undefined);
-    window.cth.readFile(root, filePath).then(res => {
+    window.cth.readFile(root, filePath).then((res) => {
       if (cancelled) return;
       setLoading(false);
       if (res.ok) {
@@ -108,7 +117,9 @@ export function CodeEditor({
         setError(res.error);
       }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [root, filePath]);
 
   const dirty = content !== originalContent;
@@ -141,32 +152,50 @@ export function CodeEditor({
   }, [save]);
 
   const extensions = useMemo(
-    () => [cthEditorTheme, syntaxHighlighting(cthSyntax), ...(filePath ? extensionsFor(filePath) : [])],
-    [filePath]
+    () => [
+      cthEditorTheme,
+      syntaxHighlighting(cthSyntax),
+      ...(filePath ? extensionsFor(filePath) : []),
+    ],
+    [filePath],
   );
 
   if (!filePath) {
     return (
-      <div style={{
-        height: '100%', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: 12,
-        background: 'var(--cth-paper-200)',
-        textAlign: 'center'
-      }}>
+      <div
+        style={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+          background: 'var(--cth-paper-200)',
+          textAlign: 'center',
+        }}
+      >
         <div style={{ opacity: 0.5 }}>
           <Icon name="code" size={2} />
         </div>
-        <div style={{
-          fontFamily: 'var(--cth-font-display)', fontSize: 8, lineHeight: '14px',
-          textTransform: 'uppercase', letterSpacing: 1,
-          color: 'var(--cth-ink-700)'
-        }}>
+        <div
+          style={{
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 8,
+            lineHeight: '14px',
+            textTransform: 'uppercase',
+            letterSpacing: 1,
+            color: 'var(--cth-ink-700)',
+          }}
+        >
           No file open
         </div>
-        <div style={{
-          fontFamily: 'var(--cth-font-ui)', fontSize: 13,
-          color: 'var(--cth-ink-500)'
-        }}>
+        <div
+          style={{
+            fontFamily: 'var(--cth-font-ui)',
+            fontSize: 13,
+            color: 'var(--cth-ink-500)',
+          }}
+        >
           Pick a file from the tree to view it here.
         </div>
       </div>
@@ -174,30 +203,45 @@ export function CodeEditor({
   }
 
   return (
-    <div style={{
-      height: '100%',
-      display: 'flex', flexDirection: 'column',
-      background: 'var(--cth-paper-100)'
-    }}>
+    <div
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--cth-paper-100)',
+      }}
+    >
       {/* Mini header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '4px 8px',
-        background: 'var(--cth-cream-200)',
-        borderBottom: '1px solid var(--cth-ink-700)',
-        fontFamily: 'var(--cth-font-ui)', fontSize: 12,
-        color: 'var(--cth-ink-700)'
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '4px 8px',
+          background: 'var(--cth-cream-200)',
+          borderBottom: '1px solid var(--cth-ink-700)',
+          fontFamily: 'var(--cth-font-ui)',
+          fontSize: 12,
+          color: 'var(--cth-ink-700)',
+        }}
+      >
         <Icon name="code" />
-        <span style={{
-          flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-        }} title={absPath}>{filePath}{dirty && ' •'}</span>
+        <span
+          style={{
+            flex: 1,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+          title={absPath}
+        >
+          {filePath}
+          {dirty && ' •'}
+        </span>
         {onCopyPath && (
-          <button
-            onClick={onCopyPath}
-            title="Copy absolute path"
-            style={editorBtn}
-          >copy path</button>
+          <button onClick={onCopyPath} title="Copy absolute path" style={editorBtn}>
+            copy path
+          </button>
         )}
         <button
           onClick={save}
@@ -205,7 +249,13 @@ export function CodeEditor({
           title="Save (Cmd-S)"
           style={{ ...editorBtn, opacity: dirty ? 1 : 0.5 }}
         >
-          {saveState === 'saving' ? '...' : saveState === 'saved' ? 'saved' : saveState === 'error' ? 'err' : 'save'}
+          {saveState === 'saving'
+            ? '...'
+            : saveState === 'saved'
+              ? 'saved'
+              : saveState === 'error'
+                ? 'err'
+                : 'save'}
         </button>
         {onToggleFullscreen && (
           <button
@@ -235,7 +285,7 @@ export function CodeEditor({
               lineNumbers: true,
               highlightActiveLine: true,
               foldGutter: true,
-              autocompletion: false
+              autocompletion: false,
             }}
           />
         )}
@@ -243,11 +293,16 @@ export function CodeEditor({
 
       {/* Footer actions when fullscreen */}
       {fullscreen && (
-        <div style={{
-          padding: 8, borderTop: '1px solid var(--cth-ink-700)',
-          background: 'var(--cth-cream-200)',
-          display: 'flex', justifyContent: 'flex-end', gap: 8
-        }}>
+        <div
+          style={{
+            padding: 8,
+            borderTop: '1px solid var(--cth-ink-700)',
+            background: 'var(--cth-cream-200)',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 8,
+          }}
+        >
           <PixelButton variant="secondary" size="sm" onClick={onToggleFullscreen}>
             <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
               <Icon name="minimize" /> exit fullscreen
@@ -260,12 +315,16 @@ export function CodeEditor({
 }
 
 const editorBtn: React.CSSProperties = {
-  padding: '0 6px', height: 22,
-  fontFamily: 'var(--cth-font-ui)', fontSize: 12,
+  padding: '0 6px',
+  height: 22,
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 12,
   color: 'var(--cth-ink-900)',
   background: 'var(--cth-cream-100)',
   border: 'none',
   boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
   cursor: 'pointer',
-  display: 'inline-flex', alignItems: 'center', gap: 4
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
 };

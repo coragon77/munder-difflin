@@ -21,8 +21,17 @@
  * Runs in the Electron main process.
  */
 import {
-  existsSync, statSync, readdirSync, readFileSync, writeFileSync,
-  mkdirSync, copyFileSync, renameSync, openSync, fsyncSync, closeSync
+  existsSync,
+  statSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  copyFileSync,
+  renameSync,
+  openSync,
+  fsyncSync,
+  closeSync,
 } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { runHiddenClaude } from './hiddenClaude';
@@ -53,7 +62,7 @@ const CONDENSE_SYSTEM = [
   '  Drop routine standup chatter, resolved blockers, and superseded plans.',
   '- "hoist" = any NEW high-importance durable fact found in (B) that belongs in the',
   '  pinned block and is not already in (C). Lines only; may be empty.',
-  '- Output ONLY the JSON object. No prose, no code fence.'
+  '- Output ONLY the JSON object. No prose, no code fence.',
 ].join('\n');
 
 export interface ReflectSettings {
@@ -72,22 +81,25 @@ export interface ReflectSettings {
 }
 
 /** A `## ` section: its heading line and the body text beneath it. */
-interface Section { heading: string; body: string }
+interface Section {
+  heading: string;
+  body: string;
+}
 
 /** A parsed memory.md split into the three regions. `pinned`/`condensed` are null
  *  for legacy (un-structured) files — they're created on first condense. */
 interface Parsed {
-  header: string;            // the `# Memory …` H1 + any preamble before the first `##`
-  pinned: string | null;     // body under the pinned heading (no heading line)
-  condensed: string | null;  // body under the condensed heading
-  recent: Section[];         // every other `## ` section, in file order (oldest→newest)
+  header: string; // the `# Memory …` H1 + any preamble before the first `##`
+  pinned: string | null; // body under the pinned heading (no heading line)
+  condensed: string | null; // body under the condensed heading
+  recent: Section[]; // every other `## ` section, in file order (oldest→newest)
 }
 
 /** Outcome of one agent's reflect attempt — surfaced to the manual IPC + tests. */
 export interface ReflectResult {
   id: string;
-  condensed: boolean;        // did we actually rewrite the file?
-  reason: string;            // why (skipped/aborted/done), for logging + UI
+  condensed: boolean; // did we actually rewrite the file?
+  reason: string; // why (skipped/aborted/done), for logging + UI
   oldBytes?: number;
   newBytes?: number;
 }
@@ -111,7 +123,7 @@ export class MemoryReflector {
     private getCommand: () => string,
     private getMemoryEnv: () => Record<string, string>,
     private getSettings: () => ReflectSettings,
-    private appendLog: (event: Record<string, unknown>) => void
+    private appendLog: (event: Record<string, unknown>) => void,
   ) {}
 
   // — lifecycle (mirrors MemoryManager) —
@@ -124,11 +136,16 @@ export class MemoryReflector {
     // First scan one interval out, not on boot, so launch isn't competing with an
     // LLM call (and a freshly-restored home isn't condensed before it's mined).
     const ms = Math.max(60_000, this.getSettings().intervalMs);
-    this.timer = setInterval(() => { void this.reflectNow(); }, ms);
+    this.timer = setInterval(() => {
+      void this.reflectNow();
+    }, ms);
   }
 
   stop(): void {
-    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
     this.started = false;
   }
 
@@ -145,7 +162,11 @@ export class MemoryReflector {
     if (!existsSync(agentsDir)) return [];
     const settings = this.getSettings();
     let ids: string[];
-    try { ids = readdirSync(agentsDir); } catch { return []; }
+    try {
+      ids = readdirSync(agentsDir);
+    } catch {
+      return [];
+    }
     if (onlyId) ids = ids.filter((id) => id === onlyId);
 
     this.reflecting = true;
@@ -162,7 +183,9 @@ export class MemoryReflector {
           // the autonomous loop honors the threshold.
           if (!onlyId && !this.shouldCondense(bytes, mem, settings)) continue;
           text = readFileSync(mem, 'utf8');
-        } catch { continue; }
+        } catch {
+          continue;
+        }
         results.push(await this.condense(home, id, mem, text, settings));
       }
     } finally {
@@ -178,14 +201,22 @@ export class MemoryReflector {
     if (bytes < s.minBytes) return false;
     if (bytes > (BUDGET_BYTES * s.byteTriggerPct) / 100) return true;
     let sections = 0;
-    try { sections = countSections(readFileSync(mem, 'utf8')); } catch { return false; }
+    try {
+      sections = countSections(readFileSync(mem, 'utf8'));
+    } catch {
+      return false;
+    }
     return sections > s.sectionTrigger;
   }
 
   // — condense one file —
 
   private async condense(
-    home: string, id: string, mem: string, text: string, s: ReflectSettings
+    home: string,
+    id: string,
+    mem: string,
+    text: string,
+    s: ReflectSettings,
   ): Promise<ReflectResult> {
     const oldBytes = Buffer.byteLength(text, 'utf8');
     const parsed = parseMemory(text);
@@ -225,8 +256,13 @@ export class MemoryReflector {
 
     // 4) VERIFY-DON'T-TRUST — reject the rewrite unless every check holds.
     const verdict = verify({
-      rebuilt, newBytes, oldBytes, oldPinnedLines, mergedPinned,
-      condensed: summary.condensed, keep
+      rebuilt,
+      newBytes,
+      oldBytes,
+      oldPinnedLines,
+      mergedPinned,
+      condensed: summary.condensed,
+      keep,
     });
     if (!verdict.ok) {
       this.logAbort(id, verdict.reason, undefined, { oldBytes, newBytes });
@@ -243,25 +279,53 @@ export class MemoryReflector {
 
     try {
       this.appendLog({
-        kind: 'condense', agentId: id, oldBytes, newBytes,
-        evicted: evict.length, kept: keep.length, hoisted: summary.hoist.length, backup
+        kind: 'condense',
+        agentId: id,
+        oldBytes,
+        newBytes,
+        evicted: evict.length,
+        kept: keep.length,
+        hoisted: summary.hoist.length,
+        backup,
       });
-    } catch { /* logging is best-effort */ }
+    } catch {
+      /* logging is best-effort */
+    }
     // The miner re-indexes within its next cycle — mtime changed, no extra wiring.
     return { id, condensed: true, reason: 'condensed', oldBytes, newBytes };
   }
 
-  private logAbort(id: string, reason: string, detail?: string, extra?: Record<string, unknown>): void {
-    try { this.appendLog({ kind: 'condense-abort', agentId: id, reason, ...(detail ? { detail } : {}), ...extra }); }
-    catch { /* best-effort */ }
+  private logAbort(
+    id: string,
+    reason: string,
+    detail?: string,
+    extra?: Record<string, unknown>,
+  ): void {
+    try {
+      this.appendLog({
+        kind: 'condense-abort',
+        agentId: id,
+        reason,
+        ...(detail ? { detail } : {}),
+        ...extra,
+      });
+    } catch {
+      /* best-effort */
+    }
   }
 
   // — the headless LLM call (the only non-deterministic step) —
 
   private async summarize(
-    home: string, condensed: string | null, evict: Section[], pinned: string | null
+    home: string,
+    condensed: string | null,
+    evict: Section[],
+    pinned: string | null,
   ): Promise<{ condensed: string; hoist: string[] }> {
-    const evictText = evict.map((s) => `${s.heading}\n${s.body}`).join('\n\n').trim();
+    const evictText = evict
+      .map((s) => `${s.heading}\n${s.body}`)
+      .join('\n\n')
+      .trim();
     const prompt = [
       CONDENSE_SYSTEM,
       '',
@@ -273,7 +337,7 @@ export class MemoryReflector {
       evictText || '(none)',
       '',
       '(C) PINNED DURABLE FACTS (context only — do not rewrite):',
-      pinned?.trim() || '(none)'
+      pinned?.trim() || '(none)',
     ].join('\n');
 
     const result = await runHiddenClaude(prompt, {
@@ -332,8 +396,9 @@ export function parseMemory(text: string): Parsed {
     const h = s.heading.trim();
     if (h.startsWith('## 📌')) pinned = s.body.replace(/\s+$/, '');
     else if (h.startsWith('## 🗜')) condensed = s.body.replace(/\s+$/, '');
-    else if (h === RECENT_HEADING) { /* divider — its siblings ARE the recent list */ }
-    else recent.push(s);
+    else if (h === RECENT_HEADING) {
+      /* divider — its siblings ARE the recent list */
+    } else recent.push(s);
   }
   return { header, pinned, condensed, recent };
 }
@@ -341,7 +406,10 @@ export function parseMemory(text: string): Parsed {
 /** Non-empty, trimmed lines of the pinned block (the set we must never lose). */
 export function pinnedLines(pinned: string | null): string[] {
   if (!pinned) return [];
-  return pinned.split('\n').map((l) => l.trim()).filter(Boolean);
+  return pinned
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
 }
 
 /** Append hoisted durable facts to the pinned set, skipping any already present. */
@@ -350,13 +418,21 @@ export function mergePinned(oldLines: string[], hoist: string[]): string[] {
   const out = [...oldLines];
   for (const raw of hoist) {
     const line = (raw ?? '').trim();
-    if (line && !have.has(line)) { have.add(line); out.push(line); }
+    if (line && !have.has(line)) {
+      have.add(line);
+      out.push(line);
+    }
   }
   return out;
 }
 
 /** Reassemble the canonical 3-region file. */
-export function rebuild(header: string, pinned: string[], condensed: string, keep: Section[]): string {
+export function rebuild(
+  header: string,
+  pinned: string[],
+  condensed: string,
+  keep: Section[],
+): string {
   const parts: string[] = [];
   if (header.trim()) parts.push(header.trim());
   parts.push(PINNED_HEADING);
@@ -371,15 +447,20 @@ export function rebuild(header: string, pinned: string[], condensed: string, kee
 /** The verify-don't-trust gate. The rewrite is rejected — original kept verbatim
  *  — unless ALL checks pass. The lossless backup makes a rejection a pure no-op. */
 export function verify(args: {
-  rebuilt: string; newBytes: number; oldBytes: number;
-  oldPinnedLines: string[]; mergedPinned: string[];
-  condensed: string; keep: Section[];
+  rebuilt: string;
+  newBytes: number;
+  oldBytes: number;
+  oldPinnedLines: string[];
+  mergedPinned: string[];
+  condensed: string;
+  keep: Section[];
 }): { ok: true } | { ok: false; reason: string } {
   const { rebuilt, newBytes, oldBytes, oldPinnedLines, mergedPinned, condensed, keep } = args;
   // 6) Valid summary JSON already enforced upstream (parseSummary). Here: structure.
   // 1) Parses back into the 3-region structure.
   const re = parseMemory(rebuilt);
-  if (re.pinned === null || re.condensed === null) return { ok: false, reason: 'structure-missing-region' };
+  if (re.pinned === null || re.condensed === null)
+    return { ok: false, reason: 'structure-missing-region' };
   // 4) Non-empty + sane.
   if (newBytes <= 200) return { ok: false, reason: 'too-small' };
   if (!condensed.trim()) return { ok: false, reason: 'empty-condensed' };
@@ -387,8 +468,10 @@ export function verify(args: {
   if (!(newBytes < oldBytes * 0.95)) return { ok: false, reason: 'not-smaller' };
   // 2) Pinned preserved: every old pinned line survives (hoist only adds).
   const newPinned = new Set(pinnedLines(re.pinned));
-  for (const line of oldPinnedLines) if (!newPinned.has(line)) return { ok: false, reason: 'pinned-line-dropped' };
-  for (const line of mergedPinned) if (!newPinned.has(line)) return { ok: false, reason: 'pinned-merge-mismatch' };
+  for (const line of oldPinnedLines)
+    if (!newPinned.has(line)) return { ok: false, reason: 'pinned-line-dropped' };
+  for (const line of mergedPinned)
+    if (!newPinned.has(line)) return { ok: false, reason: 'pinned-merge-mismatch' };
   // 5) Recent integrity: the kept newest sections round-trip byte-for-byte.
   if (re.recent.length !== keep.length) return { ok: false, reason: 'recent-count-mismatch' };
   for (let i = 0; i < keep.length; i++) {
@@ -410,19 +493,32 @@ export function parseSummary(stdout: string): { condensed: string; hoist: string
     const env = JSON.parse(raw) as { result?: unknown; text?: unknown };
     if (typeof env.result === 'string') inner = env.result;
     else if (typeof env.text === 'string') inner = env.text;
-  } catch { /* not the CLI envelope — treat stdout itself as the model output */ }
-  inner = inner.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  } catch {
+    /* not the CLI envelope — treat stdout itself as the model output */
+  }
+  inner = inner
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/, '')
+    .trim();
   try {
     const obj = JSON.parse(inner) as { condensed?: unknown; hoist?: unknown };
     if (typeof obj.condensed !== 'string' || !obj.condensed.trim()) return null;
-    const hoist = Array.isArray(obj.hoist) ? obj.hoist.filter((x): x is string => typeof x === 'string') : [];
+    const hoist = Array.isArray(obj.hoist)
+      ? obj.hoist.filter((x): x is string => typeof x === 'string')
+      : [];
     return { condensed: obj.condensed, hoist };
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 /** `20260606T110912Z` — matches the janitor's backup-dir stamp format. */
 function utcStamp(): string {
-  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  return new Date()
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z');
 }
 
 /** Write `text` to `path` atomically: temp sibling → fsync → rename over target. */
@@ -431,7 +527,13 @@ function atomicWrite(path: string, text: string): void {
   writeFileSync(tmp, text, 'utf8');
   try {
     const fd = openSync(tmp, 'r+');
-    try { fsyncSync(fd); } finally { closeSync(fd); }
-  } catch { /* fsync best-effort; rename is the durability guarantee */ }
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    /* fsync best-effort; rename is the durability guarantee */
+  }
   renameSync(tmp, path);
 }

@@ -67,8 +67,8 @@ export function OrgSection({ onSummary }: { onSummary?: (s: string) => void }) {
       </Field>
 
       <Callout tone="note">
-        Settings only, for now. The org messaging service does not exist yet, so a key here starts no
-        connection and nothing is sent or received. It is stored ready for when it does.
+        Settings only, for now. The org messaging service does not exist yet, so a key here starts
+        no connection and nothing is sent or received. It is stored ready for when it does.
       </Callout>
 
       {cfg.enabled && !hasKey && (

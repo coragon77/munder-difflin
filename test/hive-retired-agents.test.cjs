@@ -34,9 +34,10 @@ function floor(t) {
 }
 
 /** Main's writeFleetSnapshot roster filter, mirrored (see src/main/index.ts). */
-const activeIds = (hive) => Object.entries(hive.registry().agents)
-  .filter(([, a]) => !a.archived && !a.retired)
-  .map(([id]) => id);
+const activeIds = (hive) =>
+  Object.entries(hive.registry().agents)
+    .filter(([, a]) => !a.archived && !a.retired)
+    .map(([id]) => id);
 
 test('firing persists retirement in the registry, not just liveness', async (t) => {
   const { home, hive } = floor(t);
@@ -51,8 +52,11 @@ test('firing persists retirement in the registry, not just liveness', async (t) 
 
   // The registry is the thing that survives a restart — a fresh manager over the
   // same home is exactly what boot sees.
-  assert.equal(new HiveManager(() => home).isRetired('intern-doomed'), true,
-    'retirement must outlive the process, or the restart resurrects them');
+  assert.equal(
+    new HiveManager(() => home).isRetired('intern-doomed'),
+    true,
+    'retirement must outlive the process, or the restart resurrects them',
+  );
 });
 
 test('re-registering a fired agent cannot bring it back to life', async (t) => {
@@ -87,7 +91,7 @@ test('reinstating is deliberate, and only then does a spawn revive them', async 
   assert.deepEqual(activeIds(hive), ['intern-doomed']);
 });
 
-test('a fired agent\'s swept folder stays swept', async (t) => {
+test("a fired agent's swept folder stays swept", async (t) => {
   const { home, hive } = floor(t);
   const agents = path.join(home, 'hive', 'agents');
   await hive.ensureAgent({ id: 'intern-doomed', name: 'Ryan', provider: 'claude', role: 'intern' });
@@ -108,7 +112,9 @@ test('a fired agent\'s swept folder stays swept', async (t) => {
 test('a fresh spawn refreshes the roster too, not just an archive', async (t) => {
   const { hive } = floor(t);
   const seen = [];
-  hive.onRosterChange = () => { seen.push(activeIds(hive).join(',')); };
+  hive.onRosterChange = () => {
+    seen.push(activeIds(hive).join(','));
+  };
 
   await hive.ensureAgent({ id: 'pam-1', name: 'Pam', provider: 'claude' });
 
@@ -121,13 +127,19 @@ test('retiring refreshes the roster snapshot and survives a broken writer', asyn
   await hive.ensureAgent({ id: 'jim-1', name: 'Jim', provider: 'claude' });
 
   let calls = 0;
-  hive.onRosterChange = () => { calls++; throw new Error('snapshot exploded'); };
+  hive.onRosterChange = () => {
+    calls++;
+    throw new Error('snapshot exploded');
+  };
 
   hive.setRetired('jim-1', true);
-  hive.setRetired('jim-1', true);      // already retired — nothing changed
-  hive.setRetired('nobody-1', true);   // not registered at all
+  hive.setRetired('jim-1', true); // already retired — nothing changed
+  hive.setRetired('nobody-1', true); // not registered at all
 
   assert.equal(calls, 1, 'only a real flip rebuilds the snapshot');
-  assert.equal(hive.registry().agents['jim-1'].retired, true,
-    'a throwing snapshot writer must not roll back or crash the fire');
+  assert.equal(
+    hive.registry().agents['jim-1'].retired,
+    true,
+    'a throwing snapshot writer must not roll back or crash the fire',
+  );
 });

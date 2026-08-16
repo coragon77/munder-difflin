@@ -24,14 +24,14 @@ import {
   releaseWebglContexts,
   requestInitialPtyRedraw,
   scheduleWebglRecovery,
-  type TerminalRecoveryState
+  type TerminalRecoveryState,
 } from './terminalRecovery';
 import {
   canAutomateTerminal,
   opensInteractiveTerminalUi,
   shouldFollowTerminalOutput,
   terminalAutomationBlock,
-  type TerminalAutomationBlock
+  type TerminalAutomationBlock,
 } from './terminalAutomation';
 import '@xterm/xterm/css/xterm.css';
 
@@ -106,7 +106,7 @@ export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14):
     // actual background — so it also rescues low-contrast coloured *text* on the
     // cream paper. Untouched for already-high-contrast cells (the dark theme).
     minimumContrastRatio: 4.5,
-    allowProposedApi: true
+    allowProposedApi: true,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -136,42 +136,58 @@ export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14):
     inputDirtyAt: 0,
     automationSettleUntil: 0,
     lineBuf: '',
-    generation: 0
+    generation: 0,
   };
 
   // Subscribe to the pty stream ONCE for the terminal's whole lifetime, so the
   // buffer keeps filling even while this terminal isn't mounted in any view.
-  entry.unsub.push(window.cth.onPtyData(ptyId, (rawChunk) => {
-    const chunk = normalizePtyChunk(rawChunk);
-    if (!chunk) return;
-    const active = term.buffer.active;
-    const follow = shouldFollowTerminalOutput(active.viewportY, active.baseY);
-    term.write(chunk, () => {
-      if (follow) {
-        try { term.scrollToBottom(); } catch { /* terminal may be detaching */ }
-      }
-    });
-    entry.onData?.(chunk);
-  }));
+  entry.unsub.push(
+    window.cth.onPtyData(ptyId, (rawChunk) => {
+      const chunk = normalizePtyChunk(rawChunk);
+      if (!chunk) return;
+      const active = term.buffer.active;
+      const follow = shouldFollowTerminalOutput(active.viewportY, active.baseY);
+      term.write(chunk, () => {
+        if (follow) {
+          try {
+            term.scrollToBottom();
+          } catch {
+            /* terminal may be detaching */
+          }
+        }
+      });
+      entry.onData?.(chunk);
+    }),
+  );
   // A restart does killPty() then spawnPty() under the SAME pty id, so a stale
   // exit from the killed process could in principle latch `exited` on its
   // replacement (which would silently drop every keystroke). It can't: kill()
   // removes the session from the map synchronously (main/pty.ts kill), and the
   // process's own onExit checks it still owns that id before emitting — so the
   // stale event is suppressed in the main process and never reaches here.
-  entry.unsub.push(window.cth.onPtyExit(ptyId, ({ exitCode, signal }) => {
-    entry.exited = true;
-    term.writeln(`\r\n\x1b[2m─ process exited (code ${exitCode}${signal ? `, signal ${signal}` : ''}) ─\x1b[0m`);
-  }));
+  entry.unsub.push(
+    window.cth.onPtyExit(ptyId, ({ exitCode, signal }) => {
+      entry.exited = true;
+      term.writeln(
+        `\r\n\x1b[2m─ process exited (code ${exitCode}${signal ? `, signal ${signal}` : ''}) ─\x1b[0m`,
+      );
+    }),
+  );
   // A first-time engine-CLI install just finished and the agent is auto
   // restart-and-continuing into THIS same pty (main re-ran the spawn). Re-arm the
   // terminal in place — clear the latched exit (so keystrokes flow again) and wipe
   // the install banner + "process exited" line — so the relaunched CLI's TUI paints
   // onto a clean, typeable grid. Mirrors resetTerminal but works on this closure.
-  entry.unsub.push(window.cth.onPtyRelaunch(ptyId, () => {
-    entry.exited = false;
-    try { term.reset(); } catch { /* not yet open */ }
-  }));
+  entry.unsub.push(
+    window.cth.onPtyRelaunch(ptyId, () => {
+      entry.exited = false;
+      try {
+        term.reset();
+      } catch {
+        /* not yet open */
+      }
+    }),
+  );
 
   // ── Copy / paste ──────────────────────────────────────────────────────────
   // With an accelerated renderer there is no DOM text, so the browser's native
@@ -187,7 +203,9 @@ export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14):
   };
   const pasteClipboard = (): void => {
     if (entry.exited) return;
-    void window.cth.readClipboard().then((t) => { if (t) term.paste(t); });
+    void window.cth.readClipboard().then((t) => {
+      if (t) term.paste(t);
+    });
   };
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
@@ -209,7 +227,10 @@ export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14):
   });
   host.addEventListener('contextmenu', (ev) => {
     ev.preventDefault();
-    if (copySelection()) { term.clearSelection(); return; }
+    if (copySelection()) {
+      term.clearSelection();
+      return;
+    }
     pasteClipboard();
   });
 
@@ -343,7 +364,10 @@ export function useHasTerminalDraft(ptyId: string | undefined): boolean {
   useEffect(() => {
     // An agent with no pty has no prompt to hold anything — don't run a timer
     // per card for it (the floor renders one card per agent).
-    if (!ptyId) { setDirty(false); return; }
+    if (!ptyId) {
+      setDirty(false);
+      return;
+    }
     const read = () => setDirty(hasTerminalDraft(ptyId));
     read();
     const iv = setInterval(read, 1000);
@@ -361,7 +385,7 @@ function automationStateOf(entry: TerminalEntry, now = Date.now()) {
     pickerOpenedAt: entry.automationBlocked ? entry.automationBlockedAt : undefined,
     inputDirty,
     inputDirtyAt: inputDirty ? entry.inputDirtyAt : undefined,
-    settleUntil: entry.automationSettleUntil
+    settleUntil: entry.automationSettleUntil,
   };
 }
 
@@ -376,7 +400,7 @@ function releasePickerBlock(entry: TerminalEntry): void {
  * The composer shows this instead of claiming it is sending. */
 export function terminalAutomationBlockFor(
   ptyId: string | undefined,
-  now = Date.now()
+  now = Date.now(),
 ): TerminalAutomationBlock {
   if (!ptyId) return null;
   const entry = pool.get(ptyId);
@@ -454,7 +478,11 @@ function leaseWebglRenderer(entry: TerminalEntry): void {
       console.warn('[terminal] webgl context lost — falling back to DOM renderer');
       entry.webgl = undefined;
       entry.needsRendererRepaint = true;
-      try { webgl.dispose(); } catch { /* noop */ }
+      try {
+        webgl.dispose();
+      } catch {
+        /* noop */
+      }
       // Laptop sleep == GPU sleep == WebGL context loss: the likely PRIMARY
       // trigger for the post-wake "can't scroll past a recent point" bug. The
       // renderer swap leaves xterm's cached cell-height (and the viewport
@@ -463,14 +491,19 @@ function leaseWebglRenderer(entry: TerminalEntry): void {
       // next frame so the (waking) layout has settled. Guarded + idempotent, so
       // it composes safely with the visibilitychange/focus path in the view.
       scheduleWebglRecovery(entry.recovery, requestAnimationFrame, () =>
-        repaintTerminalAfterRendererLoss(entry));
+        repaintTerminalAfterRendererLoss(entry),
+      );
     });
     // Set before loadAddon: an immediately-lost context may call the handler
     // during initialization, and it must be recognized as the active renderer.
     entry.webgl = webgl;
     entry.term.loadAddon(webgl);
   } catch (e) {
-    try { entry.webgl?.dispose(); } catch { /* noop */ }
+    try {
+      entry.webgl?.dispose();
+    } catch {
+      /* noop */
+    }
     entry.webgl = undefined;
     console.warn('[terminal] webgl renderer unavailable, using DOM renderer:', e);
   }
@@ -487,7 +520,11 @@ function releaseWebglRenderer(entry: TerminalEntry): void {
   // Snapshot BEFORE dispose: dispose unparents the addon's canvas, and an
   // unparented canvas can no longer be found from the host.
   const canvases = Array.from(entry.host.querySelectorAll('canvas'));
-  try { webgl.dispose(); } catch { /* noop */ }
+  try {
+    webgl.dispose();
+  } catch {
+    /* noop */
+  }
   // dispose() alone leaves the GPU context alive — see releaseWebglContexts.
   releaseWebglContexts(canvases);
   // The DOM renderer that takes over inherits xterm's cached cell metrics, which
@@ -511,7 +548,8 @@ export function attachTerminal(entry: TerminalEntry, container: HTMLElement): vo
   requestInitialPtyRedraw(entry.recovery, () => window.cth.redrawPty(entry.ptyId));
   if (entry.needsRendererRepaint) {
     scheduleWebglRecovery(entry.recovery, requestAnimationFrame, () =>
-      repaintTerminalAfterRendererLoss(entry));
+      repaintTerminalAfterRendererLoss(entry),
+    );
   }
 }
 
@@ -528,8 +566,12 @@ export function detachTerminal(entry: TerminalEntry, container: HTMLElement): vo
 }
 
 function repaintTerminalAfterRendererLoss(entry: TerminalEntry): void {
-  if (!entry.opened || !entry.host.isConnected
-      || !entry.host.clientWidth || !entry.host.clientHeight) {
+  if (
+    !entry.opened ||
+    !entry.host.isConnected ||
+    !entry.host.clientWidth ||
+    !entry.host.clientHeight
+  ) {
     entry.needsRendererRepaint = true;
     return;
   }
@@ -589,7 +631,9 @@ export function reflowTerminal(ptyId: string): void {
       window.cth.resizePty(ptyId, entry.term.cols, entry.term.rows);
     }
     entry.term.refresh(0, Math.max(0, entry.term.rows - 1));
-  } catch { /* host may not be sized yet */ }
+  } catch {
+    /* host may not be sized yet */
+  }
 }
 
 /**
@@ -604,10 +648,7 @@ export function reflowTerminal(ptyId: string): void {
  * replacement terminal. Disposing therefore left a dead, detached pane that
  * swallowed every keystroke. Resetting in place avoids that entirely.
  */
-export function resetTerminal(
-  ptyId: string,
-  opts: { preserveScrollback?: boolean } = {}
-): void {
+export function resetTerminal(ptyId: string, opts: { preserveScrollback?: boolean } = {}): void {
   const entry = pool.get(ptyId);
   if (!entry) return;
   // Re-arm input — a prior exit (or the kill that precedes the respawn) may have
@@ -628,18 +669,30 @@ export function resetTerminal(
       // Fresh sessions need a clean grid; resume keeps the existing scrollback.
       entry.term.reset();
     }
-  } catch { /* not yet open */ }
+  } catch {
+    /* not yet open */
+  }
 }
 
 /** Tear down a pty's terminal (call when the agent/pty is gone for good). */
 export function disposeTerminal(ptyId: string): void {
   const entry = pool.get(ptyId);
   if (!entry) return;
-  entry.unsub.forEach((u) => { try { u(); } catch { /* noop */ } });
+  entry.unsub.forEach((u) => {
+    try {
+      u();
+    } catch {
+      /* noop */
+    }
+  });
   // Same release path as a detach — a fired agent's terminal must hand its GPU
   // context back too, or the floor still pays for it later.
   releaseWebglRenderer(entry);
-  try { entry.term.dispose(); } catch { /* noop */ }
+  try {
+    entry.term.dispose();
+  } catch {
+    /* noop */
+  }
   entry.host.remove();
   pool.delete(ptyId);
 }
@@ -658,7 +711,10 @@ const mdStatCache = new Map<string, { isFile: boolean; path: string }>();
 
 function resolveMdCandidate(ptyId: string, raw: string): string | null {
   // strip wrapping quotes/backticks/parens + trailing punctuation + :line
-  const p = raw.replace(/^["'`(]+/, '').replace(/["'`),.;:]+$/, '').replace(/:(\d+)$/, '');
+  const p = raw
+    .replace(/^["'`(]+/, '')
+    .replace(/["'`),.;:]+$/, '')
+    .replace(/:(\d+)$/, '');
   if (!/\.(md|markdown)$/i.test(p)) return null;
   if (p.startsWith('~/') || p.startsWith('/')) return p;
   // relative → resolve against the owning agent's cwd. Async store import keeps
@@ -679,8 +735,12 @@ interface MdStoreShape {
 }
 let storeApi: MdStoreShape | null = null;
 void import('@/store/store')
-  .then((m) => { storeApi = (m as unknown as { useStore: MdStoreShape }).useStore; })
-  .catch(() => { /* store unavailable (tests) — link provider stays inert */ });
+  .then((m) => {
+    storeApi = (m as unknown as { useStore: MdStoreShape }).useStore;
+  })
+  .catch(() => {
+    /* store unavailable (tests) — link provider stays inert */
+  });
 
 async function openMdPreview(abs: string): Promise<void> {
   let hit = mdStatCache.get(abs);
@@ -701,7 +761,10 @@ function registerMarkdownLinkProvider(term: Terminal, ptyId: string): void {
       provideLinks(bufferLineNumber, callback) {
         const line = term.buffer.active.getLine(bufferLineNumber - 1);
         const text = line ? line.translateToString(true) : '';
-        if (!text || !/\.(md|markdown)\b/i.test(text)) { callback(undefined); return; }
+        if (!text || !/\.(md|markdown)\b/i.test(text)) {
+          callback(undefined);
+          return;
+        }
         const links: Parameters<typeof callback>[0] = [];
         const re = new RegExp(MD_TOKEN_RE.source, 'g');
         let m: RegExpExecArray | null;
@@ -712,7 +775,7 @@ function registerMarkdownLinkProvider(term: Terminal, ptyId: string): void {
           links!.push({
             range: {
               start: { x: m.index + 1, y: bufferLineNumber },
-              end: { x: m.index + raw.length, y: bufferLineNumber }
+              end: { x: m.index + raw.length, y: bufferLineNumber },
             },
             text: raw,
             decorations: { underline: true, pointerCursor: true },
@@ -720,11 +783,13 @@ function registerMarkdownLinkProvider(term: Terminal, ptyId: string): void {
               // ⌘/Ctrl+click only — a plain click must keep going to the TUI.
               if (event && !(event.metaKey || event.ctrlKey)) return;
               void openMdPreview(abs);
-            }
+            },
           });
         }
         callback(links && links.length ? links : undefined);
-      }
+      },
     });
-  } catch { /* proposed API unavailable — feature silently off */ }
+  } catch {
+    /* proposed API unavailable — feature silently off */
+  }
 }

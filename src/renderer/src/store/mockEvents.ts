@@ -3,52 +3,66 @@
 import { useStore, type Agent, type StationKind, type ToolKind } from './store';
 
 const STATION_BY_TOOL: Record<ToolKind, StationKind> = {
-  Read: 'shelf', Edit: 'shelf', Write: 'shelf',
+  Read: 'shelf',
+  Edit: 'shelf',
+  Write: 'shelf',
   Bash: 'terminal',
-  WebFetch: 'web', WebSearch: 'web',
-  Grep: 'shelf', Glob: 'shelf',
+  WebFetch: 'web',
+  WebSearch: 'web',
+  Grep: 'shelf',
+  Glob: 'shelf',
   TodoWrite: 'board',
-  MCP: 'mcp'
+  MCP: 'mcp',
 };
 
 interface ToolSample {
   tool: ToolKind;
-  what: string;            // short — used as the action text and description
-  lines: string[];         // terminal stream output
-  thought: string;         // first-person assistant text, streamed in the sidebar
+  what: string; // short — used as the action text and description
+  lines: string[]; // terminal stream output
+  thought: string; // first-person assistant text, streamed in the sidebar
 }
 
 const TOOL_SAMPLES: ToolSample[] = [
   {
-    tool: 'Read', what: 'reading SPEC.md',
+    tool: 'Read',
+    what: 'reading SPEC.md',
     lines: ['\x1b[36m● Read\x1b[0m SPEC.md', '   read 412 lines.'],
-    thought: "Pulling up the spec so I can confirm the state machine before touching the implementation."
+    thought:
+      'Pulling up the spec so I can confirm the state machine before touching the implementation.',
   },
   {
-    tool: 'Edit', what: 'editing PixelPanel.tsx',
+    tool: 'Edit',
+    what: 'editing PixelPanel.tsx',
     lines: ['\x1b[36m● Edit\x1b[0m src/renderer/src/components/PixelPanel.tsx', '   +14 / -3'],
-    thought: "Tightening up the panel border math — the inner stroke was a pixel off in inset mode."
+    thought:
+      'Tightening up the panel border math — the inner stroke was a pixel off in inset mode.',
   },
   {
-    tool: 'Bash', what: 'running tests',
+    tool: 'Bash',
+    what: 'running tests',
     lines: ['\x1b[36m● Bash\x1b[0m npm test', '   ✓ 24 passed'],
-    thought: "Running the renderer suite to make sure nothing regressed before I move on."
+    thought: 'Running the renderer suite to make sure nothing regressed before I move on.',
   },
   {
-    tool: 'WebFetch', what: 'fetching docs',
+    tool: 'WebFetch',
+    what: 'fetching docs',
     lines: ['\x1b[36m● WebFetch\x1b[0m https://docs.example.com/hooks', '   ok 200 (1.2kb)'],
-    thought: "Grabbing the hooks doc to double-check the PreToolUse payload shape — my memory of the field names is hazy."
+    thought:
+      'Grabbing the hooks doc to double-check the PreToolUse payload shape — my memory of the field names is hazy.',
   },
   {
-    tool: 'Glob', what: 'searching for skill files',
+    tool: 'Glob',
+    what: 'searching for skill files',
     lines: ['\x1b[36m● Glob\x1b[0m **/*.skill.md', '   23 matches'],
-    thought: "Enumerating all the skill files so I can walk each one and look for stale script paths."
+    thought:
+      'Enumerating all the skill files so I can walk each one and look for stale script paths.',
   },
   {
-    tool: 'TodoWrite', what: 'updating the todo board',
+    tool: 'TodoWrite',
+    what: 'updating the todo board',
     lines: ['\x1b[36m● TodoWrite\x1b[0m 4 items'],
-    thought: "Splitting the remaining work into four discrete tasks so I can track them as I go."
-  }
+    thought: 'Splitting the remaining work into four discrete tasks so I can track them as I go.',
+  },
 ];
 
 function pickSample() {
@@ -75,7 +89,7 @@ function stepAgent(agent: Agent) {
         status: 'thinking',
         action: `heading to ${station}`,
         currentStation: station,
-        progress: 1
+        progress: 1,
       });
     }
     return;
@@ -86,10 +100,18 @@ function stepAgent(agent: Agent) {
     // (in real life this fires on PreToolUse arrival)
 
     const station = agent.currentStation ?? 'desk';
-    const tool: ToolKind = station === 'shelf' ? (Math.random() < 0.5 ? 'Read' : 'Edit')
-      : station === 'terminal' ? 'Bash'
-      : station === 'web' ? 'WebFetch'
-      : station === 'board' ? 'TodoWrite' : 'Read';
+    const tool: ToolKind =
+      station === 'shelf'
+        ? Math.random() < 0.5
+          ? 'Read'
+          : 'Edit'
+        : station === 'terminal'
+          ? 'Bash'
+          : station === 'web'
+            ? 'WebFetch'
+            : station === 'board'
+              ? 'TodoWrite'
+              : 'Read';
     const sample = pickSample();
     updateAgent(agent.id, {
       status: 'working',
@@ -98,9 +120,9 @@ function stepAgent(agent: Agent) {
       carrying: tool,
       progress: Math.min(agent.progress + 1, 8),
       recentAssistantText: sample.thought,
-      recentTextTs: Date.now()
+      recentTextTs: Date.now(),
     });
-    sample.lines.forEach(l => pushFeed(agent.id, l));
+    sample.lines.forEach((l) => pushFeed(agent.id, l));
     return;
   }
 
@@ -111,7 +133,7 @@ function stepAgent(agent: Agent) {
         status: 'thinking',
         action: 'heading back to desk',
         currentStation: 'desk',
-        progress: Math.min(agent.progress + 1, 8)
+        progress: Math.min(agent.progress + 1, 8),
       });
     } else {
       // Move to a new station
@@ -121,7 +143,7 @@ function stepAgent(agent: Agent) {
         status: 'thinking',
         action: `heading to ${station}`,
         currentStation: station,
-        progress: Math.min(agent.progress + 1, 8)
+        progress: Math.min(agent.progress + 1, 8),
       });
     }
     return;
@@ -165,7 +187,7 @@ export function startMockLoop() {
           description: 'on standby',
           carrying: undefined,
           recentAssistantText: 'Done with that one. What next?',
-          recentTextTs: Date.now()
+          recentTextTs: Date.now(),
         });
       }
     }

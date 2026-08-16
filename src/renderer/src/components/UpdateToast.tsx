@@ -28,12 +28,16 @@ export function UpdateToast() {
   const [status, setStatus] = useState<ToastStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => window.cth.onUpdateStatus?.((next) => {
-    const t = toastable(next);
-    // A non-toastable state (a re-check, say) must not erase a toast the user
-    // hasn't answered yet — only a new actionable state replaces it.
-    if (t) setStatus(t);
-  }), []);
+  useEffect(
+    () =>
+      window.cth.onUpdateStatus?.((next) => {
+        const t = toastable(next);
+        // A non-toastable state (a re-check, say) must not erase a toast the user
+        // hasn't answered yet — only a new actionable state replaces it.
+        if (t) setStatus(t);
+      }),
+    [],
+  );
 
   if (!status) return null;
 
@@ -42,27 +46,39 @@ export function UpdateToast() {
     try {
       const res = await window.cth.updateRestartAndInstall();
       if (!res.ok) setBusy(false); // stayed alive — let the user retry
-    } catch { setBusy(false); }
+    } catch {
+      setBusy(false);
+    }
   };
 
   const buttonStyle: React.CSSProperties = {
     padding: '3px 10px 1px',
     background: 'var(--cth-mint-light, #d0f0e0)',
     boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-    fontFamily: 'var(--cth-font-ui)', fontSize: 12,
-    color: 'var(--cth-ink-900)', cursor: 'pointer', border: 'none'
+    fontFamily: 'var(--cth-font-ui)',
+    fontSize: 12,
+    color: 'var(--cth-ink-900)',
+    cursor: 'pointer',
+    border: 'none',
   };
 
   return (
-    <div style={{
-      position: 'fixed', right: 16, bottom: 16, zIndex: 400,
-      maxWidth: 340,
-      background: 'var(--cth-cream-50)',
-      boxShadow: '0 0 0 2px var(--cth-ink-900), 4px 5px 0 0 rgba(26,19,32,0.25)',
-      padding: '10px 12px',
-      display: 'flex', flexDirection: 'column', gap: 8,
-      fontFamily: 'var(--cth-font-ui)'
-    }}>
+    <div
+      style={{
+        position: 'fixed',
+        right: 16,
+        bottom: 16,
+        zIndex: 400,
+        maxWidth: 340,
+        background: 'var(--cth-cream-50)',
+        boxShadow: '0 0 0 2px var(--cth-ink-900), 4px 5px 0 0 rgba(26,19,32,0.25)',
+        padding: '10px 12px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        fontFamily: 'var(--cth-font-ui)',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <Icon name="sparkle" />
         <span style={{ fontSize: 13, color: 'var(--cth-ink-900)', fontWeight: 600 }}>
@@ -89,7 +105,9 @@ export function UpdateToast() {
           </button>
         ) : (
           <button
-            onClick={() => { void window.cth.updateOpenRelease(status.url); }}
+            onClick={() => {
+              void window.cth.updateOpenRelease(status.url);
+            }}
             style={buttonStyle}
           >
             open releases

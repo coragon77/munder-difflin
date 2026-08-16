@@ -15,7 +15,7 @@ const INTERACTIVE_COMMANDS = new Set([
   '/apps',
   '/plugins',
   '/resume',
-  '/sessions'
+  '/sessions',
 ]);
 
 export function opensInteractiveTerminalUi(input: string): boolean {
@@ -68,31 +68,29 @@ export interface TerminalAutomationState {
 }
 
 /** A picker nobody has interacted with for STALE_PICKER_MS is treated as gone. */
-export function isStaleTerminalPicker(
-  state: TerminalAutomationState,
-  now = Date.now()
-): boolean {
-  return state.pickerOpen
-    && state.pickerOpenedAt !== undefined
-    && now - state.pickerOpenedAt >= STALE_PICKER_MS;
+export function isStaleTerminalPicker(state: TerminalAutomationState, now = Date.now()): boolean {
+  return (
+    state.pickerOpen &&
+    state.pickerOpenedAt !== undefined &&
+    now - state.pickerOpenedAt >= STALE_PICKER_MS
+  );
 }
 
 /** Why automation may not own the prompt right now, or null when it may. */
 export type TerminalAutomationBlock = 'exited' | 'picker' | 'draft' | 'settling' | null;
 
 /** A draft nobody has touched for STALE_INPUT_MS is treated as abandoned. */
-export function isStaleTerminalDraft(
-  state: TerminalAutomationState,
-  now = Date.now()
-): boolean {
-  return state.inputDirty
-    && state.inputDirtyAt !== undefined
-    && now - state.inputDirtyAt >= STALE_INPUT_MS;
+export function isStaleTerminalDraft(state: TerminalAutomationState, now = Date.now()): boolean {
+  return (
+    state.inputDirty &&
+    state.inputDirtyAt !== undefined &&
+    now - state.inputDirtyAt >= STALE_INPUT_MS
+  );
 }
 
 export function terminalAutomationBlock(
   state: TerminalAutomationState,
-  now = Date.now()
+  now = Date.now(),
 ): TerminalAutomationBlock {
   if (state.exited) return 'exited';
   if (state.pickerOpen && !isStaleTerminalPicker(state, now)) return 'picker';
@@ -102,9 +100,6 @@ export function terminalAutomationBlock(
 }
 
 /** Automatic writes may own the prompt only when no user draft or picker does. */
-export function canAutomateTerminal(
-  state: TerminalAutomationState,
-  now = Date.now()
-): boolean {
+export function canAutomateTerminal(state: TerminalAutomationState, now = Date.now()): boolean {
   return terminalAutomationBlock(state, now) === null;
 }

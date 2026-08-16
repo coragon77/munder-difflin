@@ -29,12 +29,20 @@ const MINE_IGNORE_LINES = ['settings.json', 'cursor.json', 'inbox/', 'outbox/'];
 function ensureMineIgnore(agentDir: string): void {
   const path = join(agentDir, '.gitignore');
   let existing = '';
-  try { if (existsSync(path)) existing = readFileSync(path, 'utf8'); } catch { return; }
+  try {
+    if (existsSync(path)) existing = readFileSync(path, 'utf8');
+  } catch {
+    return;
+  }
   const have = new Set(existing.split('\n').map((l) => l.trim()));
   const missing = MINE_IGNORE_LINES.filter((l) => !have.has(l));
   if (missing.length === 0) return; // already covered — don't rewrite every cycle
   const prefix = existing && !existing.endsWith('\n') ? existing + '\n' : existing;
-  try { writeFileSync(path, prefix + missing.join('\n') + '\n', 'utf8'); } catch { /* best-effort */ }
+  try {
+    writeFileSync(path, prefix + missing.join('\n') + '\n', 'utf8');
+  } catch {
+    /* best-effort */
+  }
 }
 
 export type EmbeddingModel = 'minilm' | 'embeddinggemma';
@@ -45,10 +53,10 @@ export interface MemorySettings {
 }
 
 export interface MemoryStatus {
-  available: boolean;        // mempalace CLI found on PATH
-  enabled: boolean;          // user setting
-  active: boolean;           // available && enabled && have a home
-  initialized: boolean;      // palace directory exists
+  available: boolean; // mempalace CLI found on PATH
+  enabled: boolean; // user setting
+  active: boolean; // available && enabled && have a home
+  initialized: boolean; // palace directory exists
   palacePath: string | null;
   model: EmbeddingModel;
   bin: string | null;
@@ -68,7 +76,7 @@ export class MemoryManager {
 
   constructor(
     private getHome: () => string | null,
-    private getSettings: () => MemorySettings
+    private getSettings: () => MemorySettings,
   ) {}
 
   palacePath(): string | null {
@@ -90,37 +98,54 @@ export class MemoryManager {
         if (p && existsSync(p)) found = p;
       } else {
         const res = spawnSync(process.env.SHELL ?? '/bin/zsh', ['-ilc', 'which mempalace'], {
-          encoding: 'utf8', timeout: 3000
+          encoding: 'utf8',
+          timeout: 3000,
         });
         const p = res.stdout.trim().split('\n').pop();
         if (p && existsSync(p)) found = p;
       }
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
     // 2) Probe common install locations (uv tool / homebrew / pip).
     if (!found) {
       const home = process.env.HOME ?? process.env.USERPROFILE ?? '';
       const candidates = isWin
         ? [
             join(home, '.local', 'bin', 'mempalace.exe'),
-            join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Python', 'Scripts', 'mempalace.exe')
+            join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Python', 'Scripts', 'mempalace.exe'),
           ]
         : [
             `${home}/.local/bin/mempalace`,
             '/opt/homebrew/bin/mempalace',
-            '/usr/local/bin/mempalace'
+            '/usr/local/bin/mempalace',
           ];
-      for (const c of candidates) if (c && existsSync(c)) { found = c; break; }
+      for (const c of candidates)
+        if (c && existsSync(c)) {
+          found = c;
+          break;
+        }
     }
     this.binCache = found;
     return found;
   }
   /** Force re-resolution (e.g. after the user installs mempalace). */
-  resetBinCache(): void { this.binCache = undefined; }
+  resetBinCache(): void {
+    this.binCache = undefined;
+  }
 
-  available(): boolean { return this.bin() !== null; }
-  enabled(): boolean { return this.getSettings().enabled; }
-  active(): boolean { return this.available() && this.enabled() && this.getHome() !== null; }
-  model(): EmbeddingModel { return this.getSettings().model === 'embeddinggemma' ? 'embeddinggemma' : 'minilm'; }
+  available(): boolean {
+    return this.bin() !== null;
+  }
+  enabled(): boolean {
+    return this.getSettings().enabled;
+  }
+  active(): boolean {
+    return this.available() && this.enabled() && this.getHome() !== null;
+  }
+  model(): EmbeddingModel {
+    return this.getSettings().model === 'embeddinggemma' ? 'embeddinggemma' : 'minilm';
+  }
 
   status(): MemoryStatus {
     const palace = this.palacePath();
@@ -131,7 +156,7 @@ export class MemoryManager {
       initialized: !!palace && existsSync(palace),
       palacePath: palace,
       model: this.model(),
-      bin: this.bin()
+      bin: this.bin(),
     };
   }
 
@@ -146,7 +171,7 @@ export class MemoryManager {
     return {
       ...process.env,
       MEMPALACE_PALACE_PATH: this.palacePath() ?? '',
-      MEMPALACE_EMBEDDING_MODEL: this.model()
+      MEMPALACE_EMBEDDING_MODEL: this.model(),
     };
   }
 
@@ -164,7 +189,10 @@ export class MemoryManager {
   }
 
   stop(): void {
-    if (this.mineTimer) { clearInterval(this.mineTimer); this.mineTimer = null; }
+    if (this.mineTimer) {
+      clearInterval(this.mineTimer);
+      this.mineTimer = null;
+    }
   }
 
   private startMineLoop(): void {
@@ -187,7 +215,11 @@ export class MemoryManager {
     const agentsDir = join(home, 'hive', 'agents');
     if (!existsSync(agentsDir)) return;
     let ids: string[];
-    try { ids = readdirSync(agentsDir); } catch { return; }
+    try {
+      ids = readdirSync(agentsDir);
+    } catch {
+      return;
+    }
     this.mining = true;
     try {
       for (const id of ids) {
@@ -195,7 +227,11 @@ export class MemoryManager {
         const mem = join(agentDir, 'memory.md');
         if (!existsSync(mem)) continue;
         let mtime = 0;
-        try { mtime = statSync(mem).mtimeMs; } catch { continue; }
+        try {
+          mtime = statSync(mem).mtimeMs;
+        } catch {
+          continue;
+        }
         if (this.lastMined.get(id) === mtime) continue; // unchanged — skip the model load
         this.lastMined.set(id, mtime);
         await this.mineAgent(agentDir, id); // one writer at a time
@@ -208,20 +244,32 @@ export class MemoryManager {
   private mineAgent(agentDir: string, id: string): Promise<void> {
     return new Promise((resolve) => {
       const bin = this.bin();
-      if (!bin) { resolve(); return; }
+      if (!bin) {
+        resolve();
+        return;
+      }
       ensureMineIgnore(agentDir); // keep settings.json / cursor / messages out of the index
       // stdin closed (mempalace can prompt); mempalace dedups so re-mining is safe.
       const proc = spawn(bin, ['mine', agentDir, '--wing', id, '--agent', id], {
-        env: this.childEnv(), stdio: ['ignore', 'ignore', 'pipe']
+        env: this.childEnv(),
+        stdio: ['ignore', 'ignore', 'pipe'],
       });
       let err = '';
-      proc.stderr?.on('data', (d) => { err += d.toString(); });
+      proc.stderr?.on('data', (d) => {
+        err += d.toString();
+      });
       // Hard ceiling: a wedged mine used to hold its PID forever AND leave
       // `mining` stuck true, silently stopping all future passes. Generous cap
       // because the first run may lazily download the embedding model.
       const timer = setTimeout(() => {
-        console.error(`[memory] mine ${id} timed out after ${MINE_TIMEOUT_MS / 60000}min — killing`);
-        try { proc.kill('SIGTERM'); } catch { /* gone */ }
+        console.error(
+          `[memory] mine ${id} timed out after ${MINE_TIMEOUT_MS / 60000}min — killing`,
+        );
+        try {
+          proc.kill('SIGTERM');
+        } catch {
+          /* gone */
+        }
         ensureKilled(proc.pid); // SIGKILL sweep if SIGTERM is ignored
       }, MINE_TIMEOUT_MS);
       timer.unref?.();
@@ -233,7 +281,11 @@ export class MemoryManager {
         }
         resolve();
       });
-      proc.on('error', () => { clearTimeout(timer); this.lastMined.delete(id); resolve(); });
+      proc.on('error', () => {
+        clearTimeout(timer);
+        this.lastMined.delete(id);
+        resolve();
+      });
     });
   }
 
@@ -243,10 +295,16 @@ export class MemoryManager {
    *  with a 120s timeout — on a cold model load that BLOCKED the Electron main
    *  process (renderer IPC, timers, every window) for up to two minutes. Same
    *  contract, but the event loop keeps breathing and a wedged CLI is swept. */
-  private runCli(args: string[], label: string): Promise<{ ok: boolean; output: string; error?: string }> {
+  private runCli(
+    args: string[],
+    label: string,
+  ): Promise<{ ok: boolean; output: string; error?: string }> {
     return new Promise((resolve) => {
       const bin = this.bin();
-      if (!this.active() || !bin) { resolve({ ok: false, output: '', error: 'semantic memory not active' }); return; }
+      if (!this.active() || !bin) {
+        resolve({ ok: false, output: '', error: 'semantic memory not active' });
+        return;
+      }
       let proc: ReturnType<typeof spawn>;
       try {
         proc = spawn(bin, args, { env: this.childEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
@@ -254,23 +312,37 @@ export class MemoryManager {
         resolve({ ok: false, output: '', error: e instanceof Error ? e.message : String(e) });
         return;
       }
-      let out = '', err = '';
+      let out = '',
+        err = '';
       let settled = false;
       const settle = (r: { ok: boolean; output: string; error?: string }): void => {
-        if (!settled) { settled = true; clearTimeout(timer); resolve(r); }
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(r);
+        }
       };
       proc.stdout?.setEncoding('utf8');
       proc.stderr?.setEncoding('utf8');
-      proc.stdout?.on('data', (d: string) => { out += d; });
-      proc.stderr?.on('data', (d: string) => { err += d; });
+      proc.stdout?.on('data', (d: string) => {
+        out += d;
+      });
+      proc.stderr?.on('data', (d: string) => {
+        err += d;
+      });
       const timer = setTimeout(() => {
-        try { proc.kill('SIGTERM'); } catch { /* gone */ }
+        try {
+          proc.kill('SIGTERM');
+        } catch {
+          /* gone */
+        }
         ensureKilled(proc.pid);
         settle({ ok: false, output: out, error: `${label} timed out` });
       }, 120_000);
       timer.unref?.();
       proc.on('close', (code) => {
-        if (code !== 0) settle({ ok: false, output: out, error: (err || `${label} failed`).trim() });
+        if (code !== 0)
+          settle({ ok: false, output: out, error: (err || `${label} failed`).trim() });
         else settle({ ok: true, output: out });
       });
       proc.on('error', (e) => settle({ ok: false, output: '', error: e.message }));
@@ -278,7 +350,10 @@ export class MemoryManager {
   }
 
   /** Semantic search across the shared palace. Returns the CLI's text output. */
-  search(query: string, opts: { wing?: string; results?: number } = {}): Promise<{ ok: boolean; output: string; error?: string }> {
+  search(
+    query: string,
+    opts: { wing?: string; results?: number } = {},
+  ): Promise<{ ok: boolean; output: string; error?: string }> {
     const args = ['search', query, '--results', String(opts.results ?? 5)];
     if (opts.wing) args.push('--wing', opts.wing);
     return this.runCli(args, 'search');

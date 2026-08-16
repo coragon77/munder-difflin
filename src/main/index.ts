@@ -1,9 +1,33 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, powerMonitor, powerSaveBlocker, screen, shell, Notification } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  powerMonitor,
+  powerSaveBlocker,
+  screen,
+  shell,
+  Notification,
+} from 'electron';
 import { spawn } from 'node:child_process';
 import {
-  rmSync, existsSync, readFileSync, readdirSync, statSync, cpSync, writeFileSync,
-  unlinkSync, mkdirSync, renameSync, createWriteStream, copyFileSync, lstatSync,
-  readlinkSync, symlinkSync
+  rmSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  cpSync,
+  writeFileSync,
+  unlinkSync,
+  mkdirSync,
+  renameSync,
+  createWriteStream,
+  copyFileSync,
+  lstatSync,
+  readlinkSync,
+  symlinkSync,
 } from 'node:fs';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { join, resolve, sep, basename, dirname } from 'node:path';
@@ -13,16 +37,46 @@ import { resolveCommand as resolveCliCommand } from './shellEnv';
 import { initAutoUpdater } from './updater';
 import { RealtimeFloorWatcher } from './realtimeFloorWatcher';
 import {
-  readConfig, writeConfig, resetConfig, ensureHarnessHome, ensureClaudePermissionsAccepted,
-  modelForRole, OPS_STANDUP_MISSION, HEARTBEAT_MISSION, COMPACT_MAINTENANCE_MISSION, type HarnessConfig, type ScheduledMission
+  readConfig,
+  writeConfig,
+  resetConfig,
+  ensureHarnessHome,
+  ensureClaudePermissionsAccepted,
+  modelForRole,
+  OPS_STANDUP_MISSION,
+  HEARTBEAT_MISSION,
+  COMPACT_MAINTENANCE_MISSION,
+  type HarnessConfig,
+  type ScheduledMission,
 } from './config';
 import { listDir, readFileText, writeFileText, statAbs, expandTilde } from './fs';
 import {
-  getBranch, getStatus, getLog, getBranches, getAheadBehind, isRepo, getDiff, mainRepoRoot,
-  addWorktree, removeWorktree, worktreeHasUnintegratedWork, worktreeIsGcSafe,
-  getLogGraph, getCommitFiles, getFileAtRev, compareRefs, listWorktrees, checkoutRef
+  getBranch,
+  getStatus,
+  getLog,
+  getBranches,
+  getAheadBehind,
+  isRepo,
+  getDiff,
+  mainRepoRoot,
+  addWorktree,
+  removeWorktree,
+  worktreeHasUnintegratedWork,
+  worktreeIsGcSafe,
+  getLogGraph,
+  getCommitFiles,
+  getFileAtRev,
+  compareRefs,
+  listWorktrees,
+  checkoutRef,
 } from './git';
-import { HiveManager, deriveSpawnLabel, type AgentMeta, type HiveMessage, type HiveTask } from './hive';
+import {
+  HiveManager,
+  deriveSpawnLabel,
+  type AgentMeta,
+  type HiveMessage,
+  type HiveTask,
+} from './hive';
 import { startSessionRequestWatcher } from './sessionRequests';
 import { startCardSessionWatcher } from './cardSessions';
 import type { CardSessionMarker } from '../shared/cardSessions';
@@ -33,23 +87,48 @@ import { MemoryManager } from './memory';
 import { KnowledgeManager } from './knowledge';
 import { MemoryReflector, type ReflectSettings } from './reflect';
 import { PersistStore } from './db';
-import { readAgentUsage, readContextTokens, seedSessionTranscript, resolveSessionCwd } from './transcript';
+import {
+  readAgentUsage,
+  readContextTokens,
+  seedSessionTranscript,
+  resolveSessionCwd,
+} from './transcript';
 import { listIssues, listCIRuns } from './github';
 import { SlackWebhookServer, SlackReplyServer, postSlackReply, type SlackEventFile } from './slack';
-import { TelegramTrigger, resolveTelegramRuntime, telegramEnvSummary, writeTelegramEnv } from './telegram';
+import {
+  TelegramTrigger,
+  resolveTelegramRuntime,
+  telegramEnvSummary,
+  writeTelegramEnv,
+} from './telegram';
 import { startKittySatellite, kittySocketPath, kittyBinPath, godCommand } from './kittySatellite';
 import {
   WebhookServer,
-  type WebhookDispatch, type WebhookEndpointRef, type WebhookInbound, type WebhookTaskStatus
+  type WebhookDispatch,
+  type WebhookEndpointRef,
+  type WebhookInbound,
+  type WebhookTaskStatus,
 } from './webhook';
 import {
-  classifyInboundKind, isAutoAllowed,
-  DEFAULT_CONTEXT_TRIGGER, DEFAULT_ORG_TRIGGER, DEFAULT_TRIGGER_MODE, DEFAULT_WEBHOOK_SCHEMA,
-  type ContextRule, type ContextTriggerConfig, type InboundKind, type OrgTriggerConfig,
-  type TriggerHistoryEntry, type TriggerMode, type WebhookTrigger
+  classifyInboundKind,
+  isAutoAllowed,
+  DEFAULT_CONTEXT_TRIGGER,
+  DEFAULT_ORG_TRIGGER,
+  DEFAULT_TRIGGER_MODE,
+  DEFAULT_WEBHOOK_SCHEMA,
+  type ContextRule,
+  type ContextTriggerConfig,
+  type InboundKind,
+  type OrgTriggerConfig,
+  type TriggerHistoryEntry,
+  type TriggerMode,
+  type WebhookTrigger,
 } from '../shared/triggers';
 import {
-  appendTriggerHistory, clearTriggerHistory, listTriggerHistory, updateTriggerHistory
+  appendTriggerHistory,
+  clearTriggerHistory,
+  listTriggerHistory,
+  updateTriggerHistory,
 } from './triggerHistory';
 import { transcribeWithGroq, DEFAULT_GROQ_MODEL } from './freeflow';
 import { registerRealtimeIpc } from './realtime';
@@ -61,7 +140,13 @@ import { vacationBusy } from './vacationBusy';
 import { analytics } from './analytics';
 import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
-import { validateBaseUrl, buildAuthHeaders, resolveUpstreamUrl, secretRefFor, INTEGRATION_TEMPLATES } from '../shared/integrations';
+import {
+  validateBaseUrl,
+  buildAuthHeaders,
+  resolveUpstreamUrl,
+  secretRefFor,
+  INTEGRATION_TEMPLATES,
+} from '../shared/integrations';
 import { SYSTEM_SENDERS, isFyiMail } from '../shared/hiveMail';
 import { RosterStore } from './roster';
 import { ControlRegistry } from './control';
@@ -77,7 +162,7 @@ import {
   providerPreset,
   installInfoForProvider,
   type AgentProvider,
-  type HirePermissionMode
+  type HirePermissionMode,
 } from '../shared/agentProvider';
 import { buildMissingCliScript, chooseInstallRung } from './cliInstall';
 import { detectNodeVersion, nodeIsUsable, resolveNodeInstaller } from './nodeInstall';
@@ -86,7 +171,7 @@ import {
   codexRemoteAliasPath,
   codexRemoteEndpoint,
   codexRemoteSocketFits,
-  withCodexRemoteArgs
+  withCodexRemoteArgs,
 } from '../shared/codexRemote';
 
 const isDev = !!process.env.ELECTRON_RENDERER_URL;
@@ -110,7 +195,7 @@ function runCodexDaemonCommand(
   executable: string,
   args: string[],
   env: NodeJS.ProcessEnv,
-  timeoutMs = 20_000
+  timeoutMs = 20_000,
 ): Promise<{ ok: boolean; error?: string }> {
   return new Promise((resolveResult) => {
     let settled = false;
@@ -120,7 +205,7 @@ function runCodexDaemonCommand(
       child = spawn(executable, args, {
         env,
         stdio: ['ignore', 'ignore', 'pipe'],
-        windowsHide: true
+        windowsHide: true,
       });
     } catch (e) {
       resolveResult({ ok: false, error: e instanceof Error ? e.message : String(e) });
@@ -138,12 +223,18 @@ function runCodexDaemonCommand(
     });
     child.once('error', (e) => finish({ ok: false, error: e.message }));
     child.once('exit', (code) => {
-      finish(code === 0
-        ? { ok: true }
-        : { ok: false, error: stderr.trim() || `Codex exited with code ${code ?? 'unknown'}` });
+      finish(
+        code === 0
+          ? { ok: true }
+          : { ok: false, error: stderr.trim() || `Codex exited with code ${code ?? 'unknown'}` },
+      );
     });
     timer = setTimeout(() => {
-      try { child.kill(); } catch { /* already exited */ }
+      try {
+        child.kill();
+      } catch {
+        /* already exited */
+      }
       finish({ ok: false, error: `Codex daemon command timed out after ${timeoutMs}ms` });
     }, timeoutMs);
   });
@@ -154,7 +245,7 @@ function runCodexDaemonCommand(
  * still starts as a normal local Codex session. */
 async function enableCodexRemoteForSpawn(
   opts: SpawnOptions & { hive?: AgentMeta },
-  agentId: string
+  agentId: string,
 ): Promise<boolean> {
   if (process.platform === 'win32') return false;
   const realHome = opts.env?.CODEX_HOME;
@@ -172,7 +263,10 @@ async function enableCodexRemoteForSpawn(
     mkdirSync(aliasRoot, { recursive: true });
     if (existsSync(alias)) {
       const st = lstatSync(alias);
-      if (!st.isSymbolicLink() || resolve(dirname(alias), readlinkSync(alias)) !== resolve(realHome)) {
+      if (
+        !st.isSymbolicLink() ||
+        resolve(dirname(alias), readlinkSync(alias)) !== resolve(realHome)
+      ) {
         console.warn('[codex-remote] short home alias is occupied; starting local TUI:', alias);
         return false;
       }
@@ -184,16 +278,12 @@ async function enableCodexRemoteForSpawn(
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       ...(opts.env ?? {}),
-      CODEX_HOME: alias
+      CODEX_HOME: alias,
     };
     // shellEnv's resolver mirrors PtyManager's (which is private + returns
     // {path, found}); the daemon just needs the best executable path.
     const executable = resolveCliCommand(opts.command);
-    const started = await runCodexDaemonCommand(
-      executable,
-      ['app-server', 'daemon', 'start'],
-      env
-    );
+    const started = await runCodexDaemonCommand(executable, ['app-server', 'daemon', 'start'], env);
     if (!started.ok) {
       console.warn('[codex-remote] daemon start failed; starting local TUI:', started.error);
       return false;
@@ -201,7 +291,7 @@ async function enableCodexRemoteForSpawn(
     const enabled = await runCodexDaemonCommand(
       executable,
       ['app-server', 'daemon', 'enable-remote-control'],
-      env
+      env,
     );
     if (!enabled.ok) {
       console.warn('[codex-remote] enable failed; starting local TUI:', enabled.error);
@@ -215,8 +305,10 @@ async function enableCodexRemoteForSpawn(
     opts.args = withCodexRemoteArgs(opts.args ?? [], codexRemoteEndpoint(alias));
     return true;
   } catch (e) {
-    console.warn('[codex-remote] setup failed; starting local TUI:',
-      e instanceof Error ? e.message : e);
+    console.warn(
+      '[codex-remote] setup failed; starting local TUI:',
+      e instanceof Error ? e.message : e,
+    );
     return false;
   }
 }
@@ -228,20 +320,28 @@ const ptyToAgent = new Map<string, string>();
  *  in this PTY; when it exits cleanly the exit handler re-runs the SAME spawn (with
  *  install disabled) so the freshly-installed CLI launches in the SAME pty/window —
  *  no user click. Cleared the moment it's consumed, so it can never loop installs. */
-const pendingInstallRelaunch = new Map<string, { opts: AgentSpawnOptions; owner: Electron.WebContents | null; bin: string }>();
+const pendingInstallRelaunch = new Map<
+  string,
+  { opts: AgentSpawnOptions; owner: Electron.WebContents | null; bin: string }
+>();
 const hive = new HiveManager(
   () => readConfig().harnessHome,
   (channel, payload) => {
     const wc = liveWebContents();
     if (!wc) return false;
-    try { wc.send(channel, payload); return true; } catch { return false; }
+    try {
+      wc.send(channel, payload);
+      return true;
+    } catch {
+      return false;
+    }
   },
   // SDD subagent authorization (card sdd-authorization-switch-20260816):
   // gates the operator-authorization section in the generated AGENTS.md.
   // Read lazily — ensureHive rewrites the file on every spawn/bootstrap, so a
   // Settings flip takes effect at the next rewrite (forced immediately below
   // in config:update).
-  () => readConfig().sddSubagentsAuthorized
+  () => readConfig().sddSubagentsAuthorized,
 );
 // #7C — operator control state (pause/gate/steer/halt), read by the HookServer
 // when deciding hook returns.
@@ -250,8 +350,14 @@ const control = new ControlRegistry();
 // over loopback OTLP/JSON and exposes the locked usage-provider seam. resolveCwd
 // lets the transcript fallback find an agent's cwd from the hive registry.
 const telemetry = new TelemetryCollector({
-  emit: (channel, payload) => { try { liveWebContents()?.send(channel, payload); } catch { /* window tore down */ } },
-  resolveCwd: (agentId) => hive.registry().agents[agentId]?.cwd ?? null
+  emit: (channel, payload) => {
+    try {
+      liveWebContents()?.send(channel, payload);
+    } catch {
+      /* window tore down */
+    }
+  },
+  resolveCwd: (agentId) => hive.registry().agents[agentId]?.cwd ?? null,
 });
 // Usage provider (Seam 1) — the INTEGRATION swap: Oscar's telemetry collector (#7)
 // IS the provider, replacing Lane A's interim StubUsageProvider. Same
@@ -264,7 +370,12 @@ const usageProvider: UsageProvider = telemetry;
 // enforces its decisions. Config read live so a settings change applies next beat.
 const breaker = new CircuitBreaker(() => {
   const c = readConfig();
-  return { ...(c.circuitBreaker ?? {}), costCapUsd: c.costCapUsd, costCapTokens: c.costCapTokens, agentTokenCaps: c.agentTokenCaps };
+  return {
+    ...(c.circuitBreaker ?? {}),
+    costCapUsd: c.costCapUsd,
+    costCapTokens: c.costCapTokens,
+    agentTokenCaps: c.agentTokenCaps,
+  };
 });
 // Always-on beats (decoupled from the optional heartbeat): the live fleet snapshot
 // Michael reads + the breaker beat, so guardrails + monitoring work even when the
@@ -276,10 +387,20 @@ let breakerBeatTimer: ReturnType<typeof setInterval> | null = null;
 telemetry.onApiError((agentId) => breaker.recordError(agentId));
 // HookServer needs BOTH: Oscar's control registry (HITL pause/gate/steer/halt via
 // hook returns) AND Jim's breaker (feed recordToolUse on each PostToolUse).
-const hookServer = new HookServer(hive, () => liveWebContents(), () => readConfig(), control, breaker, telemetry);
+const hookServer = new HookServer(
+  hive,
+  () => liveWebContents(),
+  () => readConfig(),
+  control,
+  breaker,
+  telemetry,
+);
 const memory = new MemoryManager(
   () => readConfig().harnessHome,
-  () => { const c = readConfig(); return { enabled: c.semanticMemory !== false, model: c.embeddingModel ?? 'minilm' }; }
+  () => {
+    const c = readConfig();
+    return { enabled: c.semanticMemory !== false, model: c.embeddingModel ?? 'minilm' };
+  },
 );
 // Enterprise Knowledge Graph — file-backed store + agent CLI (default OFF).
 const knowledge = new KnowledgeManager();
@@ -293,7 +414,7 @@ function reflectSettings(): ReflectSettings {
     byteTriggerPct: c.reflectByteTriggerPct ?? 50,
     sectionTrigger: c.reflectSectionTrigger ?? 50,
     recentKeep: c.reflectRecentKeep ?? 12,
-    minBytes: c.reflectMinBytes ?? 16_384
+    minBytes: c.reflectMinBytes ?? 16_384,
   };
 }
 // Finishes the janitor's missing condense half: bounds each agent's memory.md
@@ -303,7 +424,13 @@ const reflector = new MemoryReflector(
   () => readConfig().defaultCommand ?? 'claude',
   () => memory.env(),
   reflectSettings,
-  (event) => { try { hive.appendLog(event); } catch { /* best-effort */ } }
+  (event) => {
+    try {
+      hive.appendLog(event);
+    } catch {
+      /* best-effort */
+    }
+  },
 );
 // Durable harness state (SQLite, main process). Phase A: window bounds (kv) +
 // net-new command history. Opened in whenReady, closed in the teardown blocks.
@@ -333,13 +460,13 @@ const worktreeOrigins = new Map<string, string>();
 
 /** A live god-triggered ephemeral worker, tracked from spawn to teardown. */
 interface WorkerRec {
-  workerId: string;       // == the PTY id == hive agent id (`worker-<reqId>`)
-  reqId: string;          // the spawn-request id
-  name?: string;          // display name (for the worker tab)
+  workerId: string; // == the PTY id == hive agent id (`worker-<reqId>`)
+  reqId: string; // the spawn-request id
+  name?: string; // display name (for the worker tab)
   slack?: { channel: string; thread_ts: string };
-  baseBranch: string;     // the branch its worktree was cut from (for ahead-of-base)
-  spawnedAt: number;      // epoch ms
-  releasing?: boolean;    // kill issued; awaiting teardownPty (skip re-processing)
+  baseBranch: string; // the branch its worktree was cut from (for ahead-of-base)
+  spawnedAt: number; // epoch ms
+  releasing?: boolean; // kill issued; awaiting teardownPty (skip re-processing)
   /** Per-worker TOTAL-token cap from the spawn-request (overrides the config
    *  default). 0/undefined = no per-request cap. P4 plumbing — unlimited today. */
   tokenCap?: number;
@@ -355,7 +482,7 @@ const liveWorkers = new Map<string, WorkerRec>();
  *  granted a per-worker capability token at spawn (revoked in teardownPty). */
 const integrationBroker = new IntegrationBroker({
   getRecord: integrations.getRecord,
-  getSecret: integrations.getSecret
+  getSecret: integrations.getSecret,
 });
 
 /** BYOK backend model-providers whose API keys the non-Claude CLI engines
@@ -367,7 +494,7 @@ const BACKEND_KEY_ENV: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
   google: 'GEMINI_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
-  groq: 'GROQ_API_KEY'
+  groq: 'GROQ_API_KEY',
 };
 const providerKeyRef = (backend: string): string => `apikey:${backend}`;
 
@@ -377,11 +504,11 @@ const providerKeyRef = (backend: string): string => `apikey:${backend}`;
 interface PreservedWorktree {
   workerId: string;
   wtPath: string;
-  origCwd: string;        // the parent repo to run `git worktree remove` from
-  baseBranch: string;     // re-checked against this for "integrated yet?"
+  origCwd: string; // the parent repo to run `git worktree remove` from
+  baseBranch: string; // re-checked against this for "integrated yet?"
   scratchDir: string | null; // HIVE_ROOT/agents/<workerId> — removed alongside the worktree
   slack?: { channel: string; thread_ts: string };
-  preservedAt: number;    // epoch ms
+  preservedAt: number; // epoch ms
 }
 /** Preserved worker worktrees awaiting integration, keyed by worktree path. The GC
  *  sweep drains this: an entry is removed (worktree + scratch GC'd) only when the
@@ -404,24 +531,44 @@ const preservedWorktrees = new Map<string, PreservedWorktree>();
  */
 /** Registry check: is this agent an intern (persistent god-hire)? */
 function isIntern(agentId: string): boolean {
-  try { return hive.registry().agents[agentId]?.role === 'intern'; } catch { return false; }
+  try {
+    return hive.registry().agents[agentId]?.role === 'intern';
+  } catch {
+    return false;
+  }
 }
 
 function teardownPty(id: string): void {
   // 0) Revoke this id's broker capability (if any). Idempotent + harmless for a
   //    non-worker PTY; ensures a dead worker's token can never reach an integration.
-  try { integrationBroker.revoke(id); } catch { /* best-effort */ }
+  try {
+    integrationBroker.revoke(id);
+  } catch {
+    /* best-effort */
+  }
   // 1) Archive the agent — retained + flagged; only live-PTY agents are active.
   const agentId = ptyToAgent.get(id);
   if (agentId) {
     ptyToAgent.delete(id);
     // Drop breaker state so a dead agent can't leak/zombie a tripped level.
-    try { breaker.forget(agentId); } catch { /* best-effort */ }
+    try {
+      breaker.forget(agentId);
+    } catch {
+      /* best-effort */
+    }
     // W1 — kill this agent's proxy-bridge sidecar (qwen), if any, so a dead
     // PTY never leaves an orphan loopback listener. No-op for non-proxy agents.
-    try { hive.stopProxyBridge(agentId); } catch (e) { console.error('[hive] stopProxyBridge failed:', e); }
+    try {
+      hive.stopProxyBridge(agentId);
+    } catch (e) {
+      console.error('[hive] stopProxyBridge failed:', e);
+    }
     if (hive.enabled()) {
-      try { hive.setArchived(agentId, true); } catch (e) { console.error('[hive] setArchived failed:', e); }
+      try {
+        hive.setArchived(agentId, true);
+      } catch (e) {
+        console.error('[hive] setArchived failed:', e);
+      }
     }
   }
   // 2) Remove the isolated worktree, if any. Non-blocking; errors are logged.
@@ -448,15 +595,22 @@ function teardownPty(id: string): void {
         try {
           const br = await getBranch(origCwd);
           if ('current' in br && br.current) baseBranch = br.current;
-        } catch { /* keep default — the gate fails safe */ }
+        } catch {
+          /* keep default — the gate fails safe */
+        }
         await finalizeWorkerWorktree(wtPath, origCwd, {
-          workerId: agentId, reqId: agentId, baseBranch, spawnedAt: 0
+          workerId: agentId,
+          reqId: agentId,
+          baseBranch,
+          spawnedAt: 0,
         });
       })();
     } else {
       void removeWorktree(origCwd, wtPath)
-        .then(r => { if (!r.ok) console.error('[worktree] removeWorktree failed:', r.error); })
-        .catch(e => console.error('[worktree] removeWorktree threw:', e));
+        .then((r) => {
+          if (!r.ok) console.error('[worktree] removeWorktree failed:', r.error);
+        })
+        .catch((e) => console.error('[worktree] removeWorktree threw:', e));
     }
   }
   // A worker whose isolation failed (non-repo cwd) has no worktree to gate above —
@@ -469,12 +623,16 @@ function teardownPty(id: string): void {
  *  controller uses this to surface every terminal failure AND to carry the Slack
  *  {channel,thread_ts} so god can post a 'couldn't complete' reply — closing the
  *  Slack loop (the success path is the worker replying in-thread itself). */
-function informGod(subject: string, body: string, slack?: { channel: string; thread_ts: string }): void {
+function informGod(
+  subject: string,
+  body: string,
+  slack?: { channel: string; thread_ts: string },
+): void {
   try {
     const slackLine = slack
-      // `$HIVE_NODE` (injected into every agent's env) — NOT bare `node`, which is
-      // absent from the PATH of any machine whose node comes from nvm.
-      ? `\n\n[SLACK] Close the loop — post a reply to channel ${slack.channel} thread ${slack.thread_ts} via:\n  "$HIVE_NODE" "${slackReplyScriptPath()}" --channel ${slack.channel} --thread ${slack.thread_ts} --text "<your message>"`
+      ? // `$HIVE_NODE` (injected into every agent's env) — NOT bare `node`, which is
+        // absent from the PATH of any machine whose node comes from nvm.
+        `\n\n[SLACK] Close the loop — post a reply to channel ${slack.channel} thread ${slack.thread_ts} via:\n  "$HIVE_NODE" "${slackReplyScriptPath()}" --channel ${slack.channel} --thread ${slack.thread_ts} --text "<your message>"`
       : '';
     hive.send({ to: 'god', act: 'inform', subject, body: body + slackLine }, 'ephemeral-worker');
   } catch (e) {
@@ -486,28 +644,42 @@ function informGod(subject: string, body: string, slack?: { channel: string; thr
  *  unintegrated work; otherwise leave it (and its branch) in place and ping god, the
  *  sole integrator. Async + best-effort; on any uncertainty it KEEPS the worktree
  *  (fail-safe — never auto-discard possibly-valuable work). */
-async function finalizeWorkerWorktree(wtPath: string, origCwd: string, worker: WorkerRec): Promise<void> {
+async function finalizeWorkerWorktree(
+  wtPath: string,
+  origCwd: string,
+  worker: WorkerRec,
+): Promise<void> {
   try {
     const work = await worktreeHasUnintegratedWork(wtPath, worker.baseBranch);
     if (work.keep) {
-      console.warn(`[worker] PRESERVING worktree with unintegrated work: ${wtPath} (${work.detail})`);
+      console.warn(
+        `[worker] PRESERVING worktree with unintegrated work: ${wtPath} (${work.detail})`,
+      );
       // Track it so the GC sweep can reclaim it (+ scratch dir) once integrated —
       // the worker is gone from liveWorkers by now, so its identity lives here.
       preservedWorktrees.set(wtPath, {
-        workerId: worker.workerId, wtPath, origCwd, baseBranch: worker.baseBranch,
-        scratchDir: workerScratchDir(worker.workerId), slack: worker.slack, preservedAt: Date.now()
+        workerId: worker.workerId,
+        wtPath,
+        origCwd,
+        baseBranch: worker.baseBranch,
+        scratchDir: workerScratchDir(worker.workerId),
+        slack: worker.slack,
+        preservedAt: Date.now(),
       });
       informGod(
         `[worker worktree preserved] ${worker.workerId}`,
-        `Worker ${worker.workerId} ended but its worktree holds unintegrated work, so it was NOT auto-removed (you are the sole integrator).\n`
-        + `Worktree: ${wtPath}\nBranch: ${work.branch}\nState: ${work.detail}\n`
-        + `Review/merge it — it will be auto-reclaimed once its work lands in ${worker.baseBranch}, or remove it now with: git -C "${origCwd}" worktree remove "${wtPath}"`,
-        worker.slack
+        `Worker ${worker.workerId} ended but its worktree holds unintegrated work, so it was NOT auto-removed (you are the sole integrator).\n` +
+          `Worktree: ${wtPath}\nBranch: ${work.branch}\nState: ${work.detail}\n` +
+          `Review/merge it — it will be auto-reclaimed once its work lands in ${worker.baseBranch}, or remove it now with: git -C "${origCwd}" worktree remove "${wtPath}"`,
+        worker.slack,
       );
       return;
     }
     const r = await removeWorktree(origCwd, wtPath);
-    if (!r.ok) { console.error('[worker] removeWorktree failed:', r.error); return; }
+    if (!r.ok) {
+      console.error('[worker] removeWorktree failed:', r.error);
+      return;
+    }
     // Worktree is gone (clean/integrated at teardown), but DEFER its scratch-dir
     // cleanup to the throttled GC sweep rather than deleting it synchronously here:
     // HIVE_ROOT/agents/<id> holds the worker's memory.md and the MemPalace miner
@@ -516,8 +688,13 @@ async function finalizeWorkerWorktree(wtPath: string, origCwd: string, worker: W
     // it (its worktree path is now absent) so the sweep's path-gone branch reclaims
     // the scratch after a window — same throttled path the preserved case uses.
     preservedWorktrees.set(wtPath, {
-      workerId: worker.workerId, wtPath, origCwd, baseBranch: worker.baseBranch,
-      scratchDir: workerScratchDir(worker.workerId), slack: worker.slack, preservedAt: Date.now()
+      workerId: worker.workerId,
+      wtPath,
+      origCwd,
+      baseBranch: worker.baseBranch,
+      scratchDir: workerScratchDir(worker.workerId),
+      slack: worker.slack,
+      preservedAt: Date.now(),
     });
   } catch (e) {
     console.error('[worker] finalizeWorkerWorktree threw (worktree left in place):', e);
@@ -541,9 +718,13 @@ function removeWorkerScratch(workerId: string): void {
   if (!dir || !root) return;
   const agentsRoot = join(root, 'agents');
   // Path-safety: the resolved dir must sit directly under agents/ with basename == id.
-  if (resolve(dir) !== join(resolve(agentsRoot), basename(dir)) || basename(dir) !== workerId) return;
-  try { rmSync(dir, { recursive: true, force: true }); }
-  catch (e) { console.error('[worker] removeWorkerScratch failed:', e); }
+  if (resolve(dir) !== join(resolve(agentsRoot), basename(dir)) || basename(dir) !== workerId)
+    return;
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch (e) {
+    console.error('[worker] removeWorkerScratch failed:', e);
+  }
 }
 // A natural PTY exit must run the same teardown as an explicit kill — EXCEPT when
 // the PTY was the missing-CLI installer: a clean exit there means the engine CLI was
@@ -559,8 +740,12 @@ ptyManager.setExitHandler((id, exitCode) => {
       // Re-arm the renderer's pooled terminal (clear the "process exited" line +
       // re-enable input) so the freshly-spawned CLI paints onto a clean, typeable
       // grid, then re-run the normal spawn — which now finds the installed binary.
-      const wc = (pending.owner && !pending.owner.isDestroyed()) ? pending.owner : liveWebContents();
-      try { wc?.send(`pty:relaunch:${id}`); } catch { /* window gone */ }
+      const wc = pending.owner && !pending.owner.isDestroyed() ? pending.owner : liveWebContents();
+      try {
+        wc?.send(`pty:relaunch:${id}`);
+      } catch {
+        /* window gone */
+      }
       void spawnAgentCore({ ...pending.opts, noAutoInstall: true }, pending.owner);
       return; // an install PTY has no agent/worktree to tear down
     }
@@ -588,12 +773,18 @@ let keepAwakeMode: KeepAwakeMode | null = null;
 function syncKeepAwake(): void {
   const live = ptyManager.list().length > 0;
   const desired: KeepAwakeMode | null = live
-    ? (readConfig().strongKeepalive ? 'prevent-display-sleep' : 'prevent-app-suspension')
+    ? readConfig().strongKeepalive
+      ? 'prevent-display-sleep'
+      : 'prevent-app-suspension'
     : null;
   if (desired === keepAwakeMode) return; // no change — avoid stop/start churn + log spam
   // Tear down the current blocker (mode change, or going idle with no agents).
   if (keepAwakeId !== null) {
-    try { if (powerSaveBlocker.isStarted(keepAwakeId)) powerSaveBlocker.stop(keepAwakeId); } catch { /* noop */ }
+    try {
+      if (powerSaveBlocker.isStarted(keepAwakeId)) powerSaveBlocker.stop(keepAwakeId);
+    } catch {
+      /* noop */
+    }
     keepAwakeId = null;
   }
   keepAwakeMode = desired;
@@ -641,7 +832,7 @@ function floorQuietSince(since: number): boolean {
   const reg = hive.registry();
   const usageById = new Map(telemetry.snapshot().usage.map((u) => [u.agentId, u]));
   const busy = Object.entries(reg.agents).some(
-    ([id, a]) => !a.archived && !a.isGod && (usageById.get(id)?.ts ?? 0) > since
+    ([id, a]) => !a.archived && !a.isGod && (usageById.get(id)?.ts ?? 0) > since,
   );
   if (busy) return false;
   const root = hive.root();
@@ -668,7 +859,10 @@ function syncMissions(): void {
     // Heartbeat (Lane A #1) opts out of the fixed setInterval and self-reschedules
     // with an adaptive cadence. Registered into the same missionTimers map so
     // clearMissionTimers() tears it down identically on quit/reset.
-    if (m.kind === 'heartbeat') { armHeartbeat(m); continue; }
+    if (m.kind === 'heartbeat') {
+      armHeartbeat(m);
+      continue;
+    }
     const fire = (): void => {
       try {
         // skipWhenFloorQuiet (ops-standup): while the floor is quiet a due fire
@@ -700,12 +894,14 @@ function syncMissions(): void {
           emitContextTrigger('compact', contextRule('compact'));
         }
         const current = readConfig().missions ?? [];
-        const next = current.map((x) =>
-          x.id === m.id ? { ...x, lastFiredAt: Date.now() } : x
-        );
+        const next = current.map((x) => (x.id === m.id ? { ...x, lastFiredAt: Date.now() } : x));
         writeConfig({ missions: next });
         // Let the SCHEDULES panel refresh its "last fired" without a reload (#2.3).
-        try { liveWebContents()?.send('missions:updated'); } catch { /* window gone */ }
+        try {
+          liveWebContents()?.send('missions:updated');
+        } catch {
+          /* window gone */
+        }
       } catch (e) {
         console.error('[scheduler] mission', m.id, e);
       }
@@ -750,8 +946,11 @@ let contextLastRun: Record<string, number> | null = null;
 
 function contextRunMap(): Record<string, number> {
   if (!contextLastRun) {
-    try { contextLastRun = persist.getKv<Record<string, number>>(CONTEXT_LAST_RUN_KV_KEY) ?? {}; }
-    catch { contextLastRun = {}; }
+    try {
+      contextLastRun = persist.getKv<Record<string, number>>(CONTEXT_LAST_RUN_KV_KEY) ?? {};
+    } catch {
+      contextLastRun = {};
+    }
   }
   return contextLastRun;
 }
@@ -772,7 +971,11 @@ function stampContextRun(action: 'compact' | 'clear'): number {
   const map = contextRunMap();
   const at = Date.now();
   map[action] = at;
-  try { persist.setKv(CONTEXT_LAST_RUN_KV_KEY, map); } catch { /* DB best-effort */ }
+  try {
+    persist.setKv(CONTEXT_LAST_RUN_KV_KEY, map);
+  } catch {
+    /* DB best-effort */
+  }
   return at;
 }
 
@@ -797,12 +1000,20 @@ function clearContextTimers(): void {
  *  and the context trigger's own timer — so there is exactly one path from main
  *  to the renderer for each action. */
 function emitContextTrigger(action: 'compact' | 'clear', rule: ContextRule): void {
-  try { liveWebContents()?.send('trigger:context', { action, rule }); } catch { /* window gone */ }
+  try {
+    liveWebContents()?.send('trigger:context', { action, rule });
+  } catch {
+    /* window gone */
+  }
   // TRANSITIONAL ALIAS: the renderer still carries the pre-Triggers
   // `mission:autoCompact` listener as a fallback. Both fire for compact until
   // every consumer has moved to `trigger:context`; then this line goes.
   if (action === 'compact') {
-    try { liveWebContents()?.send('mission:autoCompact'); } catch { /* window gone */ }
+    try {
+      liveWebContents()?.send('mission:autoCompact');
+    } catch {
+      /* window gone */
+    }
   }
 }
 
@@ -853,9 +1064,9 @@ function archiveOrphanedAgents(): void {
     const reg = hive.registry();
     for (const [id, a] of Object.entries(reg.agents)) {
       if (a.archived) continue;
-      if (id === reg.godId) continue;        // god is never archived
-      if (ptyForAgent(id)) continue;         // has a live PTY → genuinely active
-      hive.setArchived(id, true);            // stale archived:false orphan → archive
+      if (id === reg.godId) continue; // god is never archived
+      if (ptyForAgent(id)) continue; // has a live PTY → genuinely active
+      hive.setArchived(id, true); // stale archived:false orphan → archive
       console.log('[migration] archived orphaned agent (no live PTY):', id);
     }
   } catch (e) {
@@ -875,7 +1086,7 @@ function ensureDefaultMissions(): void {
     const has = missions.some((m) => m.id === OPS_STANDUP_MISSION.id);
     writeConfig({
       missions: has ? missions : [...missions, { ...OPS_STANDUP_MISSION, lastFiredAt: Date.now() }],
-      opsStandupSeeded: true
+      opsStandupSeeded: true,
     });
   }
   // Seed the built-in heartbeat (Lane A #1) once. Shipped DISABLED, so it just
@@ -887,7 +1098,7 @@ function ensureDefaultMissions(): void {
     const has = missions.some((m) => m.id === HEARTBEAT_MISSION.id);
     writeConfig({
       missions: has ? missions : [...missions, { ...HEARTBEAT_MISSION, lastFiredAt: Date.now() }],
-      heartbeatSeeded: true
+      heartbeatSeeded: true,
     });
   }
 
@@ -918,20 +1129,26 @@ function ensureDefaultMissions(): void {
           enabled: retiring.enabled,
           // A hand-tuned interval is a decision; only a missing/absurd one falls
           // back to whatever the trigger already carries.
-          everyMs: retiring.intervalMs > 0 ? retiring.intervalMs : current.compact.everyMs
-        }
+          everyMs: retiring.intervalMs > 0 ? retiring.intervalMs : current.compact.everyMs,
+        },
       },
-      compactMaintenanceSeeded: true
+      compactMaintenanceSeeded: true,
     });
     // …and its elapsed time, so retiring the mission mid-cycle doesn't restart a
     // 2h cadence from zero (the timers honour last-run exactly as arming did).
     if (typeof retiring.lastFiredAt === 'number' && retiring.lastFiredAt > 0) {
       const map = contextRunMap();
       map.compact = retiring.lastFiredAt;
-      try { persist.setKv(CONTEXT_LAST_RUN_KV_KEY, map); } catch { /* DB best-effort */ }
+      try {
+        persist.setKv(CONTEXT_LAST_RUN_KV_KEY, map);
+      } catch {
+        /* DB best-effort */
+      }
     }
-    console.log('[triggers] retired the compact-maintenance mission into contextTrigger.compact',
-      `(enabled: ${retiring.enabled}, everyMs: ${retiring.intervalMs})`);
+    console.log(
+      '[triggers] retired the compact-maintenance mission into contextTrigger.compact',
+      `(enabled: ${retiring.enabled}, everyMs: ${retiring.intervalMs})`,
+    );
   }
 
   // autoCompact RETIREMENT: the flag above was only ever half-removed. Retiring
@@ -953,10 +1170,12 @@ function ensureDefaultMissions(): void {
       missions: missions4.map(({ autoCompact, ...rest }) => {
         void autoCompact;
         return rest;
-      })
+      }),
     });
-    console.log('[triggers] dropped the legacy per-mission autoCompact flag —',
-      'contextTrigger.compact is now the only schedule that compacts');
+    console.log(
+      '[triggers] dropped the legacy per-mission autoCompact flag —',
+      'contextTrigger.compact is now the only schedule that compacts',
+    );
   }
   const cfg5 = readConfig();
   const missions5 = cfg5.missions ?? [];
@@ -964,12 +1183,15 @@ function ensureDefaultMissions(): void {
   // flag existed (fresh seeds carry it straight from OPS_STANDUP_MISSION).
   // Patch by id ONLY where the key is absent, so a hand-set `false` survives;
   // idempotent, so after the first patch there is nothing left to write.
-  if (missions5.some((m) => m.id === OPS_STANDUP_MISSION.id && m.skipWhenFloorQuiet === undefined)) {
+  if (
+    missions5.some((m) => m.id === OPS_STANDUP_MISSION.id && m.skipWhenFloorQuiet === undefined)
+  ) {
     writeConfig({
       missions: missions5.map((m) =>
         m.id === OPS_STANDUP_MISSION.id && m.skipWhenFloorQuiet === undefined
           ? { ...m, skipWhenFloorQuiet: OPS_STANDUP_MISSION.skipWhenFloorQuiet }
-          : m)
+          : m,
+      ),
     });
   }
 }
@@ -986,7 +1208,13 @@ function isFloorQuiet(thresholdMs: number): boolean {
   const root = hive.root();
   if (!root) return false;
   const times: number[] = [];
-  const pushMtime = (p: string): void => { try { times.push(statSync(p).mtimeMs); } catch { /* missing */ } };
+  const pushMtime = (p: string): void => {
+    try {
+      times.push(statSync(p).mtimeMs);
+    } catch {
+      /* missing */
+    }
+  };
   pushMtime(join(root, 'log.jsonl'));
   const agentsDir = join(root, 'agents');
   if (existsSync(agentsDir)) {
@@ -1010,7 +1238,13 @@ function lastCoordinationAt(agentId: string): number {
   const root = hive.root();
   if (!root) return 0;
   const times: number[] = [0];
-  const pushMtime = (p: string): void => { try { times.push(statSync(p).mtimeMs); } catch { /* missing */ } };
+  const pushMtime = (p: string): void => {
+    try {
+      times.push(statSync(p).mtimeMs);
+    } catch {
+      /* missing */
+    }
+  };
   const dir = join(root, 'agents', agentId);
   pushMtime(join(dir, 'inbox'));
   pushMtime(join(dir, 'inbox', '.done'));
@@ -1049,14 +1283,25 @@ function buildHeartbeatDigest(quietMs: number, actionable = 0): string {
   const active = Object.entries(reg.agents).filter(([id, a]) => !a.archived && id !== reg.godId);
   const names = active.map(([, a]) => a.name).join(', ') || '—';
   const boardHead = hive.board().split('\n').slice(0, 10).join('\n').trim();
-  const log = hive.logTail(8).map((e) => { try { return JSON.stringify(e); } catch { return ''; } }).filter(Boolean).join('\n');
+  const log = hive
+    .logTail(8)
+    .map((e) => {
+      try {
+        return JSON.stringify(e);
+      } catch {
+        return '';
+      }
+    })
+    .filter(Boolean)
+    .join('\n');
   const withInbox = active.filter(([id]) => hive.inbox(id).length > 0).map(([, a]) => a.name);
   // When real agent/human mail is waiting, lead with an explicit call-to-action
   // instead of the "quiet" line — this beat fired BECAUSE of unread actionable
   // inbox, not because the floor went quiet, and god must read it now.
-  const header = actionable > 0
-    ? `Floor heartbeat — ${actionable} actionable inbox message(s) awaiting you (worker/human mail). Drain your inbox NOW and act on them.`
-    : `Floor heartbeat — quiet ~${Math.round(quietMs / 60000)}m.`;
+  const header =
+    actionable > 0
+      ? `Floor heartbeat — ${actionable} actionable inbox message(s) awaiting you (worker/human mail). Drain your inbox NOW and act on them.`
+      : `Floor heartbeat — quiet ~${Math.round(quietMs / 60000)}m.`;
   return [
     header,
     `Active agents (${active.length}): ${names}.`,
@@ -1068,7 +1313,7 @@ function buildHeartbeatDigest(quietMs: number, actionable = 0): string {
     'Recent log:',
     log || '(none)',
     '',
-    'Re-engage anyone stalled or blocked and keep the board accurate — or rest if the work is genuinely done.'
+    'Re-engage anyone stalled or blocked and keep the board accurate — or rest if the work is genuinely done.',
   ].join('\n');
 }
 
@@ -1084,7 +1329,9 @@ function godActionableInboxCount(): number {
     const godId = hive.registry().godId;
     if (!godId) return 0;
     return hive.inbox(godId).filter((m) => !SYSTEM_SENDERS.has(m.from) && !isFyiMail(m)).length;
-  } catch { return 0; }
+  } catch {
+    return 0;
+  }
 }
 
 /** Re-engage a quiet floor: drop a durable digest into god's inbox. We never
@@ -1100,8 +1347,11 @@ function reengageGod(digest: string): void {
 /** A native toast for breaker constrain/stop, gated on the notifications setting. */
 function breakerToast(title: string, body: string): void {
   if (!readConfig().notifications) return;
-  try { if (Notification.isSupported()) new Notification({ title, body }).show(); }
-  catch { /* unsupported platform */ }
+  try {
+    if (Notification.isSupported()) new Notification({ title, body }).show();
+  } catch {
+    /* unsupported platform */
+  }
 }
 
 /** How long after its last coordination write an agent still counts as holding
@@ -1117,7 +1367,9 @@ function agentsWithDoingCard(): Set<string> {
   try {
     const t = (hive.tasks() as { tasks?: { status?: string; assignee?: string }[] })?.tasks ?? [];
     for (const c of t) if (c.status === 'doing' && c.assignee) out.add(c.assignee);
-  } catch { /* no/!readable ledger — the other legs still answer */ }
+  } catch {
+    /* no/!readable ledger — the other legs still answer */
+  }
   return out;
 }
 
@@ -1138,7 +1390,9 @@ function hasOpenWork(agentId: string, now: number, doingCards: Set<string>): boo
     if (doingCards.has(agentId)) return true;
     if (hive.inbox(agentId).some((m) => !SYSTEM_SENDERS.has(m.from))) return true;
     return now - lastCoordinationAt(agentId) < OPEN_WORK_WINDOW_MS;
-  } catch { return true; }
+  } catch {
+    return true;
+  }
 }
 
 /** One circuit-breaker beat: pull a fresh usage sample per active agent, append
@@ -1173,7 +1427,7 @@ function runBreakerBeat(progressWindowMs: number): void {
     // (aggregateLive picks the most-recent live session id), so this gates on
     // "is there a live session" without changing any live-agent behavior.
     if (sample?.sessionId) hive.appendCostLedger(sample); // ledger covers everyone incl. god
-    if (id === reg.godId) continue;            // breaker skips god
+    if (id === reg.godId) continue; // breaker skips god
     // Progress = fresh coordination files OR a recent OTel tool span. The span
     // leg closes the background-work blind spot: subagent/Workflow tool calls
     // never reach the parent session's PostToolUse hook (so the breaker's own
@@ -1186,25 +1440,51 @@ function runBreakerBeat(progressWindowMs: number): void {
     inputs.push({
       agentId: id,
       sample,
-      progressing: now - lastCoordinationAt(id) < progressWindowMs || now - lastSpanAt < progressWindowMs,
-      hasOpenWork: hasOpenWork(id, now, doingCards)
+      progressing:
+        now - lastCoordinationAt(id) < progressWindowMs || now - lastSpanAt < progressWindowMs,
+      hasOpenWork: hasOpenWork(id, now, doingCards),
     });
   }
   for (const d of breaker.tick(inputs, now)) {
-    try { liveWebContents()?.send('control:breakerState', d.state); } catch { /* window gone */ }
+    try {
+      liveWebContents()?.send('control:breakerState', d.state);
+    } catch {
+      /* window gone */
+    }
     if (d.action === 'none') continue;
     const name = reg.agents[d.state.agentId]?.name ?? d.state.agentId;
     const reason = d.state.reason;
     if (d.action === 'steer') {
-      hive.send({ to: d.state.agentId, act: 'request', subject: 'Circuit breaker: steer',
-        body: `Automated guardrail: ${reason}. Re-check your approach — if you're looping or stuck, STOP repeating, summarize what you've tried, and ask god for direction.` }, 'breaker');
+      hive.send(
+        {
+          to: d.state.agentId,
+          act: 'request',
+          subject: 'Circuit breaker: steer',
+          body: `Automated guardrail: ${reason}. Re-check your approach — if you're looping or stuck, STOP repeating, summarize what you've tried, and ask god for direction.`,
+        },
+        'breaker',
+      );
     } else if (d.action === 'constrain') {
-      hive.send({ to: d.state.agentId, act: 'request', subject: 'Circuit breaker: constrain',
-        body: `Automated guardrail escalated: ${reason}. Stop active work now: switch to read-only/plan, write a short plan of your next step, and send it to god for sign-off BEFORE running more tools.` }, 'breaker');
+      hive.send(
+        {
+          to: d.state.agentId,
+          act: 'request',
+          subject: 'Circuit breaker: constrain',
+          body: `Automated guardrail escalated: ${reason}. Stop active work now: switch to read-only/plan, write a short plan of your next step, and send it to god for sign-off BEFORE running more tools.`,
+        },
+        'breaker',
+      );
       breakerToast(`${name} constrained`, reason);
     } else if (d.action === 'stop') {
       const ptyId = ptyForAgent(d.state.agentId);
-      if (ptyId) { try { ptyManager.kill(ptyId); } catch { /* already gone */ } teardownPty(ptyId); }
+      if (ptyId) {
+        try {
+          ptyManager.kill(ptyId);
+        } catch {
+          /* already gone */
+        }
+        teardownPty(ptyId);
+      }
       breakerToast(`${name} stopped by circuit breaker`, reason);
     }
   }
@@ -1239,7 +1519,7 @@ function writeFleetSnapshot(): void {
           usd: u ? Number(u.usd.toFixed(4)) : 0,
           lastTool: spans.length ? spans[spans.length - 1].tool : null,
           lastActiveSecAgo: u ? Math.round((now - u.ts) / 1000) : null,
-          inboxBacklog: hive.inboxBacklog(id)
+          inboxBacklog: hive.inboxBacklog(id),
         };
       });
     // Vacationers are NOT floor capacity (they have no PTY), but god must be able
@@ -1252,7 +1532,7 @@ function writeFleetSnapshot(): void {
         name: a.name,
         role: a.role ?? 'agent',
         cwd: a.cwd,
-        parkedAt: a.vacationSince ?? null
+        parkedAt: a.vacationSince ?? null,
       }));
     hive.writeFleetSnapshot({ ts: now, agents, vacation });
   } catch (e) {
@@ -1278,13 +1558,19 @@ function armHeartbeat(m: ScheduledMission): void {
       const actionable = godActionableInboxCount();
       if (isFloorQuiet(quiet) || actionable > 0) {
         reengageGod(buildHeartbeatDigest(quiet, actionable));
-        next = Math.round(base * 2.5);            // back off after re-engaging
+        next = Math.round(base * 2.5); // back off after re-engaging
       } else if (looksStuck(quiet)) {
         next = Math.max(30_000, Math.round(base / 4)); // tighten when an agent is wedged
       }
       const cur = readConfig().missions ?? [];
-      writeConfig({ missions: cur.map((x) => (x.id === m.id ? { ...x, lastFiredAt: Date.now() } : x)) });
-      try { liveWebContents()?.send('missions:updated'); } catch { /* window gone */ }
+      writeConfig({
+        missions: cur.map((x) => (x.id === m.id ? { ...x, lastFiredAt: Date.now() } : x)),
+      });
+      try {
+        liveWebContents()?.send('missions:updated');
+      } catch {
+        /* window gone */
+      }
     } catch (e) {
       console.error('[heartbeat]', e);
     }
@@ -1332,7 +1618,11 @@ let lastSlackUrl: string | undefined;
  *  only — the human-facing kanban card TITLE stays the user's raw text (the
  *  renderer keeps them split). Trailing space is intentional so the user's message
  *  reads naturally after it. */
-function buildAutonomousRequestProtocol(channel: string, threadTs: string, helperPath: string): string {
+function buildAutonomousRequestProtocol(
+  channel: string,
+  threadTs: string,
+  helperPath: string,
+): string {
   return `[AUTONOMOUS REQUEST PROTOCOL — this request arrived via Slack; no interactive human is watching] Handle it under this protocol:
 1. ROUTE FAST — triage and hand this to the single most-relevant agent right away. CHECK THE LIVE ROSTER FIRST (active agents in registry.json + their state in fleet.json) and prefer an EXISTING agent that fits — especially when the request names one ("ask Pam…", "have Jim…"): route to that agent and only spawn a new one if none is a sensible fit. Decompose only if it genuinely needs several. Don't sit on it.
 2. DELEGATE WITH THE REPLY HANDLE — tell that agent to do the work autonomously AND to post its result back to THIS Slack thread itself when done, using exactly: "$HIVE_NODE" "${helperPath}" --channel ${channel} --thread ${threadTs} --text "<substantive result>" ($HIVE_NODE is the harness's bundled Node, injected into every agent's env — bare "node" is not on the hook/agent PATH on many machines.)
@@ -1404,9 +1694,13 @@ const SLACK_FILE_MAX_BYTES = 10 * 1024 * 1024;
 /** Sanitize a Slack filename: keep only the basename, replace non-safe chars,
  *  prefix with a random hex tag to prevent collisions and path-traversal attacks. */
 function sanitizeSlackFilename(name: string | undefined, tag: string): string {
-  const safe = (typeof name === 'string' && name)
-    ? basename(name).replace(/[^\w.-]/g, '_').replace(/^\.+/, '_').slice(0, 200) || 'file'
-    : 'file';
+  const safe =
+    typeof name === 'string' && name
+      ? basename(name)
+          .replace(/[^\w.-]/g, '_')
+          .replace(/^\.+/, '_')
+          .slice(0, 200) || 'file'
+      : 'file';
   return `${tag}-${safe}`;
 }
 
@@ -1418,7 +1712,7 @@ function sanitizeSlackFilename(name: string | undefined, tag: string): string {
 function downloadSlackFile(
   file: SlackEventFile,
   botToken: string,
-  destDir: string
+  destDir: string,
 ): Promise<{ path: string; name: string; mimetype: string } | null> {
   return new Promise((resolve) => {
     const tag = randomBytes(4).toString('hex');
@@ -1441,11 +1735,18 @@ function downloadSlackFile(
       resolve(null);
       return;
     }
-    if (urlObj.protocol !== 'https:') { resolve(null); return; }
+    if (urlObj.protocol !== 'https:') {
+      resolve(null);
+      return;
+    }
 
     const req = httpsRequest(
-      { hostname: urlObj.hostname, path: urlObj.pathname + urlObj.search, method: 'GET',
-        headers: { authorization: `Bearer ${botToken}` } },
+      {
+        hostname: urlObj.hostname,
+        path: urlObj.pathname + urlObj.search,
+        method: 'GET',
+        headers: { authorization: `Bearer ${botToken}` },
+      },
       (res) => {
         if (res.statusCode && res.statusCode >= 400) {
           res.resume(); // drain response body
@@ -1461,7 +1762,11 @@ function downloadSlackFile(
           if (written > SLACK_FILE_MAX_BYTES) {
             aborted = true;
             stream.destroy();
-            try { unlinkSync(destPath); } catch { /* best-effort cleanup */ }
+            try {
+              unlinkSync(destPath);
+            } catch {
+              /* best-effort cleanup */
+            }
             res.destroy();
             resolve(null);
             return;
@@ -1472,9 +1777,15 @@ function downloadSlackFile(
           if (aborted) return;
           stream.end(() => resolve({ path: destPath, name, mimetype }));
         });
-        res.on('error', () => { stream.destroy(); resolve(null); });
-        stream.on('error', () => { res.destroy(); resolve(null); });
-      }
+        res.on('error', () => {
+          stream.destroy();
+          resolve(null);
+        });
+        stream.on('error', () => {
+          res.destroy();
+          resolve(null);
+        });
+      },
     );
     req.on('error', () => resolve(null));
     req.end();
@@ -1487,13 +1798,11 @@ function downloadSlackFile(
  */
 async function downloadSlackFiles(
   rawFiles: SlackEventFile[],
-  botToken: string | undefined
+  botToken: string | undefined,
 ): Promise<{ path: string; name: string; mimetype: string }[]> {
   if (!rawFiles.length || !botToken) return [];
   const destDir = slackFilesDir();
-  const results = await Promise.all(
-    rawFiles.map((f) => downloadSlackFile(f, botToken, destDir))
-  );
+  const results = await Promise.all(rawFiles.map((f) => downloadSlackFile(f, botToken, destDir)));
   return results.filter((r): r is { path: string; name: string; mimetype: string } => r !== null);
 }
 
@@ -1501,13 +1810,18 @@ function loadSlackDoneNotified(): Set<string> {
   try {
     const arr = JSON.parse(readFileSync(slackDoneNotifiedPath(), 'utf8'));
     if (Array.isArray(arr)) return new Set(arr.filter((x): x is string => typeof x === 'string'));
-  } catch { /* missing/corrupt → start empty */ }
+  } catch {
+    /* missing/corrupt → start empty */
+  }
   return new Set();
 }
 
 function persistSlackDoneNotified(set: Set<string>): void {
-  try { writeFileSync(slackDoneNotifiedPath(), JSON.stringify([...set])); }
-  catch (e) { console.error('[slack] could not persist done-notify ledger:', e); }
+  try {
+    writeFileSync(slackDoneNotifiedPath(), JSON.stringify([...set]));
+  } catch (e) {
+    console.error('[slack] could not persist done-notify ledger:', e);
+  }
 }
 
 /** Slack `chat.postMessage` errors that are permanent for this config — retrying
@@ -1515,9 +1829,18 @@ function persistSlackDoneNotified(set: Set<string>): void {
  *  (not retried) to avoid flooding the log every 5s. Anything else is treated as
  *  transient and left to retry. */
 const TERMINAL_SLACK_ERRORS = new Set<string>([
-  'missing_scope', 'invalid_auth', 'not_authed', 'account_inactive',
-  'token_revoked', 'token_expired', 'no_permission', 'channel_not_found',
-  'not_in_channel', 'is_archived', 'restricted_action', 'org_login_required',
+  'missing_scope',
+  'invalid_auth',
+  'not_authed',
+  'account_inactive',
+  'token_revoked',
+  'token_expired',
+  'no_permission',
+  'channel_not_found',
+  'not_in_channel',
+  'is_archived',
+  'restricted_action',
+  'org_login_required',
 ]);
 
 /** The single in-thread summary for a finished task. Sourced from the task's
@@ -1540,7 +1863,9 @@ async function pollSlackDoneTasks(): Promise<void> {
   try {
     const ledger = hive.tasks() as { tasks?: HiveTask[] };
     tasks = Array.isArray(ledger?.tasks) ? ledger.tasks : [];
-  } catch { return; } // unreadable/missing tasks.json → skip this tick
+  } catch {
+    return;
+  } // unreadable/missing tasks.json → skip this tick
 
   const notified = slackDoneNotified ?? (slackDoneNotified = loadSlackDoneNotified());
 
@@ -1561,13 +1886,24 @@ async function pollSlackDoneTasks(): Promise<void> {
       if (!slack || !slack.channel || !slack.thread_ts) continue; // non-Slack-origin → leave alone
       // FALLBACK-ONLY: if the agent already posted a DIRECT reply into this thread
       // (loopback /reply), the human has its substantive answer — don't double-post.
-      if (directlyRepliedThreads.has(slack.thread_ts)) { notified.add(t.id); persistSlackDoneNotified(notified); continue; }
+      if (directlyRepliedThreads.has(slack.thread_ts)) {
+        notified.add(t.id);
+        persistSlackDoneNotified(notified);
+        continue;
+      }
       // Never post a bare `:white_check_mark: *title*` with no substance: if the card
       // carries neither a result nor a description, there is nothing meaningful to
       // deliver — skip it (still under the FALLBACK contract).
-      if (!(t.result ?? t.description ?? '').trim()) { notified.add(t.id); persistSlackDoneNotified(notified); continue; }
+      if (!(t.result ?? t.description ?? '').trim()) {
+        notified.add(t.id);
+        persistSlackDoneNotified(notified);
+        continue;
+      }
       const res = await postSlackReply({
-        botToken, channel: slack.channel, thread_ts: slack.thread_ts, text: slackDoneSummary(t)
+        botToken,
+        channel: slack.channel,
+        thread_ts: slack.thread_ts,
+        text: slackDoneSummary(t),
       });
       if (res.ok) {
         notified.add(t.id);
@@ -1578,12 +1914,22 @@ async function pollSlackDoneTasks(): Promise<void> {
         // log the reason once. Never log the token or message body.
         notified.add(t.id);
         persistSlackDoneNotified(notified);
-        console.error('[slack] done-summary post for task', t.id,
-          '— giving up (terminal error:', res.error + '). Fix the Slack bot scope/permissions; later tasks post once resolved.');
+        console.error(
+          '[slack] done-summary post for task',
+          t.id,
+          '— giving up (terminal error:',
+          res.error + '). Fix the Slack bot scope/permissions; later tasks post once resolved.',
+        );
       } else {
         // Transient (network / rate-limit / unknown) → leave unmarked so a later
         // tick retries. Log the id + error only; never the token or message body.
-        console.error('[slack] done-summary post failed for task', t.id, '-', res.error, '(will retry)');
+        console.error(
+          '[slack] done-summary post failed for task',
+          t.id,
+          '-',
+          res.error,
+          '(will retry)',
+        );
       }
     }
   } finally {
@@ -1596,12 +1942,17 @@ function startSlackDoneObserver(): void {
   if (slackDoneTimer) return;
   slackDoneNotified = loadSlackDoneNotified();
   slackDoneBaseline = null; // re-seed on the first tick of this session
-  slackDoneTimer = setInterval(() => { void pollSlackDoneTasks(); }, 5000);
+  slackDoneTimer = setInterval(() => {
+    void pollSlackDoneTasks();
+  }, 5000);
 }
 
 /** Stop watching the kanban. Safe to call when not running. */
 function stopSlackDoneObserver(): void {
-  if (slackDoneTimer) { clearInterval(slackDoneTimer); slackDoneTimer = null; }
+  if (slackDoneTimer) {
+    clearInterval(slackDoneTimer);
+    slackDoneTimer = null;
+  }
   slackDoneBaseline = null;
 }
 
@@ -1623,10 +1974,7 @@ async function startSlackServer(): Promise<{ ok: boolean; url?: string; error?: 
     // liveWebContents() so a message arriving during window teardown can't throw.
     // Downloads any file attachments (bot token stays in main; local paths go to IPC).
     onMessage: async (m) => {
-      const localFiles = await downloadSlackFiles(
-        m._rawFiles ?? [],
-        readConfig().slackBotToken
-      );
+      const localFiles = await downloadSlackFiles(m._rawFiles ?? [], readConfig().slackBotToken);
       // `text` stays the user's RAW Slack text → drives the readable kanban card
       // title. `autonomyPreamble` is the authoritative policy block the renderer
       // prepends ONLY to god's working instruction (his PTY prompt), keeping the
@@ -1634,19 +1982,39 @@ async function startSlackServer(): Promise<{ ok: boolean; url?: string; error?: 
       // PROTOCOL carries THIS request's concrete channel, thread_ts, and the
       // resolved helper path — god hands the worker an exact reply command.
       // Server-side so it applies to every session.
-      const ipcMsg: { text: string; channel: string; ts: string; thread_ts: string; autonomyPreamble: string; files?: typeof localFiles } = {
-        text: m.text, channel: m.channel, ts: m.ts, thread_ts: m.thread_ts,
-        autonomyPreamble: buildAutonomousRequestProtocol(m.channel, m.thread_ts, slackReplyScriptPath())
+      const ipcMsg: {
+        text: string;
+        channel: string;
+        ts: string;
+        thread_ts: string;
+        autonomyPreamble: string;
+        files?: typeof localFiles;
+      } = {
+        text: m.text,
+        channel: m.channel,
+        ts: m.ts,
+        thread_ts: m.thread_ts,
+        autonomyPreamble: buildAutonomousRequestProtocol(
+          m.channel,
+          m.thread_ts,
+          slackReplyScriptPath(),
+        ),
       };
       if (localFiles.length > 0) ipcMsg.files = localFiles;
-      try { liveWebContents()?.send('slack:incomingMessage', ipcMsg); }
-      catch { /* window torn down */ }
-    }
+      try {
+        liveWebContents()?.send('slack:incomingMessage', ipcMsg);
+      } catch {
+        /* window torn down */
+      }
+    },
   });
   const res = await slackServer.start();
   // ok:false means we never bound the port → drop the instance. ok:true with no
   // url just means the tunnel is unavailable; the local handler is still live.
-  if (!res.ok) { slackServer = null; return res; }
+  if (!res.ok) {
+    slackServer = null;
+    return res;
+  }
   if (res.url) lastSlackUrl = res.url;
   // Bring up the loopback reply endpoint (token-gated, never tunneled) and drop
   // the discovery file for the bundled helper. Best-effort: reply path being
@@ -1670,7 +2038,9 @@ async function startSlackReplyServer(): Promise<void> {
     getBotToken: () => readConfig().slackBotToken,
     // An agent posted a DIRECT substantive reply into this thread → record it so the
     // done-summary poller skips it (the poller is a fallback, not a duplicator).
-    onReplied: (thread_ts) => { directlyRepliedThreads.add(thread_ts); }
+    onReplied: (thread_ts) => {
+      directlyRepliedThreads.add(thread_ts);
+    },
   });
   const r = await slackReplyServer.start();
   if (!r.ok || r.port === undefined) {
@@ -1688,12 +2058,24 @@ async function startSlackReplyServer(): Promise<void> {
 /** Stop and forget the Slack server (+ reply endpoint). Best-effort; safe to call
  *  when not running. The last tunnel URL is retained so Settings keeps showing it. */
 function stopSlackServer(): void {
-  try { slackServer?.stop(); } catch (e) { console.error('[slack] stop failed:', e); }
+  try {
+    slackServer?.stop();
+  } catch (e) {
+    console.error('[slack] stop failed:', e);
+  }
   slackServer = null;
-  try { slackReplyServer?.stop(); } catch (e) { console.error('[slack] reply stop failed:', e); }
+  try {
+    slackReplyServer?.stop();
+  } catch (e) {
+    console.error('[slack] reply stop failed:', e);
+  }
   slackReplyServer = null;
   stopSlackDoneObserver();
-  try { if (existsSync(slackReplyConfigPath())) unlinkSync(slackReplyConfigPath()); } catch { /* noop */ }
+  try {
+    if (existsSync(slackReplyConfigPath())) unlinkSync(slackReplyConfigPath());
+  } catch {
+    /* noop */
+  }
 }
 
 // ─── Telegram trigger (phone → Michael's queue; no Slack, no tunnel) ─────────
@@ -1705,7 +2087,9 @@ let telegramTrigger: TelegramTrigger | null = null;
  *  in config.json (`telegramEnabled`, unset = on) and Settings edits the file
  *  write-only via writeTelegramEnv — see telegram:setConfig below. */
 function telegramEnvFile(): string {
-  return app.isPackaged ? join(app.getPath('userData'), '.env.telegram') : join(app.getAppPath(), '.env.telegram');
+  return app.isPackaged
+    ? join(app.getPath('userData'), '.env.telegram')
+    : join(app.getAppPath(), '.env.telegram');
 }
 
 /** userData path of the reply-endpoint discovery file for md-telegram-reply.cjs. */
@@ -1747,10 +2131,12 @@ async function startTelegramServer(): Promise<{ ok: boolean; error?: string }> {
       try {
         liveWebContents()?.send('telegram:incomingMessage', {
           text: m.text,
-          autonomyPreamble: buildTelegramProtocol(telegramReplyScriptPath())
+          autonomyPreamble: buildTelegramProtocol(telegramReplyScriptPath()),
         });
-      } catch { /* window torn down */ }
-    }
+      } catch {
+        /* window torn down */
+      }
+    },
   });
   const res = await trig.start();
   if (!res.ok) return res;
@@ -1760,7 +2146,11 @@ async function startTelegramServer(): Promise<{ ok: boolean; error?: string }> {
 }
 
 function stopTelegramServer(): void {
-  try { telegramTrigger?.stop(); } catch (e) { console.error('[telegram] stop failed:', e); }
+  try {
+    telegramTrigger?.stop();
+  } catch (e) {
+    console.error('[telegram] stop failed:', e);
+  }
   telegramTrigger = null;
 }
 
@@ -1807,16 +2197,24 @@ const HELD_TOKENS_KV_KEY = 'triggers.webhook.heldTokens';
 function heldTokens(): Map<string, string> {
   if (heldWebhookTokens) return heldWebhookTokens;
   let stored: Record<string, string> | undefined;
-  try { stored = persist.getKv<Record<string, string>>(HELD_TOKENS_KV_KEY); }
-  catch { stored = undefined; }
+  try {
+    stored = persist.getKv<Record<string, string>>(HELD_TOKENS_KV_KEY);
+  } catch {
+    stored = undefined;
+  }
   const entries = stored && typeof stored === 'object' ? Object.entries(stored) : [];
-  heldWebhookTokens = new Map(entries.filter((e): e is [string, string] => typeof e[1] === 'string'));
+  heldWebhookTokens = new Map(
+    entries.filter((e): e is [string, string] => typeof e[1] === 'string'),
+  );
   return heldWebhookTokens;
 }
 
 function persistHeldTokens(): void {
-  try { persist.setKv(HELD_TOKENS_KV_KEY, Object.fromEntries(heldTokens())); }
-  catch (e) { console.error('[webhook] could not persist held-token map:', e); }
+  try {
+    persist.setKv(HELD_TOKENS_KV_KEY, Object.fromEntries(heldTokens()));
+  } catch (e) {
+    console.error('[webhook] could not persist held-token map:', e);
+  }
 }
 
 /** Drop mappings whose history entry has aged out of the (capped) ledger — the
@@ -1827,7 +2225,10 @@ function pruneHeldTokens(): void {
   const live = new Set(listTriggerHistory().map((e) => e.id));
   let changed = false;
   for (const [hash, entryId] of [...map]) {
-    if (!live.has(entryId)) { map.delete(hash); changed = true; }
+    if (!live.has(entryId)) {
+      map.delete(hash);
+      changed = true;
+    }
   }
   if (changed) persistHeldTokens();
 }
@@ -1841,7 +2242,11 @@ function heldTokenHashFor(entryId: string): string | undefined {
 /** Tell the Triggers tab its ledger moved, so history live-refreshes instead of
  *  waiting for the operator to re-open the tab. */
 function notifyTriggerHistoryUpdated(): void {
-  try { liveWebContents()?.send('triggerHistory:updated'); } catch { /* window gone */ }
+  try {
+    liveWebContents()?.send('triggerHistory:updated');
+  } catch {
+    /* window gone */
+  }
 }
 
 /**
@@ -1876,7 +2281,7 @@ function dispatchWebhookWork(arg: {
       dependsOn: [],
       priority: 1,
       createdAt: new Date().toISOString(),
-      ...(arg.tokenHash ? { webhook: { tokenHash: arg.tokenHash } } : {})
+      ...(arg.tokenHash ? { webhook: { tokenHash: arg.tokenHash } } : {}),
     };
     hive.writeTasks([...existing, card]);
   } catch (e) {
@@ -1887,13 +2292,16 @@ function dispatchWebhookWork(arg: {
   // updates that card's status/result for the caller's GET) — never the secret,
   // never the raw token.
   try {
-    hive.send({
-      to: 'god',
-      act: 'request',
-      subject: `[${arg.origin}] ${arg.title}`,
-      body: `${arg.message}\n\n(Inbound via the generic ${arg.origin} API, tracked as kanban card ${arg.taskId}. When this work is finished, set that card's status to 'done' and fill its 'result' so the caller's status check reflects the outcome.)`,
-      requires_reply: false
-    }, 'webhook');
+    hive.send(
+      {
+        to: 'god',
+        act: 'request',
+        subject: `[${arg.origin}] ${arg.title}`,
+        body: `${arg.message}\n\n(Inbound via the generic ${arg.origin} API, tracked as kanban card ${arg.taskId}. When this work is finished, set that card's status to 'done' and fill its 'result' so the caller's status check reflects the outcome.)`,
+        requires_reply: false,
+      },
+      'webhook',
+    );
   } catch (e) {
     console.error('[webhook] could not route to god:', e instanceof Error ? e.message : e);
   }
@@ -1914,7 +2322,10 @@ function dispatchWebhookWork(arg: {
  * (the server hands over `{id,name}` only) and no credential is ever written to
  * the ledger.
  */
-function handleWebhookMessage(msg: WebhookInbound, endpoint: WebhookEndpointRef): WebhookDispatch | null {
+function handleWebhookMessage(
+  msg: WebhookInbound,
+  endpoint: WebhookEndpointRef,
+): WebhookDispatch | null {
   // 192-bit unguessable token, returned once; only its hash is stored.
   const token = randomBytes(24).toString('hex');
   const tokenHash = hashWebhookToken(token);
@@ -1942,7 +2353,7 @@ function handleWebhookMessage(msg: WebhookInbound, endpoint: WebhookEndpointRef)
     title,
     body: msg.message,
     kind,
-    correlationId
+    correlationId,
   };
 
   if (!isAutoAllowed(mode, kind)) {
@@ -1954,7 +2365,8 @@ function handleWebhookMessage(msg: WebhookInbound, endpoint: WebhookEndpointRef)
   }
 
   const taskId = `webhook-${randomBytes(8).toString('hex')}`;
-  if (!dispatchWebhookWork({ taskId, title, message: msg.message, tokenHash, origin: 'webhook' })) return null;
+  if (!dispatchWebhookWork({ taskId, title, message: msg.message, tokenHash, origin: 'webhook' }))
+    return null;
   appendTriggerHistory({ ...base, decision: 'auto-allowed', taskId });
   notifyTriggerHistoryUpdated();
   return { token, taskId, pending: false };
@@ -1972,7 +2384,11 @@ function lookupWebhookStatus(token: string): WebhookTaskStatus | null {
   const heldEntryId = heldTokens().get(hash);
   if (heldEntryId) {
     const entry = listTriggerHistory().find((e) => e.id === heldEntryId);
-    if (!entry) { heldTokens().delete(hash); persistHeldTokens(); return null; }
+    if (!entry) {
+      heldTokens().delete(hash);
+      persistHeldTokens();
+      return null;
+    }
     if (entry.decision === 'pending') {
       return { status: 'awaiting-approval', title: entry.title ?? '' };
     }
@@ -1987,7 +2403,9 @@ function lookupWebhookStatus(token: string): WebhookTaskStatus | null {
   try {
     const ledger = hive.tasks() as { tasks?: HiveTask[] };
     tasks = Array.isArray(ledger?.tasks) ? ledger.tasks : [];
-  } catch { return null; }
+  } catch {
+    return null;
+  }
   for (const t of tasks) {
     const h = t.webhook?.tokenHash;
     if (!h) continue;
@@ -2018,7 +2436,9 @@ function seedWebhookOutbound(): Set<string> {
     for (const e of listTriggerHistory()) {
       if (e.direction === 'outbound' && e.taskId) seen.add(e.taskId);
     }
-  } catch { /* unreadable ledger → treat as empty; appends are still deduped by taskId */ }
+  } catch {
+    /* unreadable ledger → treat as empty; appends are still deduped by taskId */
+  }
   return seen;
 }
 
@@ -2027,9 +2447,12 @@ function pollWebhookDoneTasks(): void {
   try {
     const ledger = hive.tasks() as { tasks?: HiveTask[] };
     tasks = Array.isArray(ledger?.tasks) ? ledger.tasks : [];
-  } catch { return; } // unreadable/missing tasks.json → skip this tick
-  const done = tasks.filter((t) =>
-    t.status === 'done' && (t.webhook != null || t.id.startsWith('webhook-')));
+  } catch {
+    return;
+  } // unreadable/missing tasks.json → skip this tick
+  const done = tasks.filter(
+    (t) => t.status === 'done' && (t.webhook != null || t.id.startsWith('webhook-')),
+  );
   if (done.length === 0) return;
   const recorded = webhookOutboundRecorded ?? (webhookOutboundRecorded = seedWebhookOutbound());
   const fresh = done.filter((t) => !recorded.has(t.id));
@@ -2041,7 +2464,10 @@ function pollWebhookDoneTasks(): void {
     const inbound = history.find((e) => e.direction === 'inbound' && e.taskId === t.id);
     // No inbound row = a card from before the ledger existed. Nothing to pair it
     // with, so mark it handled rather than writing a half of a conversation.
-    if (!inbound) { recorded.add(t.id); continue; }
+    if (!inbound) {
+      recorded.add(t.id);
+      continue;
+    }
     appendTriggerHistory({
       source: inbound.source,
       sourceId: inbound.sourceId,
@@ -2052,7 +2478,7 @@ function pollWebhookDoneTasks(): void {
       body: (t.result ?? '').trim() || '(finished with no result recorded)',
       kind: inbound.kind,
       correlationId: inbound.correlationId,
-      taskId: t.id
+      taskId: t.id,
     });
     recorded.add(t.id);
     wrote = true;
@@ -2065,13 +2491,20 @@ function startWebhookDoneObserver(): void {
   if (webhookDoneTimer) return;
   webhookOutboundRecorded = seedWebhookOutbound();
   webhookDoneTimer = setInterval(() => {
-    try { pollWebhookDoneTasks(); } catch (e) { console.error('[webhook] done-observer:', e); }
+    try {
+      pollWebhookDoneTasks();
+    } catch (e) {
+      console.error('[webhook] done-observer:', e);
+    }
   }, 5000);
 }
 
 /** Stop watching the kanban. Safe to call when not running. */
 function stopWebhookDoneObserver(): void {
-  if (webhookDoneTimer) { clearInterval(webhookDoneTimer); webhookDoneTimer = null; }
+  if (webhookDoneTimer) {
+    clearInterval(webhookDoneTimer);
+    webhookDoneTimer = null;
+  }
   webhookOutboundRecorded = null;
 }
 
@@ -2093,14 +2526,17 @@ async function startWebhookServer(): Promise<{ ok: boolean; url?: string; error?
     port: cfg.webhookPort && cfg.webhookPort > 0 ? cfg.webhookPort : WEBHOOK_DEFAULT_PORT,
     endpoints,
     onMessage: handleWebhookMessage,
-    lookupStatus: lookupWebhookStatus
+    lookupStatus: lookupWebhookStatus,
   });
   webhookServer = server;
   const res = await server.start();
   // ok:false covers BOTH "never bound the port" (fatal → drop the instance) and
   // "bound fine, tunnel unavailable" (the security boundary is live and must stay
   // reachable/stoppable — dropping it there would leak an unstoppable listener).
-  if (!res.ok && !server.listening()) { webhookServer = null; return res; }
+  if (!res.ok && !server.listening()) {
+    webhookServer = null;
+    return res;
+  }
   analytics.trackFeature('webhook_trigger');
   if (res.url) lastWebhookUrl = res.url;
   startWebhookDoneObserver();
@@ -2112,8 +2548,14 @@ async function startWebhookServer(): Promise<{ ok: boolean; url?: string; error?
  *  stop when it empties. Never restarts a healthy server. */
 function reconcileWebhookServer(): void {
   const endpoints = enabledWebhookEndpoints();
-  if (endpoints.length === 0) { stopWebhookServer(); return; }
-  if (webhookServer) { webhookServer.setEndpoints(endpoints); return; }
+  if (endpoints.length === 0) {
+    stopWebhookServer();
+    return;
+  }
+  if (webhookServer) {
+    webhookServer.setEndpoints(endpoints);
+    return;
+  }
   void startWebhookServer().then((r) => {
     if (!r.ok) console.error('[webhook] start failed:', r.error);
     else console.log('[webhook] listening', r.url ? `(tunnel: ${r.url})` : '(no tunnel)');
@@ -2127,21 +2569,30 @@ function webhookEndpointUrls(): { id: string; url: string }[] {
   const base = (webhookServer?.publicUrl() ?? lastWebhookUrl ?? '').replace(/\/+$/, '');
   return (readConfig().webhookTriggers ?? []).map((t) => ({
     id: t.id,
-    url: base ? `${base}/${encodeURIComponent(t.id)}` : ''
+    url: base ? `${base}/${encodeURIComponent(t.id)}` : '',
   }));
 }
 
 /** Stop and forget the webhook server. Best-effort; safe when not running. The
  *  last tunnel URL is retained so Settings keeps showing it. */
 function stopWebhookServer(): void {
-  try { webhookServer?.stop(); } catch (e) { console.error('[webhook] stop failed:', e); }
+  try {
+    webhookServer?.stop();
+  } catch (e) {
+    console.error('[webhook] stop failed:', e);
+  }
   webhookServer = null;
   // The done-observer deliberately OUTLIVES the server (it is a ledger concern,
   // not a transport one) — it is torn down with the process/hive, not here.
 }
 
 /** The persisted main-window geometry (kv key `window.bounds`). */
-interface WindowBounds { x?: number; y?: number; width: number; height: number }
+interface WindowBounds {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+}
 
 const DEFAULT_WIN = { width: 1440, height: 900 };
 const MIN_WIN = { width: 1280, height: 800 };
@@ -2156,7 +2607,8 @@ function clampBounds(b: unknown): WindowBounds | null {
   const width = Math.max(MIN_WIN.width, Math.round(r.width));
   const height = Math.max(MIN_WIN.height, Math.round(r.height));
   if (typeof r.x !== 'number' || typeof r.y !== 'number') return { width, height };
-  const x = Math.round(r.x), y = Math.round(r.y);
+  const x = Math.round(r.x),
+    y = Math.round(r.y);
   // Keep the position only if the window rect overlaps some display's work area.
   const onScreen = screen.getAllDisplays().some((d) => {
     const wa = d.workArea;
@@ -2168,15 +2620,22 @@ function clampBounds(b: unknown): WindowBounds | null {
 /** Minimal trailing-edge debounce for the move/resize flood. */
 function debounce(fn: () => void, ms: number): () => void {
   let t: NodeJS.Timeout | null = null;
-  return () => { if (t) clearTimeout(t); t = setTimeout(() => { t = null; fn(); }, ms); };
+  return () => {
+    if (t) clearTimeout(t);
+    t = setTimeout(() => {
+      t = null;
+      fn();
+    }, ms);
+  };
 }
 
 /** Cascade a new floor off the focused window so it doesn't stack exactly on
  *  top, clamped on-screen (clampBounds drops an off-display position). */
 function floorCascade(): WindowBounds | null {
-  const base = (mainWindow && !mainWindow.isDestroyed())
-    ? mainWindow
-    : [...allWindows].find((w) => !w.isDestroyed());
+  const base =
+    mainWindow && !mainWindow.isDestroyed()
+      ? mainWindow
+      : [...allWindows].find((w) => !w.isDestroyed());
   if (!base) return null;
   const b = base.getBounds();
   const OFFSET = 36;
@@ -2211,7 +2670,10 @@ function deliverHire(manifest: HireManifest): void {
 
 async function handleHireLink(link: string): Promise<void> {
   const src = parseHireDeepLink(link);
-  if (!src) { console.warn('[hire] ignoring malformed deep link'); return; }
+  if (!src) {
+    console.warn('[hire] ignoring malformed deep link');
+    return;
+  }
   const res = await fetchHireManifest(src);
   if (!res.ok) {
     console.error('[hire] deep link rejected:', res.error);
@@ -2271,7 +2733,7 @@ ipcMain.handle('hire:openFile', async () => {
   const res = await dialog.showOpenDialog({
     title: 'Import a hire manifest',
     filters: [{ name: 'Hire manifest', extensions: ['json'] }],
-    properties: ['openFile']
+    properties: ['openFile'],
   });
   if (res.canceled || res.filePaths.length === 0) return { ok: false, error: 'cancelled' };
   return readHireManifestFile(res.filePaths[0]);
@@ -2290,7 +2752,13 @@ function createWindow(opts: { floor?: boolean } = {}): BrowserWindow {
 
   // Primary restores saved geometry; floors cascade off the focused window.
   let saved: WindowBounds | null = null;
-  if (!isFloor) { try { saved = clampBounds(persist.getKv('window.bounds')); } catch { saved = null; } }
+  if (!isFloor) {
+    try {
+      saved = clampBounds(persist.getKv('window.bounds'));
+    } catch {
+      saved = null;
+    }
+  }
   const cascade = isFloor ? floorCascade() : null;
   const geom = cascade ?? saved;
 
@@ -2317,8 +2785,8 @@ function createWindow(opts: { floor?: boolean } = {}): BrowserWindow {
       // Each floor gets its OWN persistent session partition → isolated
       // localStorage so floors never share or stomp each other's office state.
       // The primary keeps the DEFAULT session so existing persisted state loads.
-      ...(isFloor ? { partition: `persist:floor-${++floorSeq}` } : {})
-    }
+      ...(isFloor ? { partition: `persist:floor-${++floorSeq}` } : {}),
+    },
   });
 
   // Capture the webContents once: after 'closed' the window is gone, but this
@@ -2328,7 +2796,9 @@ function createWindow(opts: { floor?: boolean } = {}): BrowserWindow {
   allWindows.add(win);
   // Global timer events follow the user — the most-recently-focused window is
   // primary. The primary is also seeded synchronously so boot events route now.
-  win.on('focus', () => { mainWindow = win; });
+  win.on('focus', () => {
+    mainWindow = win;
+  });
   if (!isFloor) mainWindow = win;
 
   // Permission gate for the renderer (our own trusted, local content). The only
@@ -2366,16 +2836,23 @@ function createWindow(opts: { floor?: boolean } = {}): BrowserWindow {
   if (!isFloor) {
     const saveBounds = debounce(() => {
       if (win.isDestroyed() || win.isMinimized() || win.isMaximized()) return;
-      try { persist.setKv('window.bounds', win.getBounds()); } catch { /* DB best-effort */ }
+      try {
+        persist.setKv('window.bounds', win.getBounds());
+      } catch {
+        /* DB best-effort */
+      }
     }, 400);
     win.on('resized', saveBounds);
     win.on('moved', saveBounds);
     win.on('close', () => {
       if (win.isDestroyed() || win.isMinimized() || win.isMaximized()) return;
-      try { persist.setKv('window.bounds', win.getBounds()); } catch { /* DB best-effort */ }
+      try {
+        persist.setKv('window.bounds', win.getBounds());
+      } catch {
+        /* DB best-effort */
+      }
     });
   }
-
 
   win.once('ready-to-show', () => win.show());
 
@@ -2400,7 +2877,7 @@ function createWindow(opts: { floor?: boolean } = {}): BrowserWindow {
           defaultId: 1,
           cancelId: 1,
           message: `Close this floor? ${owned} running terminal${owned === 1 ? '' : 's'} on it will be stopped.`,
-          detail: 'Other floors keep running.'
+          detail: 'Other floors keep running.',
         });
         if (choice === 1) e.preventDefault();
       }
@@ -2435,10 +2912,21 @@ function createWindow(opts: { floor?: boolean } = {}): BrowserWindow {
     allWindows.delete(win);
     // A closed floor must not leave its terminals running headless. (Natural
     // onExit teardown — archive + worktree cleanup — still runs per PTY.)
-    if (isFloor) { try { ptyManager.killByOwner(wc); } catch { /* best-effort */ } }
+    if (isFloor) {
+      try {
+        ptyManager.killByOwner(wc);
+      } catch {
+        /* best-effort */
+      }
+    }
     if (mainWindow === win) {
       mainWindow = null;
-      for (const w of allWindows) { if (!w.isDestroyed()) { mainWindow = w; break; } }
+      for (const w of allWindows) {
+        if (!w.isDestroyed()) {
+          mainWindow = w;
+          break;
+        }
+      }
     }
     syncKeepAwake();
   });
@@ -2463,7 +2951,9 @@ function installAppMenu(): void {
   const newFloorItem = {
     label: 'New Floor',
     accelerator: 'CmdOrCtrl+Shift+N',
-    click: () => { openFloor(); }
+    click: () => {
+      openFloor();
+    },
   };
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
@@ -2471,15 +2961,14 @@ function installAppMenu(): void {
       label: 'File',
       submenu: isMac
         ? [newFloorItem, { type: 'separator' as const }, { role: 'close' as const }]
-        : [newFloorItem, { type: 'separator' as const }, { role: 'quit' as const }]
+        : [newFloorItem, { type: 'separator' as const }, { role: 'quit' as const }],
     },
     { role: 'editMenu' },
     { role: 'viewMenu' },
-    { role: 'windowMenu' }
+    { role: 'windowMenu' },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
-
 
 // ─── IPC: pty lifecycle ─────────────────────────────────────────────────────
 /** Codex stores its rollout transcripts under a PER-AGENT CODEX_HOME
@@ -2500,8 +2989,13 @@ function findCodexHomeForSession(sessionId: string, siblingsRoot: string): strin
     // resumed agent at the OWNING home gives it the rollout AND the index.
     let agents: Array<{ name: string; isDirectory(): boolean }>;
     try {
-      agents = readdirSync(siblingsRoot, { withFileTypes: true }) as unknown as Array<{ name: string; isDirectory(): boolean }>;
-    } catch { return null; }
+      agents = readdirSync(siblingsRoot, { withFileTypes: true }) as unknown as Array<{
+        name: string;
+        isDirectory(): boolean;
+      }>;
+    } catch {
+      return null;
+    }
     for (const a of agents) {
       if (!a.isDirectory()) continue;
       const home = join(siblingsRoot, a.name, '.codex');
@@ -2513,12 +3007,21 @@ function findCodexHomeForSession(sessionId: string, siblingsRoot: string): strin
         const d = stack.pop() as string;
         let ents: Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
         try {
-          ents = readdirSync(d, { withFileTypes: true }) as unknown as Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
-        } catch { continue; }
+          ents = readdirSync(d, { withFileTypes: true }) as unknown as Array<{
+            name: string;
+            isDirectory(): boolean;
+            isFile(): boolean;
+          }>;
+        } catch {
+          continue;
+        }
         for (const e of ents) {
           const pth = join(d, e.name);
           if (e.isDirectory()) stack.push(pth);
-          else if (e.isFile() && e.name.endsWith('.jsonl') && e.name.includes(sessionId)) { hasRollout = true; break; }
+          else if (e.isFile() && e.name.endsWith('.jsonl') && e.name.includes(sessionId)) {
+            hasRollout = true;
+            break;
+          }
         }
       }
       if (!hasRollout) continue;
@@ -2529,7 +3032,14 @@ function findCodexHomeForSession(sessionId: string, siblingsRoot: string): strin
       const idBuf = Buffer.from(sessionId);
       let indexed = false;
       for (const db of ['state_5.sqlite', 'state_5.sqlite-wal']) {
-        try { if (readFileSync(join(home, db)).includes(idBuf)) { indexed = true; break; } } catch { /* no db */ }
+        try {
+          if (readFileSync(join(home, db)).includes(idBuf)) {
+            indexed = true;
+            break;
+          }
+        } catch {
+          /* no db */
+        }
       }
       if (indexed) return home;
       if (!fallbackHome) fallbackHome = home;
@@ -2543,10 +3053,24 @@ function findCodexHomeForSession(sessionId: string, siblingsRoot: string): strin
 
 /** Spawn options shared by the `pty:spawn` IPC handler and the god-triggered
  *  ephemeral-worker watcher. */
-type AgentSpawnOptions = SpawnOptions & { hive?: AgentMeta; isolate?: boolean; resume?: boolean; requireResume?: boolean; resumeSessionId?: string; provider?: AgentProvider; noAutoInstall?: boolean; permissionMode?: HirePermissionMode };
+type AgentSpawnOptions = SpawnOptions & {
+  hive?: AgentMeta;
+  isolate?: boolean;
+  resume?: boolean;
+  requireResume?: boolean;
+  resumeSessionId?: string;
+  provider?: AgentProvider;
+  noAutoInstall?: boolean;
+  permissionMode?: HirePermissionMode;
+};
 
 ipcMain.handle('pty:spawn', async (evt, opts: AgentSpawnOptions) => {
-  if (!opts || typeof opts.id !== 'string' || typeof opts.cwd !== 'string' || typeof opts.command !== 'string') {
+  if (
+    !opts ||
+    typeof opts.id !== 'string' ||
+    typeof opts.cwd !== 'string' ||
+    typeof opts.command !== 'string'
+  ) {
     return { ok: false, error: 'invalid SpawnOptions' };
   }
   // Record the spawning window as the PTY's owner so its output routes ONLY back
@@ -2561,7 +3085,18 @@ ipcMain.handle('pty:spawn', async (evt, opts: AgentSpawnOptions) => {
  *  it can ALSO be invoked by the god-triggered ephemeral-worker watcher (which has
  *  no renderer `evt`). `owner` is the window that should receive this PTY's output
  *  (null → the primary window). Behavior-identical to the prior inline handler. */
-async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebContents | null): Promise<{ ok: boolean; error?: string; cwd?: string; worktreePath?: string; resumeNotFound?: boolean; resumed?: boolean; seedPrompt?: string }> {
+async function spawnAgentCore(
+  opts: AgentSpawnOptions,
+  owner: Electron.WebContents | null,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  cwd?: string;
+  worktreePath?: string;
+  resumeNotFound?: boolean;
+  resumed?: boolean;
+  seedPrompt?: string;
+}> {
   // ── cwd INGESTION — expand `~` exactly once, here ───────────────────────────
   // This is the single door every agent spawn comes through (`pty:spawn` IPC and
   // the god-triggered ephemeral-worker watcher), so it is where a user-typed
@@ -2579,7 +3114,10 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   // floor. Refuse here, where the registry is the authority, rather than trusting
   // the caller to have forgotten them.
   if (opts.hive && hive.enabled() && hive.isRetired(opts.hive.id)) {
-    return { ok: false, error: `${opts.hive.id} was fired — reinstate them first (unarchive) if they should come back` };
+    return {
+      ok: false,
+      error: `${opts.hive.id} was fired — reinstate them first (unarchive) if they should come back`,
+    };
   }
   opts.cwd = expandTilde(opts.cwd);
   if (opts.hive) opts.hive = { ...opts.hive, cwd: expandTilde(opts.hive.cwd) };
@@ -2610,7 +3148,7 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
     const autoArgs = permissionModeArgs(
       [opts.command, ...(opts.args ?? [])].join(' '),
       provider,
-      permissionMode
+      permissionMode,
     );
     if (autoArgs.length) opts.args = [...(opts.args ?? []), ...autoArgs];
   }
@@ -2653,9 +3191,15 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
           command: bin,
           cols: opts.cols,
           rows: opts.rows,
-          shellScript: buildMissingCliScript(bin, provider, npmAvailable, process.platform, nodeInstaller)
+          shellScript: buildMissingCliScript(
+            bin,
+            provider,
+            npmAvailable,
+            process.platform,
+            nodeInstaller,
+          ),
         },
-        owner
+        owner,
       );
       // Arm auto restart-and-continue: when this installer PTY exits cleanly, the
       // exit handler re-runs the spawn so the just-installed CLI launches in place
@@ -2682,7 +3226,7 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   // `isolate:true` recipe spawned against an already-existing worktree path would
   // make addWorktree below conflict (path/branch exists) and fall back to the base
   // cwd — reuse-existing-worktree handling here is the follow-up.
-  if (opts.isolate === true && await isRepo(opts.cwd)) {
+  if (opts.isolate === true && (await isRepo(opts.cwd))) {
     try {
       const origCwd = opts.cwd;
       const wtRoot = join(readConfig().harnessHome ?? origCwd, 'worktrees');
@@ -2739,8 +3283,8 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
           // W3 — default-MCP consent state + the bundled skills source dir.
           mcpDefaults: readConfig().mcpDefaults,
           skillsDir: skillsResourceDir(),
-          sddAuthorized: readConfig().sddSubagentsAuthorized !== false
-        }
+          sddAuthorized: readConfig().sddSubagentsAuthorized !== false,
+        },
       );
       opts.args = [...(opts.args ?? []), ...inj.args];
       seedPrompt = inj.seedPrompt;
@@ -2772,7 +3316,7 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
     if (!args.includes('--model')) {
       const m = opts.hive.isGod
         ? modelForRole(opts.hive, cfg)
-        : cfg.defaultModel ?? modelForRole(opts.hive, cfg);
+        : (cfg.defaultModel ?? modelForRole(opts.hive, cfg));
       if (m) args.push('--model', m);
     }
     // Name the Remote Control session after the agent (Michael, Jim, Dev1…) so it
@@ -2783,7 +3327,9 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
     // single safe token; Claude still appends its own random suffix for uniqueness.
     if (!args.includes('--remote-control-session-name-prefix')) {
       const label = (opts.hive.name || opts.hive.id || '')
-        .trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+        .trim()
+        .replace(/[^A-Za-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
       if (label) args.push('--remote-control-session-name-prefix', label);
     }
     // Coarse runaway cap.
@@ -2808,7 +3354,9 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
         // Claude project dir — we fall back to a FRESH session rather than a broken
         // `--resume`. Make that non-silent: warn on the floor and flag it back to
         // the renderer so the dialog can tell the user 'started fresh'.
-        console.warn(`[resume] session "${explicitSid}" not found in any Claude project dir — starting a fresh session`);
+        console.warn(
+          `[resume] session "${explicitSid}" not found in any Claude project dir — starting a fresh session`,
+        );
         resumeNotFound = true;
       }
     }
@@ -2834,7 +3382,11 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
     const sid = typedSid || (opts.resume === true ? hive.lastSession(opts.hive.id) : undefined);
     if (sid && rf) {
       const args = opts.args ?? [];
-      if (!args.includes(rf)) { args.push(rf, sid); opts.args = args; didResume = true; }
+      if (!args.includes(rf)) {
+        args.push(rf, sid);
+        opts.args = args;
+        didResume = true;
+      }
     } else if (sid && rsub) {
       // Subcommand form (Codex): `codex resume [OPTIONS] [SESSION_ID]` — the
       // subcommand MUST be argv[0], the id trails the flags. Codex indexes
@@ -2846,7 +3398,9 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
       const agentsRoot = myHome ? dirname(dirname(myHome)) : '';
       const ownerHome = agentsRoot ? findCodexHomeForSession(sid, agentsRoot) : null;
       if (!ownerHome) {
-        console.warn(`[resume] codex session "${sid}" not found in any agent CODEX_HOME - starting fresh`);
+        console.warn(
+          `[resume] codex session "${sid}" not found in any agent CODEX_HOME - starting fresh`,
+        );
         if (typedSid) resumeNotFound = true;
       } else {
         if (ownerHome !== myHome) opts.env = { ...(opts.env ?? {}), CODEX_HOME: ownerHome };
@@ -2856,7 +3410,10 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
         // prompt flag), so the id must come BEFORE it — appending the id last made
         // codex read the prompt as SESSION_ID ("No saved session found with ID
         // You are \"Dev2\"…") and the id as the prompt.
-        if (args[0] !== rsub) { opts.args = [rsub, sid, ...args]; didResume = true; }
+        if (args[0] !== rsub) {
+          opts.args = [rsub, sid, ...args];
+          didResume = true;
+        }
         console.log('[resume] codex resume', sid, 'in', ownerHome);
       }
     }
@@ -2865,7 +3422,7 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
     return {
       ok: false,
       error: 'Existing session could not be resumed; no replacement process was started.',
-      ...(resumeNotFound ? { resumeNotFound: true } : {})
+      ...(resumeNotFound ? { resumeNotFound: true } : {}),
     };
   }
   // Remember which agent owns this PTY so closing the tab can archive it. A
@@ -2876,7 +3433,11 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   // interactive prompt it can't answer and exit code 1. Best-effort, never blocks.
   // Claude-only — other CLIs handle their own permission UX.
   if (claudeProvider) {
-    try { ensureClaudePermissionsAccepted(opts.cwd); } catch { /* never block spawn */ }
+    try {
+      ensureClaudePermissionsAccepted(opts.cwd);
+    } catch {
+      /* never block spawn */
+    }
   }
   // Suppress first-run interactive prompts for providers that need it (e.g. Codex
   // directory-trust gate via CODEX_NON_INTERACTIVE). Merges into any env already
@@ -2890,7 +3451,10 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   // the local-LLM path, a per-provider base URL. Keys are write-only in the broker
   // (read MAIN-ONLY here, never logged); base URLs ride HarnessConfig. Claude/codex
   // use their own login, so they skip this. Pam guardrails #3/#4/#5.
-  if (opts.hive && (provider === 'opencode' || provider === 'crush' || provider === 'pi' || provider === 'qwen')) {
+  if (
+    opts.hive &&
+    (provider === 'opencode' || provider === 'crush' || provider === 'pi' || provider === 'qwen')
+  ) {
     const cfg = readConfig();
     const extra: Record<string, string> = {};
     // 1) BYOK keys — LEAST-PRIVILEGE (Pam/Jim NIT-2): inject ONLY the key for the
@@ -2901,7 +3465,12 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
     const modelSlug = modelIdx >= 0 ? (opts.args?.[modelIdx + 1] ?? '') : '';
     const prefix = modelSlug.includes('/') ? modelSlug.split('/')[0].toLowerCase() : '';
     const PREFIX_BACKEND: Record<string, string> = {
-      anthropic: 'anthropic', openai: 'openai', google: 'google', gemini: 'google', groq: 'groq', openrouter: 'openrouter'
+      anthropic: 'anthropic',
+      openai: 'openai',
+      google: 'google',
+      gemini: 'google',
+      groq: 'groq',
+      openrouter: 'openrouter',
     };
     const scoped = PREFIX_BACKEND[prefix];
     const backends = scoped ? [scoped] : Object.keys(BACKEND_KEY_ENV);
@@ -2923,7 +3492,8 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
     //    resolved permission mode (auto/bypass), not install-wide (#2).
     if (provider === 'opencode') {
       const oc: Record<string, unknown> = { autoupdate: false };
-      if (permissionMode !== 'default') oc.permission = { edit: 'allow', bash: 'allow', webfetch: 'allow' };
+      if (permissionMode !== 'default')
+        oc.permission = { edit: 'allow', bash: 'allow', webfetch: 'allow' };
       const baseUrl = cfg.providerBaseUrls?.opencode;
       if (baseUrl) {
         // Register the model id the user actually selects (the part after 'local/')
@@ -2932,7 +3502,12 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
         // 'local' (Jim verify-opencode MUST-FIX #2).
         const localModel = (prefix === 'local' && modelSlug.slice(6)) || 'local';
         oc.provider = {
-          local: { npm: '@ai-sdk/openai-compatible', name: 'Local (self-hosted)', options: { baseURL: baseUrl }, models: { [localModel]: { name: localModel } } }
+          local: {
+            npm: '@ai-sdk/openai-compatible',
+            name: 'Local (self-hosted)',
+            options: { baseURL: baseUrl },
+            models: { [localModel]: { name: localModel } },
+          },
         };
       }
       extra.OPENCODE_CONFIG_CONTENT = JSON.stringify(oc);
@@ -2949,7 +3524,11 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   // Satellite Kitty (lazy): the FIRST agent spawn brings it up and exports the
   // handoff env before this PTY is created, so even agent #1 sees both vars.
   // Awaits ≤5s (window-id poll) once per app run; later spawns are a no-op.
-  try { await startKittySatellite(); } catch { /* best-effort */ }
+  try {
+    await startKittySatellite();
+  } catch {
+    /* best-effort */
+  }
   const res = ptyManager.spawn(opts, owner);
   if (res.ok) analytics.track('agent_spawned', { provider });
   syncKeepAwake(); // arm the power-save blocker while ≥1 agent PTY is alive (#18)
@@ -2960,14 +3539,23 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   const worktreePath = worktreePaths.get(opts.id);
   // `cwd` echoes back the TILDE-EXPANDED absolute path so the renderer's agent
   // record matches what the registry and the PTY actually used.
-  return { ...res, cwd: opts.cwd, ...(worktreePath ? { worktreePath } : {}), ...(resumeNotFound ? { resumeNotFound: true } : {}), ...(didResume ? { resumed: true } : {}), ...(seedPrompt ? { seedPrompt } : {}) };
+  return {
+    ...res,
+    cwd: opts.cwd,
+    ...(worktreePath ? { worktreePath } : {}),
+    ...(resumeNotFound ? { resumeNotFound: true } : {}),
+    ...(didResume ? { resumed: true } : {}),
+    ...(seedPrompt ? { seedPrompt } : {}),
+  };
 }
 ipcMain.handle('pty:write', (_evt, id: string, data: string) => {
-  if (typeof id !== 'string' || typeof data !== 'string') return { ok: false, error: 'invalid args' };
+  if (typeof id !== 'string' || typeof data !== 'string')
+    return { ok: false, error: 'invalid args' };
   return ptyManager.write(id, data);
 });
 ipcMain.handle('pty:resize', (_evt, id: string, cols: number, rows: number) => {
-  if (typeof id !== 'string' || typeof cols !== 'number' || typeof rows !== 'number') return { ok: false, error: 'invalid args' };
+  if (typeof id !== 'string' || typeof cols !== 'number' || typeof rows !== 'number')
+    return { ok: false, error: 'invalid args' };
   return ptyManager.resize(id, cols, rows);
 });
 ipcMain.handle('pty:redraw', (_evt, id: string) => {
@@ -2989,16 +3577,25 @@ ipcMain.handle('pty:list', () => ptyManager.list());
 // Agent dialog can auto-fill the folder for a resume (#2 zero-step resume). Reads
 // the cwd from a transcript record; null when the id is invalid/unknown.
 ipcMain.handle('session:resolveCwd', (_evt, sessionId: unknown) =>
-  (typeof sessionId === 'string' ? resolveSessionCwd(sessionId) : null));
+  typeof sessionId === 'string' ? resolveSessionCwd(sessionId) : null,
+);
 
 // ─── IPC: clipboard ─────────────────────────────────────────────────────────
 ipcMain.handle('app:copyToClipboard', (_evt, text: unknown) => {
   if (typeof text !== 'string') return { ok: false, error: 'invalid text' };
-  try { clipboard.writeText(text); return { ok: true }; }
-  catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
+  try {
+    clipboard.writeText(text);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 });
 ipcMain.handle('app:readClipboard', () => {
-  try { return clipboard.readText(); } catch { return ''; }
+  try {
+    return clipboard.readText();
+  } catch {
+    return '';
+  }
 });
 // NOTE: the terminal theme is mirrored into each agent's per-session Claude
 // settings at spawn (hive.ensureAgent theme option) — deliberately NOT via
@@ -3011,7 +3608,7 @@ ipcMain.handle('dialog:chooseFolder', async (evt) => {
   if (!win) return { ok: false as const, error: 'no window' };
   const res = await dialog.showOpenDialog(win, {
     properties: ['openDirectory', 'createDirectory'],
-    title: 'Pick a folder'
+    title: 'Pick a folder',
   });
   if (res.canceled || res.filePaths.length === 0) return { ok: false as const, error: 'cancelled' };
   return { ok: true as const, path: res.filePaths[0] };
@@ -3024,8 +3621,9 @@ let kittyAvailable: boolean | null = null;
 ipcMain.handle('system:isKittyAvailable', () => {
   if (kittyAvailable === null) {
     const home = process.env.HOME ?? '';
-    kittyAvailable = [`${home}/.local/bin/kitty`, '/usr/local/bin/kitty', '/usr/bin/kitty']
-      .some((p) => existsSync(p));
+    kittyAvailable = [`${home}/.local/bin/kitty`, '/usr/local/bin/kitty', '/usr/bin/kitty'].some(
+      (p) => existsSync(p),
+    );
   }
   return kittyAvailable;
 });
@@ -3036,12 +3634,20 @@ ipcMain.handle('terminal:openAtFolder', async (_evt, cwd: unknown) => {
     // macOS: `open -a Terminal` (open a *folder* in Terminal.app). Linux: no
     // xdg-open route for terminals — spawn the DE's terminal at the folder
     // (xdg-terminal-exec spec when present, else the common DE terminals).
-    let bin = 'gnome-terminal'; let args: string[] = ['--working-directory', cwd];
-    if (process.platform === 'darwin') { bin = 'open'; args = ['-a', 'Terminal', cwd]; }
-    else if (process.env.XDG_TERMINAL_EXEC) { bin = process.env.XDG_TERMINAL_EXEC; args = [cwd]; }
+    let bin = 'gnome-terminal';
+    let args: string[] = ['--working-directory', cwd];
+    if (process.platform === 'darwin') {
+      bin = 'open';
+      args = ['-a', 'Terminal', cwd];
+    } else if (process.env.XDG_TERMINAL_EXEC) {
+      bin = process.env.XDG_TERMINAL_EXEC;
+      args = [cwd];
+    }
     const p = spawn(bin, args);
     let err = '';
-    p.stderr.on('data', (d) => { err += d.toString(); });
+    p.stderr.on('data', (d) => {
+      err += d.toString();
+    });
     p.on('error', (e) => resolve({ ok: false, error: e.message }));
     p.on('close', (code) => {
       if (code === 0) resolve({ ok: true });
@@ -3061,11 +3667,18 @@ ipcMain.handle('terminal:openInKitty', async (_evt, cwd: unknown) => {
   const target = typeof cwd === 'string' && cwd.length > 0 ? cwd : godCwd;
   const kitty = kittyBinPath();
   if (!kitty) return { ok: false, error: 'kitty not found' };
-  const runLaunch = (): Promise<{ ok: boolean; error?: string }> => new Promise((resolve) => {
-    const p = spawn(kitty, ['@', '--to', `unix:${kittySocketPath()}`, 'launch', '--type=tab', `--cwd=${target}`], { stdio: 'ignore' });
-    p.on('error', (e) => resolve({ ok: false, error: e.message }));
-    p.on('close', (code) => resolve(code === 0 ? { ok: true } : { ok: false, error: `kitty @ launch exited ${code}` }));
-  });
+  const runLaunch = (): Promise<{ ok: boolean; error?: string }> =>
+    new Promise((resolve) => {
+      const p = spawn(
+        kitty,
+        ['@', '--to', `unix:${kittySocketPath()}`, 'launch', '--type=tab', `--cwd=${target}`],
+        { stdio: 'ignore' },
+      );
+      p.on('error', (e) => resolve({ ok: false, error: e.message }));
+      p.on('close', (code) =>
+        resolve(code === 0 ? { ok: true } : { ok: false, error: `kitty @ launch exited ${code}` }),
+      );
+    });
   // Socket present → straight into the satellite.
   if (existsSync(kittySocketPath())) return runLaunch();
   // No satellite (none spawned yet, or it died) → bring it up, then tab.
@@ -3099,16 +3712,23 @@ ipcMain.handle('integrations:remove', (_evt, payload: unknown) => {
 // URLs are non-secret and ride HarnessConfig.providerBaseUrls (normal config save).
 ipcMain.handle('providerKey:set', (_evt, payload: unknown) => {
   const p = (payload ?? {}) as { backend?: unknown; key?: unknown };
-  if (typeof p.backend !== 'string' || !(p.backend in BACKEND_KEY_ENV)) return { ok: false, error: 'unknown backend' };
+  if (typeof p.backend !== 'string' || !(p.backend in BACKEND_KEY_ENV))
+    return { ok: false, error: 'unknown backend' };
   if (typeof p.key !== 'string' || !p.key) return { ok: false, error: 'key required' };
   return integrations.setSecret(providerKeyRef(p.backend), p.key);
 });
 ipcMain.handle('providerKey:has', (_evt, backend: unknown) =>
-  typeof backend === 'string' ? integrations.hasSecret(providerKeyRef(backend)) : false);
+  typeof backend === 'string' ? integrations.hasSecret(providerKeyRef(backend)) : false,
+);
 ipcMain.handle('providerKey:clear', (_evt, backend: unknown) => {
-  if (typeof backend !== 'string' || !(backend in BACKEND_KEY_ENV)) return { ok: false, error: 'unknown backend' };
-  try { integrations.deleteSecret(providerKeyRef(backend)); return { ok: true }; }
-  catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
+  if (typeof backend !== 'string' || !(backend in BACKEND_KEY_ENV))
+    return { ok: false, error: 'unknown backend' };
+  try {
+    integrations.deleteSecret(providerKeyRef(backend));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 });
 // Probe an integration's reachability through the broker's own auth path (admin-only;
 // runs in main, so the secret is used but never returned — only the upstream status).
@@ -3124,13 +3744,19 @@ ipcMain.handle('integrations:test', async (_evt, payload: unknown) => {
   // exfiltrate the secret to an attacker host. Resolve (and reject) BEFORE the secret
   // is ever materialized, so a bad path never even decrypts it.
   const target = resolveUpstreamUrl(rec.baseUrl, typeof p.path === 'string' ? p.path : '');
-  if (!target) return { ok: false, error: 'path escapes the integration baseUrl', code: 'bad_request' };
+  if (!target)
+    return { ok: false, error: 'path escapes the integration baseUrl', code: 'bad_request' };
   const secret = integrations.getSecret(rec.secretRef);
   const headers = buildAuthHeaders(rec.authType, rec.authHeader, secret);
   try {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 15_000);
-    const r = await fetch(target, { method: 'GET', headers, redirect: 'manual', signal: ac.signal });
+    const r = await fetch(target, {
+      method: 'GET',
+      headers,
+      redirect: 'manual',
+      signal: ac.signal,
+    });
     clearTimeout(timer);
     return { ok: r.ok, status: r.status };
   } catch (e) {
@@ -3147,7 +3773,11 @@ ipcMain.handle('config:update', (_evt, patch: Partial<HarnessConfig>) => {
   // SDD switch flip → regenerate <harnessHome>/AGENTS.md immediately (it
   // otherwise refreshes on the next spawn/bootstrap via ensureHive).
   if (typeof patch?.sddSubagentsAuthorized === 'boolean') {
-    try { hive.ensureHive(); } catch (e) { console.error('[hive] AGENTS.md regen failed:', e); }
+    try {
+      hive.ensureHive();
+    } catch (e) {
+      console.error('[hive] AGENTS.md regen failed:', e);
+    }
   }
   return next;
 });
@@ -3171,10 +3801,15 @@ ipcMain.handle('config:changeHome', async (_evt, payload: unknown) => {
 
   // Guard against same-folder / nested-folder (a move would self-copy forever).
   if (oldHome) {
-    if (newHome === oldHome) return { ok: false, error: 'That is already the current home folder.' };
-    const a = newHome + sep, b = oldHome + sep;
+    if (newHome === oldHome)
+      return { ok: false, error: 'That is already the current home folder.' };
+    const a = newHome + sep,
+      b = oldHome + sep;
     if (a.startsWith(b) || b.startsWith(a)) {
-      return { ok: false, error: 'Pick a folder that is not inside (or a parent of) the current home.' };
+      return {
+        ok: false,
+        error: 'Pick a folder that is not inside (or a parent of) the current home.',
+      };
     }
   }
 
@@ -3184,17 +3819,61 @@ ipcMain.handle('config:changeHome', async (_evt, payload: unknown) => {
   // Tear down everything bound to the OLD root before copying, so nothing writes
   // mid-copy — a live git commit into hive/.git would otherwise be copied as a
   // half-written object and corrupt the moved repo.
-  try { clearMissionTimers(); } catch (e) { console.error('[changeHome] clearMissionTimers:', e); }
-  try { clearContextTimers(); } catch (e) { console.error('[changeHome] clearContextTimers:', e); }
-  try { stopWebhookDoneObserver(); } catch (e) { console.error('[changeHome] stopWebhookDoneObserver:', e); }
-  try { stopEphemeralWorkerWatcher(); } catch (e) { console.error('[changeHome] stopWorkerWatcher:', e); }
-  try { integrationBroker.stop(); } catch (e) { console.error('[changeHome] broker.stop:', e); }
-  try { hive.stopRouter(); } catch (e) { console.error('[changeHome] stopRouter:', e); }
-  try { hookServer.stop(); } catch (e) { console.error('[changeHome] hookServer.stop:', e); }
-  try { stopSlackServer(); } catch (e) { console.error('[changeHome] slack.stop:', e); }
-  try { stopWebhookServer(); } catch (e) { console.error('[changeHome] webhook.stop:', e); }
-  try { memory.stop(); } catch (e) { console.error('[changeHome] memory.stop:', e); }
-  try { reflector.stop(); } catch (e) { console.error('[changeHome] reflector.stop:', e); }
+  try {
+    clearMissionTimers();
+  } catch (e) {
+    console.error('[changeHome] clearMissionTimers:', e);
+  }
+  try {
+    clearContextTimers();
+  } catch (e) {
+    console.error('[changeHome] clearContextTimers:', e);
+  }
+  try {
+    stopWebhookDoneObserver();
+  } catch (e) {
+    console.error('[changeHome] stopWebhookDoneObserver:', e);
+  }
+  try {
+    stopEphemeralWorkerWatcher();
+  } catch (e) {
+    console.error('[changeHome] stopWorkerWatcher:', e);
+  }
+  try {
+    integrationBroker.stop();
+  } catch (e) {
+    console.error('[changeHome] broker.stop:', e);
+  }
+  try {
+    hive.stopRouter();
+  } catch (e) {
+    console.error('[changeHome] stopRouter:', e);
+  }
+  try {
+    hookServer.stop();
+  } catch (e) {
+    console.error('[changeHome] hookServer.stop:', e);
+  }
+  try {
+    stopSlackServer();
+  } catch (e) {
+    console.error('[changeHome] slack.stop:', e);
+  }
+  try {
+    stopWebhookServer();
+  } catch (e) {
+    console.error('[changeHome] webhook.stop:', e);
+  }
+  try {
+    memory.stop();
+  } catch (e) {
+    console.error('[changeHome] memory.stop:', e);
+  }
+  try {
+    reflector.stop();
+  } catch (e) {
+    console.error('[changeHome] reflector.stop:', e);
+  }
 
   if (mode === 'move' && oldHome) {
     try {
@@ -3217,7 +3896,10 @@ ipcMain.handle('config:changeHome', async (_evt, payload: unknown) => {
       const cfg = readConfig();
       if (cfg.slackEnabled && cfg.slackSigningSecret) void startSlackServer();
       reconcileWebhookServer();
-      return { ok: false, error: `Could not copy data: ${e instanceof Error ? e.message : String(e)}` };
+      return {
+        ok: false,
+        error: `Could not copy data: ${e instanceof Error ? e.message : String(e)}`,
+      };
     }
   }
 
@@ -3225,7 +3907,11 @@ ipcMain.handle('config:changeHome', async (_evt, payload: unknown) => {
   // (Identical recovery path to resetAll — relaunch is the clean re-bind.)
   allowQuit = true;
   writeConfig({ harnessHome: newHome });
-  try { ptyManager.killAll(); } catch (e) { console.error('[changeHome] killAll:', e); }
+  try {
+    ptyManager.killAll();
+  } catch (e) {
+    console.error('[changeHome] killAll:', e);
+  }
   app.relaunch();
   app.exit(0);
   return { ok: true as const }; // unreachable (process exits) — typed for the renderer
@@ -3233,11 +3919,13 @@ ipcMain.handle('config:changeHome', async (_evt, payload: unknown) => {
 
 // ─── IPC: filesystem (sandboxed to a root) ──────────────────────────────────
 ipcMain.handle('fs:listDir', (_evt, root: unknown, rel: unknown) => {
-  if (typeof root !== 'string' || typeof rel !== 'string') return { ok: false, error: 'invalid args' };
+  if (typeof root !== 'string' || typeof rel !== 'string')
+    return { ok: false, error: 'invalid args' };
   return listDir(root, rel);
 });
 ipcMain.handle('fs:readFile', (_evt, root: unknown, rel: unknown) => {
-  if (typeof root !== 'string' || typeof rel !== 'string') return { ok: false, error: 'invalid args' };
+  if (typeof root !== 'string' || typeof rel !== 'string')
+    return { ok: false, error: 'invalid args' };
   return readFileText(root, rel);
 });
 ipcMain.handle('fs:writeFile', (_evt, root: unknown, rel: unknown, content: unknown) => {
@@ -3310,29 +3998,39 @@ ipcMain.handle('git:showFile', (_evt, cwd: unknown, rev: unknown, relPath: unkno
   }
   return getFileAtRev(cwd, rev, relPath);
 });
-ipcMain.handle('git:compareRefs', (_evt, cwd: unknown, base: unknown, head: unknown, mode: unknown) => {
-  if (typeof cwd !== 'string' || typeof base !== 'string' || typeof head !== 'string') {
-    return { error: 'invalid args' };
-  }
-  return compareRefs(cwd, base, head, mode === 'two' ? 'two' : 'three');
-});
+ipcMain.handle(
+  'git:compareRefs',
+  (_evt, cwd: unknown, base: unknown, head: unknown, mode: unknown) => {
+    if (typeof cwd !== 'string' || typeof base !== 'string' || typeof head !== 'string') {
+      return { error: 'invalid args' };
+    }
+    return compareRefs(cwd, base, head, mode === 'two' ? 'two' : 'three');
+  },
+);
 ipcMain.handle('git:worktrees', (_evt, cwd: unknown) => {
   if (typeof cwd !== 'string') return { error: 'invalid args' };
   return listWorktrees(cwd);
 });
 ipcMain.handle('git:checkout', async (_evt, cwd: unknown, ref: unknown, detach: unknown) => {
-  if (typeof cwd !== 'string' || typeof ref !== 'string') return { ok: false, error: 'invalid args' };
+  if (typeof cwd !== 'string' || typeof ref !== 'string')
+    return { ok: false, error: 'invalid args' };
   // Guard: never swap files under an actively-working agent. Objective signal
   // owned by main — any live pty whose cwd sits in this tree and emitted output
   // in the last 10s is treated as mid-run. (Idle-but-open terminals are fine:
   // checkoutRef additionally requires a clean tree, and TUIs redraw on fs
   // changes gracefully.)
-  const busy = ptyManager.list().find((p) =>
-    (p.cwd === cwd || p.cwd.startsWith(cwd.endsWith('/') ? cwd : `${cwd}/`)) &&
-    Date.now() - p.lastOutputAt < 10_000
-  );
+  const busy = ptyManager
+    .list()
+    .find(
+      (p) =>
+        (p.cwd === cwd || p.cwd.startsWith(cwd.endsWith('/') ? cwd : `${cwd}/`)) &&
+        Date.now() - p.lastOutputAt < 10_000,
+    );
   if (busy) {
-    return { ok: false, error: `an agent is actively working in this repo (${busy.id}) — try again when it goes quiet` };
+    return {
+      ok: false,
+      error: `an agent is actively working in this repo (${busy.id}) — try again when it goes quiet`,
+    };
   }
   return checkoutRef(cwd, ref, detach === true);
 });
@@ -3343,7 +4041,9 @@ ipcMain.handle('git:checkout', async (_evt, cwd: unknown, ref: unknown, detach: 
 // round trip at boot, in exchange for the roster being correct on first paint
 // instead of flashing an empty floor and then filling in.
 const roster = new RosterStore(() => readConfig().harnessHome);
-ipcMain.on('roster:readSync', (evt) => { evt.returnValue = roster.read(); });
+ipcMain.on('roster:readSync', (evt) => {
+  evt.returnValue = roster.read();
+});
 ipcMain.handle('roster:read', () => roster.read());
 ipcMain.handle('roster:write', (_evt, snap: unknown) => roster.write(snap));
 
@@ -3352,13 +4052,17 @@ ipcMain.handle('hive:registry', () => hive.registry());
 ipcMain.handle('hive:board', () => hive.board());
 ipcMain.handle('hive:tasks', () => hive.tasks());
 ipcMain.handle('hive:log', (_evt, n: unknown) => hive.logTail(typeof n === 'number' ? n : 200));
-ipcMain.handle('hive:memory', (_evt, id: unknown) => (typeof id === 'string' ? hive.memory(id) : ''));
+ipcMain.handle('hive:memory', (_evt, id: unknown) =>
+  typeof id === 'string' ? hive.memory(id) : '',
+);
 ipcMain.handle('hive:inbox', (_evt, id: unknown) => (typeof id === 'string' ? hive.inbox(id) : []));
 // Voice read-layer: recent message CONTENT (inbox/outbox bodies), REDACTED
 // main-side by hive.voiceMessages(). The renderer/voice layer never sees a raw
 // body — secrets are stripped here, before the result crosses IPC.
 ipcMain.handle('hive:messages', (_evt, opts: unknown) =>
-  hive.voiceMessages(opts && typeof opts === 'object' ? (opts as Parameters<typeof hive.voiceMessages>[0]) : {})
+  hive.voiceMessages(
+    opts && typeof opts === 'object' ? (opts as Parameters<typeof hive.voiceMessages>[0]) : {},
+  ),
 );
 ipcMain.handle('hive:send', (_evt, partial: Partial<HiveMessage>, from: unknown) => {
   if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
@@ -3406,18 +4110,27 @@ ipcMain.handle('hive:recall', (_e, id: unknown) => {
 });
 
 // ─── IPC: semantic memory (MemPalace CLI) ───────────────────────────────────
-ipcMain.handle('hive:memoryStatus', () => { memory.resetBinCache(); return memory.status(); });
+ipcMain.handle('hive:memoryStatus', () => {
+  memory.resetBinCache();
+  return memory.status();
+});
 ipcMain.handle('hive:searchMemory', (_evt, query: unknown, wing: unknown) => {
-  if (typeof query !== 'string' || !query.trim()) return { ok: false, output: '', error: 'empty query' };
+  if (typeof query !== 'string' || !query.trim())
+    return { ok: false, output: '', error: 'empty query' };
   return memory.search(query, { wing: typeof wing === 'string' ? wing : undefined });
 });
 ipcMain.handle('hive:memoryWakeUp', (_evt, wing: unknown) =>
-  memory.wakeUp(typeof wing === 'string' ? wing : undefined));
-ipcMain.handle('hive:mineNow', () => { memory.mineNow(); return { ok: true }; });
+  memory.wakeUp(typeof wing === 'string' ? wing : undefined),
+);
+ipcMain.handle('hive:mineNow', () => {
+  memory.mineNow();
+  return { ok: true };
+});
 // Condense memory.md on demand: an explicit id condenses that one agent (skips
 // the size trigger — a "condense now" button); no id runs a full threshold scan.
 ipcMain.handle('memory:reflectNow', (_evt, id: unknown) =>
-  reflector.reflectNow(typeof id === 'string' && id ? id : undefined));
+  reflector.reflectNow(typeof id === 'string' && id ? id : undefined),
+);
 
 // ─── IPC: enterprise Knowledge Graph (multimodal context for agents) ─────────
 ipcMain.handle('kg:status', () => knowledge.status());
@@ -3427,15 +4140,21 @@ ipcMain.handle('kg:search', (_evt, query: unknown, limit: unknown) => {
   return knowledge.search(query, typeof limit === 'number' ? limit : undefined);
 });
 ipcMain.handle('kg:get', (_evt, id: unknown) =>
-  (typeof id === 'string' && id ? knowledge.get(id) : null));
-ipcMain.handle('kg:remove', (_evt, id: unknown) =>
-  ({ ok: typeof id === 'string' && id ? knowledge.remove(id) : false }));
+  typeof id === 'string' && id ? knowledge.get(id) : null,
+);
+ipcMain.handle('kg:remove', (_evt, id: unknown) => ({
+  ok: typeof id === 'string' && id ? knowledge.remove(id) : false,
+}));
 // Ingest one or more files from disk. Best-effort per file; returns per-file
 // results so the UI can report partial success.
 ipcMain.handle('kg:ingestFiles', (_evt, payload: unknown) => {
   const p = (payload ?? {}) as { paths?: unknown; tags?: unknown };
-  const paths = Array.isArray(p.paths) ? p.paths.filter((x): x is string => typeof x === 'string') : [];
-  const tags = Array.isArray(p.tags) ? p.tags.filter((x): x is string => typeof x === 'string') : undefined;
+  const paths = Array.isArray(p.paths)
+    ? p.paths.filter((x): x is string => typeof x === 'string')
+    : [];
+  const tags = Array.isArray(p.tags)
+    ? p.tags.filter((x): x is string => typeof x === 'string')
+    : undefined;
   const results = paths.map((srcPath) => {
     try {
       const r = knowledge.ingestFile(srcPath, { tags });
@@ -3452,7 +4171,7 @@ ipcMain.handle('kg:addFiles', async (evt) => {
   if (!win) return { ok: false as const, error: 'no window' };
   const res = await dialog.showOpenDialog(win, {
     properties: ['openFile', 'multiSelections'],
-    title: 'Add documents to the Knowledge Graph'
+    title: 'Add documents to the Knowledge Graph',
   });
   if (res.canceled || res.filePaths.length === 0) return { ok: false as const, error: 'cancelled' };
   const results = res.filePaths.map((srcPath) => {
@@ -3477,9 +4196,12 @@ ipcMain.handle('dialog:attachFiles', async (evt) => {
     properties: ['openFile', 'multiSelections'],
     title: 'Attach images or files',
     filters: [
-      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'] },
-      { name: 'All Files', extensions: ['*'] }
-    ]
+      {
+        name: 'Images',
+        extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'],
+      },
+      { name: 'All Files', extensions: ['*'] },
+    ],
   });
   if (res.canceled || res.filePaths.length === 0) return { ok: false as const, error: 'cancelled' };
   return { ok: true as const, files: res.filePaths.map((p) => ({ path: p, name: basename(p) })) };
@@ -3506,19 +4228,31 @@ ipcMain.handle('clipboard:saveImage', async () => {
 // ─── IPC: command history (SQLite — every prompt submitted to an agent) ──────
 ipcMain.handle('history:add', (_evt, payload: unknown) => {
   const p = (payload ?? {}) as { agentId?: unknown; cwd?: unknown; text?: unknown };
-  if (typeof p.agentId !== 'string' || typeof p.text !== 'string') return { ok: false, error: 'invalid args' };
+  if (typeof p.agentId !== 'string' || typeof p.text !== 'string')
+    return { ok: false, error: 'invalid args' };
   try {
-    persist.addHistory({ agentId: p.agentId, cwd: typeof p.cwd === 'string' ? p.cwd : null, text: p.text });
+    persist.addHistory({
+      agentId: p.agentId,
+      cwd: typeof p.cwd === 'string' ? p.cwd : null,
+      text: p.text,
+    });
     return { ok: true };
-  } catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 });
 ipcMain.handle('history:list', (_evt, agentId: unknown, limit: unknown) =>
   persist.listHistory(
     typeof agentId === 'string' && agentId ? agentId : undefined,
-    typeof limit === 'number' ? limit : undefined
-  ));
+    typeof limit === 'number' ? limit : undefined,
+  ),
+);
 ipcMain.handle('history:search', (_evt, query: unknown, limit: unknown) =>
-  persist.searchHistory(typeof query === 'string' ? query : '', typeof limit === 'number' ? limit : undefined));
+  persist.searchHistory(
+    typeof query === 'string' ? query : '',
+    typeof limit === 'number' ? limit : undefined,
+  ),
+);
 
 // ─── IPC: quit confirmation ─────────────────────────────────────────────────
 /** Tear the harness down and quit. Shared by the hard "kill all & quit" path
@@ -3528,22 +4262,82 @@ function teardownAndQuit(): void {
   allowQuit = true;
   // Each teardown step is best-effort: a throw here (e.g. a dying child or a
   // half-torn-down socket) must never abort the quit or pop a crash dialog.
-  try { clearMissionTimers(); } catch (e) { console.error('[quit] clearMissionTimers:', e); }
-  try { clearContextTimers(); } catch (e) { console.error('[quit] clearContextTimers:', e); }
-  try { stopWebhookDoneObserver(); } catch (e) { console.error('[quit] stopWebhookDoneObserver:', e); }
-  try { stopEphemeralWorkerWatcher(); } catch (e) { console.error('[quit] stopWorkerWatcher:', e); }
-  try { integrationBroker.stop(); } catch (e) { console.error('[quit] broker.stop:', e); }
-  try { hive.stopRouter(); } catch (e) { console.error('[quit] stopRouter:', e); }
-  try { hookServer.stop(); } catch (e) { console.error('[quit] hookServer.stop:', e); }
-  try { telemetry.stop(); } catch (e) { console.error('[quit] telemetry.stop:', e); }
-  try { stopSlackServer(); } catch (e) { console.error('[quit] slack.stop:', e); }
-  try { stopWebhookServer(); } catch (e) { console.error('[quit] webhook.stop:', e); }
-  try { memory.stop(); } catch (e) { console.error('[quit] memory.stop:', e); }
-  try { reflector.stop(); } catch (e) { console.error('[quit] reflector.stop:', e); }
-  try { persist.close(); } catch (e) { console.error('[quit] persist.close:', e); }
-  try { hive.stopAllProxyBridges(); } catch (e) { console.error('[quit] stopAllProxyBridges:', e); }
+  try {
+    clearMissionTimers();
+  } catch (e) {
+    console.error('[quit] clearMissionTimers:', e);
+  }
+  try {
+    clearContextTimers();
+  } catch (e) {
+    console.error('[quit] clearContextTimers:', e);
+  }
+  try {
+    stopWebhookDoneObserver();
+  } catch (e) {
+    console.error('[quit] stopWebhookDoneObserver:', e);
+  }
+  try {
+    stopEphemeralWorkerWatcher();
+  } catch (e) {
+    console.error('[quit] stopWorkerWatcher:', e);
+  }
+  try {
+    integrationBroker.stop();
+  } catch (e) {
+    console.error('[quit] broker.stop:', e);
+  }
+  try {
+    hive.stopRouter();
+  } catch (e) {
+    console.error('[quit] stopRouter:', e);
+  }
+  try {
+    hookServer.stop();
+  } catch (e) {
+    console.error('[quit] hookServer.stop:', e);
+  }
+  try {
+    telemetry.stop();
+  } catch (e) {
+    console.error('[quit] telemetry.stop:', e);
+  }
+  try {
+    stopSlackServer();
+  } catch (e) {
+    console.error('[quit] slack.stop:', e);
+  }
+  try {
+    stopWebhookServer();
+  } catch (e) {
+    console.error('[quit] webhook.stop:', e);
+  }
+  try {
+    memory.stop();
+  } catch (e) {
+    console.error('[quit] memory.stop:', e);
+  }
+  try {
+    reflector.stop();
+  } catch (e) {
+    console.error('[quit] reflector.stop:', e);
+  }
+  try {
+    persist.close();
+  } catch (e) {
+    console.error('[quit] persist.close:', e);
+  }
+  try {
+    hive.stopAllProxyBridges();
+  } catch (e) {
+    console.error('[quit] stopAllProxyBridges:', e);
+  }
   console.log('[quit] pre-killAll, ptys:', ptyManager.list().length);
-  try { ptyManager.killAll(); } catch (e) { console.error('[quit] killAll:', e); }
+  try {
+    ptyManager.killAll();
+  } catch (e) {
+    console.error('[quit] killAll:', e);
+  }
   console.log('[quit] post-killAll, calling app.quit()');
   app.quit();
   console.log('[quit] app.quit() returned');
@@ -3579,7 +4373,7 @@ const closingTime = new ClosingTimeController(
   () => teardownAndQuit(),
   // #7C.2 steering — the graceful interrupt that reaches deeply busy agents
   // at their next hook boundary instead of waiting for a Stop.
-  control
+  control,
 );
 hive.setRoutedObserver((msg, targets) => closingTime.onRouted(msg, targets));
 ipcMain.handle('app:startClosingTime', () => closingTime.start());
@@ -3589,33 +4383,91 @@ ipcMain.handle('app:cancelClosingTime', () => closingTime.cancel());
 ipcMain.handle('app:resetAll', () => {
   allowQuit = true;
   // Tear everything down first so nothing writes back into the dirs we wipe.
-  try { clearMissionTimers(); } catch (e) { console.error('[reset] clearMissionTimers:', e); }
-  try { clearContextTimers(); } catch (e) { console.error('[reset] clearContextTimers:', e); }
-  try { stopWebhookDoneObserver(); } catch (e) { console.error('[reset] stopWebhookDoneObserver:', e); }
-  try { stopEphemeralWorkerWatcher(); } catch (e) { console.error('[reset] stopWorkerWatcher:', e); }
-  try { integrationBroker.stop(); } catch (e) { console.error('[reset] broker.stop:', e); }
-  try { hive.stopRouter(); } catch (e) { console.error('[reset] stopRouter:', e); }
-  try { hookServer.stop(); } catch (e) { console.error('[reset] hookServer.stop:', e); }
-  try { telemetry.stop(); } catch (e) { console.error('[reset] telemetry.stop:', e); }
-  try { stopSlackServer(); } catch (e) { console.error('[reset] slack.stop:', e); }
-  try { memory.stop(); } catch (e) { console.error('[reset] memory.stop:', e); }
-  try { reflector.stop(); } catch (e) { console.error('[reset] reflector.stop:', e); }
-  try { persist.close(); } catch (e) { console.error('[reset] persist.close:', e); }
-  try { ptyManager.killAll(); } catch (e) { console.error('[reset] killAll:', e); }
+  try {
+    clearMissionTimers();
+  } catch (e) {
+    console.error('[reset] clearMissionTimers:', e);
+  }
+  try {
+    clearContextTimers();
+  } catch (e) {
+    console.error('[reset] clearContextTimers:', e);
+  }
+  try {
+    stopWebhookDoneObserver();
+  } catch (e) {
+    console.error('[reset] stopWebhookDoneObserver:', e);
+  }
+  try {
+    stopEphemeralWorkerWatcher();
+  } catch (e) {
+    console.error('[reset] stopWorkerWatcher:', e);
+  }
+  try {
+    integrationBroker.stop();
+  } catch (e) {
+    console.error('[reset] broker.stop:', e);
+  }
+  try {
+    hive.stopRouter();
+  } catch (e) {
+    console.error('[reset] stopRouter:', e);
+  }
+  try {
+    hookServer.stop();
+  } catch (e) {
+    console.error('[reset] hookServer.stop:', e);
+  }
+  try {
+    telemetry.stop();
+  } catch (e) {
+    console.error('[reset] telemetry.stop:', e);
+  }
+  try {
+    stopSlackServer();
+  } catch (e) {
+    console.error('[reset] slack.stop:', e);
+  }
+  try {
+    memory.stop();
+  } catch (e) {
+    console.error('[reset] memory.stop:', e);
+  }
+  try {
+    reflector.stop();
+  } catch (e) {
+    console.error('[reset] reflector.stop:', e);
+  }
+  try {
+    persist.close();
+  } catch (e) {
+    console.error('[reset] persist.close:', e);
+  }
+  try {
+    ptyManager.killAll();
+  } catch (e) {
+    console.error('[reset] killAll:', e);
+  }
   // Erase the hive (Michael's + every agent's memory, inboxes, tasks, board,
   // git history) and the semantic-memory palace. Only these harness-created
   // subdirs are removed — never the user's whole harnessHome folder.
   for (const dir of [hive.root(), memory.palacePath()]) {
     if (!dir) continue;
-    try { rmSync(dir, { recursive: true, force: true }); }
-    catch (e) { console.error('[reset] rm', dir, e); }
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch (e) {
+      console.error('[reset] rm', dir, e);
+    }
   }
   // The roster is the renderer's half of the same state, so it retires with the
   // hive — archived into roster-backups/ rather than deleted, and cleared as the
   // active file so re-selecting this folder later doesn't resurrect agents whose
   // sessions and memory are gone.
-  try { roster.archive(); }
-  catch (e) { console.error('[reset] roster.archive:', e); }
+  try {
+    roster.archive();
+  } catch (e) {
+    console.error('[reset] roster.archive:', e);
+  }
   // Back to first-run defaults, then relaunch clean so all in-memory services
   // re-bootstrap from scratch and the renderer lands on onboarding.
   resetConfig();
@@ -3627,7 +4479,8 @@ ipcMain.handle('app:resetAll', () => {
 // Reconciler/fallback path: per-cwd transcript sum, now priced PER MODEL (cost
 // bug #1 fixed in pricing.ts). Kept for back-compat with the existing UsageRow.
 ipcMain.handle('hive:agentUsage', (_evt, cwd: unknown) =>
-  typeof cwd === 'string' ? readAgentUsage(cwd) : null);
+  typeof cwd === 'string' ? readAgentUsage(cwd) : null,
+);
 // Current context size (tokens) of an agent's LIVE session — the transcript
 // path is learned from the agent's hook payloads (SessionStart fires right at
 // spawn), so this works even when several agents share one cwd. Null until the
@@ -3682,7 +4535,7 @@ ipcMain.handle('hive:agentDirectory', () => {
       lastActiveSecAgo: u ? Math.round((now - u.ts) / 1000) : null,
       contextTokens: ctx?.tokens ?? null,
       contextLimit: ctx?.limit ?? null,
-      contextPct: ctx && ctx.limit > 0 ? Math.round((ctx.tokens / ctx.limit) * 100) : null
+      contextPct: ctx && ctx.limit > 0 ? Math.round((ctx.tokens / ctx.limit) * 100) : null,
     };
   });
   return { godId: reg.godId, agents };
@@ -3692,9 +4545,11 @@ ipcMain.handle('hive:agentDirectory', () => {
 // The fleet grid + span waterfall (#7B) read these; Lane A's breaker (#6)
 // consumes getAgentUsage in-process via the provider, not over IPC.
 ipcMain.handle('telemetry:usage', (_evt, agentId: unknown) =>
-  typeof agentId === 'string' ? telemetry.getAgentUsage(agentId) : null);
+  typeof agentId === 'string' ? telemetry.getAgentUsage(agentId) : null,
+);
 ipcMain.handle('telemetry:spans', (_evt, agentId: unknown) =>
-  typeof agentId === 'string' ? telemetry.getSpans(agentId) : []);
+  typeof agentId === 'string' ? telemetry.getSpans(agentId) : [],
+);
 ipcMain.handle('telemetry:snapshot', () => ({
   ...telemetry.snapshot(),
   // Breaker states were push-only (one per beat per live agent), so a reloaded
@@ -3709,9 +4564,9 @@ ipcMain.handle('telemetry:snapshot', () => ({
           agentId: id,
           level: breaker.levelFor(id),
           reason: breaker.reasonFor(id),
-          ts: Date.now()
+          ts: Date.now(),
         }))
-    : []
+    : [],
 }));
 
 // ─── IPC: circuit-breaker state (Lane A #6 policy → this lane's avatars/meter) ─
@@ -3720,7 +4575,11 @@ ipcMain.handle('telemetry:snapshot', () => ({
 // hook-derived status (#5C looping/zombie). Defined here so the channel exists
 // before Jim's policy lands; he produces, this lane consumes.
 ipcMain.handle('control:setBreakerState', (_evt, state: unknown) => {
-  try { liveWebContents()?.send('control:breakerState', state); } catch { /* window tore down */ }
+  try {
+    liveWebContents()?.send('control:breakerState', state);
+  } catch {
+    /* window tore down */
+  }
   return { ok: true };
 });
 
@@ -3736,7 +4595,8 @@ ipcMain.handle('control:autoDelivery', (_evt, agentId: unknown, paused: unknown)
   const on = paused === true;
   control.pauseAutoDelivery(agentId, on);
   const current = new Set(readConfig().autoDeliveryPausedAgents ?? []);
-  if (on) current.add(agentId); else current.delete(agentId);
+  if (on) current.add(agentId);
+  else current.delete(agentId);
   writeConfig({ autoDeliveryPausedAgents: Array.from(current).sort() });
   return control.snapshot(agentId);
 });
@@ -3761,7 +4621,8 @@ ipcMain.handle('control:halt', (_evt, agentId: unknown) => {
   return control.snapshot(agentId);
 });
 ipcMain.handle('control:snapshot', (_evt, agentId: unknown) =>
-  typeof agentId === 'string' ? control.snapshot(agentId) : null);
+  typeof agentId === 'string' ? control.snapshot(agentId) : null,
+);
 
 // ─── IPC: scheduled missions (recurring auto-dispatch) ──────────────────────
 ipcMain.handle('missions:list', () => readConfig().missions ?? []);
@@ -3771,9 +4632,7 @@ ipcMain.handle('missions:save', (_evt, missions) => {
   // lastFiredAt the scheduler has stamped since. Merge by id and keep the newer
   // lastFiredAt (almost always the persisted one) so the UI can never erase it.
   const incoming = (Array.isArray(missions) ? missions : []) as ScheduledMission[];
-  const persistedById = new Map(
-    (readConfig().missions ?? []).map((m) => [m.id, m] as const)
-  );
+  const persistedById = new Map((readConfig().missions ?? []).map((m) => [m.id, m] as const));
   const merged = incoming.map((m) => {
     const prevLastFired = persistedById.get(m.id)?.lastFiredAt ?? 0;
     const lastFiredAt = Math.max(m.lastFiredAt ?? 0, prevLastFired) || undefined;
@@ -3794,7 +4653,7 @@ ipcMain.handle('hive:textSearch', (_evt, query: unknown) => {
   // Each target file is (path, readable label). agents/<id>/memory.md is expanded below.
   const targets: Array<{ path: string; source: string }> = [
     { path: join(root, 'board.md'), source: 'board.md' },
-    { path: join(root, 'tasks.json'), source: 'tasks.json' }
+    { path: join(root, 'tasks.json'), source: 'tasks.json' },
   ];
   const agentsDir = join(root, 'agents');
   if (existsSync(agentsDir)) {
@@ -3820,12 +4679,12 @@ ipcMain.handle('hive:textSearch', (_evt, query: unknown) => {
 
 // ─── IPC: GitHub issue ingestion (gh CLI) ────────────────────────────────────
 ipcMain.handle('github:issues', (_evt, cwd: unknown) =>
-  typeof cwd === 'string' ? listIssues(cwd) : { ok: false, error: 'no cwd' }
+  typeof cwd === 'string' ? listIssues(cwd) : { ok: false, error: 'no cwd' },
 );
 
 // ─── IPC: GitHub CI status watcher (gh CLI) ──────────────────────────────────
 ipcMain.handle('github:ciRuns', (_evt, cwd: unknown) =>
-  typeof cwd === 'string' ? listCIRuns(cwd) : { ok: false, error: 'no cwd' }
+  typeof cwd === 'string' ? listCIRuns(cwd) : { ok: false, error: 'no cwd' },
 );
 
 // ─── IPC: desktop notifications toggle ──────────────────────────────────────
@@ -3851,7 +4710,10 @@ ipcMain.handle('app:setLoginItem', (_evt, enabled: unknown) => {
 
 // ─── IPC: Slack integration ─────────────────────────────────────────────────
 ipcMain.handle('slack:start', () => startSlackServer());
-ipcMain.handle('slack:stop', () => { stopSlackServer(); return { ok: true }; });
+ipcMain.handle('slack:stop', () => {
+  stopSlackServer();
+  return { ok: true };
+});
 /** Current connection state + last Request URL — lets Settings hydrate the
  *  "Connected" badge and re-show the persisted tunnel URL on reopen. */
 ipcMain.handle('slack:status', () => ({ running: slackServer != null, url: lastSlackUrl }));
@@ -3868,10 +4730,18 @@ ipcMain.handle('slack:reply', (_evt, arg: unknown) => {
   // OFF unless the user opts in via Settings → Slack. The Slack-ORIGIN done-reply
   // round-trip (done-poller) and an agent's own direct /reply are NOT routed
   // through here, so they are unaffected and always stay on.
-  if (!cfg.slackProactivePosting) return { ok: false, error: 'app-initiated Slack posting disabled (enable in Settings → Slack)' };
+  if (!cfg.slackProactivePosting)
+    return {
+      ok: false,
+      error: 'app-initiated Slack posting disabled (enable in Settings → Slack)',
+    };
   const botToken = cfg.slackBotToken;
   if (!botToken) return { ok: false, error: 'no bot token' };
-  if (typeof p.channel !== 'string' || typeof p.thread_ts !== 'string' || typeof p.text !== 'string') {
+  if (
+    typeof p.channel !== 'string' ||
+    typeof p.thread_ts !== 'string' ||
+    typeof p.text !== 'string'
+  ) {
     return { ok: false, error: 'channel, thread_ts, text required' };
   }
   // CLAUSE-1 (fix-slack-integration): an app-initiated send must target an
@@ -3884,12 +4754,17 @@ ipcMain.handle('slack:reply', (_evt, arg: unknown) => {
 });
 ipcMain.handle('slack:setConfig', (_evt, patch: unknown) => {
   const p = (patch ?? {}) as {
-    signingSecret?: unknown; botToken?: unknown; channelId?: unknown; port?: unknown; enabled?: unknown;
+    signingSecret?: unknown;
+    botToken?: unknown;
+    channelId?: unknown;
+    port?: unknown;
+    enabled?: unknown;
     proactivePosting?: unknown;
   };
   const next: Partial<HarnessConfig> = {};
   // Trim string fields; an emptied field clears back to undefined.
-  if (typeof p.signingSecret === 'string') next.slackSigningSecret = p.signingSecret.trim() || undefined;
+  if (typeof p.signingSecret === 'string')
+    next.slackSigningSecret = p.signingSecret.trim() || undefined;
   if (typeof p.botToken === 'string') next.slackBotToken = p.botToken.trim() || undefined;
   if (typeof p.channelId === 'string') next.slackChannelId = p.channelId.trim() || undefined;
   if (typeof p.port === 'number' && Number.isFinite(p.port)) next.slackPort = p.port;
@@ -3909,7 +4784,7 @@ ipcMain.handle('slack:setConfig', (_evt, patch: unknown) => {
  *  configured, which chat owns the hive. The token VALUE never crosses IPC. */
 ipcMain.handle('telegram:status', () => ({
   running: telegramTrigger != null,
-  ...telegramEnvSummary(telegramEnvFile())
+  ...telegramEnvSummary(telegramEnvFile()),
 }));
 /** The one write path for Telegram settings. The token + chat id stay in
  *  `.env.telegram` (write-only from the renderer — never read back across IPC);
@@ -3924,12 +4799,29 @@ ipcMain.handle('telegram:setConfig', async (_evt, patch: unknown) => {
   if (typeof p.botToken === 'string') env.TELEGRAM_BOT_TOKEN = p.botToken.trim() || null;
   if (typeof p.chatId === 'string') env.MD_TELEGRAM_CHAT_ID = p.chatId.trim() || null;
   if (Object.keys(env).length > 0) {
-    try { writeTelegramEnv(telegramEnvFile(), env); envChanged = true; }
-    catch (e) { return { ok: false, running: telegramTrigger != null, error: 'could not write ' + telegramEnvFile() + ': ' + (e instanceof Error ? e.message : String(e)) }; }
+    try {
+      writeTelegramEnv(telegramEnvFile(), env);
+      envChanged = true;
+    } catch (e) {
+      return {
+        ok: false,
+        running: telegramTrigger != null,
+        error:
+          'could not write ' +
+          telegramEnvFile() +
+          ': ' +
+          (e instanceof Error ? e.message : String(e)),
+      };
+    }
   }
   if (typeof p.enabled === 'boolean') writeConfig({ telegramEnabled: p.enabled });
   const { hasToken } = telegramEnvSummary(telegramEnvFile());
-  const action = resolveTelegramRuntime(telegramTrigger != null, readConfig().telegramEnabled, hasToken, envChanged);
+  const action = resolveTelegramRuntime(
+    telegramTrigger != null,
+    readConfig().telegramEnabled,
+    hasToken,
+    envChanged,
+  );
   let error: string | undefined;
   if (action === 'stop') stopTelegramServer();
   if (action === 'start' || action === 'restart') {
@@ -3946,7 +4838,7 @@ ipcMain.handle('triggers:setContext', (_evt, arg: unknown) => {
   const p = (arg ?? {}) as Partial<ContextTriggerConfig>;
   const next: ContextTriggerConfig = {
     compact: sanitizeContextRule(p.compact, current.compact),
-    clear: sanitizeContextRule(p.clear, current.clear)
+    clear: sanitizeContextRule(p.clear, current.clear),
   };
   writeConfig({ contextTrigger: next });
   // The timers ARE the setting — a cadence saved but not re-armed would keep
@@ -3959,7 +4851,10 @@ ipcMain.handle('triggers:setContext', (_evt, arg: unknown) => {
  *  arming maths: a zero/negative/NaN `everyMs` would arm a runaway timer, and an
  *  out-of-range percentage would silently disable (or permanently trip) the
  *  pressure gate. */
-function sanitizeContextRule(patch: Partial<ContextRule> | undefined, current: ContextRule): ContextRule {
+function sanitizeContextRule(
+  patch: Partial<ContextRule> | undefined,
+  current: ContextRule,
+): ContextRule {
   const p = (patch ?? {}) as Partial<ContextRule>;
   const num = (v: unknown, fallback: number, min: number, max: number): number =>
     typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
@@ -3967,8 +4862,13 @@ function sanitizeContextRule(patch: Partial<ContextRule> | undefined, current: C
     enabled: typeof p.enabled === 'boolean' ? p.enabled : current.enabled,
     everyMs: num(p.everyMs, current.everyMs, 60_000, 86_400_000),
     minContextPct: num(p.minContextPct, current.minContextPct, 0, 100),
-    minContextPctLargeWindow: num(p.minContextPctLargeWindow, current.minContextPctLargeWindow, 0, 100),
-    message: typeof p.message === 'string' ? p.message : current.message
+    minContextPctLargeWindow: num(
+      p.minContextPctLargeWindow,
+      current.minContextPctLargeWindow,
+      0,
+      100,
+    ),
+    message: typeof p.message === 'string' ? p.message : current.message,
   };
 }
 
@@ -4006,7 +4906,7 @@ ipcMain.handle('webhooks:generateSecret', () => randomBytes(32).toString('hex'))
 ipcMain.handle('webhooks:status', () => ({
   running: webhookServer != null,
   url: lastWebhookUrl,
-  endpoints: webhookEndpointUrls()
+  endpoints: webhookEndpointUrls(),
 }));
 
 /** Normalise one endpoint coming back from the renderer. Unknown/blank fields
@@ -4021,17 +4921,28 @@ function sanitizeWebhookTrigger(raw: unknown, existing: WebhookTrigger[]): Webho
   // no encoded traversal, nothing that could make two endpoints alias.
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(id)) return null;
   const prior = existing.find((t) => t.id === id);
-  const secret = typeof r.secret === 'string' && r.secret.trim() ? r.secret.trim() : prior?.secret ?? '';
-  const mode = isTriggerMode(r.mode) ? r.mode : prior?.mode ?? DEFAULT_TRIGGER_MODE;
+  const secret =
+    typeof r.secret === 'string' && r.secret.trim() ? r.secret.trim() : (prior?.secret ?? '');
+  const mode = isTriggerMode(r.mode) ? r.mode : (prior?.mode ?? DEFAULT_TRIGGER_MODE);
   return {
     id,
-    name: typeof r.name === 'string' && r.name.trim() ? r.name.trim() : prior?.name ?? id,
+    name: typeof r.name === 'string' && r.name.trim() ? r.name.trim() : (prior?.name ?? id),
     secret,
     // A secretless endpoint can never be enabled — it would be an open door.
-    enabled: secret ? (typeof r.enabled === 'boolean' ? r.enabled : prior?.enabled ?? false) : false,
+    enabled: secret
+      ? typeof r.enabled === 'boolean'
+        ? r.enabled
+        : (prior?.enabled ?? false)
+      : false,
     mode,
-    schema: typeof r.schema === 'string' && r.schema.trim() ? r.schema : prior?.schema ?? DEFAULT_WEBHOOK_SCHEMA,
-    createdAt: typeof r.createdAt === 'number' && r.createdAt > 0 ? r.createdAt : prior?.createdAt ?? Date.now()
+    schema:
+      typeof r.schema === 'string' && r.schema.trim()
+        ? r.schema
+        : (prior?.schema ?? DEFAULT_WEBHOOK_SCHEMA),
+    createdAt:
+      typeof r.createdAt === 'number' && r.createdAt > 0
+        ? r.createdAt
+        : (prior?.createdAt ?? Date.now()),
   };
 }
 
@@ -4050,7 +4961,7 @@ ipcMain.handle('org:setTrigger', (_evt, arg: unknown) => {
   const next: OrgTriggerConfig = {
     apiKey: typeof p.apiKey === 'string' ? p.apiKey.trim() : current.apiKey,
     enabled: typeof p.enabled === 'boolean' ? p.enabled : current.enabled,
-    mode: isTriggerMode(p.mode) ? p.mode : current.mode
+    mode: isTriggerMode(p.mode) ? p.mode : current.mode,
   };
   writeConfig({ orgTrigger: next });
   return next;
@@ -4079,7 +4990,8 @@ ipcMain.handle('triggerHistory:clear', (_evt, arg: unknown) => {
 ipcMain.handle('triggerHistory:decide', (_evt, arg: unknown) => {
   const p = (arg ?? {}) as { id?: unknown; decision?: unknown };
   const id = typeof p.id === 'string' ? p.id : '';
-  const decision = p.decision === 'approved' ? 'approved' : p.decision === 'rejected' ? 'rejected' : null;
+  const decision =
+    p.decision === 'approved' ? 'approved' : p.decision === 'rejected' ? 'rejected' : null;
   if (!id || !decision) return null;
   const entry: TriggerHistoryEntry | undefined = listTriggerHistory().find((e) => e.id === id);
   if (!entry) return null;
@@ -4093,15 +5005,21 @@ ipcMain.handle('triggerHistory:decide', (_evt, arg: unknown) => {
 
   const taskId = `webhook-${randomBytes(8).toString('hex')}`;
   const tokenHash = heldTokenHashFor(id);
-  const title = entry.title ?? (entry.body.length > 80 ? `${entry.body.slice(0, 79)}…` : entry.body);
-  if (!dispatchWebhookWork({ taskId, title, message: entry.body, tokenHash, origin: entry.source })) {
+  const title =
+    entry.title ?? (entry.body.length > 80 ? `${entry.body.slice(0, 79)}…` : entry.body);
+  if (
+    !dispatchWebhookWork({ taskId, title, message: entry.body, tokenHash, origin: entry.source })
+  ) {
     // The card is what the caller polls and what god works from. Leave the entry
     // pending so the operator can approve again once the hive is writable.
     return entry;
   }
   // The hash now lives on the card, so the caller's GET resolves through the
   // normal task lookup from here on.
-  if (tokenHash) { heldTokens().delete(tokenHash); persistHeldTokens(); }
+  if (tokenHash) {
+    heldTokens().delete(tokenHash);
+    persistHeldTokens();
+  }
   const next = updateTriggerHistory(id, { decision: 'approved', taskId });
   pruneHeldTokens();
   notifyTriggerHistoryUpdated();
@@ -4114,7 +5032,10 @@ ipcMain.handle('triggerHistory:decide', (_evt, arg: unknown) => {
 // enabled flag map onto the `legacy` WebhookTrigger the config migration created,
 // so the two surfaces can never disagree about whether the endpoint is live.
 ipcMain.handle('webhook:start', () => startWebhookServer());
-ipcMain.handle('webhook:stop', () => { stopWebhookServer(); return { ok: true }; });
+ipcMain.handle('webhook:stop', () => {
+  stopWebhookServer();
+  return { ok: true };
+});
 /** Current state + last public endpoint URL, for the Settings badge/URL field. */
 ipcMain.handle('webhook:status', () => ({ running: webhookServer != null, url: lastWebhookUrl }));
 /** Mint a strong (256-bit) secret, persist it, and return it so Settings can show
@@ -4134,7 +5055,7 @@ ipcMain.handle('webhook:setConfig', (_evt, patch: unknown) => {
   writeConfig(next);
   upsertLegacyWebhookTrigger({
     secret: typeof p.secret === 'string' ? p.secret.trim() : undefined,
-    enabled: typeof p.enabled === 'boolean' ? p.enabled : undefined
+    enabled: typeof p.enabled === 'boolean' ? p.enabled : undefined,
   });
   // Disabling (or clearing the secret) stops the public surface immediately; the
   // reconcile also picks up the case where OTHER endpoints are still enabled, in
@@ -4150,19 +5071,19 @@ ipcMain.handle('webhook:setConfig', (_evt, patch: unknown) => {
 function upsertLegacyWebhookTrigger(patch: { secret?: string; enabled?: boolean }): void {
   const list = readConfig().webhookTriggers ?? [];
   const prior = list.find((t) => t.id === 'legacy');
-  const secret = patch.secret !== undefined ? patch.secret : prior?.secret ?? '';
+  const secret = patch.secret !== undefined ? patch.secret : (prior?.secret ?? '');
   if (!secret) return;
   const row: WebhookTrigger = {
     id: 'legacy',
     name: prior?.name ?? 'Default webhook',
     secret,
-    enabled: patch.enabled !== undefined ? patch.enabled : prior?.enabled ?? false,
+    enabled: patch.enabled !== undefined ? patch.enabled : (prior?.enabled ?? false),
     mode: prior?.mode ?? DEFAULT_TRIGGER_MODE,
     schema: prior?.schema ?? DEFAULT_WEBHOOK_SCHEMA,
-    createdAt: prior?.createdAt ?? Date.now()
+    createdAt: prior?.createdAt ?? Date.now(),
   };
   writeConfig({
-    webhookTriggers: prior ? list.map((t) => (t.id === 'legacy' ? row : t)) : [...list, row]
+    webhookTriggers: prior ? list.map((t) => (t.id === 'legacy' ? row : t)) : [...list, row],
   });
 }
 
@@ -4190,7 +5111,12 @@ ipcMain.handle('freeflow:transcribe', async (_evt, arg: unknown) => {
   const cfg = readConfig();
   if (!cfg.freeflowEnabled) return { ok: false, error: 'Free Flow is disabled' };
   if (!cfg.groqApiKey) return { ok: false, error: 'no Groq API key set' };
-  const a = (arg ?? {}) as { audio?: unknown; mimeType?: unknown; filename?: unknown; language?: unknown };
+  const a = (arg ?? {}) as {
+    audio?: unknown;
+    mimeType?: unknown;
+    filename?: unknown;
+    language?: unknown;
+  };
   if (!(a.audio instanceof ArrayBuffer) && !(a.audio instanceof Uint8Array)) {
     return { ok: false, error: 'no audio' };
   }
@@ -4200,7 +5126,7 @@ ipcMain.handle('freeflow:transcribe', async (_evt, arg: unknown) => {
     mimeType: typeof a.mimeType === 'string' ? a.mimeType : undefined,
     filename: typeof a.filename === 'string' ? a.filename : undefined,
     model: cfg.freeflowModel || DEFAULT_GROQ_MODEL,
-    language: typeof a.language === 'string' && a.language ? a.language : undefined
+    language: typeof a.language === 'string' && a.language ? a.language : undefined,
   });
   if (out.ok) analytics.trackFeature('voice_dictation');
   return out;
@@ -4224,7 +5150,10 @@ registerRealtimeIpc();
 // I own the seam — inject the hive read deps, push completions to the live session
 // (so Michael speaks them unprompted), and bridge waitFor / queue-drain over IPC.
 const completionWatcher = initCompletionWatcher({
-  readTasks: () => { const t = hive.tasks() as { tasks?: TaskCard[] }; return Array.isArray(t?.tasks) ? t.tasks : []; },
+  readTasks: () => {
+    const t = hive.tasks() as { tasks?: TaskCard[] };
+    return Array.isArray(t?.tasks) ? t.tasks : [];
+  },
   // Voice dispatches go out as from:michael-voice, so assignee done-replies land here.
   readInbox: () => {
     // Voice dispatches go out from:michael-voice, so done-replies normally land in its
@@ -4235,12 +5164,21 @@ const completionWatcher = initCompletionWatcher({
       const godId = hive.registry().godId;
       const god = godId ? (hive.inbox(godId) as unknown as InboxMessage[]) : [];
       const seen = new Set<string>();
-      return [...mv, ...god].filter((m) => !!m?.id && !seen.has(m.id) && seen.add(m.id) !== undefined);
+      return [...mv, ...god].filter(
+        (m) => !!m?.id && !seen.has(m.id) && seen.add(m.id) !== undefined,
+      );
     } catch {
       return [];
     }
   },
-  onNotify: (evt) => { try { if (Notification.isSupported()) new Notification({ title: 'Michael', body: evt.summary }).show(); } catch { /* best-effort */ } }
+  onNotify: (evt) => {
+    try {
+      if (Notification.isSupported())
+        new Notification({ title: 'Michael', body: evt.summary }).show();
+    } catch {
+      /* best-effort */
+    }
+  },
 });
 
 registerRealtimeActionIpc({
@@ -4259,7 +5197,11 @@ registerRealtimeActionIpc({
     teardownPty(id);
     // A voice (MAIN-initiated) kill: the renderer never removed the card itself
     // (unlike a UI kill), so tell the floor to archive it. Mirrors hive:agentSpawned.
-    try { liveWebContents()?.send('hive:agentArchived', { id }); } catch { /* window torn down */ }
+    try {
+      liveWebContents()?.send('hive:agentArchived', { id });
+    } catch {
+      /* window torn down */
+    }
     return r;
   },
   spawnAgent: async (opts) => {
@@ -4279,18 +5221,28 @@ registerRealtimeActionIpc({
           command: o.command,
           role: o.hive?.role,
           worktreePath: res.worktreePath,
-          spawnLabel: o.hive?.spawnLabel
+          spawnLabel: o.hive?.spawnLabel,
         });
-      } catch { /* window torn down */ }
+      } catch {
+        /* window torn down */
+      }
     }
     return res;
   },
   listMissions: () => readConfig().missions ?? [],
   // The spec carries lastFiredAt through from listMissions(), so a wholesale write
   // preserves the scheduler's stamps; edit_schedule is deliberate + rare.
-  saveMissions: (missions) => { writeConfig({ missions }); },
+  saveMissions: (missions) => {
+    writeConfig({ missions });
+  },
   // rt-12: register each voice dispatch so the watcher can detect its completion.
-  trackDispatch: (d) => { try { completionWatcher.track({ ...d, kind: 'dispatch' }); } catch { /* watcher unavailable */ } },
+  trackDispatch: (d) => {
+    try {
+      completionWatcher.track({ ...d, kind: 'dispatch' });
+    } catch {
+      /* watcher unavailable */
+    }
+  },
   // ── v0.3.4 full-control extensions ──
   controlResume: (id) => control.resume(id),
   controlAutoDelivery: (id, paused) => control.pauseAutoDelivery(id, paused),
@@ -4301,23 +5253,42 @@ registerRealtimeActionIpc({
     // action tells the operator to say), so it is also the one path that lifts a
     // retirement. Restarts and restore-team must never do this implicitly — that
     // silent resurrection is the bug `retired` exists to stop.
-    if (!archived) { hive.setRetired(id, false); hive.setVacation(id, false); }
+    if (!archived) {
+      hive.setRetired(id, false);
+      hive.setVacation(id, false);
+    }
     hive.setArchived(id, archived);
-    try { liveWebContents()?.send(archived ? 'hive:agentArchived' : 'hive:agentSpawned', { id }); } catch { /* window gone */ }
+    try {
+      liveWebContents()?.send(archived ? 'hive:agentArchived' : 'hive:agentSpawned', { id });
+    } catch {
+      /* window gone */
+    }
     return { ok: true };
   },
   // clear_context: hand the text to the renderer's queue so delivery rides every
   // existing gate (idle-only, boot grace, draft/picker safety).
   enqueueToAgent: (id, text) => {
-    try { liveWebContents()?.send('realtime:enqueue', { agentId: id, text }); } catch { /* window gone */ }
+    try {
+      liveWebContents()?.send('realtime:enqueue', { agentId: id, text });
+    } catch {
+      /* window gone */
+    }
   },
   getConfigValue: (key) => (readConfig() as unknown as Record<string, unknown>)[key],
-  patchConfig: (patch) => { writeConfig(patch as Partial<HarnessConfig>); }
+  patchConfig: (patch) => {
+    writeConfig(patch as Partial<HarnessConfig>);
+  },
 });
 
 // rt-12 seam: push detected completions to the live floor; bridge live-flag, queue
 // drain (closed-session warm-start), and wait_for over IPC. Then start polling.
-completionWatcher.onCompletion((evt) => { try { liveWebContents()?.send('realtime:completion', evt); } catch { /* window gone */ } });
+completionWatcher.onCompletion((evt) => {
+  try {
+    liveWebContents()?.send('realtime:completion', evt);
+  } catch {
+    /* window gone */
+  }
+});
 // v0.3.4: the floor delta watcher shares the session-live flag — while a voice
 // session is open it pushes coalesced floor updates the renderer injects as
 // silent conversation items (snapshot-at-connect + append-only deltas).
@@ -4326,7 +5297,13 @@ const floorWatcher = new RealtimeFloorWatcher({
   registry: () => hive.registry(),
   tasks: () => hive.tasks(),
   ptys: () => ptyManager.list().map((p) => ({ id: p.id, lastOutputAt: p.lastOutputAt })),
-  push: (text) => { try { liveWebContents()?.send('realtime:floorDelta', { text }); } catch { /* window gone */ } }
+  push: (text) => {
+    try {
+      liveWebContents()?.send('realtime:floorDelta', { text });
+    } catch {
+      /* window gone */
+    }
+  },
 });
 floorWatcher.start();
 ipcMain.handle('realtime:setSessionLive', (_e, live: unknown) => {
@@ -4339,18 +5316,32 @@ ipcMain.handle('realtime:setSessionLive', (_e, live: unknown) => {
 ipcMain.handle('app:info', () => {
   let changelog = '';
   for (const p of [join(app.getAppPath(), 'CHANGELOG.md'), join(process.cwd(), 'CHANGELOG.md')]) {
-    try { changelog = readFileSync(p, 'utf8'); if (changelog) break; } catch { /* try next */ }
+    try {
+      changelog = readFileSync(p, 'utf8');
+      if (changelog) break;
+    } catch {
+      /* try next */
+    }
   }
   const top = changelog
-    ? changelog.split(/\n## /).slice(1, 3).map((s) => `## ${s}`).join('\n').slice(0, 8000)
+    ? changelog
+        .split(/\n## /)
+        .slice(1, 3)
+        .map((s) => `## ${s}`)
+        .join('\n')
+        .slice(0, 8000)
     : '';
   return { version: app.getVersion(), changelog: top };
 });
 ipcMain.handle('realtime:drainCompletions', () => completionWatcher.drainQueuedCompletions());
 ipcMain.handle('realtime:waitFor', (_e, taskId: unknown, timeoutMs: unknown) =>
   typeof taskId === 'string'
-    ? completionWatcher.waitFor(taskId, typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 120_000)
-    : Promise.resolve({ timedOut: true as const, taskId: '' }));
+    ? completionWatcher.waitFor(
+        taskId,
+        typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : 120_000,
+      )
+    : Promise.resolve({ timedOut: true as const, taskId: '' }),
+);
 completionWatcher.start();
 
 // ─── god-triggered ephemeral Slack workers ──────────────────────────────────
@@ -4369,17 +5360,17 @@ completionWatcher.start();
 interface SpawnRequest {
   id?: string;
   objective?: string;
-  command?: string;                                   // engine CLI; default = config.defaultCommand
-  provider?: AgentProvider;                           // optional explicit provider
-  model?: string;                                     // optional --model override (Claude)
-  cwd?: string;                                        // repo the worker (and its worktree) runs in
-  name?: string;                                       // display name
-  slack?: { channel: string; thread_ts: string };     // reply target + where failures surface
-  isolate?: boolean;                                   // default true (fresh worktree)
-  tokenCap?: number;                                   // optional per-worker token cap (advisory P1)
-  persistent?: boolean;                                // NOT reaped — a standing floor agent (docs: HIRING_AGENTS_MD)
-  label?: string;                                      // optional explicit task label — session-naming (see below); alias: title
-  title?: string;                                      // alias for label
+  command?: string; // engine CLI; default = config.defaultCommand
+  provider?: AgentProvider; // optional explicit provider
+  model?: string; // optional --model override (Claude)
+  cwd?: string; // repo the worker (and its worktree) runs in
+  name?: string; // display name
+  slack?: { channel: string; thread_ts: string }; // reply target + where failures surface
+  isolate?: boolean; // default true (fresh worktree)
+  tokenCap?: number; // optional per-worker token cap (advisory P1)
+  persistent?: boolean; // NOT reaped — a standing floor agent (docs: HIRING_AGENTS_MD)
+  label?: string; // optional explicit task label — session-naming (see below); alias: title
+  title?: string; // alias for label
 }
 
 /** Polling cadence — matches the hive router. */
@@ -4414,7 +5405,11 @@ function vacationRequestsDir(): string | null {
 
 /** Move a processed request out of the queue so it's never reprocessed. Works
  *  for BOTH queue dirs (fire requests archive beside themselves). */
-function archiveRequestIn(queueDir: string | null, filePath: string, sub: '.done' | '.failed'): void {
+function archiveRequestIn(
+  queueDir: string | null,
+  filePath: string,
+  sub: '.done' | '.failed',
+): void {
   try {
     if (!queueDir) throw new Error('no hive root');
     const dir = join(queueDir, sub);
@@ -4422,7 +5417,11 @@ function archiveRequestIn(queueDir: string | null, filePath: string, sub: '.done
     renameSync(filePath, join(dir, basename(filePath)));
   } catch (e) {
     // Last resort: delete it so a poison file can't loop forever.
-    try { unlinkSync(filePath); } catch { /* noop */ }
+    try {
+      unlinkSync(filePath);
+    } catch {
+      /* noop */
+    }
     console.error('[worker] archiving request failed (deleted):', filePath, e);
   }
 }
@@ -4451,7 +5450,11 @@ function workerSignaledDone(workerId: string, spawnedAt: number): boolean {
   for (const dir of [base, join(base, '.sent')]) {
     if (!existsSync(dir)) continue;
     let files: string[];
-    try { files = readdirSync(dir); } catch { continue; }
+    try {
+      files = readdirSync(dir);
+    } catch {
+      continue;
+    }
     for (const f of files) {
       if (!f.endsWith('.json')) continue;
       const fp = join(dir, f);
@@ -4460,10 +5463,16 @@ function workerSignaledDone(workerId: string, spawnedAt: number): boolean {
         if (msg.act !== 'done') continue;
         let ts = Date.parse(msg.created_at ?? '');
         if (!Number.isFinite(ts)) {
-          try { ts = statSync(fp).mtimeMs; } catch { ts = NaN; }
+          try {
+            ts = statSync(fp).mtimeMs;
+          } catch {
+            ts = NaN;
+          }
         }
         if (Number.isFinite(ts) && ts > spawnedAt) return true;
-      } catch { /* skip unreadable/partial */ }
+      } catch {
+        /* skip unreadable/partial */
+      }
     }
   }
   return false;
@@ -4480,38 +5489,65 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     raw = JSON.parse(readFileSync(filePath, 'utf8')) as SpawnRequest;
   } catch (e) {
     console.error('[worker] unparseable spawn-request:', filePath, e);
-    informGod('[worker spawn rejected] unparseable request', `Could not parse spawn-request ${basename(filePath)} — ${String(e)}`);
+    informGod(
+      '[worker spawn rejected] unparseable request',
+      `Could not parse spawn-request ${basename(filePath)} — ${String(e)}`,
+    );
     archiveRequest(filePath, '.failed');
     return;
   }
-  const slack = raw.slack && typeof raw.slack.channel === 'string' && typeof raw.slack.thread_ts === 'string'
-    ? { channel: raw.slack.channel, thread_ts: raw.slack.thread_ts } : undefined;
+  const slack =
+    raw.slack && typeof raw.slack.channel === 'string' && typeof raw.slack.thread_ts === 'string'
+      ? { channel: raw.slack.channel, thread_ts: raw.slack.thread_ts }
+      : undefined;
   const fail = (reason: string): void => {
-    informGod(`[worker spawn rejected] ${reason}`, `Spawn-request ${basename(filePath)} rejected: ${reason}.`, slack);
+    informGod(
+      `[worker spawn rejected] ${reason}`,
+      `Spawn-request ${basename(filePath)} rejected: ${reason}.`,
+      slack,
+    );
     archiveRequest(filePath, '.failed');
   };
 
   const objective = typeof raw.objective === 'string' ? raw.objective.trim() : '';
-  if (!objective) { fail('missing "objective"'); return; }
+  if (!objective) {
+    fail('missing "objective"');
+    return;
+  }
 
-  const reqId = (typeof raw.id === 'string' && raw.id.trim() ? raw.id.trim() : basename(filePath).replace(/\.json$/i, ''))
-    .replace(/[^A-Za-z0-9._-]/g, '-');
+  const reqId = (
+    typeof raw.id === 'string' && raw.id.trim()
+      ? raw.id.trim()
+      : basename(filePath).replace(/\.json$/i, '')
+  ).replace(/[^A-Za-z0-9._-]/g, '-');
   const persistent = raw.persistent === true; // see the fuller comment below
   // Interns get their own id prefix — instantly distinguishable in registry,
   // inboxes, agent dirs, logs, and on the floor card.
   const workerId = `${persistent ? 'intern' : 'worker'}-${reqId}`;
-  if (liveWorkers.has(workerId)) { fail(`worker "${workerId}" already running`); return; }
+  if (liveWorkers.has(workerId)) {
+    fail(`worker "${workerId}" already running`);
+    return;
+  }
   // A persistent hire doesn't join liveWorkers, so the dup-check above can't
   // catch a live intern of the same id — guard it here (a PTY id collision
   // would clobber the running agent).
-  if (persistent && ptyForAgent(workerId)) { fail(`intern "${workerId}" is already on the floor — close its terminal or pick another id`); return; }
+  if (persistent && ptyForAgent(workerId)) {
+    fail(`intern "${workerId}" is already on the floor — close its terminal or pick another id`);
+    return;
+  }
 
   // Worker request files are hand/LLM-authored, so `~/…` shows up here too — expand
   // before the existence check (Node reads `~` literally).
   const cwd = typeof raw.cwd === 'string' && raw.cwd.trim() ? expandTilde(raw.cwd) : '';
-  if (!cwd || !existsSync(cwd)) { fail(`"cwd" missing or not found (${cwd || 'unset'})`); return; }
+  if (!cwd || !existsSync(cwd)) {
+    fail(`"cwd" missing or not found (${cwd || 'unset'})`);
+    return;
+  }
 
-  const command = typeof raw.command === 'string' && raw.command.trim() ? raw.command.trim() : (readConfig().defaultCommand ?? 'claude');
+  const command =
+    typeof raw.command === 'string' && raw.command.trim()
+      ? raw.command.trim()
+      : (readConfig().defaultCommand ?? 'claude');
   // Permission mode (card permission-mode-config-20260816): god's workers and
   // interns follow the installation's worker-bypass SETTING — DEFAULT OFF,
   // bypass is the operator's per-installation opt-in, never the shipped
@@ -4525,7 +5561,10 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   const bin = command.split(/\s+/)[0] || command;
   // Missing-CLI → FAIL FAST. A headless worker has no human to watch an installer,
   // so we never run the cc49e1e install banner here — we reject and tell god.
-  if (!ptyManager.isCommandAvailable(bin)) { fail(`engine CLI "${bin}" is not installed`); return; }
+  if (!ptyManager.isCommandAvailable(bin)) {
+    fail(`engine CLI "${bin}" is not installed`);
+    return;
+  }
 
   // Isolation default is worktree for EVERYONE — ephemeral workers AND interns
   // (Stefan's policy, amendment spawn-bypass-flag-dropped): an explicit
@@ -4542,13 +5581,20 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   // distinguishable from human-made ones everywhere.
   // Base branch the worktree will be cut from (for the ahead-of-base safety check).
   let baseBranch = 'main';
-  try { const br = await getBranch(cwd); if ('current' in br && br.current) baseBranch = br.current; } catch { /* keep default */ }
+  try {
+    const br = await getBranch(cwd);
+    if ('current' in br && br.current) baseBranch = br.current;
+  } catch {
+    /* keep default */
+  }
 
   // Intern naming: a custom name gets the " (Intern)" suffix (idempotently);
   // no name → "Intern <id>". Plain workers keep the old scheme.
   const rawName = typeof raw.name === 'string' ? raw.name.trim() : '';
   const displayName = persistent
-    ? rawName ? `${rawName.replace(/\s*\(intern\)$/i, '')} (Intern)` : `Intern ${reqId.slice(0, 12)}`
+    ? rawName
+      ? `${rawName.replace(/\s*\(intern\)$/i, '')} (Intern)`
+      : `Intern ${reqId.slice(0, 12)}`
     : rawName || `Worker ${reqId.slice(0, 12)}`;
   const meta: AgentMeta = {
     id: workerId,
@@ -4561,7 +5607,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     // names the session after the engagement. Explicit label/title wins; else
     // derived from the objective's first sentence. '' → undefined (unlabeled
     // agents keep today's generic first turn).
-    spawnLabel: deriveSpawnLabel(raw.label ?? raw.title, objective) || undefined
+    spawnLabel: deriveSpawnLabel(raw.label ?? raw.title, objective) || undefined,
   };
   // Phase 2: grant this worker a broker capability over the currently-enabled
   // integrations and inject the broker URL + a per-worker capability TOKEN (a handle,
@@ -4575,9 +5621,17 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     brokerEnv.MD_BROKER_TOKEN = token;
   }
   const spawnOpts: AgentSpawnOptions = {
-    id: workerId, cwd, command, cols: 120, rows: 32,
+    id: workerId,
+    cwd,
+    command,
+    cols: 120,
+    rows: 32,
     args: raw.model ? ['--model', raw.model] : [],
-    hive: meta, isolate, provider: raw.provider, env: brokerEnv, permissionMode
+    hive: meta,
+    isolate,
+    provider: raw.provider,
+    env: brokerEnv,
+    permissionMode,
   };
 
   let res: { ok: boolean; error?: string; worktreePath?: string };
@@ -4588,16 +5642,30 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   } catch (e) {
     res = { ok: false, error: String(e) };
   }
-  if (!res.ok) { integrationBroker.revoke(workerId); fail(`spawn failed — ${res.error ?? 'unknown error'}`); return; }
+  if (!res.ok) {
+    integrationBroker.revoke(workerId);
+    fail(`spawn failed — ${res.error ?? 'unknown error'}`);
+    return;
+  }
 
   // Register for done-scan / idle-reap / token-cap / safe teardown (pty id == workerId).
   // tokenCap is optional plumbing (default unlimited) — only a positive finite cap is kept.
   // A PERSISTENT hire skips registration entirely: no done/idle/token reap, no
   // ephemeral-worktree teardown — it stands on the floor like a modal hire.
-  const tokenCap = typeof raw.tokenCap === 'number' && Number.isFinite(raw.tokenCap) && raw.tokenCap > 0
-    ? raw.tokenCap : undefined;
+  const tokenCap =
+    typeof raw.tokenCap === 'number' && Number.isFinite(raw.tokenCap) && raw.tokenCap > 0
+      ? raw.tokenCap
+      : undefined;
   if (!persistent) {
-    liveWorkers.set(workerId, { workerId, reqId, name: meta.name, slack, baseBranch, spawnedAt: Date.now(), tokenCap });
+    liveWorkers.set(workerId, {
+      workerId,
+      reqId,
+      name: meta.name,
+      slack,
+      baseBranch,
+      spawnedAt: Date.now(),
+      tokenCap,
+    });
   }
 
   // Dispatch the objective via the standard inbox path (zero new transport),
@@ -4611,12 +5679,23 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     const suffix = persistent
       ? `\n\n[CAPABILITIES] Before you start, consult your capability catalog — run the \`/capabilities\` skill (or read \`$AGENT_DIR/.claude/skills/capabilities/SKILL.md\`). It lists your temporal date-range skills (\`/today\`, \`/last30Days\`, \`/lastQuarter\`, …) and the integrations available to you (reached via the loopback broker) and how to call each. For any time-scoped work, resolve the dates with those skills instead of computing them by hand.\n\n[INTERN HIRE] You are a STANDING member of the floor (an INTERN hired by god) — you are NOT released when this task completes. When finished, send ONE outbox message to god with "act":"done" and a short result summary, then await further instructions in your inbox. Do NOT push to any remote; god is the sole integrator.`
       : `\n\n[CAPABILITIES] Before you start, consult your capability catalog — run the \`/capabilities\` skill (or read \`$AGENT_DIR/.claude/skills/capabilities/SKILL.md\`). It lists your temporal date-range skills (\`/today\`, \`/last30Days\`, \`/lastQuarter\`, …) and the integrations available to you (reached via the loopback broker) and how to call each. For any time-scoped work, resolve the dates with those skills instead of computing them by hand.\n\n[WORKER COMPLETION] When finished, signal done by sending ONE outbox message to god with "act":"done" and a short result summary — that releases this ephemeral worker (terminal closed; your branch is handed to god). Do NOT push to any remote; god is the sole integrator.`;
-    hive.send({ to: workerId, conversation: `worker-${reqId}`, act: 'request', subject: meta.name, body: `${prefix}${objective}${suffix}` }, 'god');
+    hive.send(
+      {
+        to: workerId,
+        conversation: `worker-${reqId}`,
+        act: 'request',
+        subject: meta.name,
+        body: `${prefix}${objective}${suffix}`,
+      },
+      'god',
+    );
   } catch (e) {
     console.error('[worker] dispatch send failed:', e);
   }
 
-  console.log(`[worker] spawned ${persistent ? 'INTERN ' : ''}${workerId} (cwd=${cwd}, base=${baseBranch}${slack ? ', slack' : ''})`);
+  console.log(
+    `[worker] spawned ${persistent ? 'INTERN ' : ''}${workerId} (cwd=${cwd}, base=${baseBranch}${slack ? ', slack' : ''})`,
+  );
   if (persistent) {
     // The renderer roster is only mutated by renderer-initiated hires, so without
     // this broadcast a MAIN-spawned persistent hire is headless-invisible. Effect
@@ -4629,9 +5708,11 @@ async function processSpawnRequest(filePath: string): Promise<void> {
         cwd: res.worktreePath ?? cwd,
         command,
         role: meta.role, // 'intern' for persistent hires — matches the registry (useHive shows it on the card)
-        spawnLabel: meta.spawnLabel // leads the renderer's typed nudge → session name
+        spawnLabel: meta.spawnLabel, // leads the renderer's typed nudge → session name
       });
-    } catch { /* window torn down */ }
+    } catch {
+      /* window torn down */
+    }
   }
   archiveRequest(filePath, '.done');
 }
@@ -4648,7 +5729,10 @@ function processFireRequest(filePath: string): void {
     raw = JSON.parse(readFileSync(filePath, 'utf8')) as { id?: string };
   } catch (e) {
     console.error('[worker] unparseable fire-request:', filePath, e);
-    informGod('[fire rejected] unparseable request', `Could not parse fire-request ${basename(filePath)} — ${String(e)}`);
+    informGod(
+      '[fire rejected] unparseable request',
+      `Could not parse fire-request ${basename(filePath)} — ${String(e)}`,
+    );
     archiveRequestIn(fireRequestsDir(), filePath, '.failed');
     return;
   }
@@ -4658,20 +5742,37 @@ function processFireRequest(filePath: string): void {
   };
 
   const rawId = typeof raw.id === 'string' ? raw.id.trim() : '';
-  if (!rawId) { fail('missing "id" (the intern agent id, e.g. "intern-docs-writer")'); return; }
+  if (!rawId) {
+    fail('missing "id" (the intern agent id, e.g. "intern-docs-writer")');
+    return;
+  }
   const agentId = rawId.startsWith('intern-') ? rawId : `intern-${rawId}`;
 
-  if (!hive.enabled()) { fail('hive disabled'); return; }
+  if (!hive.enabled()) {
+    fail('hive disabled');
+    return;
+  }
   const reg = hive.registry();
   const entry = reg.agents[agentId];
-  if (!entry) { fail(`no agent "${agentId}" in the registry`); return; }
-  if (entry.role !== 'intern') { fail(`"${agentId}" is a ${entry.role ?? 'plain hire'}, not an intern — only god-hired interns are fireable from Bash`); return; }
+  if (!entry) {
+    fail(`no agent "${agentId}" in the registry`);
+    return;
+  }
+  if (entry.role !== 'intern') {
+    fail(
+      `"${agentId}" is a ${entry.role ?? 'plain hire'}, not an intern — only god-hired interns are fireable from Bash`,
+    );
+    return;
+  }
 
   // Already FIRED is the only "nothing to do" — `archived` is liveness (44df562),
   // set on every PTY-less agent by the boot sweep, so testing it here made firing
   // an intern after a restart a no-op that left them retire-less AND on the floor.
   if (entry.retired) {
-    informGod(`[fired] ${agentId} (already fired)`, `Intern ${entry.name} was already retired; nothing to tear down. Request consumed.`);
+    informGod(
+      `[fired] ${agentId} (already fired)`,
+      `Intern ${entry.name} was already retired; nothing to tear down. Request consumed.`,
+    );
     archiveRequestIn(fireRequestsDir(), filePath, '.done');
     return;
   }
@@ -4679,7 +5780,11 @@ function processFireRequest(filePath: string): void {
   // Live PTY → the standard kill/teardown (archives the registry entry).
   const ptyId = ptyForAgent(agentId);
   if (ptyId) {
-    try { ptyManager.kill(ptyId); } catch { /* already gone — teardown is idempotent */ }
+    try {
+      ptyManager.kill(ptyId);
+    } catch {
+      /* already gone — teardown is idempotent */
+    }
     teardownPty(ptyId);
   }
   // Retirement is the POINT of a fire, and it has to outlive the renderer: the
@@ -4692,8 +5797,15 @@ function processFireRequest(filePath: string): void {
   // UI kill), so tell the floor to archive it — same as the voice kill at
   // killAgent(). Without this the floor card outlives the fire, survives in
   // persisted `cth.agents`, and the next reload respawns the intern from it.
-  try { liveWebContents()?.send('hive:agentArchived', { id: agentId }); } catch { /* window gone */ }
-  informGod(`[fired] ${agentId}`, `Intern ${entry.name} was fired: terminal closed, agent retired in the registry — this survives a restart, and spawning or restoring the same id is now refused. Their memory and inbox are kept; to bring them back, reinstate them explicitly (unarchive) or hire a new intern under a fresh id.`);
+  try {
+    liveWebContents()?.send('hive:agentArchived', { id: agentId });
+  } catch {
+    /* window gone */
+  }
+  informGod(
+    `[fired] ${agentId}`,
+    `Intern ${entry.name} was fired: terminal closed, agent retired in the registry — this survives a restart, and spawning or restoring the same id is now refused. Their memory and inbox are kept; to bring them back, reinstate them explicitly (unarchive) or hire a new intern under a fresh id.`,
+  );
   console.log(`[worker] fired intern ${agentId}`);
   archiveRequestIn(fireRequestsDir(), filePath, '.done');
 }
@@ -4706,9 +5818,15 @@ function parkAgent(agentId: string, reason?: string): { ok: boolean; error?: str
   const reg = hive.registry();
   const entry = reg.agents[agentId];
   if (!entry) return { ok: false, error: `no agent "${agentId}" in the registry` };
-  if (entry.isGod || reg.godId === agentId) return { ok: false, error: 'god does not go on vacation' };
-  if (entry.role === 'intern') return { ok: false, error: `"${agentId}" is an intern — interns are fired, never parked` };
-  if (entry.retired) return { ok: false, error: `"${agentId}" was fired — retired and vacation are mutually exclusive` };
+  if (entry.isGod || reg.godId === agentId)
+    return { ok: false, error: 'god does not go on vacation' };
+  if (entry.role === 'intern')
+    return { ok: false, error: `"${agentId}" is an intern — interns are fired, never parked` };
+  if (entry.retired)
+    return {
+      ok: false,
+      error: `"${agentId}" was fired — retired and vacation are mutually exclusive`,
+    };
   if (entry.vacation) return { ok: false, error: `"${agentId}" is already on vacation` };
   const ptyId = ptyForAgent(agentId);
   if (ptyId) {
@@ -4731,12 +5849,20 @@ function parkAgent(agentId: string, reason?: string): { ok: boolean; error?: str
     // park now matches the path that was always correct.
     worktreePaths.delete(ptyId);
     worktreeOrigins.delete(ptyId);
-    try { ptyManager.kill(ptyId); } catch { /* already gone — teardown is idempotent */ }
-    teardownPty(ptyId);   // sets archived (liveness); vacation is the layer on top
+    try {
+      ptyManager.kill(ptyId);
+    } catch {
+      /* already gone — teardown is idempotent */
+    }
+    teardownPty(ptyId); // sets archived (liveness); vacation is the layer on top
   }
   hive.setVacation(agentId, true);
   const vacationSince = hive.registry().agents[agentId]?.vacationSince ?? Date.now();
-  try { liveWebContents()?.send('hive:agentVacationed', { id: agentId, vacationSince }); } catch { /* window gone */ }
+  try {
+    liveWebContents()?.send('hive:agentVacationed', { id: agentId, vacationSince });
+  } catch {
+    /* window gone */
+  }
   hive.appendLog({ kind: 'vacation_park', agentId, reason: reason ?? null });
   console.log(`[vacation] parked ${agentId}${reason ? ` — ${reason}` : ''}`);
   return { ok: true };
@@ -4755,26 +5881,37 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
   // Only ever true for a non-god, non-intern, non-retired agent (parkAgent's own
   // guards) — so this one check transitively covers everything parkAgent defends
   // against, without repeating each rule here.
-  if (!hive.isOnVacation(agentId)) return { ok: false, error: `"${agentId}" is not on vacation — nothing to recall` };
+  if (!hive.isOnVacation(agentId))
+    return { ok: false, error: `"${agentId}" is not on vacation — nothing to recall` };
   if (ptyForAgent(agentId)) return { ok: false, error: `"${agentId}" is already on the floor` };
   const recipe = rosterRecipe(agentId);
   const command = recipe.command ?? readConfig().defaultCommand ?? 'claude';
   const provider = entry.provider ?? inferAgentProvider(command);
   const bin = command.split(/\s+/)[0] || command;
-  if (!ptyManager.isCommandAvailable(bin)) return { ok: false, error: `engine CLI "${bin}" is not installed` };
+  if (!ptyManager.isCommandAvailable(bin))
+    return { ok: false, error: `engine CLI "${bin}" is not installed` };
   const cwd = recipe.cwd ?? entry.cwd;
-  if (!cwd || !existsSync(cwd)) return { ok: false, error: `cwd missing or not found (${cwd || 'unset'})` };
+  if (!cwd || !existsSync(cwd))
+    return { ok: false, error: `cwd missing or not found (${cwd || 'unset'})` };
   let res: { ok: boolean; error?: string; worktreePath?: string };
   try {
-    res = await spawnAgentCore({
-      id: agentId, cwd, command, cols: 120, rows: 32,
-      args: recipe.model ? ['--model', recipe.model] : [],
-      hive: { id: agentId, name: entry.name, provider, role: entry.role, cwd },
-      isolate: false, provider,
-      // The vacationer's OWN hire-time choice (roster mirror) — the central
-      // injection appends its flag; a flag typed into the saved command wins.
-      permissionMode: recipe.permissionMode
-    }, liveWebContents());
+    res = await spawnAgentCore(
+      {
+        id: agentId,
+        cwd,
+        command,
+        cols: 120,
+        rows: 32,
+        args: recipe.model ? ['--model', recipe.model] : [],
+        hive: { id: agentId, name: entry.name, provider, role: entry.role, cwd },
+        isolate: false,
+        provider,
+        // The vacationer's OWN hire-time choice (roster mirror) — the central
+        // injection appends its flag; a flag typed into the saved command wins.
+        permissionMode: recipe.permissionMode,
+      },
+      liveWebContents(),
+    );
   } catch (e) {
     res = { ok: false, error: String(e) };
   }
@@ -4790,10 +5927,17 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
   }
   try {
     liveWebContents()?.send('hive:agentSpawned', {
-      id: agentId, name: entry.name, provider, cwd: res.worktreePath ?? cwd,
-      command, role: entry.role, worktreePath: res.worktreePath
+      id: agentId,
+      name: entry.name,
+      provider,
+      cwd: res.worktreePath ?? cwd,
+      command,
+      role: entry.role,
+      worktreePath: res.worktreePath,
     });
-  } catch { /* window torn down */ }
+  } catch {
+    /* window torn down */
+  }
   hive.appendLog({ kind: 'vacation_recall', agentId });
   console.log(`[vacation] recalled ${agentId}`);
   return { ok: true };
@@ -4803,16 +5947,29 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
  *  `command`/`model`/`cwd` live in the renderer's Agent, not in the registry.
  *  Every field is optional: a missing mirror just means falling back to the
  *  configured default engine and the registry cwd. */
-function rosterRecipe(id: string): { command?: string; model?: string; cwd?: string; permissionMode?: HirePermissionMode } {
+function rosterRecipe(id: string): {
+  command?: string;
+  model?: string;
+  cwd?: string;
+  permissionMode?: HirePermissionMode;
+} {
   try {
     const snap = roster.read();
     if (!snap) return {};
     const rows = [...snap.agents, ...snap.archived, ...snap.restorable] as Array<{
-      id?: string; command?: string; model?: string; cwd?: string; permissionMode?: HirePermissionMode;
+      id?: string;
+      command?: string;
+      model?: string;
+      cwd?: string;
+      permissionMode?: HirePermissionMode;
     }>;
     const row = rows.find((a) => a?.id === id);
-    return row ? { command: row.command, model: row.model, cwd: row.cwd, permissionMode: row.permissionMode } : {};
-  } catch { return {}; }
+    return row
+      ? { command: row.command, model: row.model, cwd: row.cwd, permissionMode: row.permissionMode }
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 /** Vacation-request — god parking an idle human-created agent, or fetching one
@@ -4825,7 +5982,10 @@ async function processVacationRequest(filePath: string): Promise<void> {
   try {
     raw = JSON.parse(readFileSync(filePath, 'utf8'));
   } catch (e) {
-    informGod('[vacation rejected] unparseable request', `Could not parse vacation-request ${basename(filePath)} — ${String(e)}`);
+    informGod(
+      '[vacation rejected] unparseable request',
+      `Could not parse vacation-request ${basename(filePath)} — ${String(e)}`,
+    );
     archiveRequestIn(vacationRequestsDir(), filePath, '.failed');
     return;
   }
@@ -4835,8 +5995,13 @@ async function processVacationRequest(filePath: string): Promise<void> {
   };
   // `id` accepted beside `agentId` — both spellings ship in the docs' sibling
   // request formats, and a typo here would otherwise read as a silent no-op.
-  const agentId = (typeof raw.agentId === 'string' ? raw.agentId : typeof raw.id === 'string' ? raw.id : '').trim();
-  if (!agentId) { fail('missing "agentId"'); return; }
+  const agentId = (
+    typeof raw.agentId === 'string' ? raw.agentId : typeof raw.id === 'string' ? raw.id : ''
+  ).trim();
+  if (!agentId) {
+    fail('missing "agentId"');
+    return;
+  }
   const recall = String(raw.action ?? 'park').toLowerCase() === 'recall';
   // Belt-and-suspenders on top of recallAgent's own try/catch: neither verb may
   // ever throw past this point, or the request is reprocessed on every tick
@@ -4847,12 +6012,15 @@ async function processVacationRequest(filePath: string): Promise<void> {
   } catch (e) {
     res = { ok: false, error: String(e) };
   }
-  if (!res.ok) { fail(res.error ?? 'unknown error'); return; }
+  if (!res.ok) {
+    fail(res.error ?? 'unknown error');
+    return;
+  }
   informGod(
     recall ? `[recalled] ${agentId}` : `[on vacation] ${agentId}`,
     recall
       ? `${agentId} is back on the floor — its pane resumed the agent's own session and its inbox drains on the next turn.`
-      : `${agentId} is on vacation: terminal closed, zero cost, off the floor but NOT deletable. Fetch it back with an "action":"recall" vacation-request when work fits it.`
+      : `${agentId} is on vacation: terminal closed, zero cost, off the floor but NOT deletable. Fetch it back with an "action":"recall" vacation-request when work fits it.`,
   );
   archiveRequestIn(vacationRequestsDir(), filePath, '.done');
 }
@@ -4894,18 +6062,25 @@ async function gcPreservedWorktrees(): Promise<void> {
       }
       // (b) Still on disk → reclaim ONLY when provably integrated + clean.
       let safe: { gc: boolean; detail: string };
-      try { safe = await worktreeIsGcSafe(e.wtPath, e.baseBranch); }
-      catch (err) { console.error('[worker gc] gc-safe check threw (keeping):', err); continue; }
+      try {
+        safe = await worktreeIsGcSafe(e.wtPath, e.baseBranch);
+      } catch (err) {
+        console.error('[worker gc] gc-safe check threw (keeping):', err);
+        continue;
+      }
       if (!safe.gc) continue; // keep — fail-safe
       const r = await removeWorktree(e.origCwd, e.wtPath);
-      if (!r.ok) { console.error(`[worker gc] removeWorktree failed (keeping ${e.workerId}):`, r.error); continue; }
+      if (!r.ok) {
+        console.error(`[worker gc] removeWorktree failed (keeping ${e.workerId}):`, r.error);
+        continue;
+      }
       removeWorkerScratch(e.workerId);
       preservedWorktrees.delete(key);
       console.log(`[worker gc] reclaimed ${e.workerId} (${safe.detail})`);
       informGod(
         `[worker worktree reclaimed] ${e.workerId}`,
         `The preserved worktree for ${e.workerId} is now integrated (${safe.detail}), so it and its scratch dir were garbage-collected.\nWorktree: ${e.wtPath}`,
-        e.slack
+        e.slack,
       );
     }
   } finally {
@@ -4925,8 +6100,10 @@ async function ephemeralWorkerTick(): Promise<void> {
     const idleTimeoutMs = Math.max(1, cfg.workerIdleTimeoutMinutes ?? 20) * 60_000;
     // Per-worker token cap. 0 = UNLIMITED (the default — wired but never throttles
     // unless a positive cap is set per-request or via defaultWorkerTokenCap).
-    const defaultTokenCap = typeof cfg.defaultWorkerTokenCap === 'number' && cfg.defaultWorkerTokenCap > 0
-      ? cfg.defaultWorkerTokenCap : 0;
+    const defaultTokenCap =
+      typeof cfg.defaultWorkerTokenCap === 'number' && cfg.defaultWorkerTokenCap > 0
+        ? cfg.defaultWorkerTokenCap
+        : 0;
 
     // (1) Finish or reap. ptyManager.kill → teardownPty → gated worktree + archive
     //     + liveWorkers.delete. `releasing` guards the gap before onExit fires.
@@ -4941,16 +6118,18 @@ async function ephemeralWorkerTick(): Promise<void> {
       }
       // Token-cap reap (default-off plumbing). An effective cap > 0 → reap when the
       // worker's cumulative token use exceeds it; its committed work is preserved.
-      const tokenCap = (rec.tokenCap && rec.tokenCap > 0) ? rec.tokenCap : defaultTokenCap;
+      const tokenCap = rec.tokenCap && rec.tokenCap > 0 ? rec.tokenCap : defaultTokenCap;
       if (tokenCap > 0) {
         const used = workerTokensUsed(workerId);
         if (used > tokenCap) {
           rec.releasing = true;
-          console.warn(`[worker] reaping ${workerId} — token cap (${used.toLocaleString()} > ${tokenCap.toLocaleString()})`);
+          console.warn(
+            `[worker] reaping ${workerId} — token cap (${used.toLocaleString()} > ${tokenCap.toLocaleString()})`,
+          );
           informGod(
             `[worker reaped — token cap] ${workerId}`,
             `Worker ${workerId} used ${used.toLocaleString()} tokens (> its cap of ${tokenCap.toLocaleString()}) and was reaped. Any committed work on its branch is preserved for you.`,
-            rec.slack
+            rec.slack,
           );
           ptyManager.kill(workerId);
           continue;
@@ -4964,7 +6143,7 @@ async function ephemeralWorkerTick(): Promise<void> {
         informGod(
           `[worker reaped — idle] ${workerId}`,
           `Worker ${workerId} produced no output for ${Math.round(idleMs / 60000)} min (> the ${Math.round(idleTimeoutMs / 60000)} min cap) and never signaled done, so it was reaped. Any committed work on its branch is preserved for you.`,
-          rec.slack
+          rec.slack,
         );
         ptyManager.kill(workerId);
       }
@@ -4975,7 +6154,13 @@ async function ephemeralWorkerTick(): Promise<void> {
     const dir = spawnRequestsDir();
     if (dir && existsSync(dir)) {
       let files: string[] = [];
-      try { files = readdirSync(dir).filter(f => f.endsWith('.json')).sort(); } catch { /* dir vanished */ }
+      try {
+        files = readdirSync(dir)
+          .filter((f) => f.endsWith('.json'))
+          .sort();
+      } catch {
+        /* dir vanished */
+      }
       for (const f of files) {
         if (liveWorkers.size >= maxWorkers) break;
         await processSpawnRequest(join(dir, f));
@@ -4987,7 +6172,13 @@ async function ephemeralWorkerTick(): Promise<void> {
     const fdir = fireRequestsDir();
     if (fdir && existsSync(fdir)) {
       let files: string[] = [];
-      try { files = readdirSync(fdir).filter(f => f.endsWith('.json')).sort(); } catch { /* dir vanished */ }
+      try {
+        files = readdirSync(fdir)
+          .filter((f) => f.endsWith('.json'))
+          .sort();
+      } catch {
+        /* dir vanished */
+      }
       for (const f of files) await processFireRequest(join(fdir, f));
     }
 
@@ -4997,7 +6188,13 @@ async function ephemeralWorkerTick(): Promise<void> {
     const vdir = vacationRequestsDir();
     if (vdir && existsSync(vdir)) {
       let files: string[] = [];
-      try { files = readdirSync(vdir).filter(f => f.endsWith('.json')).sort(); } catch { /* dir vanished */ }
+      try {
+        files = readdirSync(vdir)
+          .filter((f) => f.endsWith('.json'))
+          .sort();
+      } catch {
+        /* dir vanished */
+      }
       for (const f of files) await processVacationRequest(join(vdir, f));
     }
 
@@ -5018,19 +6215,42 @@ async function ephemeralWorkerTick(): Promise<void> {
 function startEphemeralWorkerWatcher(): void {
   if (workerWatchTimer || !hive.enabled()) return;
   const dir = spawnRequestsDir();
-  if (dir) { try { mkdirSync(dir, { recursive: true }); } catch { /* noop */ } }
+  if (dir) {
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+      /* noop */
+    }
+  }
   // fire-requests/ needs the same bootstrap (card fire-requests-dir-not-created):
   // the tick polls it with existsSync, and god's very first `cat >` into a
   // fresh install's missing dir would fail before the watcher ever ran.
   const fdir = fireRequestsDir();
-  if (fdir) { try { mkdirSync(fdir, { recursive: true }); } catch { /* noop */ } }
+  if (fdir) {
+    try {
+      mkdirSync(fdir, { recursive: true });
+    } catch {
+      /* noop */
+    }
+  }
   const vdir = vacationRequestsDir();
-  if (vdir) { try { mkdirSync(vdir, { recursive: true }); } catch { /* noop */ } }
-  workerWatchTimer = setInterval(() => { void ephemeralWorkerTick(); }, WORKER_TICK_MS);
+  if (vdir) {
+    try {
+      mkdirSync(vdir, { recursive: true });
+    } catch {
+      /* noop */
+    }
+  }
+  workerWatchTimer = setInterval(() => {
+    void ephemeralWorkerTick();
+  }, WORKER_TICK_MS);
 }
 
 function stopEphemeralWorkerWatcher(): void {
-  if (workerWatchTimer) { clearInterval(workerWatchTimer); workerWatchTimer = null; }
+  if (workerWatchTimer) {
+    clearInterval(workerWatchTimer);
+    workerWatchTimer = null;
+  }
 }
 
 /** Snapshot of one live ephemeral worker for the renderer Workers tab. */
@@ -5041,9 +6261,9 @@ interface WorkerSnapshot {
   baseBranch: string;
   spawnedAt: number;
   ageMs: number;
-  idleMs: number | null;        // null = PTY already gone
+  idleMs: number | null; // null = PTY already gone
   tokensUsed: number;
-  tokenCap: number | null;      // effective cap (per-request or config default); null = unlimited
+  tokenCap: number | null; // effective cap (per-request or config default); null = unlimited
   hasSlack: boolean;
   releasing: boolean;
   status: 'releasing' | 'working';
@@ -5057,34 +6277,43 @@ interface PreservedSnapshot {
 }
 
 /** List live ephemeral workers (+ preserved worktrees awaiting GC) for the tab. */
-ipcMain.handle('workers:list', (): { live: WorkerSnapshot[]; preserved: PreservedSnapshot[]; maxWorkers: number } => {
-  const cfg = readConfig();
-  const defaultCap = typeof cfg.defaultWorkerTokenCap === 'number' && cfg.defaultWorkerTokenCap > 0
-    ? cfg.defaultWorkerTokenCap : 0;
-  const now = Date.now();
-  const live: WorkerSnapshot[] = [...liveWorkers.values()].map((rec) => {
-    const idle = ptyManager.idleFor(rec.workerId);
-    const effCap = (rec.tokenCap && rec.tokenCap > 0) ? rec.tokenCap : (defaultCap > 0 ? defaultCap : 0);
-    return {
-      workerId: rec.workerId,
-      reqId: rec.reqId,
-      name: rec.name ?? rec.workerId,
-      baseBranch: rec.baseBranch,
-      spawnedAt: rec.spawnedAt,
-      ageMs: Math.max(0, now - rec.spawnedAt),
-      idleMs: idle === undefined ? null : idle,
-      tokensUsed: workerTokensUsed(rec.workerId),
-      tokenCap: effCap > 0 ? effCap : null,
-      hasSlack: !!rec.slack,
-      releasing: !!rec.releasing,
-      status: rec.releasing ? 'releasing' : 'working'
-    };
-  });
-  const preserved: PreservedSnapshot[] = [...preservedWorktrees.values()].map((e) => ({
-    workerId: e.workerId, wtPath: e.wtPath, baseBranch: e.baseBranch, preservedAt: e.preservedAt
-  }));
-  return { live, preserved, maxWorkers: Math.max(1, cfg.maxConcurrentWorkers ?? 4) };
-});
+ipcMain.handle(
+  'workers:list',
+  (): { live: WorkerSnapshot[]; preserved: PreservedSnapshot[]; maxWorkers: number } => {
+    const cfg = readConfig();
+    const defaultCap =
+      typeof cfg.defaultWorkerTokenCap === 'number' && cfg.defaultWorkerTokenCap > 0
+        ? cfg.defaultWorkerTokenCap
+        : 0;
+    const now = Date.now();
+    const live: WorkerSnapshot[] = [...liveWorkers.values()].map((rec) => {
+      const idle = ptyManager.idleFor(rec.workerId);
+      const effCap =
+        rec.tokenCap && rec.tokenCap > 0 ? rec.tokenCap : defaultCap > 0 ? defaultCap : 0;
+      return {
+        workerId: rec.workerId,
+        reqId: rec.reqId,
+        name: rec.name ?? rec.workerId,
+        baseBranch: rec.baseBranch,
+        spawnedAt: rec.spawnedAt,
+        ageMs: Math.max(0, now - rec.spawnedAt),
+        idleMs: idle === undefined ? null : idle,
+        tokensUsed: workerTokensUsed(rec.workerId),
+        tokenCap: effCap > 0 ? effCap : null,
+        hasSlack: !!rec.slack,
+        releasing: !!rec.releasing,
+        status: rec.releasing ? 'releasing' : 'working',
+      };
+    });
+    const preserved: PreservedSnapshot[] = [...preservedWorktrees.values()].map((e) => ({
+      workerId: e.workerId,
+      wtPath: e.wtPath,
+      baseBranch: e.baseBranch,
+      preservedAt: e.preservedAt,
+    }));
+    return { live, preserved, maxWorkers: Math.max(1, cfg.maxConcurrentWorkers ?? 4) };
+  },
+);
 
 /** Manually stop a live ephemeral worker. Mirrors the done-release path: mark
  *  releasing, then kill → teardownPty runs the SAFETY-GATED worktree teardown
@@ -5096,7 +6325,11 @@ ipcMain.handle('workers:stop', (_evt, workerId: string): { ok: boolean; error?: 
   if (rec.releasing) return { ok: true }; // already stopping
   rec.releasing = true;
   console.log(`[worker] manual stop requested for ${workerId}`);
-  try { ptyManager.kill(workerId); } catch (e) { return { ok: false, error: String(e) }; }
+  try {
+    ptyManager.kill(workerId);
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
   return { ok: true };
 });
 
@@ -5125,14 +6358,16 @@ function bootstrapHiveServices(): void {
       if (!wc) return false;
       wc.send('realtime:enqueue', { agentId, text, ...(cardFor ? { cardFor } : {}) });
       return true;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   };
   startSessionRequestWatcher({
     root: () => hive.root(),
     registry: () => hive.registry(),
     ptyForAgent,
     emit: paneCommandEmit,
-    informGod
+    informGod,
   });
   // card-scoped-sessions-20260816: one kanban card = one conversation. Watches
   // tasks.json for todo→doing transitions and steers the assignee's pane through
@@ -5145,7 +6380,7 @@ function bootstrapHiveServices(): void {
     registry: () => hive.registry(),
     emit: paneCommandEmit,
     stampCard: (cardId, sessionId) => hive.stampCard(cardId, sessionId),
-    informGod
+    informGod,
   });
   // Phase 2: the loopback secret broker. Bind it BEFORE workers spawn so each spawn can
   // be granted a capability token + the broker URL in its env. Loopback-only, idempotent.
@@ -5167,8 +6402,10 @@ function bootstrapHiveServices(): void {
   // failure just leaves telemetry off (transcript reconciler stays). No breaker.start():
   // the breaker is POLICY-only, ticked by the heartbeat beat (#1, ships disabled).
   void telemetry.start().then((r) => {
-    if (r.ok && r.endpoint) { hive.setOtelEndpoint(r.endpoint); console.log('[telemetry] collector listening', r.endpoint); }
-    else console.error('[telemetry] collector failed to start:', r.error);
+    if (r.ok && r.endpoint) {
+      hive.setOtelEndpoint(r.endpoint);
+      console.log('[telemetry] collector listening', r.endpoint);
+    } else console.error('[telemetry] collector failed to start:', r.error);
   });
   memory.start(); // init shared palace + mine loop (no-op without mempalace)
   reflector.start(); // bound oversized memory.md files on a timer (no-op until threshold)
@@ -5189,7 +6426,13 @@ function armAlwaysOnBeats(): void {
   writeFleetSnapshot();
   fleetTimer = setInterval(writeFleetSnapshot, 8_000);
   if (breakerBeatTimer) clearInterval(breakerBeatTimer);
-  breakerBeatTimer = setInterval(() => { try { runBreakerBeat(300_000); } catch (e) { console.error('[breaker beat]', e); } }, 30_000);
+  breakerBeatTimer = setInterval(() => {
+    try {
+      runBreakerBeat(300_000);
+    } catch (e) {
+      console.error('[breaker beat]', e);
+    }
+  }, 30_000);
 }
 
 /** Wall-clock instant we last observed the machine suspend or lock, so a resume
@@ -5213,20 +6456,34 @@ function healthCheckPtys(reason: string, awayMs: number | null): void {
   const dead: string[] = [];
   for (const p of ptys) {
     if (typeof p.pid === 'number' && p.pid > 0) {
-      try { process.kill(p.pid, 0); }   // liveness probe only — never kills
-      catch { dead.push(p.id); }        // ESRCH: process gone but PTY still registered
+      try {
+        process.kill(p.pid, 0);
+      } catch {
+        // liveness probe only — never kills
+        dead.push(p.id);
+      } // ESRCH: process gone but PTY still registered
     }
   }
   const away = awayMs != null ? ` (away ~${Math.round(awayMs / 1000)}s)` : '';
   if (dead.length) {
-    console.warn(`[power] ${reason}${away}: ${dead.length}/${ptys.length} PTY(s) look wedged (process gone):`, dead.join(', '));
-    breakerToast('Agents need a restart', `${dead.length} agent terminal(s) didn't survive sleep — re-open them to resume.`);
+    console.warn(
+      `[power] ${reason}${away}: ${dead.length}/${ptys.length} PTY(s) look wedged (process gone):`,
+      dead.join(', '),
+    );
+    breakerToast(
+      'Agents need a restart',
+      `${dead.length} agent terminal(s) didn't survive sleep — re-open them to resume.`,
+    );
   } else {
     console.log(`[power] ${reason}${away}: ${ptys.length} PTY(s) healthy`);
   }
   // Single integration point for the (separate) renderer auto-revive card: it can
   // listen for 'power:resume' and respawn the `dead` PTYs with --resume.
-  try { liveWebContents()?.send('power:resume', { reason, awayMs, dead, total: ptys.length }); } catch { /* window gone */ }
+  try {
+    liveWebContents()?.send('power:resume', { reason, awayMs, dead, total: ptys.length });
+  } catch {
+    /* window gone */
+  }
 }
 
 /** Re-arm everything that runs on a frozen libuv timer after the machine slept,
@@ -5241,12 +6498,24 @@ function healthCheckPtys(reason: string, awayMs: number | null): void {
  *  collapse safely (clear-then-arm everywhere; at most one catch-up fire). */
 function onSystemResume(reason: string): void {
   console.log(`[power] ${reason} — re-arming scheduler, beats, router, keep-awake`);
-  try { syncMissions(); } catch (e) { console.error('[power] syncMissions on resume', e); }
+  try {
+    syncMissions();
+  } catch (e) {
+    console.error('[power] syncMissions on resume', e);
+  }
   // Same freeze, same catch-up: the context timers honour elapsed-time-since-last-
   // run, so a compact/clear that came due while the machine slept fires ONCE here
   // rather than being lost or replayed N times.
-  try { syncContextTriggers(); } catch (e) { console.error('[power] syncContextTriggers on resume', e); }
-  try { armAlwaysOnBeats(); } catch (e) { console.error('[power] armAlwaysOnBeats on resume', e); }
+  try {
+    syncContextTriggers();
+  } catch (e) {
+    console.error('[power] syncContextTriggers on resume', e);
+  }
+  try {
+    armAlwaysOnBeats();
+  } catch (e) {
+    console.error('[power] armAlwaysOnBeats on resume', e);
+  }
   // The hive message router (outbox→inbox drain) is a setInterval that freezes
   // during true system sleep exactly like the beats above — but it was the one
   // always-on timer never re-armed on wake. Symptom: after a long sleep the
@@ -5261,8 +6530,14 @@ function onSystemResume(reason: string): void {
     hive.startRouter();
     const drained = hive.routeOnce();
     if (drained > 0) console.log(`[power] ${reason} — flushed ${drained} queued hive message(s)`);
-  } catch (e) { console.error('[power] router re-arm on resume', e); }
-  try { syncKeepAwake(); } catch (e) { console.error('[power] syncKeepAwake on resume', e); }
+  } catch (e) {
+    console.error('[power] router re-arm on resume', e);
+  }
+  try {
+    syncKeepAwake();
+  } catch (e) {
+    console.error('[power] syncKeepAwake on resume', e);
+  }
   const awayMs = lastSuspendAt != null ? Date.now() - lastSuspendAt : null;
   // Give PTYs a beat to resume their pipes before judging them wedged; reset any
   // pending check so a resume quickly followed by unlock runs the probe just once.
@@ -5288,7 +6563,7 @@ app.whenReady().then(() => {
   analytics.init({
     stateDir: app.getPath('userData'),
     appVersion: app.getVersion(),
-    enabled: readConfig().telemetryEnabled !== false
+    enabled: readConfig().telemetryEnabled !== false,
   });
 
   // A cold-start deep link (Windows/Linux) rides in on OUR argv.
@@ -5310,7 +6585,11 @@ app.whenReady().then(() => {
   // Open the durable store first — createWindow() reads the saved window bounds.
   // Guarded: a DB failure (e.g. a bad native build) must degrade to defaults,
   // never block app startup.
-  try { persist.open(); } catch (e) { console.error('[db] open failed:', e); }
+  try {
+    persist.open();
+  } catch (e) {
+    console.error('[db] open failed:', e);
+  }
   // Auto-update from GitHub releases (packaged builds only; gated on the
   // `autoUpdate` config flag). Download-in-background + restart-to-apply toast;
   // never restarts on its own. Falls back to a notify-only releases/latest
@@ -5325,8 +6604,14 @@ app.whenReady().then(() => {
   // every window, so there is nothing to tear down on quit.
   powerMonitor.on('resume', () => onSystemResume('resume'));
   powerMonitor.on('unlock-screen', () => onSystemResume('unlock-screen'));
-  powerMonitor.on('suspend', () => { lastSuspendAt = Date.now(); console.log('[power] suspend — system sleeping'); });
-  powerMonitor.on('lock-screen', () => { lastSuspendAt = Date.now(); console.log('[power] lock-screen'); });
+  powerMonitor.on('suspend', () => {
+    lastSuspendAt = Date.now();
+    console.log('[power] suspend — system sleeping');
+  });
+  powerMonitor.on('lock-screen', () => {
+    lastSuspendAt = Date.now();
+    console.log('[power] lock-screen');
+  });
   // Multi-window floors (opt-in): install the menu carrying "New Floor". When
   // off, the app keeps Electron's default menu — zero behavior change.
   if (readConfig().multiWindow) installAppMenu();
@@ -5347,7 +6632,8 @@ app.whenReady().then(() => {
   // which is logged quietly below.
   if (readConfig().telegramEnabled ?? true) {
     void startTelegramServer().then((r) => {
-      if (!r.ok && r.error && !r.error.includes('no TELEGRAM_BOT_TOKEN')) console.error('[telegram] auto-start failed:', r.error);
+      if (!r.ok && r.error && !r.error.includes('no TELEGRAM_BOT_TOKEN'))
+        console.error('[telegram] auto-start failed:', r.error);
       else if (r.ok) console.log('[telegram] trigger polling');
     });
   }
@@ -5372,14 +6658,20 @@ app.on('before-quit', (e) => {
   // FINAL backstop: once a quit is sanctioned (allowQuit) nothing may re-block
   // it — a wedged modal or dying renderer must not strand a windowless process.
   if (allowQuit) {
-    setTimeout(() => { console.log('[quit] before-quit allowQuit grace expired, hard exit'); process.exit(0); }, 4000);
+    setTimeout(() => {
+      console.log('[quit] before-quit allowQuit grace expired, hard exit');
+      process.exit(0);
+    }, 4000);
     return;
   }
   const count = ptyManager.list().length;
   if (count === 0) {
     // No PTYs to warn about, but a dead renderer can still wedge the dialog
     // path — time-box this route too.
-    setTimeout(() => { console.log('[quit] before-quit no-ptys grace expired, hard exit'); process.exit(0); }, 4000);
+    setTimeout(() => {
+      console.log('[quit] before-quit no-ptys grace expired, hard exit');
+      process.exit(0);
+    }, 4000);
     return;
   }
   e.preventDefault();
@@ -5389,7 +6681,10 @@ app.on('before-quit', (e) => {
     // If the renderer is dead (blank window), the closeRequested modal never
     // answers — fall through to a hard exit so "Beenden" always works.
     setTimeout(() => {
-      if (!allowQuit) { console.log('[quit] close-dialog unanswered (dead renderer?), hard exit'); process.exit(0); }
+      if (!allowQuit) {
+        console.log('[quit] close-dialog unanswered (dead renderer?), hard exit');
+        process.exit(0);
+      }
     }, 6000);
   }
 });
@@ -5402,7 +6697,10 @@ app.on('window-all-closed', () => {
     // Belt-and-braces: if the quit sequence wedges anywhere downstream (e.g. a
     // modal waiting on a dead renderer — the blank-window case), the LAST window
     // being gone means the user is done. Hard exit after a short grace period.
-    setTimeout(() => { console.log('[quit] window-all-closed grace expired, hard exit'); process.exit(0); }, 4000);
+    setTimeout(() => {
+      console.log('[quit] window-all-closed grace expired, hard exit');
+      process.exit(0);
+    }, 4000);
   }
 });
 
@@ -5420,9 +6718,12 @@ app.on('will-quit', (e) => {
   // state is mid-flight is silently swallowed on Linux (observed live: 'flush
   // done, re-quit' logged, before-quit never re-fired, process slept in poll
   // forever with unreaped zygote children). Everything is torn down by now.
-  const finish = (): void => { console.log('[quit] flush done, hard exit'); process.exit(0); };
-  Promise.race([
-    analytics.endSession(),
-    new Promise<void>((r) => setTimeout(r, 1200))
-  ]).then(finish, finish);
+  const finish = (): void => {
+    console.log('[quit] flush done, hard exit');
+    process.exit(0);
+  };
+  Promise.race([analytics.endSession(), new Promise<void>((r) => setTimeout(r, 1200))]).then(
+    finish,
+    finish,
+  );
 });

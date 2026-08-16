@@ -41,20 +41,44 @@ export const OSS_LOCAL_PICKS: OssLocalPick[] = [
   { label: 'Mistral Small 24B', tag: 'mistral-small:24b', minRam: '16–32 GB' },
   { label: 'GLM-4.7-Flash', tag: 'glm-4.7-flash', minRam: '32 GB' },
   { label: 'Llama 3.3 70B', tag: 'llama3.3:70b', minRam: '64 GB' },
-  { label: 'gpt-oss 120B', tag: 'gpt-oss:120b', minRam: '96 GB' }
+  { label: 'gpt-oss 120B', tag: 'gpt-oss:120b', minRam: '96 GB' },
 ];
 
 /** §7.B — Third-party OSS-provider quick-picks (BYOK). */
 export const OSS_PROVIDER_PICKS: OssProviderPick[] = [
   { label: 'gpt-oss 120B · Groq', slug: 'groq/openai/gpt-oss-120b', keyEnv: 'GROQ_API_KEY' },
   { label: 'Llama 3.3 70B · Groq', slug: 'groq/llama-3.3-70b-versatile', keyEnv: 'GROQ_API_KEY' },
-  { label: 'DeepSeek-V4-Flash · OpenRouter', slug: 'openrouter/deepseek/deepseek-v4-flash', keyEnv: 'OPENROUTER_API_KEY' },
-  { label: 'DeepSeek-V4-Flash · DeepSeek', slug: 'deepseek/deepseek-v4-flash', keyEnv: 'DEEPSEEK_API_KEY' },
+  {
+    label: 'DeepSeek-V4-Flash · OpenRouter',
+    slug: 'openrouter/deepseek/deepseek-v4-flash',
+    keyEnv: 'OPENROUTER_API_KEY',
+  },
+  {
+    label: 'DeepSeek-V4-Flash · DeepSeek',
+    slug: 'deepseek/deepseek-v4-flash',
+    keyEnv: 'DEEPSEEK_API_KEY',
+  },
   { label: 'GLM-4.6 · OpenRouter', slug: 'openrouter/z-ai/glm-4.6', keyEnv: 'OPENROUTER_API_KEY' },
-  { label: 'Kimi K2.6 · OpenRouter', slug: 'openrouter/moonshotai/kimi-k2.6', keyEnv: 'OPENROUTER_API_KEY' },
-  { label: 'Qwen3-Coder 480B · OpenRouter', slug: 'openrouter/qwen/qwen3-coder', keyEnv: 'OPENROUTER_API_KEY' },
-  { label: 'Qwen3 235B · OpenRouter', slug: 'openrouter/qwen/qwen3-235b-a22b-2507', keyEnv: 'OPENROUTER_API_KEY' },
-  { label: 'gpt-oss 120B · OpenRouter', slug: 'openrouter/openai/gpt-oss-120b', keyEnv: 'OPENROUTER_API_KEY' }
+  {
+    label: 'Kimi K2.6 · OpenRouter',
+    slug: 'openrouter/moonshotai/kimi-k2.6',
+    keyEnv: 'OPENROUTER_API_KEY',
+  },
+  {
+    label: 'Qwen3-Coder 480B · OpenRouter',
+    slug: 'openrouter/qwen/qwen3-coder',
+    keyEnv: 'OPENROUTER_API_KEY',
+  },
+  {
+    label: 'Qwen3 235B · OpenRouter',
+    slug: 'openrouter/qwen/qwen3-235b-a22b-2507',
+    keyEnv: 'OPENROUTER_API_KEY',
+  },
+  {
+    label: 'gpt-oss 120B · OpenRouter',
+    slug: 'openrouter/openai/gpt-oss-120b',
+    keyEnv: 'OPENROUTER_API_KEY',
+  },
 ];
 
 /** Engine-correct slug for a local Ollama tag (§6): OpenCode → `local/<tag>`;
@@ -72,5 +96,5 @@ export function hasOssQuickPicks(provider: AgentProvider): boolean {
 /** Canonical blog URLs the local-setup UI hyperlinks to (ondev-c part-3). */
 export const OSS_BLOG_LINKS = {
   openModels: 'https://munderdiffl.in/blog/run-munder-difflin-on-open-models/',
-  macMini: 'https://munderdiffl.in/blog/run-munder-difflin-on-a-mac-mini/'
+  macMini: 'https://munderdiffl.in/blog/run-munder-difflin-on-a-mac-mini/',
 } as const;

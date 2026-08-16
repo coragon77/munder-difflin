@@ -16,8 +16,10 @@ export const MONITOR_OFF_TOPLEFT_GID = 365;
  *  off block — used when no per-theme MonitorConfig is passed. */
 const DEFAULT_ON_GIDS: ReadonlyArray<readonly [number, number, number]> = [
   // [gid, dx, dy] in tiles relative to the block's top-left
-  [367, 0, 0], [368, 1, 0],
-  [383, 0, 1], [384, 1, 1]
+  [367, 0, 0],
+  [368, 1, 0],
+  [383, 0, 1],
+  [384, 1, 1],
 ];
 
 /** Screen interior of the 2×2 (32×32px) block, in local pixels — where the
@@ -30,7 +32,11 @@ export class DeskScreen {
   private on = false;
   private t = 0;
 
-  constructor(mapRenderer: TiledMapRenderer, topLeft: { x: number; y: number }, monitor?: MonitorConfig) {
+  constructor(
+    mapRenderer: TiledMapRenderer,
+    topLeft: { x: number; y: number },
+    monitor?: MonitorConfig,
+  ) {
     const ts = mapRenderer.tileSize;
     const onGids = monitor?.onGids ?? DEFAULT_ON_GIDS;
     for (const [gid, dx, dy] of onGids) {
@@ -58,7 +64,10 @@ export class DeskScreen {
     if (on === this.on) return;
     this.on = on;
     this.container.visible = on;
-    if (!on) { this.anim.clear(); this.t = 0; }
+    if (!on) {
+      this.anim.clear();
+      this.t = 0;
+    }
   }
 
   update(dt: number): void {

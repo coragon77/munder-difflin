@@ -32,14 +32,19 @@ const { releaseWebglContexts } = loadTs('src/renderer/src/components/terminalRec
 function fakeCanvas({ connected = false, contextType = 'webgl2', extension = true } = {}) {
   const gl = {
     lost: false,
-    getExtension: (name) => (extension && name === 'WEBGL_lose_context'
-      ? { loseContext: () => { gl.lost = true; } }
-      : null)
+    getExtension: (name) =>
+      extension && name === 'WEBGL_lose_context'
+        ? {
+            loseContext: () => {
+              gl.lost = true;
+            },
+          }
+        : null,
   };
   return {
     isConnected: connected,
     gl,
-    getContext: (type) => (type === contextType ? gl : null)
+    getContext: (type) => (type === contextType ? gl : null),
   };
 }
 
@@ -67,7 +72,9 @@ test('a 2D canvas is not touched — getContext must not mint a new context', ()
 test('every released canvas is covered, and one failure does not skip the rest', () => {
   const first = fakeCanvas();
   const angry = fakeCanvas();
-  angry.getContext = () => { throw new Error('context is gone'); };
+  angry.getContext = () => {
+    throw new Error('context is gone');
+  };
   const last = fakeCanvas();
   assert.equal(releaseWebglContexts([first, angry, last]), 2);
   assert.equal(first.gl.lost, true);

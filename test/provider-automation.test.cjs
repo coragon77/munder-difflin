@@ -11,7 +11,7 @@ const {
   isCompactionCommand,
   remoteControlCommandForProvider,
   terminalReadySettleMs,
-  terminalReadyToReceive
+  terminalReadyToReceive,
 } = loadTs('src/shared/providerAutomation.ts');
 
 // — the queue's one-pending-compact invariant depends entirely on this predicate —
@@ -76,10 +76,7 @@ test('the focus rides along only where the TUI parses it', () => {
   assert.equal(compactionCommandForProvider('opencode', focus), '/compact');
 
   // Omitting the message keeps the trigger default, not a bare command.
-  assert.equal(
-    compactionCommandForProvider('claude'),
-    `/compact ${DEFAULT_COMPACTION_FOCUS}`
-  );
+  assert.equal(compactionCommandForProvider('claude'), `/compact ${DEFAULT_COMPACTION_FOCUS}`);
   // A whitespace-only message counts as empty.
   assert.equal(compactionCommandForProvider('claude', '   '), '/compact');
 });

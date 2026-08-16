@@ -13,7 +13,7 @@ import {
   isAllowedManifestUrl,
   validateHireManifest,
   type HireManifest,
-  type HireValidation
+  type HireValidation,
 } from '../shared/hire';
 
 export type HireResult = { ok: true; manifest: HireManifest } | { ok: false; error: string };
@@ -34,21 +34,21 @@ function finish(v: HireValidation): HireResult {
  *  past. v4-in-v6 forms are de-mapped to their embedded v4 below before checking. */
 const SSRF_BLOCK = new BlockList();
 // IPv4 ranges.
-SSRF_BLOCK.addSubnet('0.0.0.0', 8, 'ipv4');        // 0.0.0.0/8 "this network" / unspecified
-SSRF_BLOCK.addSubnet('10.0.0.0', 8, 'ipv4');       // RFC1918
-SSRF_BLOCK.addSubnet('100.64.0.0', 10, 'ipv4');    // CGNAT
-SSRF_BLOCK.addSubnet('127.0.0.0', 8, 'ipv4');      // loopback
-SSRF_BLOCK.addSubnet('169.254.0.0', 16, 'ipv4');   // link-local + 169.254.169.254 cloud metadata
-SSRF_BLOCK.addSubnet('172.16.0.0', 12, 'ipv4');    // RFC1918
-SSRF_BLOCK.addSubnet('192.168.0.0', 16, 'ipv4');   // RFC1918
-SSRF_BLOCK.addSubnet('224.0.0.0', 3, 'ipv4');      // 224/4 multicast + 240/4 reserved + broadcast
+SSRF_BLOCK.addSubnet('0.0.0.0', 8, 'ipv4'); // 0.0.0.0/8 "this network" / unspecified
+SSRF_BLOCK.addSubnet('10.0.0.0', 8, 'ipv4'); // RFC1918
+SSRF_BLOCK.addSubnet('100.64.0.0', 10, 'ipv4'); // CGNAT
+SSRF_BLOCK.addSubnet('127.0.0.0', 8, 'ipv4'); // loopback
+SSRF_BLOCK.addSubnet('169.254.0.0', 16, 'ipv4'); // link-local + 169.254.169.254 cloud metadata
+SSRF_BLOCK.addSubnet('172.16.0.0', 12, 'ipv4'); // RFC1918
+SSRF_BLOCK.addSubnet('192.168.0.0', 16, 'ipv4'); // RFC1918
+SSRF_BLOCK.addSubnet('224.0.0.0', 3, 'ipv4'); // 224/4 multicast + 240/4 reserved + broadcast
 // IPv6 ranges.
-SSRF_BLOCK.addAddress('::1', 'ipv6');              // loopback
-SSRF_BLOCK.addAddress('::', 'ipv6');               // unspecified
-SSRF_BLOCK.addSubnet('fc00::', 7, 'ipv6');         // ULA (fc00::/7)
-SSRF_BLOCK.addSubnet('fe80::', 10, 'ipv6');        // link-local (fe80::/10)
-SSRF_BLOCK.addSubnet('fec0::', 10, 'ipv6');        // deprecated site-local (fec0::/10)
-SSRF_BLOCK.addSubnet('ff00::', 8, 'ipv6');         // multicast (ff00::/8)
+SSRF_BLOCK.addAddress('::1', 'ipv6'); // loopback
+SSRF_BLOCK.addAddress('::', 'ipv6'); // unspecified
+SSRF_BLOCK.addSubnet('fc00::', 7, 'ipv6'); // ULA (fc00::/7)
+SSRF_BLOCK.addSubnet('fe80::', 10, 'ipv6'); // link-local (fe80::/10)
+SSRF_BLOCK.addSubnet('fec0::', 10, 'ipv6'); // deprecated site-local (fec0::/10)
+SSRF_BLOCK.addSubnet('ff00::', 8, 'ipv6'); // multicast (ff00::/8)
 
 /** Expand an IPv6 literal into its eight 16-bit groups, handling `::` compression
  *  and a trailing embedded dotted-quad. Returns null if malformed (→ fail closed). */
@@ -91,12 +91,14 @@ function v6Groups(v6: string): number[] | null {
 function embeddedV4(v6: string): string | null {
   const g = v6Groups(v6);
   if (!g) return null;
-  const v4 = (hi: number, lo: number): string => `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+  const v4 = (hi: number, lo: number): string =>
+    `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
   const top6zero = g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0;
-  if (top6zero && g[5] === 0xffff) return v4(g[6], g[7]);                            // ::ffff:a.b.c.d (v4-mapped)
-  if (top6zero && g[5] === 0 && (g[6] !== 0 || g[7] !== 0)) return v4(g[6], g[7]);   // ::a.b.c.d / ::1 (v4-compatible)
-  if (g[0] === 0x0064 && g[1] === 0xff9b && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0) return v4(g[6], g[7]); // NAT64 64:ff9b::/96
-  if (g[0] === 0x2002) return v4(g[1], g[2]);                                        // 6to4 2002::/16
+  if (top6zero && g[5] === 0xffff) return v4(g[6], g[7]); // ::ffff:a.b.c.d (v4-mapped)
+  if (top6zero && g[5] === 0 && (g[6] !== 0 || g[7] !== 0)) return v4(g[6], g[7]); // ::a.b.c.d / ::1 (v4-compatible)
+  if (g[0] === 0x0064 && g[1] === 0xff9b && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0)
+    return v4(g[6], g[7]); // NAT64 64:ff9b::/96
+  if (g[0] === 0x2002) return v4(g[1], g[2]); // 6to4 2002::/16
   return null;
 }
 
@@ -125,7 +127,9 @@ async function isInternalHost(hostname: string): Promise<boolean> {
   try {
     const addrs = await lookup(host, { all: true });
     return addrs.length === 0 || addrs.some((a) => isBlockedIp(a.address));
-  } catch { return true; }
+  } catch {
+    return true;
+  }
 }
 
 /** SSRF gate for ONE url — the initial request AND every redirect hop. The only
@@ -133,7 +137,8 @@ async function isInternalHost(hostname: string): Promise<boolean> {
  *  gated by isAllowedManifestUrl); every other target must resolve to a PUBLIC
  *  address. Returns an error string when the target is internal, else null. */
 async function assertPublicTarget(u: URL): Promise<string | null> {
-  const devLoopbackHttp = u.protocol === 'http:' &&
+  const devLoopbackHttp =
+    u.protocol === 'http:' &&
     (u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]');
   if (devLoopbackHttp) return null;
   if (await isInternalHost(u.hostname)) {
@@ -147,8 +152,13 @@ async function assertPublicTarget(u: URL): Promise<string | null> {
  *  but this is also called with user-pasted URLs). */
 export async function fetchHireManifest(src: string): Promise<HireResult> {
   let url: URL;
-  try { url = new URL(src); } catch { return { ok: false, error: 'not a valid URL' }; }
-  if (!isAllowedManifestUrl(url)) return { ok: false, error: 'manifest URL must be https (http allowed for localhost only)' };
+  try {
+    url = new URL(src);
+  } catch {
+    return { ok: false, error: 'not a valid URL' };
+  }
+  if (!isAllowedManifestUrl(url))
+    return { ok: false, error: 'manifest URL must be https (http allowed for localhost only)' };
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 10_000);
@@ -175,14 +185,22 @@ export async function fetchHireManifest(src: string): Promise<HireResult> {
       res = await fetch(current, {
         signal: ctrl.signal,
         redirect: 'manual',
-        headers: { accept: 'application/json' }
+        headers: { accept: 'application/json' },
       });
       if (res.status >= 300 && res.status < 400) {
         const loc = res.headers.get('location');
         if (!loc) return { ok: false, error: 'redirect without a location' };
         let next: URL;
-        try { next = new URL(loc, current); } catch { return { ok: false, error: 'invalid redirect target' }; }
-        if (next.protocol !== 'https:') return { ok: false, error: 'redirect target must be https (a manifest may not redirect into http/loopback)' };
+        try {
+          next = new URL(loc, current);
+        } catch {
+          return { ok: false, error: 'invalid redirect target' };
+        }
+        if (next.protocol !== 'https:')
+          return {
+            ok: false,
+            error: 'redirect target must be https (a manifest may not redirect into http/loopback)',
+          };
         const ssrfN = await assertPublicTarget(next);
         if (ssrfN) return { ok: false, error: ssrfN };
         current = next;
@@ -204,7 +222,11 @@ export async function fetchHireManifest(src: string): Promise<HireResult> {
     if (text === null) return { ok: false, error: 'manifest too large' };
 
     let parsed: unknown;
-    try { parsed = JSON.parse(text); } catch { return { ok: false, error: 'manifest is not valid JSON' }; }
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { ok: false, error: 'manifest is not valid JSON' };
+    }
     return finish(validateHireManifest(parsed));
   } catch (e) {
     const msg = e instanceof Error && e.name === 'AbortError' ? 'fetch timed out' : String(e);
@@ -232,7 +254,14 @@ async function readBounded(res: Response, maxBytes: number): Promise<string | nu
     if (done) break;
     if (value) {
       total += value.byteLength;
-      if (total > maxBytes) { try { await reader.cancel(); } catch { /* noop */ } return null; }
+      if (total > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* noop */
+        }
+        return null;
+      }
       chunks.push(value);
     }
   }

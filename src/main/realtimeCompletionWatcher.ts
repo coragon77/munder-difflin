@@ -130,7 +130,7 @@ const INJECTION_PATTERNS: RegExp[] = [
   /\b(?:ignore|disregard|forget|override)\b[^.!?\n]*\b(?:previous|above|prior|instruction|system|prompt)\b[^.!?\n]*/gi,
   /\b(?:system|assistant|developer|user)\s*:/gi,
   /\byou are (?:now )?[^.!?\n]*/gi,
-  /\bnew instructions?\b[^.!?\n]*/gi
+  /\bnew instructions?\b[^.!?\n]*/gi,
 ];
 
 /**
@@ -184,12 +184,20 @@ function summarize(pending: PendingDispatch, via: CompletionResult['via']): stri
  * Completion = card→done (when a taskId is known) OR an inbox reply from the assignee
  * that post-dates the dispatch (preferring an explicit `in_reply_to` match).
  */
-export function detectCompletion(pending: PendingDispatch, ctx: CompletionContext): CompletionResult {
+export function detectCompletion(
+  pending: PendingDispatch,
+  ctx: CompletionContext,
+): CompletionResult {
   // (a) The dispatched card flipped to done.
   if (pending.taskId) {
     const card = ctx.tasks.find((t) => t.id === pending.taskId);
     if (card && isDoneStatus(card.status)) {
-      return { done: true, via: 'card-done', at: pending.dispatchedAt, summary: summarize(pending, 'card-done') };
+      return {
+        done: true,
+        via: 'card-done',
+        at: pending.dispatchedAt,
+        summary: summarize(pending, 'card-done'),
+      };
     }
   }
 
@@ -215,7 +223,7 @@ export function detectCompletion(pending: PendingDispatch, ctx: CompletionContex
       via: 'inbox-reply',
       at: best.at,
       messageId: best.msg.id,
-      summary: summarize(pending, 'inbox-reply')
+      summary: summarize(pending, 'inbox-reply'),
     };
   }
 
@@ -276,7 +284,10 @@ export class RealtimeCompletionWatcher {
    * completion event, or with a timeout sentinel after `timeoutMs`. If the task is already
    * tracked we use full detection; an untracked taskId still resolves on a card→done signal.
    */
-  waitFor(taskId: string, timeoutMs: number): Promise<RealtimeCompletion | { timedOut: true; taskId: string }> {
+  waitFor(
+    taskId: string,
+    timeoutMs: number,
+  ): Promise<RealtimeCompletion | { timedOut: true; taskId: string }> {
     // Already complete? Resolve synchronously off the current snapshot.
     const immediate = this.checkOne(this.pendingForTask(taskId) ?? this.syntheticPending(taskId));
     if (immediate) return Promise.resolve(immediate);
@@ -284,12 +295,16 @@ export class RealtimeCompletionWatcher {
     return new Promise((resolve) => {
       const waiter: Waiter = { taskId, resolve: (e) => resolve(e) };
       this.waiters.add(waiter);
-      const timer = setTimeout(() => {
-        this.waiters.delete(waiter);
-        resolve({ timedOut: true, taskId });
-      }, Math.max(0, timeoutMs));
+      const timer = setTimeout(
+        () => {
+          this.waiters.delete(waiter);
+          resolve({ timedOut: true, taskId });
+        },
+        Math.max(0, timeoutMs),
+      );
       // Ensure the timeout never keeps the process alive on its own.
-      if (typeof timer === 'object' && timer && 'unref' in timer) (timer as { unref: () => void }).unref();
+      if (typeof timer === 'object' && timer && 'unref' in timer)
+        (timer as { unref: () => void }).unref();
     });
   }
 
@@ -352,7 +367,7 @@ export class RealtimeCompletionWatcher {
     }
     if (this.pending.size > MAX_PENDING) {
       const oldestFirst = [...this.pending.entries()].sort(
-        (a, b) => a[1].dispatchedAt - b[1].dispatchedAt
+        (a, b) => a[1].dispatchedAt - b[1].dispatchedAt,
       );
       const overflow = this.pending.size - MAX_PENDING;
       for (let i = 0; i < overflow; i++) this.pending.delete(oldestFirst[i][0]);
@@ -377,7 +392,7 @@ export class RealtimeCompletionWatcher {
       via: res.via ?? 'inbox-reply',
       completedAt: res.at ?? this.now(),
       summary: res.summary ?? summarize(record, res.via),
-      messageId: res.messageId
+      messageId: res.messageId,
     };
   }
 
@@ -416,7 +431,13 @@ export class RealtimeCompletionWatcher {
 
   /** Minimal pending record for an untracked wait_for(taskId) — card→done only. */
   private syntheticPending(taskId: string): PendingDispatch {
-    return { correlationId: `wait:${taskId}`, kind: 'task', targetAgentId: '', taskId, dispatchedAt: 0 };
+    return {
+      correlationId: `wait:${taskId}`,
+      kind: 'task',
+      targetAgentId: '',
+      taskId,
+      dispatchedAt: 0,
+    };
   }
 }
 
@@ -455,7 +476,7 @@ export function initCompletionWatcher(deps: CompletionWatcherDeps): RealtimeComp
 export function getCompletionWatcher(): RealtimeCompletionWatcher {
   if (!_instance) {
     throw new Error(
-      'completion watcher not initialized — call initCompletionWatcher(deps) from index.ts first'
+      'completion watcher not initialized — call initCompletionWatcher(deps) from index.ts first',
     );
   }
   return _instance;

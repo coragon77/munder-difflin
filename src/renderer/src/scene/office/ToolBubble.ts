@@ -24,7 +24,7 @@ const PADDING_Y = 3;
 const CORNER_RADIUS = 4;
 const MAX_WIDTH = 140;
 const BG_COLOR = 0x1a1320; // ink-900
-const BG_ALPHA = 0.95;     // near-opaque: thin text over a busy floor was hard to read
+const BG_ALPHA = 0.95; // near-opaque: thin text over a busy floor was hard to read
 const TEXT_COLOR = '#fffdf5';
 const FONT_SIZE = 12;
 const RENDER_SCALE = 0.5; // render at 2x, scale down for crispness
@@ -104,9 +104,10 @@ export class ToolBubble {
       const displayText = target ? `${icon} ${target}` : icon;
       // Word-wrap (style.wordWrap) handles the horizontal fit, so the bubble can no
       // longer overflow; we only cap the raw length to keep it a few lines tall.
-      this.label.text = displayText.length > MAX_CHARS
-        ? displayText.slice(0, MAX_CHARS - 1).trimEnd() + '…'
-        : displayText;
+      this.label.text =
+        displayText.length > MAX_CHARS
+          ? displayText.slice(0, MAX_CHARS - 1).trimEnd() + '…'
+          : displayText;
     }
 
     this.redrawBg();
@@ -119,9 +120,8 @@ export class ToolBubble {
     this.isThinking = false;
     const display = text || '…';
     // Word-wrap handles the horizontal fit; cap raw length to bound the height.
-    this.label.text = display.length > MAX_CHARS
-      ? display.slice(0, MAX_CHARS - 1).trimEnd() + '…'
-      : display;
+    this.label.text =
+      display.length > MAX_CHARS ? display.slice(0, MAX_CHARS - 1).trimEnd() + '…' : display;
     this.redrawBg();
     this.reveal();
   }

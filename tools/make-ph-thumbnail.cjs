@@ -19,22 +19,24 @@ const ROOT = '/Users/chaitanya/dev/claudeTerminalHarness';
 const loadTs = require(path.join(ROOT, 'test/load-ts.cjs'));
 const art = loadTs('src/renderer/src/scene/office/portraitArt.ts');
 
-const W = 240, H = 240;
-const SW = art.SCENE_W, SH = art.SCENE_H;
+const W = 240,
+  H = 240;
+const SW = art.SCENE_W,
+  SH = art.SCENE_H;
 
 // ── palette ───────────────────────────────────────────────────────────────
-const GROUND   = [241, 181, 61];       // #F1B53D — the brand yellow, sampled from
-                                       // the shipping app icon tile (build/icon.png),
-                                       // so the thumbnail matches the dock icon and
-                                       // the site mark. Flat, edge to edge: no disc,
-                                       // no vignette — any shape behind him competes
-                                       // with the face.
+const GROUND = [241, 181, 61]; // #F1B53D — the brand yellow, sampled from
+// the shipping app icon tile (build/icon.png),
+// so the thumbnail matches the dock icon and
+// the site mark. Flat, edge to edge: no disc,
+// no vignette — any shape behind him competes
+// with the face.
 
 // ── sprite geometry ───────────────────────────────────────────────────────
-const SCALE = 10;                      // 18x32 sprite pixel -> 10px block
-const CROP_TOP = 1;                    // sprite row where the drawing starts
-const CROP_ROWS = 23;                  // head + shoulders, bled off the bottom
-                                       // edge; the legs fall outside the frame
+const SCALE = 10; // 18x32 sprite pixel -> 10px block
+const CROP_TOP = 1; // sprite row where the drawing starts
+const CROP_ROWS = 23; // head + shoulders, bled off the bottom
+// edge; the legs fall outside the frame
 const OX = Math.round((W - SW * SCALE) / 2);
 const OY = 12;
 
@@ -44,15 +46,18 @@ const OY = 12;
 // a clean left/right glance. Row 9 is canon; row 10 is skin we borrow for a
 // downward look.
 const EYE_ROWS = [9, 10];
-const WHITE   = [250, 248, 244];
-const PUPIL   = [46, 38, 42];
-const LID     = [168, 112, 82];        // SKIN.light.line
-const SKIN_HI = [255, 221, 189];       // x=5 sits on the lit side of the face
+const WHITE = [250, 248, 244];
+const PUPIL = [46, 38, 42];
+const LID = [168, 112, 82]; // SKIN.light.line
+const SKIN_HI = [255, 221, 189]; // x=5 sits on the lit side of the face
 const SKIN_BS = [247, 201, 170];
 
 const setPx = (sp, x, y, c) => {
   const i = (y * SW + x) * 4;
-  sp[i] = c[0]; sp[i + 1] = c[1]; sp[i + 2] = c[2]; sp[i + 3] = 255;
+  sp[i] = c[0];
+  sp[i + 1] = c[1];
+  sp[i + 2] = c[2];
+  sp[i + 3] = 255;
 };
 const skinAt = (x) => (x === 5 ? SKIN_HI : SKIN_BS);
 
@@ -61,7 +66,10 @@ function patchEyes(base, { h = 0, v = 0, blink = false }) {
   const sp = Uint8ClampedArray.from(base);
   const cols = [5, 6, 10, 11];
   if (blink) {
-    for (const x of cols) { setPx(sp, x, 10, skinAt(x)); setPx(sp, x, 9, LID); }
+    for (const x of cols) {
+      setPx(sp, x, 10, skinAt(x));
+      setPx(sp, x, 9, LID);
+    }
     return sp;
   }
   for (const x of cols) for (const y of EYE_ROWS) setPx(sp, x, y, WHITE);
@@ -74,7 +82,9 @@ function patchEyes(base, { h = 0, v = 0, blink = false }) {
 const px = (buf, x, y, c) => {
   if (x < 0 || y < 0 || x >= W || y >= H) return;
   const i = (y * W + x) * 3;
-  buf[i] = c[0]; buf[i + 1] = c[1]; buf[i + 2] = c[2];
+  buf[i] = c[0];
+  buf[i + 1] = c[1];
+  buf[i + 2] = c[2];
 };
 const rect = (buf, x0, y0, x1, y1, c) => {
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) px(buf, x, y, c);
@@ -87,7 +97,8 @@ function blitSprite(buf, sprite) {
       const i = (sy * SW + sx) * 4;
       if (sprite[i + 3] < 128) continue;
       const c = [sprite[i], sprite[i + 1], sprite[i + 2]];
-      const dx0 = OX + sx * SCALE, dy0 = OY + (sy - CROP_TOP) * SCALE;
+      const dx0 = OX + sx * SCALE,
+        dy0 = OY + (sy - CROP_TOP) * SCALE;
       for (let dy = 0; dy < SCALE; dy++)
         for (let dx = 0; dx < SCALE; dx++) px(buf, dx0 + dx, dy0 + dy, c);
     }
@@ -126,7 +137,10 @@ function quantise(frames) {
   for (const f of frames) {
     for (let i = 0; i < f.length; i += 3) {
       const key = (f[i] << 16) | (f[i + 1] << 8) | f[i + 2];
-      if (!map.has(key)) { map.set(key, palette.length); palette.push([f[i], f[i + 1], f[i + 2]]); }
+      if (!map.has(key)) {
+        map.set(key, palette.length);
+        palette.push([f[i], f[i + 1], f[i + 2]]);
+      }
     }
   }
   if (palette.length > 256) throw new Error(`palette overflow: ${palette.length} colours`);
@@ -143,16 +157,28 @@ function quantise(frames) {
 
 // ── GIF LZW ───────────────────────────────────────────────────────────────
 function lzwEncode(indexed, minCodeSize) {
-  const clear = 1 << minCodeSize, end = clear + 1;
-  let codeSize = minCodeSize + 1, next = end + 1;
+  const clear = 1 << minCodeSize,
+    end = clear + 1;
+  let codeSize = minCodeSize + 1,
+    next = end + 1;
   let dict = new Map();
-  const resetDict = () => { dict = new Map(); next = end + 1; codeSize = minCodeSize + 1; };
+  const resetDict = () => {
+    dict = new Map();
+    next = end + 1;
+    codeSize = minCodeSize + 1;
+  };
 
   const out = [];
-  let cur = 0, curBits = 0;
+  let cur = 0,
+    curBits = 0;
   const emit = (code) => {
-    cur |= code << curBits; curBits += codeSize;
-    while (curBits >= 8) { out.push(cur & 0xff); cur >>= 8; curBits -= 8; }
+    cur |= code << curBits;
+    curBits += codeSize;
+    while (curBits >= 8) {
+      out.push(cur & 0xff);
+      cur >>= 8;
+      curBits -= 8;
+    }
   };
 
   resetDict();
@@ -161,12 +187,18 @@ function lzwEncode(indexed, minCodeSize) {
   for (let i = 1; i < indexed.length; i++) {
     const k = indexed[i];
     const combined = prefix + ',' + k;
-    if (dict.has(combined)) { prefix = combined; continue; }
+    if (dict.has(combined)) {
+      prefix = combined;
+      continue;
+    }
     emit(prefix.includes(',') ? dict.get(prefix) : Number(prefix));
     dict.set(combined, next++);
-    if (next > (1 << codeSize)) {
+    if (next > 1 << codeSize) {
       if (codeSize < 12) codeSize++;
-      else { emit(clear); resetDict(); }
+      else {
+        emit(clear);
+        resetDict();
+      }
     }
     prefix = String(k);
   }
@@ -187,17 +219,34 @@ function subBlocks(data) {
 }
 
 function buildGif(palette, indexed, delays) {
-  let bits = 1; while ((1 << bits) < palette.length) bits++;
+  let bits = 1;
+  while (1 << bits < palette.length) bits++;
   const tableSize = 1 << bits;
   const gct = Buffer.alloc(tableSize * 3);
-  palette.forEach((c, i) => { gct[i * 3] = c[0]; gct[i * 3 + 1] = c[1]; gct[i * 3 + 2] = c[2]; });
+  palette.forEach((c, i) => {
+    gct[i * 3] = c[0];
+    gct[i * 3 + 1] = c[1];
+    gct[i * 3 + 2] = c[2];
+  });
 
-  const u16 = (n) => { const b = Buffer.alloc(2); b.writeUInt16LE(n); return b; };
-  const parts = [Buffer.from('GIF89a', 'ascii'), u16(W), u16(H),
-    Buffer.from([0xf0 | (bits - 1), 0, 0]), gct,
+  const u16 = (n) => {
+    const b = Buffer.alloc(2);
+    b.writeUInt16LE(n);
+    return b;
+  };
+  const parts = [
+    Buffer.from('GIF89a', 'ascii'),
+    u16(W),
+    u16(H),
+    Buffer.from([0xf0 | (bits - 1), 0, 0]),
+    gct,
     // Netscape 2.0 application extension = loop forever
-    Buffer.from([0x21, 0xff, 0x0b]), Buffer.from('NETSCAPE2.0', 'ascii'),
-    Buffer.from([0x03, 0x01]), u16(0), Buffer.from([0x00])];
+    Buffer.from([0x21, 0xff, 0x0b]),
+    Buffer.from('NETSCAPE2.0', 'ascii'),
+    Buffer.from([0x03, 0x01]),
+    u16(0),
+    Buffer.from([0x00]),
+  ];
 
   const minCodeSize = Math.max(2, bits);
   indexed.forEach((frame, i) => {
@@ -221,4 +270,6 @@ const outPath = process.argv[2] || path.join(__dirname, 'ph-thumbnail-240.gif');
 fs.writeFileSync(outPath, gif);
 const secs = (delays.reduce((a, b) => a + b, 0) / 100).toFixed(1);
 console.log(`wrote ${outPath}`);
-console.log(`  ${W}x${H}  frames=${rgbFrames.length}  loop=${secs}s  colours=${palette.length}  ${(gif.length / 1024).toFixed(1)} KB`);
+console.log(
+  `  ${W}x${H}  frames=${rgbFrames.length}  loop=${secs}s  colours=${palette.length}  ${(gif.length / 1024).toFixed(1)} KB`,
+);

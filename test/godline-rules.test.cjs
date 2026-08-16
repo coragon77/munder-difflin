@@ -30,7 +30,10 @@ const GOD = { id: 'god', name: 'God', role: 'god', cwd: '/w', isGod: true };
 
 test('godLine carries the RENDERER-MERGE BATCHING rule', () => {
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
-  assert.ok(/RENDERER-MERGE BATCHING:/.test(p), 'god briefing must carry the RENDERER-MERGE BATCHING rule');
+  assert.ok(
+    /RENDERER-MERGE BATCHING:/.test(p),
+    'god briefing must carry the RENDERER-MERGE BATCHING rule',
+  );
   assert.ok(/QA branches anytime/.test(p));
   assert.ok(/renderer\/preload-touching branches ONLY in restart\/reload windows, batched/.test(p));
   assert.ok(/main-process\/test-only branches merge immediately/.test(p));

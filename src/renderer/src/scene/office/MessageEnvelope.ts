@@ -16,20 +16,20 @@ export type MessageAct = 'request' | 'inform' | 'propose' | 'query' | 'agree' | 
  *  asks are cool, answers are warm/positive, refusals are red. */
 const ACT_COLOR: Record<MessageAct, number> = {
   request: colors.accent.sky,
-  query:   colors.accent.lilac,
+  query: colors.accent.lilac,
   propose: colors.accent.lemon,
-  inform:  colors.cream[200],
-  agree:   colors.accent.mint,
-  done:    colors.accent.mint,
-  refuse:  colors.accent.coral
+  inform: colors.cream[200],
+  agree: colors.accent.mint,
+  done: colors.accent.mint,
+  refuse: colors.accent.coral,
 };
 
 const OUTLINE = colors.ink[900];
 const HUMAN_COLOR = colors.accent.coral; // escalations to the human
 
-const FLY_HEIGHT = 22;       // px above the feet anchor the envelope rides at
-const ARC_LIFT = 38;         // peak of the travel arc (negative y)
-const SPEED = 230;           // px/sec — duration derives from travel distance
+const FLY_HEIGHT = 22; // px above the feet anchor the envelope rides at
+const ARC_LIFT = 38; // peak of the travel arc (negative y)
+const SPEED = 230; // px/sec — duration derives from travel distance
 const MIN_DURATION = 0.8;
 const MAX_DURATION = 2.0;
 const FADE_IN = 0.14;
@@ -45,8 +45,10 @@ export class MessageEnvelope {
   private body: Graphics;
   private burst: Graphics;
 
-  private sx: number; private sy: number;
-  private ex: number; private ey: number;
+  private sx: number;
+  private sy: number;
+  private ex: number;
+  private ey: number;
   private duration: number;
   private elapsed = 0;
   private bursting = false;
@@ -58,10 +60,12 @@ export class MessageEnvelope {
     start: { x: number; y: number },
     end: { x: number; y: number },
     act: MessageAct,
-    needsHuman: boolean
+    needsHuman: boolean,
   ) {
-    this.sx = start.x; this.sy = start.y - FLY_HEIGHT;
-    this.ex = end.x;   this.ey = end.y - FLY_HEIGHT;
+    this.sx = start.x;
+    this.sy = start.y - FLY_HEIGHT;
+    this.ex = end.x;
+    this.ey = end.y - FLY_HEIGHT;
     const dist = Math.hypot(this.ex - this.sx, this.ey - this.sy);
     this.duration = Math.min(MAX_DURATION, Math.max(MIN_DURATION, dist / SPEED));
 
@@ -75,10 +79,17 @@ export class MessageEnvelope {
     // Envelope: a 14×10 rect with an ink outline and a "flap" chevron. Drawn
     // centered so rotation/scale pivot at the middle.
     this.body = new Graphics();
-    const w = 14, h = 10;
-    this.body.rect(-w / 2, -h / 2, w, h).fill({ color: fill }).stroke({ color: OUTLINE, width: 1 });
+    const w = 14,
+      h = 10;
+    this.body
+      .rect(-w / 2, -h / 2, w, h)
+      .fill({ color: fill })
+      .stroke({ color: OUTLINE, width: 1 });
     // flap — two lines from the top corners meeting at the centre
-    this.body.moveTo(-w / 2, -h / 2).lineTo(0, h / 2 - 3).lineTo(w / 2, -h / 2)
+    this.body
+      .moveTo(-w / 2, -h / 2)
+      .lineTo(0, h / 2 - 3)
+      .lineTo(w / 2, -h / 2)
       .stroke({ color: OUTLINE, width: 1 });
     this.container.addChild(this.body);
 
@@ -110,9 +121,8 @@ export class MessageEnvelope {
 
       // fade in at the start, out near the end; gentle bob rotation
       const fadeIn = Math.min(this.elapsed / FADE_IN, 1);
-      const fadeOut = t > 1 - FADE_OUT / this.duration
-        ? Math.max(0, (1 - t) / (FADE_OUT / this.duration))
-        : 1;
+      const fadeOut =
+        t > 1 - FADE_OUT / this.duration ? Math.max(0, (1 - t) / (FADE_OUT / this.duration)) : 1;
       this.container.alpha = Math.min(fadeIn, fadeOut);
       this.body.rotation = Math.sin(this.elapsed * 6) * 0.12;
 

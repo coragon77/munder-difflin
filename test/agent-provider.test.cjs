@@ -21,7 +21,7 @@ const out = fs.mkdtempSync(path.join(os.tmpdir(), 'agentprov-'));
 for (const name of ['claudeCommands', 'codexCommands', 'grokCommands', 'agentProvider']) {
   const src = fs.readFileSync(path.join(SHARED, `${name}.ts`), 'utf8');
   const js = ts.transpileModule(src, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
   fs.writeFileSync(path.join(out, `${name}.js`), js, 'utf8');
 }
@@ -29,15 +29,23 @@ const ap = require(path.join(out, 'agentProvider.js'));
 
 let failures = 0;
 function test(name, fn) {
-  try { fn(); console.log(`  ✓ ${name}`); }
-  catch (err) { failures++; console.log(`  ✗ ${name}\n     ${err && err.message}`); }
+  try {
+    fn();
+    console.log(`  ✓ ${name}`);
+  } catch (err) {
+    failures++;
+    console.log(`  ✗ ${name}\n     ${err && err.message}`);
+  }
 }
 
 console.log('agent-provider registry tests');
 
 test('copilot is a recognized, selectable provider', () => {
   assert.ok(ap.isAgentProvider('copilot'), 'isAgentProvider("copilot")');
-  assert.ok(ap.AGENT_PROVIDER_PRESETS.some((p) => p.id === 'copilot'), 'preset registered');
+  assert.ok(
+    ap.AGENT_PROVIDER_PRESETS.some((p) => p.id === 'copilot'),
+    'preset registered',
+  );
 });
 
 test('inferAgentProvider maps the copilot binary (with path/flags) to copilot', () => {
@@ -50,7 +58,11 @@ test('copilot preset builds the documented non-interactive print-mode shape', ()
   assert.strictEqual(p.defaultCommand, 'copilot', 'default command binary');
   assert.strictEqual(p.initialPromptFlag, '-p', 'prompt rides in via -p');
   assert.strictEqual(ap.autoModeFlagForProvider('copilot'), '-s --allow-all-tools --no-ask-user');
-  assert.strictEqual(p.autoFlag, '-s --allow-all-tools --no-ask-user', 'autoFlag mirrors autoModeFlag');
+  assert.strictEqual(
+    p.autoFlag,
+    '-s --allow-all-tools --no-ask-user',
+    'autoFlag mirrors autoModeFlag',
+  );
 });
 
 test('copilot passes model + resume through, non-hiveAware, never auto-receives inbox', () => {

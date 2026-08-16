@@ -1,4 +1,15 @@
-import { closeSync, cpSync, existsSync, fstatSync, mkdirSync, openSync, readSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  closeSync,
+  cpSync,
+  existsSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { estimateCostUsd, normalizeModel } from './pricing';
@@ -104,7 +115,9 @@ export function resolveSessionCwd(sessionId: string): string | null {
       try {
         const st = statSync(candidate);
         if (!best || st.mtimeMs > best.mtime) best = { file: candidate, mtime: st.mtimeMs };
-      } catch { /* not present in this project dir */ }
+      } catch {
+        /* not present in this project dir */
+      }
     }
     if (!best) return null;
     const text = readFileSync(best.file, 'utf8');
@@ -114,7 +127,9 @@ export function resolveSessionCwd(sessionId: string): string | null {
       try {
         const rec = JSON.parse(trimmed) as { cwd?: unknown };
         if (typeof rec.cwd === 'string' && rec.cwd) return rec.cwd;
-      } catch { /* skip a malformed line */ }
+      } catch {
+        /* skip a malformed line */
+      }
     }
     return null;
   } catch {
@@ -134,7 +149,13 @@ export interface AgentUsage {
 }
 
 function zero(): AgentUsage {
-  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, estimatedCostUsd: 0 };
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    estimatedCostUsd: 0,
+  };
 }
 
 export interface ReadUsageOptions {
@@ -184,7 +205,8 @@ function parseUsageLines(text: string, sessionId: string | undefined, acc: Agent
     if (sessionId && rec.sessionId !== sessionId) continue;
     const u = rec.message?.usage;
     if (!u) continue;
-    const model = typeof rec.message?.model === 'string' ? normalizeModel(rec.message.model) : undefined;
+    const model =
+      typeof rec.message?.model === 'string' ? normalizeModel(rec.message.model) : undefined;
     if (model) acc.model = model;
     const rIn = num(u.input_tokens);
     const rOut = num(u.output_tokens);
@@ -200,7 +222,7 @@ function parseUsageLines(text: string, sessionId: string | undefined, acc: Agent
       inputTokens: rIn,
       outputTokens: rOut,
       cacheReadTokens: rCacheRead,
-      cacheWriteTokens: rCacheWrite
+      cacheWriteTokens: rCacheWrite,
     });
   }
 }
@@ -208,11 +230,20 @@ function parseUsageLines(text: string, sessionId: string | undefined, acc: Agent
 /** Cached totals for one transcript file, refreshed incrementally: unchanged
  *  size+mtime → cache hit (no read at all); grown → parse only the appended
  *  tail; shrunk (rewritten) → full re-parse. Null when the file vanished. */
-function readFileUsage(dir: string, file: string, sessionId: string | undefined): FileUsageEntry | null {
+function readFileUsage(
+  dir: string,
+  file: string,
+  sessionId: string | undefined,
+): FileUsageEntry | null {
   const key = `${dir}|${file}|${sessionId ?? '*'}`;
   const full = path.join(dir, file);
   let st: { size: number; mtimeMs: number };
-  try { st = statSync(full); } catch { usageCache.delete(key); return null; }
+  try {
+    st = statSync(full);
+  } catch {
+    usageCache.delete(key);
+    return null;
+  }
   const cached = usageCache.get(key);
   if (cached && cached.size === st.size && cached.mtimeMs === st.mtimeMs) return cached;
   const fromScratch = !cached || st.size < cached.offset;
@@ -237,14 +268,19 @@ function readFileUsage(dir: string, file: string, sessionId: string | undefined)
           entry.offset += Buffer.byteLength(complete, 'utf8');
         }
       }
-    } finally { closeSync(fd); }
+    } finally {
+      closeSync(fd);
+    }
   } catch {
     // Unreadable right now — keep what we have; totals refresh on the next call.
   }
   usageCache.set(key, entry);
   if (usageCache.size > USAGE_CACHE_MAX) {
     let drop = usageCache.size - USAGE_CACHE_MAX / 2;
-    for (const k of usageCache.keys()) { if (drop-- <= 0) break; usageCache.delete(k); }
+    for (const k of usageCache.keys()) {
+      if (drop-- <= 0) break;
+      usageCache.delete(k);
+    }
   }
   return entry;
 }
@@ -321,8 +357,12 @@ export function readContextTokens(transcriptPath: string): number | null {
         if (rec.type !== 'assistant') continue;
         const u = rec.message?.usage;
         if (!u) continue;
-        return num(u.input_tokens) + num(u.output_tokens)
-          + num(u.cache_creation_input_tokens) + num(u.cache_read_input_tokens);
+        return (
+          num(u.input_tokens) +
+          num(u.output_tokens) +
+          num(u.cache_creation_input_tokens) +
+          num(u.cache_read_input_tokens)
+        );
       }
       return null;
     } finally {

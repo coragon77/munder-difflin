@@ -12,7 +12,7 @@ const {
   terminalAutomationBlock,
   isStaleTerminalPicker,
   STALE_INPUT_MS,
-  STALE_PICKER_MS
+  STALE_PICKER_MS,
 } = loadTs('src/renderer/src/components/terminalAutomation.ts');
 
 test('interactive provider commands pause queue automation', () => {
@@ -45,8 +45,11 @@ test('terminal automation waits for user drafts and interactive states', () => {
 test('an abandoned draft stops blocking delivery once it goes stale', () => {
   const typedAt = 1_000_000;
   const draft = {
-    exited: false, pickerOpen: false, inputDirty: true,
-    settleUntil: 0, inputDirtyAt: typedAt
+    exited: false,
+    pickerOpen: false,
+    inputDirty: true,
+    settleUntil: 0,
+    inputDirtyAt: typedAt,
   };
   // Fresh draft: the user is mid-sentence, automation must not type over it.
   assert.equal(canAutomateTerminal(draft, typedAt + 1), false);
@@ -61,8 +64,11 @@ test('an abandoned draft stops blocking delivery once it goes stale', () => {
 test('an abandoned picker stops blocking delivery once it goes stale', () => {
   const openedAt = 1_000_000;
   const picker = {
-    exited: false, pickerOpen: true, inputDirty: false,
-    settleUntil: 0, pickerOpenedAt: openedAt
+    exited: false,
+    pickerOpen: true,
+    inputDirty: false,
+    settleUntil: 0,
+    pickerOpenedAt: openedAt,
   };
   // While it is plausibly still open, automation must not type into the menu.
   assert.equal(canAutomateTerminal(picker, openedAt + 1), false);
@@ -75,7 +81,10 @@ test('an abandoned picker stops blocking delivery once it goes stale', () => {
   assert.equal(terminalAutomationBlock(picker, openedAt + STALE_PICKER_MS), null);
   // No timestamp ⇒ the old never-expires behavior, so nothing silently changes
   // for a state recorded before this field existed.
-  assert.equal(canAutomateTerminal({ ...picker, pickerOpenedAt: undefined }, openedAt + 1e9), false);
+  assert.equal(
+    canAutomateTerminal({ ...picker, pickerOpenedAt: undefined }, openedAt + 1e9),
+    false,
+  );
 });
 
 test('automation block reports why delivery is held', () => {
@@ -88,7 +97,7 @@ test('automation block reports why delivery is held', () => {
   // A picker outranks a draft: both are true while a slash menu is open.
   assert.equal(
     terminalAutomationBlock({ ...ready, pickerOpen: true, inputDirty: true }, 100),
-    'picker'
+    'picker',
   );
 });
 

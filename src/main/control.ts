@@ -44,7 +44,7 @@ export class ControlRegistry {
         halted: false,
         autoDeliveryPaused: false,
         gatedTools: new Set(),
-        steerQueue: []
+        steerQueue: [],
       };
       this.map.set(id, c);
     }
@@ -53,7 +53,9 @@ export class ControlRegistry {
 
   // ─── Operator actions (wired to IPC) ───────────────────────────────────────
 
-  pause(id: string, on: boolean): void { this.ensure(id).paused = on; }
+  pause(id: string, on: boolean): void {
+    this.ensure(id).paused = on;
+  }
   pauseAutoDelivery(id: string, on: boolean): void {
     this.ensure(id).autoDeliveryPaused = on;
   }
@@ -66,23 +68,35 @@ export class ControlRegistry {
   }
   gateTool(id: string, tool: string, on: boolean): void {
     const c = this.ensure(id);
-    if (on) c.gatedTools.add(tool); else c.gatedTools.delete(tool);
+    if (on) c.gatedTools.add(tool);
+    else c.gatedTools.delete(tool);
   }
   steer(id: string, text: string): void {
     const t = text.trim();
     if (t) this.ensure(id).steerQueue.push(t.slice(0, 10000)); // hook additionalContext cap
   }
   /** Request a graceful stop at the next hook boundary. */
-  halt(id: string): void { this.ensure(id).halted = true; }
+  halt(id: string): void {
+    this.ensure(id).halted = true;
+  }
   /** Drop all queued-but-undelivered steer notes (e.g. closing time cancelled
    *  before a busy agent's next hook boundary consumed the instruction). */
-  clearSteers(id: string): void { const c = this.map.get(id); if (c) c.steerQueue.length = 0; }
+  clearSteers(id: string): void {
+    const c = this.map.get(id);
+    if (c) c.steerQueue.length = 0;
+  }
   /** Clear pause + halt (lets a paused/halted agent run again). Keeps gates. */
-  resume(id: string): void { const c = this.ensure(id); c.paused = false; c.halted = false; }
+  resume(id: string): void {
+    const c = this.ensure(id);
+    c.paused = false;
+    c.halted = false;
+  }
 
   // ─── Reads (used by HookServer) ────────────────────────────────────────────
 
-  shouldHalt(id: string): boolean { return this.map.get(id)?.halted ?? false; }
+  shouldHalt(id: string): boolean {
+    return this.map.get(id)?.halted ?? false;
+  }
   isAutoDeliveryPaused(id: string): boolean {
     return this.map.get(id)?.autoDeliveryPaused ?? false;
   }
@@ -91,13 +105,17 @@ export class ControlRegistry {
   toolDecision(id: string, tool: string): { deny: boolean; reason?: string } {
     const c = this.map.get(id);
     if (!c) return { deny: false };
-    if (c.paused) return { deny: true, reason: 'Paused by operator — resume from the floor to continue.' };
-    if (tool && c.gatedTools.has(tool)) return { deny: true, reason: `Tool ${tool} is gated by the operator.` };
+    if (c.paused)
+      return { deny: true, reason: 'Paused by operator — resume from the floor to continue.' };
+    if (tool && c.gatedTools.has(tool))
+      return { deny: true, reason: `Tool ${tool} is gated by the operator.` };
     return { deny: false };
   }
 
   /** Dequeue one pending steer note for delivery, or undefined. */
-  takeSteer(id: string): string | undefined { return this.map.get(id)?.steerQueue.shift(); }
+  takeSteer(id: string): string | undefined {
+    return this.map.get(id)?.steerQueue.shift();
+  }
 
   snapshot(id: string): AgentControlSnapshot {
     const c = this.map.get(id);
@@ -106,7 +124,7 @@ export class ControlRegistry {
       halted: c?.halted ?? false,
       autoDeliveryPaused: c?.autoDeliveryPaused ?? false,
       gatedTools: c ? Array.from(c.gatedTools) : [],
-      pendingSteers: c?.steerQueue.length ?? 0
+      pendingSteers: c?.steerQueue.length ?? 0,
     };
   }
 }

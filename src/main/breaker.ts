@@ -67,7 +67,13 @@ export interface BreakerInput {
 const LEVELS: BreakerLevel[] = ['healthy', 'steering', 'constrained', 'stopped'];
 const rank = (l: BreakerLevel): number => LEVELS.indexOf(l);
 const actionFor = (l: BreakerLevel): BreakerAction =>
-  l === 'steering' ? 'steer' : l === 'constrained' ? 'constrain' : l === 'stopped' ? 'stop' : 'none';
+  l === 'steering'
+    ? 'steer'
+    : l === 'constrained'
+      ? 'constrain'
+      : l === 'stopped'
+        ? 'stop'
+        : 'none';
 
 /** Total tokens in a cumulative sample (all kinds), 0 when unknown. */
 const tokensOf = (s: AgentUsageSample | null): number =>
@@ -78,7 +84,7 @@ const DEFAULTS = {
   hardStop: false,
   repeatedToolLimit: 8,
   errorStormLimit: 5,
-  tokenVelocityPerMin: 60_000 // output tokens/min — coarse backstop, deliberately high
+  tokenVelocityPerMin: 60_000, // output tokens/min — coarse backstop, deliberately high
 };
 
 /** Safety cap on the PreCompact exemption: if PostCompact never arrives (crash,
@@ -119,7 +125,13 @@ interface AgentBreakerState {
 export class CircuitBreaker {
   private agents = new Map<string, AgentBreakerState>();
 
-  constructor(private getConfig: () => CircuitBreakerConfig & { costCapUsd?: number; costCapTokens?: number; agentTokenCaps?: Record<string, number> }) {}
+  constructor(
+    private getConfig: () => CircuitBreakerConfig & {
+      costCapUsd?: number;
+      costCapTokens?: number;
+      agentTokenCaps?: Record<string, number>;
+    },
+  ) {}
 
   private cfg() {
     const c = this.getConfig() ?? {};
@@ -131,7 +143,7 @@ export class CircuitBreaker {
       tokenVelocityPerMin: c.tokenVelocityPerMin ?? DEFAULTS.tokenVelocityPerMin,
       costCapUsd: c.costCapUsd,
       costCapTokens: c.costCapTokens,
-      agentTokenCaps: c.agentTokenCaps
+      agentTokenCaps: c.agentTokenCaps,
     };
   }
 
@@ -139,8 +151,15 @@ export class CircuitBreaker {
     let s = this.agents.get(agentId);
     if (!s) {
       s = {
-        level: 'healthy', reason: '', lastSample: null, repeatKey: null, repeatCount: 0,
-        errorCount: 0, compactingUntil: 0, lastDistinctToolAt: 0, noProgressBeats: 0
+        level: 'healthy',
+        reason: '',
+        lastSample: null,
+        repeatKey: null,
+        repeatCount: 0,
+        errorCount: 0,
+        compactingUntil: 0,
+        lastDistinctToolAt: 0,
+        noProgressBeats: 0,
       };
       this.agents.set(agentId, s);
     }
@@ -171,7 +190,12 @@ export class CircuitBreaker {
    *  no-progress arm reads); the SAME key in a row is the loop signal.
    *  A `null` key means the payload carried NO input, i.e. no identity evidence —
    *  never a repeat (see toolKey). */
-  recordToolUse(agentId: string, toolName: string | undefined, toolInput: unknown, now = Date.now()): void {
+  recordToolUse(
+    agentId: string,
+    toolName: string | undefined,
+    toolInput: unknown,
+    now = Date.now(),
+  ): void {
     const s = this.get(agentId);
     const key = this.toolKey(toolName, toolInput);
     if (key !== null && key === s.repeatKey) {
@@ -227,10 +251,15 @@ export class CircuitBreaker {
     // agents (observed live, 8×/10× "identical bash").
     let inp = '';
     try {
-      inp = JSON.stringify(toolInput, (_k, v) =>
-        typeof v === 'string' && v.length > 250
-          ? `${v.slice(0, 250)}#${v.length}#${CircuitBreaker.hashKey(v)}` : v) ?? '';
-    } catch { inp = String(toolInput); }
+      inp =
+        JSON.stringify(toolInput, (_k, v) =>
+          typeof v === 'string' && v.length > 250
+            ? `${v.slice(0, 250)}#${v.length}#${CircuitBreaker.hashKey(v)}`
+            : v,
+        ) ?? '';
+    } catch {
+      inp = String(toolInput);
+    }
     return `${toolName ?? '?'}:${CircuitBreaker.hashKey(inp)}`;
   }
 
@@ -261,8 +290,13 @@ export class CircuitBreaker {
       for (const { agentId } of inputs) {
         const s = this.get(agentId);
         const changed = s.level !== 'healthy';
-        s.level = 'healthy'; s.reason = '';
-        decisions.push({ state: { agentId, level: 'healthy', reason: '', ts: nowMs }, action: 'none', changed });
+        s.level = 'healthy';
+        s.reason = '';
+        decisions.push({
+          state: { agentId, level: 'healthy', reason: '', ts: nowMs },
+          action: 'none',
+          changed,
+        });
       }
       return decisions;
     }
@@ -271,11 +305,15 @@ export class CircuitBreaker {
     // so one runaway doesn't trip the whole floor.
     let topSpender: string | null = null;
     if (typeof cfg.costCapUsd === 'number' && cfg.costCapUsd > 0) {
-      let total = 0; let max = -1;
+      let total = 0;
+      let max = -1;
       for (const i of inputs) {
         const usd = i.sample?.usd ?? 0;
         total += usd;
-        if (usd > max) { max = usd; topSpender = i.agentId; }
+        if (usd > max) {
+          max = usd;
+          topSpender = i.agentId;
+        }
       }
       if (total <= cfg.costCapUsd) topSpender = null; // under cap — nobody blamed
     }
@@ -283,11 +321,15 @@ export class CircuitBreaker {
     // Token cap (the user-facing budget): same floor-wide logic on total tokens.
     let topTokenSpender: string | null = null;
     if (typeof cfg.costCapTokens === 'number' && cfg.costCapTokens > 0) {
-      let total = 0; let max = -1;
+      let total = 0;
+      let max = -1;
       for (const i of inputs) {
         const tok = tokensOf(i.sample);
         total += tok;
-        if (tok > max) { max = tok; topTokenSpender = i.agentId; }
+        if (tok > max) {
+          max = tok;
+          topTokenSpender = i.agentId;
+        }
       }
       if (total <= cfg.costCapTokens) topTokenSpender = null; // under cap
     }
@@ -295,9 +337,14 @@ export class CircuitBreaker {
     for (const input of inputs) {
       const s = this.get(input.agentId);
       const trip = this.evaluate(
-        input, s, cfg, nowMs,
-        input.agentId === topSpender, cfg.costCapUsd,
-        input.agentId === topTokenSpender, cfg.costCapTokens
+        input,
+        s,
+        cfg,
+        nowMs,
+        input.agentId === topSpender,
+        cfg.costCapUsd,
+        input.agentId === topTokenSpender,
+        cfg.costCapTokens,
       );
       // remember the cumulative baseline for next beat's velocity diff
       if (input.sample) s.lastSample = input.sample;
@@ -312,12 +359,12 @@ export class CircuitBreaker {
       const changed = target !== s.level;
       const escalated = rank(target) > rank(s.level);
       s.level = target;
-      s.reason = trip.tripping ? trip.reason : (changed ? 'recovering — signals cleared' : s.reason);
+      s.reason = trip.tripping ? trip.reason : changed ? 'recovering — signals cleared' : s.reason;
 
       decisions.push({
         state: { agentId: input.agentId, level: target, reason: s.reason, ts: nowMs },
         action: escalated ? actionFor(target) : 'none',
-        changed
+        changed,
       });
     }
     return decisions;
@@ -332,28 +379,47 @@ export class CircuitBreaker {
     isTopSpender: boolean,
     costCapUsd: number | undefined,
     isTopTokenSpender: boolean,
-    costCapTokens: number | undefined
+    costCapTokens: number | undefined,
   ): { tripping: boolean; reason: string } {
     // (b) repeated identical tool calls
     if (s.repeatCount >= cfg.repeatedToolLimit) {
-      return { tripping: true, reason: `looping: ${s.repeatCount}× identical tool call (${s.repeatKey?.split(':')[0] ?? '?'})` };
+      return {
+        tripping: true,
+        reason: `looping: ${s.repeatCount}× identical tool call (${s.repeatKey?.split(':')[0] ?? '?'})`,
+      };
     }
     // (b) api_error storm
     if (s.errorCount >= cfg.errorStormLimit) {
-      return { tripping: true, reason: `error storm: ${s.errorCount} consecutive api errors/retries` };
+      return {
+        tripping: true,
+        reason: `error storm: ${s.errorCount} consecutive api errors/retries`,
+      };
     }
     // (a) per-agent token limit — this agent's own total over its configured cap
     const perAgentCap = cfg.agentTokenCaps?.[input.agentId];
-    if (typeof perAgentCap === 'number' && perAgentCap > 0 && tokensOf(input.sample) > perAgentCap) {
-      return { tripping: true, reason: `token limit: ${tokensOf(input.sample).toLocaleString()} over the agent cap of ${perAgentCap.toLocaleString()}` };
+    if (
+      typeof perAgentCap === 'number' &&
+      perAgentCap > 0 &&
+      tokensOf(input.sample) > perAgentCap
+    ) {
+      return {
+        tripping: true,
+        reason: `token limit: ${tokensOf(input.sample).toLocaleString()} over the agent cap of ${perAgentCap.toLocaleString()}`,
+      };
     }
     // (a) cost cap — floor total over cap, this agent is the biggest spender
     if (isTopSpender && typeof costCapUsd === 'number') {
-      return { tripping: true, reason: `cost cap: floor total over $${costCapUsd} (top spender $${(input.sample?.usd ?? 0).toFixed(2)})` };
+      return {
+        tripping: true,
+        reason: `cost cap: floor total over $${costCapUsd} (top spender $${(input.sample?.usd ?? 0).toFixed(2)})`,
+      };
     }
     // (a) token cap — floor total tokens over cap, this agent is the biggest spender
     if (isTopTokenSpender && typeof costCapTokens === 'number') {
-      return { tripping: true, reason: `token cap: floor total over ${costCapTokens.toLocaleString()} tokens (top spender ${tokensOf(input.sample).toLocaleString()})` };
+      return {
+        tripping: true,
+        reason: `token cap: floor total over ${costCapTokens.toLocaleString()} tokens (top spender ${tokensOf(input.sample).toLocaleString()})`,
+      };
     }
     // (a) token-velocity spike — diff cumulative output across consecutive beats.
     // Skipped entirely while a compaction is in flight (+ trailing grace): a
@@ -366,7 +432,10 @@ export class CircuitBreaker {
       if (dOut > 0 && dMin > 0) {
         const velocity = dOut / dMin;
         if (velocity > cfg.tokenVelocityPerMin) {
-          return { tripping: true, reason: `token velocity ${Math.round(velocity)}/min > ${cfg.tokenVelocityPerMin}/min` };
+          return {
+            tripping: true,
+            reason: `token velocity ${Math.round(velocity)}/min > ${cfg.tokenVelocityPerMin}/min`,
+          };
         }
         // (c) no-progress: burning output tokens while not coordinating. A recent
         // DISTINCT tool call counts as progress too — background workflows and
@@ -381,7 +450,10 @@ export class CircuitBreaker {
         if (!input.progressing && !toolActive && input.hasOpenWork) {
           s.noProgressBeats += 1;
           if (s.noProgressBeats >= NO_PROGRESS_BEATS) {
-            return { tripping: true, reason: 'no-progress: generating tokens without coordinating (stale log/files)' };
+            return {
+              tripping: true,
+              reason: 'no-progress: generating tokens without coordinating (stale log/files)',
+            };
           }
         } else {
           s.noProgressBeats = 0;

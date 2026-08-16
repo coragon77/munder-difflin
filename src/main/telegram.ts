@@ -62,7 +62,9 @@ export function readTelegramEnv(envFile: string): Map<string, string> {
         out.set(line.slice(0, i).trim(), line.slice(i + 1).trim());
       }
     }
-  } catch { /* missing file → empty map */ }
+  } catch {
+    /* missing file → empty map */
+  }
   return out;
 }
 
@@ -81,7 +83,7 @@ export function telegramEnvSummary(envFile: string): { hasToken: boolean; chatId
  *  the token can be edited without ever being read back into the renderer. */
 export function writeTelegramEnv(
   envFile: string,
-  patch: { TELEGRAM_BOT_TOKEN?: string | null; MD_TELEGRAM_CHAT_ID?: string | null }
+  patch: { TELEGRAM_BOT_TOKEN?: string | null; MD_TELEGRAM_CHAT_ID?: string | null },
 ): void {
   const lines = existsSync(envFile) ? readFileSync(envFile, 'utf8').split('\n') : [];
   for (const [key, value] of Object.entries(patch)) {
@@ -113,7 +115,7 @@ export function resolveTelegramRuntime(
   running: boolean,
   enabled: boolean | undefined,
   hasToken: boolean,
-  envChanged: boolean
+  envChanged: boolean,
 ): 'start' | 'stop' | 'restart' | 'none' {
   const wantsRun = (enabled ?? true) && hasToken;
   if (!wantsRun) return running ? 'stop' : 'none';
@@ -143,12 +145,16 @@ export class TelegramTrigger {
     return readTelegramEnv(this.opts.envFile);
   }
 
-  private api(method: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<{ ok: boolean; result?: unknown; description?: string }> {
+  private api(
+    method: string,
+    body?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean; result?: unknown; description?: string }> {
     return fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body ?? {}),
-      signal
+      signal,
     }).then((r) => r.json());
   }
 
@@ -181,11 +187,15 @@ export class TelegramTrigger {
   private async pollLoop(): Promise<void> {
     while (this.running) {
       try {
-        const res = await this.api('getUpdates', {
-          offset: this.offset,
-          timeout: 25,
-          allowed_updates: ['message']
-        }, this.abort?.signal);
+        const res = await this.api(
+          'getUpdates',
+          {
+            offset: this.offset,
+            timeout: 25,
+            allowed_updates: ['message'],
+          },
+          this.abort?.signal,
+        );
         if (!this.running) return;
         if (!res.ok) throw new Error(res.description ?? 'getUpdates failed');
         for (const u of (res.result as TgUpdate[]) ?? []) {
@@ -208,14 +218,22 @@ export class TelegramTrigger {
       // Claim-once: the first chat to say /start owns this hive forever.
       if (text !== '/start') return;
       this.chatId = chat;
-      try { appendFileSync(this.opts.envFile, `\nMD_TELEGRAM_CHAT_ID=${chat}\n`); } catch (e) { log('could not persist chat id:', e); }
+      try {
+        appendFileSync(this.opts.envFile, `\nMD_TELEGRAM_CHAT_ID=${chat}\n`);
+      } catch (e) {
+        log('could not persist chat id:', e);
+      }
       log('chat claimed:', chat);
-      void this.sendText('✅ This chat now owns the hive. Messages here go to Michael; replies come back in this chat.');
+      void this.sendText(
+        '✅ This chat now owns the hive. Messages here go to Michael; replies come back in this chat.',
+      );
       return;
     }
     if (chat !== this.chatId) return; // silent drop — no enumeration signal
     log('inbound from owner chat:', text.slice(0, 80));
-    void Promise.resolve(this.opts.onMessage({ chatId: chat, text })).catch((e) => log('onMessage failed:', e));
+    void Promise.resolve(this.opts.onMessage({ chatId: chat, text })).catch((e) =>
+      log('onMessage failed:', e),
+    );
   }
 
   /** Outbound: post to the owned chat (bot token stays here). */
@@ -224,7 +242,9 @@ export class TelegramTrigger {
     try {
       const r = await this.api('sendMessage', { chat_id: this.chatId, text });
       return !!r.ok;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
 
   /** Loopback reply endpoint for agents: POST /reply + x-md-reply-token → sendText.
@@ -241,24 +261,38 @@ export class TelegramTrigger {
         const a = Buffer.from(auth);
         const b = Buffer.from(this.replyToken);
         const good = a.length === b.length && timingSafeEqual(a, b);
-        if (req.method !== 'POST' || req.url !== '/reply' || !good) return ok(res, 403, { ok: false, error: 'forbidden' });
+        if (req.method !== 'POST' || req.url !== '/reply' || !good)
+          return ok(res, 403, { ok: false, error: 'forbidden' });
         let buf = '';
-        req.on('data', (c) => { buf += c; if (buf.length > 16384) req.destroy(); });
+        req.on('data', (c) => {
+          buf += c;
+          if (buf.length > 16384) req.destroy();
+        });
         req.on('end', () => {
           try {
             const { text } = JSON.parse(buf) as { text?: string };
-            if (typeof text !== 'string' || !text.trim()) return ok(res, 400, { ok: false, error: 'text required' });
-            void this.sendText(text).then((sent) => ok(res, sent ? 200 : 502, sent ? { ok: true } : { ok: false, error: 'send failed' }));
-          } catch { ok(res, 400, { ok: false, error: 'bad json' }); }
+            if (typeof text !== 'string' || !text.trim())
+              return ok(res, 400, { ok: false, error: 'text required' });
+            void this.sendText(text).then((sent) =>
+              ok(res, sent ? 200 : 502, sent ? { ok: true } : { ok: false, error: 'send failed' }),
+            );
+          } catch {
+            ok(res, 400, { ok: false, error: 'bad json' });
+          }
         });
       });
       this.replyServer.listen(0, '127.0.0.1', () => {
         const addr = this.replyServer!.address();
         this.replyPort = typeof addr === 'object' && addr ? addr.port : 0;
         try {
-          writeFileSync(this.opts.replyConfigFile, JSON.stringify({ port: this.replyPort, token: this.replyToken }));
+          writeFileSync(
+            this.opts.replyConfigFile,
+            JSON.stringify({ port: this.replyPort, token: this.replyToken }),
+          );
           log('reply endpoint on 127.0.0.1:' + this.replyPort);
-        } catch (e) { log('could not write discovery file:', e); }
+        } catch (e) {
+          log('could not write discovery file:', e);
+        }
         resolve();
       });
     });
@@ -270,6 +304,10 @@ export class TelegramTrigger {
     this.abort = null;
     this.replyServer?.close();
     this.replyServer = null;
-    try { if (existsSync(this.opts.replyConfigFile)) unlinkSync(this.opts.replyConfigFile); } catch { /* best-effort */ }
+    try {
+      if (existsSync(this.opts.replyConfigFile)) unlinkSync(this.opts.replyConfigFile);
+    } catch {
+      /* best-effort */
+    }
   }
 }

@@ -4,12 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const loadTs = require('./load-ts.cjs');
 
-const {
-  AGENT_PROVIDER_PRESETS,
-  DEFAULT_HIRE_PERMISSION_MODE,
-  permissionModeArgs,
-  providerPreset
-} = loadTs('src/shared/agentProvider.ts');
+const { AGENT_PROVIDER_PRESETS, DEFAULT_HIRE_PERMISSION_MODE, permissionModeArgs, providerPreset } =
+  loadTs('src/shared/agentProvider.ts');
 
 // — claude flags verified against the SHIPPED binary (claude 2.1.221, native
 //   ELF, `claude --help`): `--permission-mode` accepts choices "acceptEdits",
@@ -27,14 +23,10 @@ test('claude autoFlag is the verified single-token bypass spelling', () => {
 });
 
 test('permissionModeArgs: claude auto and bypass map to their verified flags', () => {
-  assert.deepEqual(
-    permissionModeArgs('claude', 'claude', 'auto'),
-    ['--permission-mode', 'auto']
-  );
-  assert.deepEqual(
-    permissionModeArgs('claude', undefined, 'bypass'),
-    ['--dangerously-skip-permissions']
-  );
+  assert.deepEqual(permissionModeArgs('claude', 'claude', 'auto'), ['--permission-mode', 'auto']);
+  assert.deepEqual(permissionModeArgs('claude', undefined, 'bypass'), [
+    '--dangerously-skip-permissions',
+  ]);
 });
 
 test('permissionModeArgs: default or unset mode injects NOTHING', () => {
@@ -48,15 +40,16 @@ test('permissionModeArgs: non-claude providers map both auto and bypass to their
   // Other CLIs have a single autonomous flag — auto IS bypass for them.
   assert.deepEqual(permissionModeArgs('kimi', 'kimi', 'auto'), ['--auto']);
   assert.deepEqual(permissionModeArgs('kimi', 'kimi', 'bypass'), ['--auto']);
-  assert.deepEqual(
-    permissionModeArgs('grok', 'grok', 'bypass'),
-    ['--permission-mode', 'bypassPermissions']
-  );
+  assert.deepEqual(permissionModeArgs('grok', 'grok', 'bypass'), [
+    '--permission-mode',
+    'bypassPermissions',
+  ]);
   // Multi-token flags split into one argv element per token.
-  assert.deepEqual(
-    permissionModeArgs('copilot', 'copilot', 'bypass'),
-    ['-s', '--allow-all-tools', '--no-ask-user']
-  );
+  assert.deepEqual(permissionModeArgs('copilot', 'copilot', 'bypass'), [
+    '-s',
+    '--allow-all-tools',
+    '--no-ask-user',
+  ]);
   // Providers with no flag (custom) stay flag-less in every mode.
   assert.deepEqual(permissionModeArgs('some-custom-cli', 'custom', 'bypass'), []);
 });
@@ -65,13 +58,13 @@ test('typed-flag precedence: an explicit flag in the command wins, never doubled
   // Exact bypass flag typed → no injection.
   assert.deepEqual(
     permissionModeArgs('claude --dangerously-skip-permissions', 'claude', 'bypass'),
-    []
+    [],
   );
   // Any typed --permission-mode <value> wins over a selected claude auto mode
   // (appending a second --permission-mode would conflict on the same key).
   assert.deepEqual(
     permissionModeArgs('claude --permission-mode acceptEdits', 'claude', 'auto'),
-    []
+    [],
   );
   // Non-claude: the provider's own typed flag suppresses injection.
   assert.deepEqual(permissionModeArgs('kimi --auto', 'kimi', 'auto'), []);
@@ -85,7 +78,7 @@ test('spawn-request path: the worker bypass SETTING (not autoMode) keys the inje
   const command = 'claude';
   const argvFor = (bypassSetting) => [
     ...(raw.model ? ['--model', raw.model] : []),
-    ...permissionModeArgs(command, undefined, bypassSetting ? 'bypass' : 'default')
+    ...permissionModeArgs(command, undefined, bypassSetting ? 'bypass' : 'default'),
   ];
   assert.deepEqual(argvFor(true), ['--model', 'sonnet', '--dangerously-skip-permissions']);
   // Setting OFF (the shipped default): no bypass even though autoMode is on.

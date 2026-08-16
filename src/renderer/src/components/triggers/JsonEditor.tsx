@@ -16,7 +16,7 @@ const editorTheme = EditorView.theme({
     background: 'var(--cth-paper-100)',
     color: 'var(--cth-ink-900)',
     fontFamily: 'var(--cth-font-mono)',
-    fontSize: '13px'
+    fontSize: '13px',
   },
   '&.cm-focused': { outline: 'none' },
   '.cm-content': { padding: '6px 8px' },
@@ -24,21 +24,26 @@ const editorTheme = EditorView.theme({
   '.cm-scroller': { fontFamily: 'inherit', lineHeight: '17px' },
   '.cm-gutters': { display: 'none' },
   '.cm-activeLine': { background: 'transparent' },
-  '.cm-selectionBackground, ::selection': { background: 'var(--cth-lemon-light) !important' }
+  '.cm-selectionBackground, ::selection': { background: 'var(--cth-lemon-light) !important' },
 });
 
 const editorSyntax = HighlightStyle.define([
   { tag: tags.propertyName, color: 'var(--cth-ink-700)' },
   { tag: tags.string, color: 'var(--cth-mint)' },
   { tag: [tags.number, tags.bool, tags.null], color: 'var(--cth-coral)' },
-  { tag: tags.punctuation, color: 'var(--cth-ink-500)' }
+  { tag: tags.punctuation, color: 'var(--cth-ink-500)' },
 ]);
 
 const extensions = [json(), EditorView.lineWrapping, editorTheme, syntaxHighlighting(editorSyntax)];
 
 export function JsonEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div style={{ background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)' }}>
+    <div
+      style={{
+        background: 'var(--cth-paper-100)',
+        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+      }}
+    >
       <CodeMirror
         value={value}
         onChange={onChange}
@@ -51,7 +56,7 @@ export function JsonEditor({ value, onChange }: { value: string; onChange: (v: s
           highlightActiveLineGutter: false,
           autocompletion: false,
           searchKeymap: false,
-          highlightSelectionMatches: false
+          highlightSelectionMatches: false,
         }}
       />
     </div>

@@ -93,7 +93,7 @@ export function CompletionToast(): JSX.Element | null {
         flexDirection: 'column',
         gap: 8,
         maxWidth: 360,
-        pointerEvents: 'none'
+        pointerEvents: 'none',
       }}
     >
       {toasts.map((t) => (
@@ -107,7 +107,7 @@ export function CompletionToast(): JSX.Element | null {
             padding: 12,
             display: 'flex',
             flexDirection: 'column',
-            gap: 6
+            gap: 6,
           }}
         >
           <div
@@ -119,7 +119,7 @@ export function CompletionToast(): JSX.Element | null {
               fontSize: 8,
               lineHeight: '12px',
               color: 'var(--cth-ink-900)',
-              textTransform: 'uppercase'
+              textTransform: 'uppercase',
             }}
           >
             <Icon name="bell" /> Michael · completed
@@ -136,7 +136,7 @@ export function CompletionToast(): JSX.Element | null {
                 fontSize: 10,
                 lineHeight: '10px',
                 color: 'var(--cth-ink-700)',
-                padding: 0
+                padding: 0,
               }}
             >
               ✕
@@ -147,7 +147,7 @@ export function CompletionToast(): JSX.Element | null {
               fontFamily: 'var(--cth-font-ui)',
               fontSize: 15,
               lineHeight: '20px',
-              color: 'var(--cth-ink-900)'
+              color: 'var(--cth-ink-900)',
             }}
           >
             {t.summary}

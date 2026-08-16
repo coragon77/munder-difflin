@@ -62,7 +62,8 @@ let opening = false;
  *  platform offers. Returns '' to let MediaRecorder pick its default. */
 function pickMimeType(): string {
   const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
-  const supported = typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function';
+  const supported =
+    typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function';
   if (supported) {
     for (const c of candidates) {
       if (MediaRecorder.isTypeSupported(c)) return c;
@@ -73,7 +74,11 @@ function pickMimeType(): string {
 
 /** Release the mic stream so the OS recording indicator clears. */
 function teardownStream(): void {
-  try { stream?.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
+  try {
+    stream?.getTracks().forEach((t) => t.stop());
+  } catch {
+    /* noop */
+  }
   stream = null;
 }
 
@@ -89,7 +94,10 @@ function deliverTranscript(agentId: string, text: string): void {
  *  a friendly error if the mic can't be opened. */
 async function start(agentId: string): Promise<void> {
   if (state.status !== 'idle' || opening) return;
-  if (!agentId) { setState({ error: 'no agent selected' }); return; }
+  if (!agentId) {
+    setState({ error: 'no agent selected' });
+    return;
+  }
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
     setState({ error: 'microphone not available' });
     return;
@@ -106,14 +114,19 @@ async function start(agentId: string): Promise<void> {
     const name = e instanceof DOMException ? e.name : '';
     setState({
       status: 'idle',
-      error: name === 'NotAllowedError' ? 'microphone permission denied' : 'could not open microphone'
+      error:
+        name === 'NotAllowedError' ? 'microphone permission denied' : 'could not open microphone',
     });
     return;
   }
   opening = false;
   // Released before the mic finished opening (a quick tap) — discard cleanly.
   if (!wantActive) {
-    try { opened.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
+    try {
+      opened.getTracks().forEach((t) => t.stop());
+    } catch {
+      /* noop */
+    }
     return;
   }
   stream = opened;
@@ -127,8 +140,12 @@ async function start(agentId: string): Promise<void> {
     setState({ status: 'idle', error: 'recording not supported' });
     return;
   }
-  recorder.ondataavailable = (ev: BlobEvent) => { if (ev.data && ev.data.size > 0) chunks.push(ev.data); };
-  recorder.onstop = () => { void finish(agentId); };
+  recorder.ondataavailable = (ev: BlobEvent) => {
+    if (ev.data && ev.data.size > 0) chunks.push(ev.data);
+  };
+  recorder.onstop = () => {
+    void finish(agentId);
+  };
   recorder.start();
   setState({ status: 'recording', targetAgentId: agentId, error: null });
 }
@@ -139,7 +156,11 @@ function stop(): void {
   wantActive = false;
   if (opening) return; // the in-flight start() will see !wantActive and discard
   if (state.status !== 'recording' || !recorder) return;
-  try { recorder.stop(); } catch { /* already stopped */ }
+  try {
+    recorder.stop();
+  } catch {
+    /* already stopped */
+  }
 }
 
 /** Called when MediaRecorder finishes: assemble the clip, transcribe, deliver. */
@@ -160,7 +181,7 @@ async function finish(agentId: string): Promise<void> {
     const res = await window.cth.freeflowTranscribe({
       audio: buf,
       mimeType: type.split(';')[0],
-      filename: `dictation.${ext}`
+      filename: `dictation.${ext}`,
     });
     if (res.ok && res.text) {
       deliverTranscript(agentId, res.text);

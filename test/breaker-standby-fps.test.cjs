@@ -22,26 +22,45 @@ const ts = require('typescript');
 const SRC = path.join(__dirname, '..', 'src', 'main', 'breaker.ts');
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'breaker-standby-'));
 const js = ts.transpileModule(fs.readFileSync(SRC, 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 fs.writeFileSync(path.join(out, 'breaker.js'), js, 'utf8');
 const { CircuitBreaker } = require(path.join(out, 'breaker.js'));
 
 let failures = 0;
 function test(name, fn) {
-  try { fn(); console.log(`  ok  ${name}`); }
-  catch (e) { failures++; console.error(`FAIL  ${name}\n      ${e.message}`); }
+  try {
+    fn();
+    console.log(`  ok  ${name}`);
+  } catch (e) {
+    failures++;
+    console.error(`FAIL  ${name}\n      ${e.message}`);
+  }
 }
 
 function makeBreaker(over = {}) {
   return new CircuitBreaker(() => ({
-    enabled: true, hardStop: false, repeatedToolLimit: 8, errorStormLimit: 5,
-    tokenVelocityPerMin: 60000, ...over
+    enabled: true,
+    hardStop: false,
+    repeatedToolLimit: 8,
+    errorStormLimit: 5,
+    tokenVelocityPerMin: 60000,
+    ...over,
   }));
 }
 
 function sample(agentId, ts, output, input = 1000) {
-  return { agentId, sessionId: 's1', ts, input, output, cacheRead: 0, cacheCreation: 0, model: 'm', usd: 0 };
+  return {
+    agentId,
+    sessionId: 's1',
+    ts,
+    input,
+    output,
+    cacheRead: 0,
+    cacheCreation: 0,
+    model: 'm',
+    usd: 0,
+  };
 }
 
 const T0 = 1_000_000_000_000;
@@ -84,7 +103,8 @@ test('a stuck WORKING agent (open work, stale files) still trips no-progress', (
 
 test('work arriving mid-standby re-arms the arm (idle → open work → trips)', () => {
   const b = makeBreaker();
-  for (let i = 0; i <= 3; i++) beat(b, 'a', sample('a', T0 + i * BEAT, i * 500), false, T0 + i * BEAT, false);
+  for (let i = 0; i <= 3; i++)
+    beat(b, 'a', sample('a', T0 + i * BEAT, i * 500), false, T0 + i * BEAT, false);
   // A dispatch lands: the same stale-file signature must now be actionable.
   beat(b, 'a', sample('a', T0 + 4 * BEAT, 2500), false, T0 + 4 * BEAT, true);
   const d = beat(b, 'a', sample('a', T0 + 5 * BEAT, 3000), false, T0 + 5 * BEAT, true);

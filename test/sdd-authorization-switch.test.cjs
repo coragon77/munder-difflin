@@ -76,7 +76,15 @@ test('undefined switch state defaults to ON (matching the config default)', () =
 });
 
 test('god also carries the line (god dispatches carry the authorization)', () => {
-  const p = injectedPrompt.call(null, { ...META, isGod: true }, '/agents/god', '/hive', false, false, true);
+  const p = injectedPrompt.call(
+    null,
+    { ...META, isGod: true },
+    '/agents/god',
+    '/hive',
+    false,
+    false,
+    true,
+  );
   assert.ok(p.includes('OPERATOR AUTHORIZATION'));
   assert.ok(p.includes('God dispatches carry this authorization'));
 });

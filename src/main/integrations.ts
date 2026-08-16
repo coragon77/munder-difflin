@@ -23,7 +23,7 @@ import {
   type IntegrationRecord,
   validateIntegrationRecord,
   authTypeNeedsSecret,
-  secretRefFor
+  secretRefFor,
 } from '../shared/integrations';
 import { readConfig, writeConfig } from './config';
 
@@ -50,7 +50,9 @@ export function enabledIds(): string[] {
 
 /** Create or replace a record (validated). Stamps createdAt/updatedAt; preserves the
  *  original createdAt on update. Does NOT touch the secret store. */
-export function upsertRecord(input: unknown): { ok: true; record: IntegrationRecord } | { ok: false; error: string } {
+export function upsertRecord(
+  input: unknown,
+): { ok: true; record: IntegrationRecord } | { ok: false; error: string } {
   const v = validateIntegrationRecord(input);
   if (!v.ok) return v;
   const now = Date.now();
@@ -58,7 +60,7 @@ export function upsertRecord(input: unknown): { ok: true; record: IntegrationRec
   const record: IntegrationRecord = {
     ...v.value,
     createdAt: existing?.createdAt ?? now,
-    updatedAt: now
+    updatedAt: now,
   };
   const next = listRecords().filter((r) => r.id !== record.id);
   next.push(record);
@@ -75,8 +77,13 @@ export function removeRecord(id: string): { ok: boolean } {
 }
 
 /** Records with the secretRef redacted to a boolean — the renderer-safe shape. */
-export function listRecordsRedacted(): Array<Omit<IntegrationRecord, 'secretRef'> & { hasSecret: boolean }> {
-  return listRecords().map(({ secretRef, ...rest }) => ({ ...rest, hasSecret: !!secretRef && hasSecret(secretRef) }));
+export function listRecordsRedacted(): Array<
+  Omit<IntegrationRecord, 'secretRef'> & { hasSecret: boolean }
+> {
+  return listRecords().map(({ secretRef, ...rest }) => ({
+    ...rest,
+    hasSecret: !!secretRef && hasSecret(secretRef),
+  }));
 }
 
 // ─── Secret store (encrypted at rest) ────────────────────────────────────────
@@ -106,10 +113,14 @@ function writeSecretBlob(blob: Record<string, string>): void {
  *  writes plaintext). The plaintext is used only to encrypt and is not retained. */
 export function setSecret(secretRef: string, plaintext: string): { ok: boolean; error?: string } {
   if (!secretRef) return { ok: false, error: 'secretRef required' };
-  if (typeof plaintext !== 'string' || plaintext === '') return { ok: false, error: 'secret required' };
+  if (typeof plaintext !== 'string' || plaintext === '')
+    return { ok: false, error: 'secret required' };
   try {
     if (!safeStorage.isEncryptionAvailable()) {
-      return { ok: false, error: 'OS secret encryption is unavailable; refusing to store a secret in plaintext' };
+      return {
+        ok: false,
+        error: 'OS secret encryption is unavailable; refusing to store a secret in plaintext',
+      };
     }
     const cipher = safeStorage.encryptString(plaintext).toString('base64');
     const blob = readSecretBlob();
@@ -148,7 +159,11 @@ export function deleteSecret(secretRef: string | undefined): void {
   if (secretRef in blob) {
     delete blob[secretRef];
     if (Object.keys(blob).length === 0) {
-      try { rmSync(secretsPath(), { force: true }); } catch { /* best-effort */ }
+      try {
+        rmSync(secretsPath(), { force: true });
+      } catch {
+        /* best-effort */
+      }
     } else {
       writeSecretBlob(blob);
     }

@@ -18,7 +18,7 @@ export interface SpritePortraitProps {
 export function SpritePortrait({
   character,
   scale = 2,
-  background = 'transparent'
+  background = 'transparent',
 }: SpritePortraitProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -34,8 +34,13 @@ export function SpritePortrait({
       ctx.fillStyle = background;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
-    paintCastPortrait(ctx, character, scale).catch(() => { /* asset load race */ });
-    return () => { cancelled = true; void cancelled; };
+    paintCastPortrait(ctx, character, scale).catch(() => {
+      /* asset load race */
+    });
+    return () => {
+      cancelled = true;
+      void cancelled;
+    };
   }, [character, scale, background]);
 
   // A fractional scale can land on a fractional pixel count; the canvas
@@ -53,7 +58,7 @@ export function SpritePortrait({
       style={{
         width: w,
         height: h,
-        imageRendering: 'pixelated'
+        imageRendering: 'pixelated',
       }}
     />
   );

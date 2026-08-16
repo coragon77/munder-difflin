@@ -35,12 +35,12 @@ declare const __APP_VERSION__: string;
 
 export function App() {
   const agent = useStore(selectedAgent);
-  const agents = useStore(s => s.agents);
+  const agents = useStore((s) => s.agents);
   const agentCount = agents.length;
-  const addAgentOpen = useStore(s => s.addAgentOpen);
-  const setAddAgentOpen = useStore(s => s.setAddAgentOpen);
-  const godStatus = useStore(s => s.godStatus);
-  const fullscreenAgentId = useStore(s => s.fullscreenAgentId);
+  const addAgentOpen = useStore((s) => s.addAgentOpen);
+  const setAddAgentOpen = useStore((s) => s.setAddAgentOpen);
+  const godStatus = useStore((s) => s.godStatus);
+  const fullscreenAgentId = useStore((s) => s.fullscreenAgentId);
   const appThemeNow = useAppTheme();
   // Terminal palette (decoupled from the chrome) — read ONCE up here with the
   // other hooks. Calling useTerminalTheme() inline in the title-bar JSX below
@@ -48,11 +48,11 @@ export function App() {
   // extra hook calls appeared only after config arrived → "Rendered more
   // hooks than during the previous render" → blank screen.
   const termThemeNow = useTerminalTheme();
-  const fullscreenFilePath = useStore(s => s.fullscreenFilePath);
-  const sidebarWidth = useStore(s => s.sidebarWidth);
-  const setSidebarWidth = useStore(s => s.setSidebarWidth);
-  const ideOpen = useStore(s => s.ideOpen);
-  const setIdeOpen = useStore(s => s.setIdeOpen);
+  const fullscreenFilePath = useStore((s) => s.fullscreenFilePath);
+  const sidebarWidth = useStore((s) => s.sidebarWidth);
+  const setSidebarWidth = useStore((s) => s.setSidebarWidth);
+  const ideOpen = useStore((s) => s.ideOpen);
+  const setIdeOpen = useStore((s) => s.setIdeOpen);
 
   const [config, setConfig] = useState<HarnessConfig | null>(null);
   // Whether the user has passed the launch-time hive picker this session. Starts
@@ -65,7 +65,9 @@ export function App() {
         window.localStorage.removeItem('cth.skipHivePickerOnce');
         return true;
       }
-    } catch { /* localStorage unavailable — show the picker */ }
+    } catch {
+      /* localStorage unavailable — show the picker */
+    }
     return false;
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -94,7 +96,7 @@ export function App() {
   // Initial config load
   useEffect(() => {
     let cancelled = false;
-    window.cth.getConfig().then(c => {
+    window.cth.getConfig().then((c) => {
       if (cancelled) return;
       setConfig(c);
       // Mirror the Free Flow flag into the store so the composer mic button shows
@@ -121,10 +123,12 @@ export function App() {
     // Mirror BYOK OpenAI key presence (boolean only; the key never leaves main) so the
     // Realtime Michael voice toggle can gate on it. Lives in the secret broker, not
     // config — so fetch it rather than derive from c.
-    window.cth.realtimeHasOpenAiKey().then(has => {
+    window.cth.realtimeHasOpenAiKey().then((has) => {
       if (!cancelled) useStore.getState().setHasOpenAiKey(has);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Free Flow entry point B — hold-Option (⌥) to talk. In-renderer push-to-talk
@@ -137,7 +141,7 @@ export function App() {
 
   // Shareable hires: a validated manifest arriving via the munderdifflin://
   // deep link (or file import) pre-fills the Add-Agent modal. Never spawns by itself.
-  const setPendingHire = useStore(s => s.setPendingHire);
+  const setPendingHire = useStore((s) => s.setPendingHire);
   useEffect(() => {
     const unsub = window.cth.onHireImport?.((m) => {
       setPendingHire(m);
@@ -153,18 +157,30 @@ export function App() {
     });
     return unsub;
   }, [setPendingHire, setAddAgentOpen]);
-  useEffect(() => window.cth.onHireError?.((info) => {
-    console.error('[hire] import failed:', info.error);
-  }), []);
+  useEffect(
+    () =>
+      window.cth.onHireError?.((info) => {
+        console.error('[hire] import failed:', info.error);
+      }),
+    [],
+  );
 
   // Closing-time progress: drives the quit dialog's "wrapping up" view. The
   // dialog stays up through the whole protocol; on 'complete' the main process
   // tears down and quits by itself moments later.
-  useEffect(() => window.cth.onClosingTime?.((ev) => {
-    if (ev.phase === 'cancelled') { setClosing(null); return; }
-    setClosing({ phase: ev.phase, acked: ev.acked, total: ev.total });
-    if (ev.phase === 'started' || ev.phase === 'progress') setQuitWarn((w) => w ?? { ptyCount: 0 });
-  }), []);
+  useEffect(
+    () =>
+      window.cth.onClosingTime?.((ev) => {
+        if (ev.phase === 'cancelled') {
+          setClosing(null);
+          return;
+        }
+        setClosing({ phase: ev.phase, acked: ev.acked, total: ev.total });
+        if (ev.phase === 'started' || ev.phase === 'progress')
+          setQuitWarn((w) => w ?? { ptyCount: 0 });
+      }),
+    [],
+  );
 
   const startClosingTime = async () => {
     const res = await window.cth.startClosingTime();
@@ -203,7 +219,10 @@ export function App() {
     };
     evaluate();
     const unsub = useStore.subscribe(evaluate);
-    return () => { unsub(); stopMockLoop(); };
+    return () => {
+      unsub();
+      stopMockLoop();
+    };
   }, [config?.onboardingComplete]);
 
   // Reconcile restored agents against the PTYs still alive in the main process.
@@ -212,11 +231,18 @@ export function App() {
   useEffect(() => {
     if (!config?.onboardingComplete) return;
     let cancelled = false;
-    window.cth.listPtys().then((list) => {
-      if (cancelled) return;
-      useStore.getState().reconcileWithLivePtys(list.map((p) => p.id));
-    }).catch(() => { /* ignore — keep restored agents as-is */ });
-    return () => { cancelled = true; };
+    window.cth
+      .listPtys()
+      .then((list) => {
+        if (cancelled) return;
+        useStore.getState().reconcileWithLivePtys(list.map((p) => p.id));
+      })
+      .catch(() => {
+        /* ignore — keep restored agents as-is */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [config?.onboardingComplete]);
 
   // Track viewport width for splitter clamping
@@ -232,7 +258,14 @@ export function App() {
 
   if (!config.onboardingComplete) {
     // Just-onboarded users go straight into the hive they set up — skip the picker.
-    return <OnboardingWizard onComplete={(next) => { setConfig(next); setHiveOpened(true); }} />;
+    return (
+      <OnboardingWizard
+        onComplete={(next) => {
+          setConfig(next);
+          setHiveOpened(true);
+        }}
+      />
+    );
   }
 
   // Launch-time hive picker: on reopen, let the user open their current hive,
@@ -243,11 +276,15 @@ export function App() {
   }
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      width: '100vw', height: '100vh',
-      overflow: 'hidden'
-    }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
+      }}
+    >
       {/* rt-12: global fixed-overlay toast for voice-Michael completions ("Oscar
           finished X"). Self-positions bottom-right; renders null until one arrives. */}
       <CompletionToast />
@@ -258,7 +295,8 @@ export function App() {
       <div
         className="cth-titlebar-drag"
         style={{
-          height: 36, minHeight: 36,
+          height: 36,
+          minHeight: 36,
           background: 'linear-gradient(180deg, var(--cth-cream-100) 0%, var(--cth-cream-200) 100%)',
           borderBottom: '1px solid var(--cth-ink-300)',
           display: 'flex',
@@ -266,7 +304,7 @@ export function App() {
           paddingLeft: 96,
           paddingRight: 12,
           gap: 12,
-          userSelect: 'none'
+          userSelect: 'none',
         }}
       >
         <img
@@ -289,12 +327,20 @@ export function App() {
           aria-label="Toggle dark mode"
           style={{
             marginLeft: 'auto',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 28, height: 28, padding: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 28,
+            height: 28,
+            padding: 0,
             background: 'var(--cth-paper-100)',
             boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-            border: 'none', borderRadius: 2, cursor: 'pointer',
-            color: 'var(--cth-ink-900)', fontSize: 13, lineHeight: 1
+            border: 'none',
+            borderRadius: 2,
+            cursor: 'pointer',
+            color: 'var(--cth-ink-900)',
+            fontSize: 13,
+            lineHeight: 1,
           }}
         >
           {appThemeNow === 'dark' ? '☀' : '☾'}
@@ -309,18 +355,27 @@ export function App() {
             // harness agents — the user's global Claude theme is never touched.
             void window.cth.updateConfig({ terminalTheme: next });
           }}
-          title={termThemeNow === 'dark'
-            ? 'Terminal palette: dark — click for light (app chrome unchanged)'
-            : 'Terminal palette: light — click for dark (app chrome unchanged)'}
+          title={
+            termThemeNow === 'dark'
+              ? 'Terminal palette: dark — click for light (app chrome unchanged)'
+              : 'Terminal palette: light — click for dark (app chrome unchanged)'
+          }
           aria-label="Toggle terminal palette"
           style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 28, height: 28, padding: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 28,
+            height: 28,
+            padding: 0,
             background: termThemeNow === 'dark' ? 'var(--cth-ink-900)' : 'var(--cth-paper-100)',
             boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-            border: 'none', borderRadius: 2, cursor: 'pointer',
+            border: 'none',
+            borderRadius: 2,
+            cursor: 'pointer',
             color: termThemeNow === 'dark' ? 'var(--cth-paper-100)' : 'var(--cth-ink-900)',
-            fontSize: 13, lineHeight: 1
+            fontSize: 13,
+            lineHeight: 1,
           }}
         >
           ▤
@@ -328,67 +383,101 @@ export function App() {
         <button
           className="cth-titlebar-nodrag"
           onClick={() => {
-            if (fullscreenAgentId) { useStore.getState().setFullscreen(null); return; }
+            if (fullscreenAgentId) {
+              useStore.getState().setFullscreen(null);
+              return;
+            }
             const all = useStore.getState().agents;
-            const target = all.find((x) => x.id === useStore.getState().selectedId && x.ptyId)
-              ?? all.find((x) => x.isGod && x.ptyId)
-              ?? all.find((x) => x.ptyId);
+            const target =
+              all.find((x) => x.id === useStore.getState().selectedId && x.ptyId) ??
+              all.find((x) => x.isGod && x.ptyId) ??
+              all.find((x) => x.ptyId);
             if (target) useStore.getState().setFullscreen(target.id);
           }}
-          title={fullscreenAgentId ? 'Exit fullscreen (Esc)' : 'Fullscreen terminal — selected agent'}
+          title={
+            fullscreenAgentId ? 'Exit fullscreen (Esc)' : 'Fullscreen terminal — selected agent'
+          }
           aria-label="Toggle fullscreen terminal"
           style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 28, height: 28, padding: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 28,
+            height: 28,
+            padding: 0,
             background: 'var(--cth-paper-100)',
             boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-            border: 'none', borderRadius: 2, cursor: 'pointer',
-            color: 'var(--cth-ink-900)'
+            border: 'none',
+            borderRadius: 2,
+            cursor: 'pointer',
+            color: 'var(--cth-ink-900)',
           }}
         >
-          <Icon name={fullscreenAgentId ? 'minimize' : 'expand'} size={1} style={{ width: 16, height: 16 }} />
+          <Icon
+            name={fullscreenAgentId ? 'minimize' : 'expand'}
+            size={1}
+            style={{ width: 16, height: 16 }}
+          />
         </button>
         {/* v0.3.4: the IDE button moved to agent level — every agent's header
             (sidebar detail, god Command Center, fullscreen) carries it. */}
         <button
           className="cth-titlebar-nodrag cth-settings-btn"
-          onClick={() => { setSettingsSection(undefined); setSettingsOpen(true); }}
+          onClick={() => {
+            setSettingsSection(undefined);
+            setSettingsOpen(true);
+          }}
           title="Settings"
           aria-label="Settings"
           style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 28, height: 28, padding: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 28,
+            height: 28,
+            padding: 0,
             background: 'var(--cth-paper-100)',
             boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-            border: 'none', borderRadius: 2, cursor: 'pointer',
-            color: 'var(--cth-ink-900)'
+            border: 'none',
+            borderRadius: 2,
+            cursor: 'pointer',
+            color: 'var(--cth-ink-900)',
           }}
         >
           <Icon name="gear" size={1} style={{ width: 18, height: 18 }} />
         </button>
       </div>
 
-      <div style={{
-        flex: 1, minHeight: 0,
-        display: 'flex',
-        padding: 16,
-        gap: 0
-      }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          padding: 16,
+          gap: 0,
+        }}
+      >
         <div style={{ flex: 1, minHeight: 0, minWidth: 0, position: 'relative' }}>
           <OfficeFloor />
           <MemoryPanel />
           {agentCount === 0 && godStatus === 'booting' && <MichaelBooting />}
           {agentCount === 0 && godStatus !== 'booting' && (
-            <div style={{
-              position: 'absolute', inset: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              pointerEvents: 'none'
-            }}>
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                pointerEvents: 'none',
+              }}
+            >
               <div style={{ pointerEvents: 'auto', width: 360 }}>
                 <PixelPanel variant="dialog" title="EMPTY FLOOR" noPadding>
                   <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <p style={{ margin: 0, fontSize: 13, lineHeight: '20px' }}>
-                      No agents on the floor yet. Spawn one to see real claude output stream in here.
+                      No agents on the floor yet. Spawn one to see real claude output stream in
+                      here.
                     </p>
                     <PixelButton variant="primary" size="md" onClick={() => setAddAgentOpen(true)}>
                       <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
@@ -402,45 +491,90 @@ export function App() {
           )}
         </div>
 
-        <SidebarSplitter
-          width={sidebarWidth}
-          onChange={setSidebarWidth}
-          viewportWidth={vpWidth}
-        />
+        <SidebarSplitter width={sidebarWidth} onChange={setSidebarWidth} viewportWidth={vpWidth} />
 
-        <div style={{
-          width: sidebarWidth, flexShrink: 0,
-          minHeight: 0, display: 'flex', flexDirection: 'column'
-        }}>
+        <div
+          style={{
+            width: sidebarWidth,
+            flexShrink: 0,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
           {agent ? (
             <AgentDetailPanel agent={agent} />
           ) : godStatus === 'booting' ? (
-            <PixelPanel variant="default" noPadding style={{
-              padding: 16, height: '100%',
-              display: 'flex', flexDirection: 'column',
-              justifyContent: 'center', alignItems: 'center', gap: 12
-            }}>
-              <div style={{
-                fontFamily: 'var(--cth-font-display)', fontSize: 10, lineHeight: '14px',
-                color: 'var(--cth-ink-500)'
-              }}>WAKING THE FLOOR</div>
-              <p style={{ margin: 0, fontSize: 13, textAlign: 'center', color: 'var(--cth-ink-700)' }}>
-                Michael is clocking in.<br />
+            <PixelPanel
+              variant="default"
+              noPadding
+              style={{
+                padding: 16,
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'var(--cth-font-display)',
+                  fontSize: 10,
+                  lineHeight: '14px',
+                  color: 'var(--cth-ink-500)',
+                }}
+              >
+                WAKING THE FLOOR
+              </div>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 13,
+                  textAlign: 'center',
+                  color: 'var(--cth-ink-700)',
+                }}
+              >
+                Michael is clocking in.
+                <br />
                 The terminal will land here once he's seated.
               </p>
             </PixelPanel>
           ) : (
-            <PixelPanel variant="default" noPadding style={{
-              padding: 16, height: '100%',
-              display: 'flex', flexDirection: 'column',
-              justifyContent: 'center', alignItems: 'center', gap: 12
-            }}>
-              <div style={{
-                fontFamily: 'var(--cth-font-display)', fontSize: 10, lineHeight: '14px',
-                color: 'var(--cth-ink-500)'
-              }}>NO AGENT SELECTED</div>
-              <p style={{ margin: 0, fontSize: 13, textAlign: 'center', color: 'var(--cth-ink-700)' }}>
-                Spawn an agent from the strip below.<br />
+            <PixelPanel
+              variant="default"
+              noPadding
+              style={{
+                padding: 16,
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'var(--cth-font-display)',
+                  fontSize: 10,
+                  lineHeight: '14px',
+                  color: 'var(--cth-ink-500)',
+                }}
+              >
+                NO AGENT SELECTED
+              </div>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 13,
+                  textAlign: 'center',
+                  color: 'var(--cth-ink-700)',
+                }}
+              >
+                Spawn an agent from the strip below.
+                <br />
                 The terminal and command bar will land here.
               </p>
               <PixelButton variant="secondary" size="md" onClick={() => setAddAgentOpen(true)}>
@@ -467,7 +601,10 @@ export function App() {
         <SettingsModal
           config={config}
           initialSection={settingsSection}
-          onClose={() => { setSettingsOpen(false); setSettingsSection(undefined); }}
+          onClose={() => {
+            setSettingsOpen(false);
+            setSettingsSection(undefined);
+          }}
         />
       )}
 
@@ -480,7 +617,9 @@ export function App() {
             window.cth.cancelClose();
             setQuitWarn(null);
           }}
-          onConfirm={async () => { await window.cth.confirmClose(); }}
+          onConfirm={async () => {
+            await window.cth.confirmClose();
+          }}
           onClosingTime={startClosingTime}
         />
       )}

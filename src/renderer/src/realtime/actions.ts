@@ -32,12 +32,16 @@ async function act(verb: string, input: unknown): Promise<string> {
   // Graceful guard: if the preload bridge is missing (e.g. a dev hot-reload left the
   // renderer ahead of a stale preload), say so instead of throwing an opaque error.
   if (typeof window.cth?.realtimeAction !== 'function') {
-    console.error('[realtime-action] window.cth.realtimeAction is not available — restart the app to load the rt-5 preload.', { verb });
+    console.error(
+      '[realtime-action] window.cth.realtimeAction is not available — restart the app to load the rt-5 preload.',
+      { verb },
+    );
     return 'Voice actions are not available in this build yet — try restarting the app.';
   }
   try {
     const res = await window.cth.realtimeAction({ verb, ...obj(input) });
-    if (!res?.ok) console.warn('[realtime-action] verb=%s rejected: %s', verb, res?.spoken, { input });
+    if (!res?.ok)
+      console.warn('[realtime-action] verb=%s rejected: %s', verb, res?.spoken, { input });
     return res?.spoken || 'Done.';
   } catch (e) {
     console.error('[realtime-action] verb=%s threw:', verb, e, { input });
@@ -57,12 +61,12 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: {
           agentId: { type: 'string', description: 'Agent name or id to message.' },
-          message: { type: 'string', description: 'What to say to them.' }
+          message: { type: 'string', description: 'What to say to them.' },
         },
         required: ['agentId', 'message'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('ping', input)
+      execute: (input) => act('ping', input),
     }),
     tool({
       name: 'dispatch_agent',
@@ -75,12 +79,12 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
           objective: { type: 'string', description: 'The goal — what they should accomplish.' },
           context: { type: 'string', description: 'Optional. Background they need.' },
           constraints: { type: 'string', description: 'Optional. Limits / guardrails to respect.' },
-          doneWhen: { type: 'string', description: 'Optional. The definition of done.' }
+          doneWhen: { type: 'string', description: 'Optional. The definition of done.' },
         },
         required: ['agentId', 'objective'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('dispatch', input)
+      execute: (input) => act('dispatch', input),
     }),
     tool({
       name: 'steer_agent',
@@ -90,12 +94,12 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: {
           agentId: { type: 'string', description: 'Agent name or id to steer.' },
-          text: { type: 'string', description: 'The steering guidance to inject.' }
+          text: { type: 'string', description: 'The steering guidance to inject.' },
         },
         required: ['agentId', 'text'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('steer', input)
+      execute: (input) => act('steer', input),
     }),
     tool({
       name: 'create_task',
@@ -107,12 +111,12 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
           title: { type: 'string', description: 'The task title.' },
           description: { type: 'string', description: 'Optional. More detail.' },
           assignee: { type: 'string', description: 'Optional. Agent id/name to own it.' },
-          priority: { type: 'number', description: 'Optional. 1 (highest) to 10.' }
+          priority: { type: 'number', description: 'Optional. 1 (highest) to 10.' },
         },
         required: ['title'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('create_task', input)
+      execute: (input) => act('create_task', input),
     }),
     tool({
       name: 'assign_task',
@@ -121,12 +125,12 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: {
           taskId: { type: 'string', description: 'Task id or title to assign.' },
-          assignee: { type: 'string', description: 'Agent id/name to own it.' }
+          assignee: { type: 'string', description: 'Agent id/name to own it.' },
         },
         required: ['taskId', 'assignee'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('assign_task', input)
+      execute: (input) => act('assign_task', input),
     }),
     tool({
       name: 'update_task',
@@ -136,14 +140,18 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: {
           taskId: { type: 'string', description: 'Task id or title to update.' },
-          status: { type: 'string', enum: ['todo', 'doing', 'blocked', 'done'], description: 'Optional new status.' },
+          status: {
+            type: 'string',
+            enum: ['todo', 'doing', 'blocked', 'done'],
+            description: 'Optional new status.',
+          },
           result: { type: 'string', description: 'Optional outcome note.' },
-          assignee: { type: 'string', description: 'Optional new owner.' }
+          assignee: { type: 'string', description: 'Optional new owner.' },
         },
         required: ['taskId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('update_task', input)
+      execute: (input) => act('update_task', input),
     }),
 
     // ── wait for a dispatched task to finish (rt-12 await-in-session) ──────
@@ -154,18 +162,27 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
       parameters: {
         type: 'object',
         properties: {
-          taskId: { type: 'string', description: 'The task id (or dispatch correlation id) to wait on.' },
-          timeoutSeconds: { type: 'number', description: 'Optional max wait in seconds (default 120, max 600).' }
+          taskId: {
+            type: 'string',
+            description: 'The task id (or dispatch correlation id) to wait on.',
+          },
+          timeoutSeconds: {
+            type: 'number',
+            description: 'Optional max wait in seconds (default 120, max 600).',
+          },
         },
         required: ['taskId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
       execute: async (input) => {
         try {
           const a = obj(input);
           const taskId = str(a.taskId);
           if (!taskId) return 'I need a task id to wait on.';
-          const secs = typeof a.timeoutSeconds === 'number' && a.timeoutSeconds > 0 ? Math.min(a.timeoutSeconds, 600) : 120;
+          const secs =
+            typeof a.timeoutSeconds === 'number' && a.timeoutSeconds > 0
+              ? Math.min(a.timeoutSeconds, 600)
+              : 120;
           const res = await window.cth.realtimeWaitFor(taskId, secs * 1000);
           if (res && 'timedOut' in res && res.timedOut) {
             return `That one's still running after the wait — I'll let you know the moment it finishes.`;
@@ -176,7 +193,7 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
           const msg = e instanceof Error ? e.message : 'an unknown error';
           return `I couldn't wait on that (${msg}).`;
         }
-      }
+      },
     }),
 
     // ── destructive / expensive (echo-back confirm required) ──────────────
@@ -187,15 +204,22 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
       parameters: {
         type: 'object',
         properties: {
-          provider: { type: 'string', description: 'Engine: claude (default), codex, gemini, opencode, crush, pi, qwen, copilot.' },
+          provider: {
+            type: 'string',
+            description:
+              'Engine: claude (default), codex, gemini, opencode, crush, pi, qwen, copilot.',
+          },
           role: { type: 'string', description: 'Optional. The role/job for the new agent.' },
           name: { type: 'string', description: 'Optional. A name for the agent.' },
-          cwd: { type: 'string', description: 'Optional. Working directory; defaults to the hive root.' }
+          cwd: {
+            type: 'string',
+            description: 'Optional. Working directory; defaults to the hive root.',
+          },
         },
         required: [],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('spawn', input)
+      execute: (input) => act('spawn', input),
     }),
     tool({
       name: 'kill_agent',
@@ -205,9 +229,9 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: { agentId: { type: 'string', description: 'Agent name or id to kill.' } },
         required: ['agentId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('kill', input)
+      execute: (input) => act('kill', input),
     }),
     tool({
       name: 'pause_agent',
@@ -217,9 +241,9 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: { agentId: { type: 'string', description: 'Agent name or id to pause.' } },
         required: ['agentId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('pause', input)
+      execute: (input) => act('pause', input),
     }),
     tool({
       name: 'halt_agent',
@@ -229,9 +253,9 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: { agentId: { type: 'string', description: 'Agent name or id to halt.' } },
         required: ['agentId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('halt', input)
+      execute: (input) => act('halt', input),
     }),
     tool({
       name: 'edit_schedule',
@@ -241,12 +265,16 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: {
           missionId: { type: 'string', description: 'The schedule id or label to edit.' },
-          action: { type: 'string', enum: ['enable', 'disable', 'delete'], description: 'What to do to it.' }
+          action: {
+            type: 'string',
+            enum: ['enable', 'disable', 'delete'],
+            description: 'What to do to it.',
+          },
         },
         required: ['missionId', 'action'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('edit_schedule', input)
+      execute: (input) => act('edit_schedule', input),
     }),
 
     // ── v0.3.4 full-control verbs ─────────────────────────────────────────
@@ -258,9 +286,9 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: { agentId: { type: 'string', description: 'Agent name or id to resume.' } },
         required: ['agentId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('resume', input)
+      execute: (input) => act('resume', input),
     }),
     tool({
       name: 'set_auto_delivery',
@@ -270,12 +298,16 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: {
           agentId: { type: 'string', description: 'Agent name or id.' },
-          state: { type: 'string', enum: ['pause', 'resume'], description: 'pause holds the queue; resume lets it flow.' }
+          state: {
+            type: 'string',
+            enum: ['pause', 'resume'],
+            description: 'pause holds the queue; resume lets it flow.',
+          },
         },
         required: ['agentId', 'state'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('auto_delivery', input)
+      execute: (input) => act('auto_delivery', input),
     }),
     tool({
       name: 'gate_tool',
@@ -286,12 +318,16 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         properties: {
           agentId: { type: 'string', description: 'Agent name or id.' },
           tool: { type: 'string', description: 'Exact tool name, e.g. Bash, WebFetch, Edit.' },
-          state: { type: 'string', enum: ['gate', 'allow'], description: 'gate blocks it; allow removes the block.' }
+          state: {
+            type: 'string',
+            enum: ['gate', 'allow'],
+            description: 'gate blocks it; allow removes the block.',
+          },
         },
         required: ['agentId', 'tool', 'state'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('gate_tool', input)
+      execute: (input) => act('gate_tool', input),
     }),
     tool({
       name: 'delete_task',
@@ -301,9 +337,9 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: { taskId: { type: 'string', description: 'Task title or id to delete.' } },
         required: ['taskId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('delete_task', input)
+      execute: (input) => act('delete_task', input),
     }),
     tool({
       name: 'unarchive_agent',
@@ -312,9 +348,9 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: { agentId: { type: 'string', description: 'Archived agent name or id.' } },
         required: ['agentId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('unarchive', input)
+      execute: (input) => act('unarchive', input),
     }),
     tool({
       name: 'clear_agent_context',
@@ -322,11 +358,13 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         "Queue a context clear (/clear) for one agent — wipes its working memory of the current conversation; delivery waits until the agent is idle. DESTRUCTIVE — returns an echo-back and asks for verbal confirmation ('clear' or 'confirm'). After the user confirms, call confirm_action. Allowed on the god orchestrator too (it can resume its session).",
       parameters: {
         type: 'object',
-        properties: { agentId: { type: 'string', description: 'Agent name or id whose context to clear.' } },
+        properties: {
+          agentId: { type: 'string', description: 'Agent name or id whose context to clear.' },
+        },
         required: ['agentId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('clear_context', input)
+      execute: (input) => act('clear_context', input),
     }),
     tool({
       name: 'archive_agent',
@@ -336,9 +374,9 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: { agentId: { type: 'string', description: 'Agent name or id to archive.' } },
         required: ['agentId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('archive', input)
+      execute: (input) => act('archive', input),
     }),
     tool({
       name: 'create_schedule',
@@ -348,14 +386,23 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         type: 'object',
         properties: {
           label: { type: 'string', description: 'Short name for the schedule.' },
-          prompt: { type: 'string', description: 'The message the agent receives each time it fires.' },
-          intervalMinutes: { type: 'number', description: 'How often it fires, in minutes (min 5). Default 60.' },
-          to: { type: 'string', description: 'Target agent name or id. Default: the god orchestrator.' }
+          prompt: {
+            type: 'string',
+            description: 'The message the agent receives each time it fires.',
+          },
+          intervalMinutes: {
+            type: 'number',
+            description: 'How often it fires, in minutes (min 5). Default 60.',
+          },
+          to: {
+            type: 'string',
+            description: 'Target agent name or id. Default: the god orchestrator.',
+          },
         },
         required: ['label', 'prompt'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('create_schedule', input)
+      execute: (input) => act('create_schedule', input),
     }),
     tool({
       name: 'update_setting',
@@ -364,13 +411,19 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
       parameters: {
         type: 'object',
         properties: {
-          key: { type: 'string', description: 'The exact setting key, e.g. autoMode or notifications.' },
-          value: { type: 'string', description: 'The new value: true/false, a number, or the option name.' }
+          key: {
+            type: 'string',
+            description: 'The exact setting key, e.g. autoMode or notifications.',
+          },
+          value: {
+            type: 'string',
+            description: 'The new value: true/false, a number, or the option name.',
+          },
         },
         required: ['key', 'value'],
-        additionalProperties: false
+        additionalProperties: false,
       },
-      execute: (input) => act('update_setting', input)
+      execute: (input) => act('update_setting', input),
     }),
 
     // ── confirm / cancel (drive the two-phase commit) ─────────────────────
@@ -380,29 +433,35 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
         'Commit the destructive action that is currently awaiting confirmation, using the EXACT words the user just spoke. Only call this right after a destructive tool returned an echo-back and the user verbally confirmed. Main rejects a bare "yes" — pass the user\'s real phrase.',
       parameters: {
         type: 'object',
-        properties: { phrase: { type: 'string', description: 'The confirmation words the user actually said.' } },
+        properties: {
+          phrase: { type: 'string', description: 'The confirmation words the user actually said.' },
+        },
         required: ['phrase'],
-        additionalProperties: false
+        additionalProperties: false,
       },
       execute: async (input) => {
         if (typeof window.cth?.realtimeActionConfirm !== 'function') {
-          console.error('[realtime-action] window.cth.realtimeActionConfirm is not available — restart the app.');
+          console.error(
+            '[realtime-action] window.cth.realtimeActionConfirm is not available — restart the app.',
+          );
           return 'Voice actions are not available in this build yet — try restarting the app.';
         }
         try {
           const res = await window.cth.realtimeActionConfirm({ phrase: str(obj(input).phrase) });
-          if (!res?.ok) console.warn('[realtime-action] confirm rejected: %s', res?.spoken, { input });
+          if (!res?.ok)
+            console.warn('[realtime-action] confirm rejected: %s', res?.spoken, { input });
           return res?.spoken || 'Done.';
         } catch (e) {
           console.error('[realtime-action] confirm threw:', e, { input });
           const msg = e instanceof Error ? e.message : 'an unknown error';
           return `I couldn't confirm that (${msg}).`;
         }
-      }
+      },
     }),
     tool({
       name: 'cancel_action',
-      description: 'Cancel the destructive action that is awaiting confirmation. Call this when the user declines or changes their mind.',
+      description:
+        'Cancel the destructive action that is awaiting confirmation. Call this when the user declines or changes their mind.',
       parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
       execute: async () => {
         try {
@@ -412,7 +471,7 @@ export function realtimeActionTools(): ReturnType<typeof tool>[] {
           console.error('[realtime-action] cancel threw:', e);
           return 'Cancelled.';
         }
-      }
-    })
+      },
+    }),
   ];
 }

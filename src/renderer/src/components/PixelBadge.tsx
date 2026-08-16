@@ -1,10 +1,17 @@
 import type { CSSProperties } from 'react';
 
 export type StatusKind =
-  | 'idle' | 'thinking' | 'working' | 'waiting' | 'blocked' | 'success' | 'ghost'
+  | 'idle'
+  | 'thinking'
+  | 'working'
+  | 'waiting'
+  | 'blocked'
+  | 'success'
+  | 'ghost'
   // #5C — richer states driven by real events: PreCompact/PostCompact hooks and
   // the Lane A circuit breaker (#6) respectively.
-  | 'compacting' | 'looping'
+  | 'compacting'
+  | 'looping'
   // Not an agent state at all — the USER has unsubmitted text on that agent's
   // prompt, which holds its queue. Never stored on the agent (the pty parser
   // would overwrite it); derived at render, see `hasTerminalDraft`. Without it
@@ -18,34 +25,34 @@ export interface PixelBadgeProps {
 }
 
 const colorByStatus: Record<StatusKind, string> = {
-  idle:     'var(--cth-status-idle)',
+  idle: 'var(--cth-status-idle)',
   thinking: 'var(--cth-status-thinking)',
-  working:  'var(--cth-status-working)',
-  waiting:  'var(--cth-status-waiting)',
-  blocked:  'var(--cth-status-blocked)',
-  success:  'var(--cth-status-success)',
-  ghost:    'var(--cth-status-ghost)',
+  working: 'var(--cth-status-working)',
+  waiting: 'var(--cth-status-waiting)',
+  blocked: 'var(--cth-status-blocked)',
+  success: 'var(--cth-status-success)',
+  ghost: 'var(--cth-status-ghost)',
   compacting: 'var(--cth-status-compacting)',
-  looping:    'var(--cth-status-looping)',
-  typing:     'var(--cth-status-typing)'
+  looping: 'var(--cth-status-looping)',
+  typing: 'var(--cth-status-typing)',
 };
 
 // Human-readable labels. "blocked" is reserved for the god agent waiting on YOU,
 // so it reads as "needs you"; sub-agents waiting on god/another agent are
 // "waiting", which is honest about who they're actually stalled on.
 const labelByStatus: Record<StatusKind, string> = {
-  idle:     'idle',
+  idle: 'idle',
   thinking: 'working',
-  working:  'working',
-  waiting:  'waiting',
-  blocked:  'needs you',
-  success:  'done',
-  ghost:    'gone',
+  working: 'working',
+  waiting: 'waiting',
+  blocked: 'needs you',
+  success: 'done',
+  ghost: 'gone',
   compacting: 'compacting',
-  looping:    'looping',
+  looping: 'looping',
   // Reads as "you are typing", not "the agent is typing" — it is your text
   // sitting on the prompt, and it is why nothing is being delivered.
-  typing:     'your draft'
+  typing: 'your draft',
 };
 
 export function PixelBadge({ status, label, style }: PixelBadgeProps) {
@@ -64,7 +71,7 @@ export function PixelBadge({ status, label, style }: PixelBadgeProps) {
         lineHeight: '18px',
         color: 'var(--cth-ink-900)',
         userSelect: 'none',
-        ...style
+        ...style,
       }}
     >
       <span
@@ -72,7 +79,7 @@ export function PixelBadge({ status, label, style }: PixelBadgeProps) {
           width: 8,
           height: 8,
           background: colorByStatus[status],
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
         }}
       />
       {text}

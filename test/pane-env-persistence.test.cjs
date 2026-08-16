@@ -23,7 +23,7 @@ const MARKERS = [
   'CLAUDE_PID',
   'CLAUDECODE',
   'CLAUDE_CODE_SESSION_ID',
-  'CLAUDE_CODE_ENTRYPOINT'
+  'CLAUDE_CODE_ENTRYPOINT',
 ];
 
 test('agent pane: child-session markers scrubbed, persistence forced', () => {

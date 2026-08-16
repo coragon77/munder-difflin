@@ -17,7 +17,7 @@ type ModelId = 'minilm' | 'embeddinggemma';
 // Plain-language framing of each model — lead with the benefit the user actually
 // chooses between, not the model's codename.
 const MODELS: { id: ModelId; title: string; detail: string }[] = [
-  { id: 'minilm',         title: 'Fast',         detail: 'English only · ~90 MB' },
+  { id: 'minilm', title: 'Fast', detail: 'English only · ~90 MB' },
   { id: 'embeddinggemma', title: 'Multilingual', detail: 'all languages · ~300 MB' },
 ];
 
@@ -34,9 +34,15 @@ export function MemoryPanel() {
   const [busy, setBusy] = useState(false);
 
   const refreshStatus = async () => {
-    try { setStatus(await window.cth.memoryStatus()); } catch { /* ignore */ }
+    try {
+      setStatus(await window.cth.memoryStatus());
+    } catch {
+      /* ignore */
+    }
   };
-  useEffect(() => { refreshStatus(); }, []);
+  useEffect(() => {
+    refreshStatus();
+  }, []);
 
   const setModel = async (model: ModelId) => {
     await window.cth.updateConfig({ embeddingModel: model });
@@ -53,7 +59,7 @@ export function MemoryPanel() {
     setResult('');
     try {
       const res = await window.cth.searchMemory(query.trim());
-      setResult(res.ok ? (res.output || 'Nothing matched yet.') : `Couldn't search: ${res.error}`);
+      setResult(res.ok ? res.output || 'Nothing matched yet.' : `Couldn't search: ${res.error}`);
     } finally {
       setBusy(false);
     }
@@ -74,10 +80,15 @@ export function MemoryPanel() {
   const canSearch = !!status?.available && !!status?.enabled;
 
   return (
-    <div style={{ position: 'absolute', bottom: 12, left: 12, width: open ? 380 : 'auto', zIndex: 40 }}>
+    <div
+      style={{ position: 'absolute', bottom: 12, left: 12, width: open ? 380 : 'auto', zIndex: 40 }}
+    >
       {!open ? (
         <button
-          onClick={() => { setOpen(true); refreshStatus(); }}
+          onClick={() => {
+            setOpen(true);
+            refreshStatus();
+          }}
           title="Search the shared memory your agents build up"
           style={{
             padding: '5px 10px 3px',
@@ -87,7 +98,7 @@ export function MemoryPanel() {
             fontSize: 12,
             color: 'var(--cth-ink-900)',
             cursor: 'pointer',
-            border: 'none'
+            border: 'none',
           }}
         >
           {pill}
@@ -95,16 +106,39 @@ export function MemoryPanel() {
       ) : (
         <PixelPanel variant="dialog" title="HIVE MEMORY" noPadding>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 14 }}>
-
             {/* What this is — one plain line. */}
             <div style={{ fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: 1.5 }}>
-              What your agents remember across sessions, shared between them. Search it by meaning, not just exact words.
+              What your agents remember across sessions, shared between them. Search it by meaning,
+              not just exact words.
             </div>
 
             {/* Status + on/off — the two things the user controls at a glance. */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, color: 'var(--cth-ink-900)', fontFamily: 'var(--cth-font-ui)' }}>
-                <span style={{ width: 9, height: 9, background: state.dot, boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)' }} />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  fontSize: 12,
+                  color: 'var(--cth-ink-900)',
+                  fontFamily: 'var(--cth-font-ui)',
+                }}
+              >
+                <span
+                  style={{
+                    width: 9,
+                    height: 9,
+                    background: state.dot,
+                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                  }}
+                />
                 {state.label}
               </span>
               {status?.available && (
@@ -120,28 +154,51 @@ export function MemoryPanel() {
 
             {/* Not installed: show full self-sufficient setup so any machine can follow it. */}
             {!status?.available && (
-              <div style={{
-                fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: 1.6,
-                background: 'var(--cth-cream-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)', padding: 10
-              }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--cth-ink-700)',
+                  lineHeight: 1.6,
+                  background: 'var(--cth-cream-100)',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                  padding: 10,
+                }}
+              >
                 Meaning-based search isn't installed yet. Run these commands to set it up:
                 <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <div style={{ color: 'var(--cth-ink-500)', fontSize: 11, marginBottom: 2 }}>
                     If{' '}
-                    <code style={{ fontFamily: 'var(--cth-font-mono)', background: 'var(--cth-paper-100)', padding: '1px 4px', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)' }}>uv</code>
-                    {' '}isn't installed yet, install it first:
+                    <code
+                      style={{
+                        fontFamily: 'var(--cth-font-mono)',
+                        background: 'var(--cth-paper-100)',
+                        padding: '1px 4px',
+                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                      }}
+                    >
+                      uv
+                    </code>{' '}
+                    isn't installed yet, install it first:
                   </div>
                   {[
                     'curl -LsSf https://astral.sh/uv/install.sh | sh',
                     'source ~/.zshrc  # or restart the terminal',
                     'uv tool install mempalace',
                   ].map((cmd) => (
-                    <code key={cmd} style={{
-                      display: 'block',
-                      fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-900)',
-                      background: 'var(--cth-paper-100)', padding: '3px 6px',
-                      boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-                    }}>{cmd}</code>
+                    <code
+                      key={cmd}
+                      style={{
+                        display: 'block',
+                        fontFamily: 'var(--cth-font-mono)',
+                        fontSize: 11,
+                        color: 'var(--cth-ink-900)',
+                        background: 'var(--cth-paper-100)',
+                        padding: '3px 6px',
+                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                      }}
+                    >
+                      {cmd}
+                    </code>
                   ))}
                 </div>
                 <div style={{ marginTop: 8, color: 'var(--cth-ink-500)' }}>
@@ -153,7 +210,15 @@ export function MemoryPanel() {
             {/* Model: a benefit-framed choice, not a codename dump. */}
             {status?.available && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={{ fontSize: 11, color: 'var(--cth-ink-500)', fontFamily: 'var(--cth-font-display)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--cth-ink-500)',
+                    fontFamily: 'var(--cth-font-display)',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
                   Search language
                 </span>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -164,22 +229,41 @@ export function MemoryPanel() {
                         key={m.id}
                         onClick={() => setModel(m.id)}
                         style={{
-                          flex: 1, textAlign: 'left', cursor: 'pointer', border: 'none',
+                          flex: 1,
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          border: 'none',
                           padding: '7px 9px 6px',
                           background: sel ? 'var(--cth-lemon-light)' : 'var(--cth-cream-100)',
-                          boxShadow: sel ? 'inset 0 0 0 1.5px var(--cth-ink-500)' : 'inset 0 0 0 1px var(--cth-ink-300)',
-                          fontFamily: 'var(--cth-font-ui)'
+                          boxShadow: sel
+                            ? 'inset 0 0 0 1.5px var(--cth-ink-500)'
+                            : 'inset 0 0 0 1px var(--cth-ink-300)',
+                          fontFamily: 'var(--cth-font-ui)',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--cth-ink-900)' }}>
-                          <span style={{
-                            width: 8, height: 8, flexShrink: 0,
-                            background: sel ? 'var(--cth-ink-900)' : 'transparent',
-                            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)'
-                          }} />
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            fontSize: 12,
+                            color: 'var(--cth-ink-900)',
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              flexShrink: 0,
+                              background: sel ? 'var(--cth-ink-900)' : 'transparent',
+                              boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                            }}
+                          />
                           {m.title}
                         </div>
-                        <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', marginTop: 3 }}>{m.detail}</div>
+                        <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', marginTop: 3 }}>
+                          {m.detail}
+                        </div>
                       </button>
                     );
                   })}
@@ -194,14 +278,20 @@ export function MemoryPanel() {
                   <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') run(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') run();
+                    }}
                     placeholder="Search by meaning…"
                     style={{
-                      flex: 1, padding: '6px 8px 4px',
-                      background: 'var(--cth-paper-100)', border: 'none',
+                      flex: 1,
+                      padding: '6px 8px 4px',
+                      background: 'var(--cth-paper-100)',
+                      border: 'none',
                       boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                      fontFamily: 'var(--cth-font-ui)', fontSize: 13,
-                      color: 'var(--cth-ink-900)', outline: 'none'
+                      fontFamily: 'var(--cth-font-ui)',
+                      fontSize: 13,
+                      color: 'var(--cth-ink-900)',
+                      outline: 'none',
                     }}
                   />
                   <PixelButton variant="primary" size="sm" onClick={run} disabled={busy}>
@@ -209,19 +299,37 @@ export function MemoryPanel() {
                   </PixelButton>
                 </div>
                 {result && (
-                  <pre style={{
-                    margin: 0, maxHeight: '40vh', overflow: 'auto',
-                    background: 'var(--cth-cream-100)',
-                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                    padding: 8, fontFamily: 'var(--cth-font-mono)', fontSize: 12,
-                    whiteSpace: 'pre-wrap', color: 'var(--cth-ink-900)'
-                  }}>{result}</pre>
+                  <pre
+                    style={{
+                      margin: 0,
+                      maxHeight: '40vh',
+                      overflow: 'auto',
+                      background: 'var(--cth-cream-100)',
+                      boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                      padding: 8,
+                      fontFamily: 'var(--cth-font-mono)',
+                      fontSize: 12,
+                      whiteSpace: 'pre-wrap',
+                      color: 'var(--cth-ink-900)',
+                    }}
+                  >
+                    {result}
+                  </pre>
                 )}
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--cth-ink-300)', paddingTop: 10 }}>
-              <PixelButton variant="ghost" size="sm" onClick={() => setOpen(false)}>Close</PixelButton>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                borderTop: '1px solid var(--cth-ink-300)',
+                paddingTop: 10,
+              }}
+            >
+              <PixelButton variant="ghost" size="sm" onClick={() => setOpen(false)}>
+                Close
+              </PixelButton>
             </div>
           </div>
         </PixelPanel>

@@ -26,28 +26,47 @@ const ts = require('typescript');
 const SRC = path.join(__dirname, '..', 'src', 'main', 'breaker.ts');
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'breaker-'));
 const js = ts.transpileModule(fs.readFileSync(SRC, 'utf8'), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 fs.writeFileSync(path.join(out, 'breaker.js'), js, 'utf8');
 const { CircuitBreaker } = require(path.join(out, 'breaker.js'));
 
 let failures = 0;
 function test(name, fn) {
-  try { fn(); console.log(`  ok  ${name}`); }
-  catch (e) { failures++; console.error(`FAIL  ${name}\n      ${e.message}`); }
+  try {
+    fn();
+    console.log(`  ok  ${name}`);
+  } catch (e) {
+    failures++;
+    console.error(`FAIL  ${name}\n      ${e.message}`);
+  }
 }
 
 /** A breaker with fixed config (no caps, hardStop off). */
 function makeBreaker(over = {}) {
   return new CircuitBreaker(() => ({
-    enabled: true, hardStop: false, repeatedToolLimit: 8, errorStormLimit: 5,
-    tokenVelocityPerMin: 60000, ...over
+    enabled: true,
+    hardStop: false,
+    repeatedToolLimit: 8,
+    errorStormLimit: 5,
+    tokenVelocityPerMin: 60000,
+    ...over,
   }));
 }
 
 /** Cumulative sample helper. */
 function sample(agentId, ts, output, input = 1000) {
-  return { agentId, sessionId: 's1', ts, input, output, cacheRead: 0, cacheCreation: 0, model: 'm', usd: 0 };
+  return {
+    agentId,
+    sessionId: 's1',
+    ts,
+    input,
+    output,
+    cacheRead: 0,
+    cacheCreation: 0,
+    model: 'm',
+    usd: 0,
+  };
 }
 
 const T0 = 1_000_000_000_000; // fixed epoch base so tests are deterministic
@@ -107,7 +126,7 @@ test('sustained no-progress still trips (second consecutive beat)', () => {
 test('a progressing beat resets the no-progress debounce', () => {
   const b = makeBreaker();
   beat(b, 'a', sample('a', T0, 0), false, T0);
-  beat(b, 'a', sample('a', T0 + BEAT, 500), false, T0 + BEAT);       // count 1
+  beat(b, 'a', sample('a', T0 + BEAT, 500), false, T0 + BEAT); // count 1
   beat(b, 'a', sample('a', T0 + 2 * BEAT, 600), true, T0 + 2 * BEAT); // reset
   const d = beat(b, 'a', sample('a', T0 + 3 * BEAT, 1100), false, T0 + 3 * BEAT); // count 1 again
   assert.equal(d.state.level, 'healthy', `reason: ${d.state.reason}`);
@@ -223,7 +242,8 @@ test('distinct bash probes sharing a >200-char command prefix do NOT trip the lo
   const b = makeBreaker();
   // ~200 chars of shared prefix, ~30 chars of varying tail — the serialized
   // inputs are identical for their first 200+ chars and differ only after.
-  const cd = 'cd /opt/very/deeply/nested/monorepo/path/that/pushes/the/varying/part/of/the/command/past/the/old/prefix/cap/abcdefghijklmnopqrstuvwxyz/0123456789/abcdefghij/qrstuvwxyz/0123456789abcdef && ';
+  const cd =
+    'cd /opt/very/deeply/nested/monorepo/path/that/pushes/the/varying/part/of/the/command/past/the/old/prefix/cap/abcdefghijklmnopqrstuvwxyz/0123456789/abcdefghij/qrstuvwxyz/0123456789abcdef && ';
   assert.ok(`{"command":"${cd}`.length > 200, 'fixture must exceed the old prefix cap');
   for (let i = 0; i < 10; i++) {
     b.recordToolUse('a', 'Bash', { command: `${cd}grep -rn needle${i} src/main/` });
@@ -234,7 +254,8 @@ test('distinct bash probes sharing a >200-char command prefix do NOT trip the lo
 
 test('identical long commands still trip the loop arm (hash preserves repeats)', () => {
   const b = makeBreaker();
-  const cmd = 'cd /opt/some/really/long/path && grep -rn needle src/main/ | sort | uniq -c | tail -20 && echo done';
+  const cmd =
+    'cd /opt/some/really/long/path && grep -rn needle src/main/ | sort | uniq -c | tail -20 && echo done';
   for (let i = 0; i < 8; i++) b.recordToolUse('a', 'Bash', { command: cmd });
   const d = beat(b, 'a', null, true, T0);
   assert.equal(d.state.level, 'steering');
@@ -246,8 +267,8 @@ test('identical long commands still trip the loop arm (hash preserves repeats)',
 test('a healthy beat de-escalates one level', () => {
   const b = makeBreaker();
   for (let i = 0; i < 8; i++) b.recordToolUse('a', 'Bash', { cmd: 'same' });
-  beat(b, 'a', null, true, T0);                       // → steering
-  b.recordToolUse('a', 'Read', { file: 'new' });       // distinct call clears the loop
+  beat(b, 'a', null, true, T0); // → steering
+  b.recordToolUse('a', 'Read', { file: 'new' }); // distinct call clears the loop
   const d = beat(b, 'a', null, true, T0 + BEAT);
   assert.equal(d.state.level, 'healthy');
 });

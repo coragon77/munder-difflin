@@ -23,15 +23,19 @@ const BACKENDS: Array<{ id: string; label: string; envVar: string }> = [
   { id: 'openai', label: 'OpenAI', envVar: 'OPENAI_API_KEY' },
   { id: 'google', label: 'Google · Gemini', envVar: 'GEMINI_API_KEY' },
   { id: 'openrouter', label: 'OpenRouter', envVar: 'OPENROUTER_API_KEY' },
-  { id: 'groq', label: 'Groq', envVar: 'GROQ_API_KEY' }
+  { id: 'groq', label: 'Groq', envVar: 'GROQ_API_KEY' },
 ];
 
 /** CLI engines that take a per-provider local base-URL + default model. */
 const CLIS: Array<{ id: AgentProvider; label: string; hint: string }> = [
-  { id: 'opencode', label: 'OpenCode', hint: 'http://localhost:11434/v1 (Ollama) — injected as a local provider' },
+  {
+    id: 'opencode',
+    label: 'OpenCode',
+    hint: 'http://localhost:11434/v1 (Ollama) — injected as a local provider',
+  },
   { id: 'crush', label: 'Crush', hint: 'OpenAI-compatible endpoint — used as the proxy upstream' },
   { id: 'pi', label: 'Pi', hint: 'local models are file-based (models.json); base-URL reserved' },
-  { id: 'qwen', label: 'Qwen', hint: 'OpenAI-compatible endpoint — used as the proxy upstream' }
+  { id: 'qwen', label: 'Qwen', hint: 'OpenAI-compatible endpoint — used as the proxy upstream' },
 ];
 
 const inputStyle: CSSProperties = {
@@ -43,20 +47,28 @@ const inputStyle: CSSProperties = {
   fontFamily: 'var(--cth-font-ui)',
   fontSize: 13,
   color: 'var(--cth-ink-900)',
-  outline: 'none'
+  outline: 'none',
 };
 const labelStyle: CSSProperties = {
   fontFamily: 'var(--cth-font-display)',
   fontSize: 8,
   lineHeight: '12px',
   color: 'var(--cth-ink-700)',
-  textTransform: 'uppercase'
+  textTransform: 'uppercase',
 };
 const headStyle: CSSProperties = {
-  fontFamily: 'var(--cth-font-display)', fontSize: 8, lineHeight: '12px',
-  color: 'var(--cth-ink-500)', textTransform: 'uppercase', marginBottom: 2
+  fontFamily: 'var(--cth-font-display)',
+  fontSize: 8,
+  lineHeight: '12px',
+  color: 'var(--cth-ink-500)',
+  textTransform: 'uppercase',
+  marginBottom: 2,
 };
-const linkStyle: CSSProperties = { color: 'var(--cth-ink-900)', textDecoration: 'underline', cursor: 'pointer' };
+const linkStyle: CSSProperties = {
+  color: 'var(--cth-ink-900)',
+  textDecoration: 'underline',
+  cursor: 'pointer',
+};
 
 export function AiEnginesSettings({ config }: { config: HarnessConfig }) {
   // Keep the global "OpenAI key present" signal (boolean only) live so the Talk
@@ -70,10 +82,10 @@ export function AiEnginesSettings({ config }: { config: HarnessConfig }) {
   const [note, setNote] = useState<Record<string, string>>({});
   // Base-URL + default-model drafts, seeded from config.
   const [baseUrls, setBaseUrls] = useState<Partial<Record<AgentProvider, string>>>(
-    config.providerBaseUrls ?? {}
+    config.providerBaseUrls ?? {},
   );
   const [models, setModels] = useState<Partial<Record<AgentProvider, string>>>(
-    config.providerDefaultModels ?? {}
+    config.providerDefaultModels ?? {},
   );
 
   // Reseed set/not-set flags on mount (write-only — only the boolean is fetched).
@@ -82,11 +94,17 @@ export function AiEnginesSettings({ config }: { config: HarnessConfig }) {
     (async () => {
       const out: Record<string, boolean> = {};
       for (const b of BACKENDS) {
-        try { out[b.id] = await window.cth.providerKeyHas(b.id); } catch { out[b.id] = false; }
+        try {
+          out[b.id] = await window.cth.providerKeyHas(b.id);
+        } catch {
+          out[b.id] = false;
+        }
       }
       if (alive) setHasKey(out);
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const saveKey = async (backend: string) => {
@@ -101,7 +119,9 @@ export function AiEnginesSettings({ config }: { config: HarnessConfig }) {
         // OpenAI key gates Talk — mirror presence to the store so the warning clears now.
         if (backend === 'openai') setHasOpenAiKey(true);
       } else setNote((s) => ({ ...s, [backend]: r.error ?? 'failed' }));
-    } catch (e) { setNote((s) => ({ ...s, [backend]: e instanceof Error ? e.message : String(e) })); }
+    } catch (e) {
+      setNote((s) => ({ ...s, [backend]: e instanceof Error ? e.message : String(e) }));
+    }
   };
   const clearKey = async (backend: string) => {
     try {
@@ -110,18 +130,28 @@ export function AiEnginesSettings({ config }: { config: HarnessConfig }) {
       setNote((s) => ({ ...s, [backend]: 'cleared' }));
       // OpenAI key gates Talk — clearing it disables Talk; reflect that immediately.
       if (backend === 'openai') setHasOpenAiKey(false);
-    } catch { /* noop */ }
+    } catch {
+      /* noop */
+    }
   };
 
   const saveBaseUrl = async (id: AgentProvider, value: string) => {
     const next = { ...baseUrls, [id]: value.trim() || undefined };
     setBaseUrls(next);
-    try { await window.cth.updateConfig({ providerBaseUrls: next }); } catch { /* noop */ }
+    try {
+      await window.cth.updateConfig({ providerBaseUrls: next });
+    } catch {
+      /* noop */
+    }
   };
   const saveModel = async (id: AgentProvider, value: string) => {
     const next = { ...models, [id]: value.trim() || undefined };
     setModels(next);
-    try { await window.cth.updateConfig({ providerDefaultModels: next }); } catch { /* noop */ }
+    try {
+      await window.cth.updateConfig({ providerDefaultModels: next });
+    } catch {
+      /* noop */
+    }
   };
 
   return (
@@ -129,9 +159,9 @@ export function AiEnginesSettings({ config }: { config: HarnessConfig }) {
       <div>
         <div style={headStyle}>AI ENGINE PROVIDERS (BYOK)</div>
         <div style={{ fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: '18px' }}>
-          API keys + local endpoints for the OpenCode, Crush, pi.dev and Qwen engines.
-          Keys are stored <strong>write-only</strong> (encrypted at rest; never shown again)
-          and used only when those engines spawn. Claude Code and Codex use their own login.
+          API keys + local endpoints for the OpenCode, Crush, pi.dev and Qwen engines. Keys are
+          stored <strong>write-only</strong> (encrypted at rest; never shown again) and used only
+          when those engines spawn. Claude Code and Codex use their own login.
         </div>
       </div>
 
@@ -141,23 +171,32 @@ export function AiEnginesSettings({ config }: { config: HarnessConfig }) {
         {BACKENDS.map((b) => (
           <div key={b.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label style={labelStyle}>
-              {b.label} {hasKey[b.id] ? '· set ✓' : ''} <span style={{ opacity: 0.6 }}>({b.envVar})</span>
+              {b.label} {hasKey[b.id] ? '· set ✓' : ''}{' '}
+              <span style={{ opacity: 0.6 }}>({b.envVar})</span>
             </label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input
                 type="password"
                 autoComplete="off"
-                placeholder={hasKey[b.id] ? '•••••••• (stored — type to replace)' : `paste ${b.label} key`}
+                placeholder={
+                  hasKey[b.id] ? '•••••••• (stored — type to replace)' : `paste ${b.label} key`
+                }
                 value={draftKey[b.id] ?? ''}
                 onChange={(e) => setDraftKey((s) => ({ ...s, [b.id]: e.target.value }))}
                 style={inputStyle}
               />
-              <PixelButton variant="secondary" size="sm" onClick={() => saveKey(b.id)}>Save</PixelButton>
+              <PixelButton variant="secondary" size="sm" onClick={() => saveKey(b.id)}>
+                Save
+              </PixelButton>
               {hasKey[b.id] && (
-                <PixelButton variant="secondary" size="sm" onClick={() => clearKey(b.id)}>Clear</PixelButton>
+                <PixelButton variant="secondary" size="sm" onClick={() => clearKey(b.id)}>
+                  Clear
+                </PixelButton>
               )}
             </div>
-            {note[b.id] && <div style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>{note[b.id]}</div>}
+            {note[b.id] && (
+              <div style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>{note[b.id]}</div>
+            )}
           </div>
         ))}
       </div>
@@ -191,27 +230,43 @@ export function AiEnginesSettings({ config }: { config: HarnessConfig }) {
           Running open models? Step-by-step guides:{' '}
           <a
             href={OSS_BLOG_LINKS.openModels}
-            onClick={(e) => { e.preventDefault(); void window.cth.openExternal(OSS_BLOG_LINKS.openModels); }}
+            onClick={(e) => {
+              e.preventDefault();
+              void window.cth.openExternal(OSS_BLOG_LINKS.openModels);
+            }}
             style={linkStyle}
-          >run Munder Difflin on open models</a>
-          {' '}·{' '}
+          >
+            run Munder Difflin on open models
+          </a>{' '}
+          ·{' '}
           <a
             href={OSS_BLOG_LINKS.macMini}
-            onClick={(e) => { e.preventDefault(); void window.cth.openExternal(OSS_BLOG_LINKS.macMini); }}
+            onClick={(e) => {
+              e.preventDefault();
+              void window.cth.openExternal(OSS_BLOG_LINKS.macMini);
+            }}
             style={linkStyle}
-          >set it up on a Mac Mini</a>.
+          >
+            set it up on a Mac Mini
+          </a>
+          .
         </div>
       </div>
 
       {/* Unsandboxed-in-auto caveat (Pam guardrail #6) */}
-      <div style={{
-        fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: '17px',
-        padding: 8, boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)', background: 'var(--cth-paper-100)'
-      }}>
-        ⚠ In <strong>auto mode</strong> these engines run with full filesystem + shell access
-        (no sandbox) — like Claude's bypass mode. Turn auto mode off (General) to make them
-        ask first. Live end-to-end verification with real model calls is pending your keys / a
-        local LLM.
+      <div
+        style={{
+          fontSize: 12,
+          color: 'var(--cth-ink-700)',
+          lineHeight: '17px',
+          padding: 8,
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+          background: 'var(--cth-paper-100)',
+        }}
+      >
+        ⚠ In <strong>auto mode</strong> these engines run with full filesystem + shell access (no
+        sandbox) — like Claude's bypass mode. Turn auto mode off (General) to make them ask first.
+        Live end-to-end verification with real model calls is pending your keys / a local LLM.
       </div>
     </div>
   );

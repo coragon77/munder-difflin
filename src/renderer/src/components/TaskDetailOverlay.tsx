@@ -23,14 +23,22 @@ export function TaskDetailOverlay() {
     // parseTasks NORMALIZES (the ledger is a hand-written file; cards may lack
     // dependsOn/priority/etc.) — a raw card without dependsOn crashed the
     // detail once. Never feed TaskDetail unparsed ledger entries.
-    try { setTasks(parseTasks(await window.cth.hiveTasks())); } catch { /* keep last good */ }
+    try {
+      setTasks(parseTasks(await window.cth.hiveTasks()));
+    } catch {
+      /* keep last good */
+    }
   }, []);
 
   useEffect(() => {
     if (!taskDetailId) return;
     void refresh();
-    timer.current = setInterval(() => { void refresh(); }, POLL_MS);
-    return () => { if (timer.current) clearInterval(timer.current); };
+    timer.current = setInterval(() => {
+      void refresh();
+    }, POLL_MS);
+    return () => {
+      if (timer.current) clearInterval(timer.current);
+    };
   }, [taskDetailId, refresh]);
 
   if (!taskDetailId) return null;
@@ -38,12 +46,18 @@ export function TaskDetailOverlay() {
   if (!task) return null;
 
   const nameFor = (id?: string): string | undefined =>
-    id ? (agents.find((a) => a.id === id)?.name ?? restorable.find((a) => a.id === id)?.name ?? id) : undefined;
+    id
+      ? (agents.find((a) => a.id === id)?.name ?? restorable.find((a) => a.id === id)?.name ?? id)
+      : undefined;
 
   const move = async (status: HiveTask['status']) => {
     const next = tasks.map((t) => (t.id === task.id ? { ...t, status } : t));
     setTasks(next); // optimistic
-    try { await window.cth.hiveWriteTasks(next); } catch { void refresh(); }
+    try {
+      await window.cth.hiveWriteTasks(next);
+    } catch {
+      void refresh();
+    }
   };
 
   const assign = () => {
@@ -61,7 +75,11 @@ export function TaskDetailOverlay() {
   // Delete a human-origin card (offered only while still 'todo'; the main
   // process re-checks both conditions before touching tasks.json).
   const del = async () => {
-    try { await window.cth.hiveDeleteHumanTask(task.id); } catch { /* stay open on failure */ }
+    try {
+      await window.cth.hiveDeleteHumanTask(task.id);
+    } catch {
+      /* stay open on failure */
+    }
     closeTaskDetail();
   };
 

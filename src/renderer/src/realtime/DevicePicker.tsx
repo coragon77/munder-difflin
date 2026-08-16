@@ -46,7 +46,7 @@ const labelStyle: React.CSSProperties = {
   fontSize: 8,
   lineHeight: '12px',
   color: 'var(--cth-ink-500)',
-  textTransform: 'uppercase'
+  textTransform: 'uppercase',
 };
 const selectStyle: React.CSSProperties = {
   fontFamily: 'var(--cth-font-mono)',
@@ -54,7 +54,7 @@ const selectStyle: React.CSSProperties = {
   padding: '6px 8px',
   border: '2px solid var(--cth-ink-300)',
   background: 'var(--cth-paper-100)',
-  color: 'var(--cth-ink-900)'
+  color: 'var(--cth-ink-900)',
 };
 
 export function RealtimeDevicePicker(): React.ReactElement {
@@ -67,7 +67,7 @@ export function RealtimeDevicePicker(): React.ReactElement {
   const refresh = useCallback(async () => {
     const [ins, outs] = await Promise.all([
       listDevices('audioinput'),
-      CAN_PICK_SPEAKER ? listDevices('audiooutput') : Promise.resolve<AudioDevice[]>([])
+      CAN_PICK_SPEAKER ? listDevices('audiooutput') : Promise.resolve<AudioDevice[]>([]),
     ]);
     setMics(ins);
     setSpeakers(outs);
@@ -122,8 +122,8 @@ export function RealtimeDevicePicker(): React.ReactElement {
 
       {!labelled && (
         <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
-          Device names appear after you first start a voice session and grant mic access.
-          The microphone choice applies the next time Michael connects; the speaker switches live.
+          Device names appear after you first start a voice session and grant mic access. The
+          microphone choice applies the next time Michael connects; the speaker switches live.
         </span>
       )}
     </div>

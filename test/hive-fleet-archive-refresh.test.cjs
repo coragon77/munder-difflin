@@ -31,7 +31,9 @@ function snapshotWriter(hive, home) {
   const file = path.join(home, 'hive', 'fleet.json');
   const write = () => {
     const reg = hive.registry();
-    const agents = Object.entries(reg.agents).filter(([, a]) => !a.archived && !a.retired).map(([id]) => ({ id }));
+    const agents = Object.entries(reg.agents)
+      .filter(([, a]) => !a.archived && !a.retired)
+      .map(([id]) => ({ id }));
     fs.writeFileSync(file, JSON.stringify({ ts: 1, agents }), 'utf8');
   };
   const ids = () => new Set(JSON.parse(fs.readFileSync(file, 'utf8')).agents.map((a) => a.id));
@@ -72,13 +74,19 @@ test('a no-op flip does not rebuild, and a broken writer cannot break archiving'
   await hive.ensureAgent({ id: 'jim-1', name: 'Jim', provider: 'claude' });
 
   let calls = 0;
-  hive.onRosterChange = () => { calls++; throw new Error('snapshot exploded'); };
+  hive.onRosterChange = () => {
+    calls++;
+    throw new Error('snapshot exploded');
+  };
 
   hive.setArchived('jim-1', true);
-  hive.setArchived('jim-1', true);   // already archived — nothing changed
+  hive.setArchived('jim-1', true); // already archived — nothing changed
   hive.setArchived('ghost-1', true); // not registered at all
 
   assert.equal(calls, 1, 'only a real flip rebuilds the snapshot');
-  assert.equal(hive.registry().agents['jim-1'].archived, true,
-    'a throwing snapshot writer must not roll back or crash the archive');
+  assert.equal(
+    hive.registry().agents['jim-1'].archived,
+    true,
+    'a throwing snapshot writer must not roll back or crash the archive',
+  );
 });

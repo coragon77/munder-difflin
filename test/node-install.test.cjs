@@ -13,9 +13,16 @@ const assert = require('node:assert');
 const load = require('./load-ts.cjs');
 
 const {
-  NODE_FLOOR_MAJOR, nodeMajor, nodeIsUsable, detectNodeVersion,
-  pickLatestLts, nodeArtifactFor, shaFor, distUrl,
-  resolveNodeInstaller, buildNodeInstallScript
+  NODE_FLOOR_MAJOR,
+  nodeMajor,
+  nodeIsUsable,
+  detectNodeVersion,
+  pickLatestLts,
+  nodeArtifactFor,
+  shaFor,
+  distUrl,
+  resolveNodeInstaller,
+  buildNodeInstallScript,
 } = load('src/main/nodeInstall.ts');
 const { chooseInstallRung, buildMissingCliScript } = load('src/main/cliInstall.ts');
 
@@ -28,7 +35,7 @@ const INDEX = [
   { version: 'v26.7.0', lts: false, npm: '11.20.0' },
   { version: 'v25.4.1', lts: false, npm: '11.18.0' },
   { version: 'v24.19.0', lts: 'Krypton', npm: '11.17.0' },
-  { version: 'v22.20.0', lts: 'Jod', npm: '10.9.3' }
+  { version: 'v22.20.0', lts: 'Jod', npm: '10.9.3' },
 ];
 
 function fakeFetch(map) {
@@ -40,8 +47,7 @@ function fakeFetch(map) {
 
 const OK_FETCH = fakeFetch({
   'https://nodejs.org/dist/index.json': JSON.stringify(INDEX),
-  'https://nodejs.org/dist/v24.19.0/SHASUMS256.txt':
-    `${SHA}  node-v24.19.0.pkg\n${SHA2}  node-v24.19.0-x64.msi\n${SHA}  node-v24.19.0-linux-x64.tar.xz\n`
+  'https://nodejs.org/dist/v24.19.0/SHASUMS256.txt': `${SHA}  node-v24.19.0.pkg\n${SHA2}  node-v24.19.0-x64.msi\n${SHA}  node-v24.19.0-linux-x64.tar.xz\n`,
 });
 
 // ── version gate ────────────────────────────────────────────────────────────
@@ -58,11 +64,25 @@ test('a Node at or above the floor is left alone; below it is not', () => {
 });
 
 test('detectNodeVersion returns null rather than guessing when the probe fails', () => {
-  assert.equal(detectNodeVersion('/usr/bin/node', () => 'v24.19.0\n'), 'v24.19.0');
-  assert.equal(detectNodeVersion(null, () => 'v24.19.0'), null);
-  assert.equal(detectNodeVersion('/usr/bin/node', () => { throw new Error('ENOENT'); }), null);
+  assert.equal(
+    detectNodeVersion('/usr/bin/node', () => 'v24.19.0\n'),
+    'v24.19.0',
+  );
+  assert.equal(
+    detectNodeVersion(null, () => 'v24.19.0'),
+    null,
+  );
+  assert.equal(
+    detectNodeVersion('/usr/bin/node', () => {
+      throw new Error('ENOENT');
+    }),
+    null,
+  );
   // Garbage on stdout is not a version. Treating it as one would skip the install.
-  assert.equal(detectNodeVersion('/usr/bin/node', () => 'command not found'), null);
+  assert.equal(
+    detectNodeVersion('/usr/bin/node', () => 'command not found'),
+    null,
+  );
 });
 
 // ── picking what to download ────────────────────────────────────────────────
@@ -75,11 +95,26 @@ test('latest STABLE means newest LTS, never index[0] (the current/odd release)',
 
 test('artifact names match what nodejs.org actually publishes', () => {
   // macOS ships ONE universal .pkg — there is no -x64/-arm64 variant.
-  assert.deepEqual(nodeArtifactFor('v24.19.0', 'darwin', 'arm64'), { file: 'node-v24.19.0.pkg', kind: 'pkg' });
-  assert.deepEqual(nodeArtifactFor('v24.19.0', 'darwin', 'x64'), { file: 'node-v24.19.0.pkg', kind: 'pkg' });
-  assert.deepEqual(nodeArtifactFor('v24.19.0', 'win32', 'arm64'), { file: 'node-v24.19.0-arm64.msi', kind: 'msi' });
-  assert.deepEqual(nodeArtifactFor('v24.19.0', 'win32', 'x64'), { file: 'node-v24.19.0-x64.msi', kind: 'msi' });
-  assert.deepEqual(nodeArtifactFor('v24.19.0', 'linux', 'x64'), { file: 'node-v24.19.0-linux-x64.tar.xz', kind: 'tar' });
+  assert.deepEqual(nodeArtifactFor('v24.19.0', 'darwin', 'arm64'), {
+    file: 'node-v24.19.0.pkg',
+    kind: 'pkg',
+  });
+  assert.deepEqual(nodeArtifactFor('v24.19.0', 'darwin', 'x64'), {
+    file: 'node-v24.19.0.pkg',
+    kind: 'pkg',
+  });
+  assert.deepEqual(nodeArtifactFor('v24.19.0', 'win32', 'arm64'), {
+    file: 'node-v24.19.0-arm64.msi',
+    kind: 'msi',
+  });
+  assert.deepEqual(nodeArtifactFor('v24.19.0', 'win32', 'x64'), {
+    file: 'node-v24.19.0-x64.msi',
+    kind: 'msi',
+  });
+  assert.deepEqual(nodeArtifactFor('v24.19.0', 'linux', 'x64'), {
+    file: 'node-v24.19.0-linux-x64.tar.xz',
+    kind: 'tar',
+  });
   // Unsupported: no artifact rather than a URL that 404s mid-install.
   assert.equal(nodeArtifactFor('v24.19.0', 'linux', 'mips'), null);
   assert.equal(nodeArtifactFor('v24.19.0', 'aix', 'ppc64'), null);
@@ -90,7 +125,10 @@ test('shaFor matches the exact file, not a prefix of another entry', () => {
   assert.equal(shaFor(body, 'node-v24.19.0.pkg'), SHA);
   assert.equal(shaFor(body, 'node-v24.19.0-x64.msi'), SHA2);
   assert.equal(shaFor(body, 'node-v24.19.0-arm64.msi'), null);
-  assert.equal(distUrl('v24.19.0', 'node-v24.19.0.pkg'), 'https://nodejs.org/dist/v24.19.0/node-v24.19.0.pkg');
+  assert.equal(
+    distUrl('v24.19.0', 'node-v24.19.0.pkg'),
+    'https://nodejs.org/dist/v24.19.0/node-v24.19.0.pkg',
+  );
 });
 
 test('resolveNodeInstaller returns the LTS artifact with its real digest', async () => {
@@ -108,7 +146,12 @@ test('resolveNodeInstaller refuses rather than running an unverified installer',
   assert.equal(await resolveNodeInstaller('win32', 'arm64', OK_FETCH), null);
   // Offline / 5xx on either fetch.
   assert.equal(await resolveNodeInstaller('darwin', 'arm64', fakeFetch({})), null);
-  assert.equal(await resolveNodeInstaller('darwin', 'arm64', async () => { throw new Error('ENETDOWN'); }), null);
+  assert.equal(
+    await resolveNodeInstaller('darwin', 'arm64', async () => {
+      throw new Error('ENETDOWN');
+    }),
+    null,
+  );
   // Unsupported platform never reaches the network at all.
   assert.equal(await resolveNodeInstaller('sunos', 'x64', OK_FETCH), null);
 });
@@ -116,17 +159,27 @@ test('resolveNodeInstaller refuses rather than running an unverified installer',
 // ── the script we hand to a root-capable shell ──────────────────────────────
 
 const INSTALLER = {
-  version: 'v24.19.0', npmVersion: '11.17.0', file: 'node-v24.19.0.pkg',
-  url: 'https://nodejs.org/dist/v24.19.0/node-v24.19.0.pkg', sha256: SHA, kind: 'pkg'
+  version: 'v24.19.0',
+  npmVersion: '11.17.0',
+  file: 'node-v24.19.0.pkg',
+  url: 'https://nodejs.org/dist/v24.19.0/node-v24.19.0.pkg',
+  sha256: SHA,
+  kind: 'pkg',
 };
-const WIN_INSTALLER = { ...INSTALLER, file: 'node-v24.19.0-x64.msi', kind: 'msi',
-  url: 'https://nodejs.org/dist/v24.19.0/node-v24.19.0-x64.msi' };
+const WIN_INSTALLER = {
+  ...INSTALLER,
+  file: 'node-v24.19.0-x64.msi',
+  kind: 'msi',
+  url: 'https://nodejs.org/dist/v24.19.0/node-v24.19.0-x64.msi',
+};
 
 test('every posix install script verifies the checksum BEFORE it elevates', () => {
   for (const platform of ['darwin', 'linux']) {
     const script = buildNodeInstallScript(
-      platform === 'darwin' ? INSTALLER : { ...INSTALLER, file: 'node-v24.19.0-linux-x64.tar.xz', kind: 'tar' },
-      platform
+      platform === 'darwin'
+        ? INSTALLER
+        : { ...INSTALLER, file: 'node-v24.19.0-linux-x64.tar.xz', kind: 'tar' },
+      platform,
     ).join('\n');
     const verifyAt = script.indexOf(SHA);
     const elevateAt = script.indexOf('sudo ');
@@ -139,7 +192,10 @@ test('every posix install script verifies the checksum BEFORE it elevates', () =
     const mismatch = script.split('\n').find((l) => l.includes('CHECKSUM MISMATCH'));
     assert.ok(mismatch, `${platform}: no mismatch branch at all`);
     assert.ok(/exit 1/.test(mismatch), `${platform}: mismatch warns but continues: ${mismatch}`);
-    assert.ok(script.indexOf('CHECKSUM MISMATCH') < elevateAt, `${platform}: mismatch checked after sudo`);
+    assert.ok(
+      script.indexOf('CHECKSUM MISMATCH') < elevateAt,
+      `${platform}: mismatch checked after sudo`,
+    );
     // The download must fail loudly too, on its own line.
     const dl = script.split('\n').find((l) => l.includes('curl -fSL'));
     assert.ok(dl && /exit 1/.test(dl), `${platform}: a failed download falls through: ${dl}`);
@@ -177,12 +233,17 @@ test('the Windows install script survives cmd /d /s /c quoting', () => {
 test('a usable npm is untouched — no Node install is ever spliced in', () => {
   for (const provider of ['claude', 'codex', 'opencode', 'copilot']) {
     const rung = chooseInstallRung(
-      { command: 'npm install -g x', nativeCommand: 'curl x | bash', label: 'X' }, true, INSTALLER
+      { command: 'npm install -g x', nativeCommand: 'curl x | bash', label: 'X' },
+      true,
+      INSTALLER,
     );
     assert.equal(rung.kind, 'npm');
     assert.equal(rung.nodeMissing, false);
     const s = buildMissingCliScript(provider, provider, true, 'darwin', INSTALLER);
-    assert.ok(!s.includes('nodejs.org'), `${provider}: offered a Node install to a machine that has one`);
+    assert.ok(
+      !s.includes('nodejs.org'),
+      `${provider}: offered a Node install to a machine that has one`,
+    );
     assert.ok(!s.includes('sudo'), `${provider}: asked for a password it does not need`);
   }
 });
@@ -190,7 +251,11 @@ test('a usable npm is untouched — no Node install is ever spliced in', () => {
 test('no usable npm + a resolvable installer → node-then-npm, ABOVE the native rung', () => {
   // Claude Code is the only provider with a node-free native installer, so it is
   // the one case where the two rungs compete. Founder ruled: fix the machine.
-  const info = { command: 'npm install -g @anthropic-ai/claude-code', nativeCommand: 'curl -fsSL https://claude.ai/install.sh | bash', label: 'Claude Code' };
+  const info = {
+    command: 'npm install -g @anthropic-ai/claude-code',
+    nativeCommand: 'curl -fsSL https://claude.ai/install.sh | bash',
+    label: 'Claude Code',
+  };
   const rung = chooseInstallRung(info, false, INSTALLER);
   assert.equal(rung.kind, 'node-then-npm');
   assert.equal(rung.command, info.command);
@@ -211,7 +276,11 @@ test('node-then-npm installs Node first, then the CLI with it', () => {
 });
 
 test('no installer resolvable (offline/unsupported) falls back, never fabricates one', () => {
-  const info = { command: 'npm install -g @anthropic-ai/claude-code', nativeCommand: 'curl -fsSL https://claude.ai/install.sh | bash', label: 'Claude Code' };
+  const info = {
+    command: 'npm install -g @anthropic-ai/claude-code',
+    nativeCommand: 'curl -fsSL https://claude.ai/install.sh | bash',
+    label: 'Claude Code',
+  };
   assert.equal(chooseInstallRung(info, false, null).kind, 'native');
   assert.equal(chooseInstallRung(info, false, undefined).kind, 'native');
   // A provider with no native installer and no Node → manual hint, runs nothing.
@@ -230,6 +299,9 @@ test('the Windows node-then-npm script is still one quote-free line', () => {
   const s = buildMissingCliScript('claude', 'claude', false, 'win32', WIN_INSTALLER);
   assert.ok(!s.includes('\n'), 'must stay a single line');
   assert.ok(!s.includes('"'), 'double quote would end the command line early');
-  assert.ok(s.indexOf('msiexec') < s.lastIndexOf('npm install -g'), 'Node must land before the CLI install');
+  assert.ok(
+    s.indexOf('msiexec') < s.lastIndexOf('npm install -g'),
+    'Node must land before the CLI install',
+  );
   assert.match(s, /set PATH=%ProgramFiles%\\nodejs;%PATH%/);
 });

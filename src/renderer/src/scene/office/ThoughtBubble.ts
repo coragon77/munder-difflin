@@ -16,15 +16,15 @@ const PADDING_X = 6;
 const PADDING_Y = 3;
 const CORNER_RADIUS = 5;
 const MAX_WIDTH = 150;
-const FILL_COLOR = colors.cream[50];   // light cloud
+const FILL_COLOR = colors.cream[50]; // light cloud
 const OUTLINE_COLOR = colors.ink[900];
-const TEXT_COLOR = '#3d2e4a';           // ink-700
+const TEXT_COLOR = '#3d2e4a'; // ink-700
 const FONT_SIZE = 12;
-const RENDER_SCALE = 0.5;               // render at 2x, scale down for crispness
-const OFFSET_Y = -38;                   // a touch higher than the tool bubble
+const RENDER_SCALE = 0.5; // render at 2x, scale down for crispness
+const OFFSET_Y = -38; // a touch higher than the tool bubble
 const FADE_IN_DURATION = 0.15;
 const FADE_OUT_DURATION = 0.3;
-const LINGER_DURATION = 1.2;            // only used when hide() is requested
+const LINGER_DURATION = 1.2; // only used when hide() is requested
 const DOTS_CYCLE_SPEED = 0.45;
 // Word-wrap width in the inner (unscaled) space — the inner container renders at
 // RENDER_SCALE, so the on-screen cap is MAX_WIDTH. breakWords splits unbroken
@@ -88,8 +88,8 @@ export class ThoughtBubble {
         align: 'left',
         wordWrap: true,
         wordWrapWidth: WRAP_WIDTH,
-        breakWords: true
-      }
+        breakWords: true,
+      },
     });
     this.label.x = PADDING_X;
     this.label.y = PADDING_Y;
@@ -111,9 +111,8 @@ export class ThoughtBubble {
       // Word-wrap (style.wordWrap) handles the horizontal fit, so the card can no
       // longer overflow; we only cap the raw length so a very long action wraps to
       // a few lines rather than a wall of text.
-      this.label.text = display.length > MAX_CHARS
-        ? display.slice(0, MAX_CHARS - 1).trimEnd() + '…'
-        : display;
+      this.label.text =
+        display.length > MAX_CHARS ? display.slice(0, MAX_CHARS - 1).trimEnd() + '…' : display;
     }
     this.redraw();
     this.reveal();
@@ -269,7 +268,10 @@ export class ThoughtBubble {
     this.tail.clear();
     const baseX = this.bgW * 0.32;
     const puff = (cx: number, cy: number, r: number) => {
-      this.tail.circle(cx, cy, r).fill({ color: FILL_COLOR }).stroke({ color: OUTLINE_COLOR, width: 1 });
+      this.tail
+        .circle(cx, cy, r)
+        .fill({ color: FILL_COLOR })
+        .stroke({ color: OUTLINE_COLOR, width: 1 });
     };
     puff(baseX, this.bgH + 4, 3);
     puff(baseX - 5, this.bgH + 9, 2);

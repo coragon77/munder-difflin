@@ -26,15 +26,15 @@ export const NODE_FLOOR_MAJOR = 20;
 const DIST = 'https://nodejs.org/dist';
 
 export interface NodeDistEntry {
-  version: string;              // 'v24.19.0'
-  lts: false | string;          // false | 'Krypton'
+  version: string; // 'v24.19.0'
+  lts: false | string; // false | 'Krypton'
   npm?: string;
 }
 
 export interface NodeInstaller {
-  version: string;              // 'v24.19.0'
+  version: string; // 'v24.19.0'
   npmVersion?: string;
-  file: string;                 // 'node-v24.19.0.pkg'
+  file: string; // 'node-v24.19.0.pkg'
   url: string;
   sha256: string;
   kind: 'pkg' | 'msi' | 'tar';
@@ -56,8 +56,11 @@ type VersionProbe = (nodePath: string) => string;
 
 const execNodeVersion: VersionProbe = (nodePath) =>
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require('node:child_process')
-    .execFileSync(nodePath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+  require('node:child_process').execFileSync(nodePath, ['--version'], {
+    encoding: 'utf8',
+    timeout: 5000,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
 
 /** `node --version` from the binary the user's PATH actually resolves (see
  *  pty.commandPath). Null when node is absent or the probe fails at all — both
@@ -65,7 +68,7 @@ const execNodeVersion: VersionProbe = (nodePath) =>
  *  rather than silently assuming it is fine. */
 export function detectNodeVersion(
   nodePath: string | null | undefined,
-  probe: VersionProbe = execNodeVersion
+  probe: VersionProbe = execNodeVersion,
 ): string | null {
   if (!nodePath) return null;
   try {
@@ -96,7 +99,7 @@ export function pickLatestLts(index: NodeDistEntry[]): NodeDistEntry | null {
 export function nodeArtifactFor(
   version: string,
   platform: string,
-  arch: string
+  arch: string,
 ): { file: string; kind: NodeInstaller['kind'] } | null {
   if (platform === 'darwin') return { file: `node-${version}.pkg`, kind: 'pkg' };
   if (platform === 'win32') {
@@ -135,7 +138,7 @@ const timedFetch: Fetcher = (url) =>
 export async function resolveNodeInstaller(
   platform: string = process.platform,
   arch: string = process.arch,
-  fetchImpl: Fetcher = timedFetch
+  fetchImpl: Fetcher = timedFetch,
 ): Promise<NodeInstaller | null> {
   try {
     const indexRes = await fetchImpl(`${DIST}/index.json`);
@@ -159,7 +162,7 @@ export async function resolveNodeInstaller(
       file: artifact.file,
       url: distUrl(lts.version, artifact.file),
       sha256,
-      kind: artifact.kind
+      kind: artifact.kind,
     };
   } catch {
     return null;
@@ -190,19 +193,21 @@ export function buildNodeInstallScript(installer: NodeInstaller, platform: strin
       `echo   Installing - approve the Windows prompt if it appears...`,
       `msiexec /i ${f} /passive /norestart`,
       `if errorlevel 1 exit /b 1`,
-      `set PATH=%ProgramFiles%\\nodejs;%PATH%`
+      `set PATH=%ProgramFiles%\\nodejs;%PATH%`,
     ];
   }
 
   // macOS ships `shasum`; Linux ships `sha256sum`. Neither ships both.
-  const verify = platform === 'darwin'
-    ? `echo "${sha256}  $__f" | shasum -a 256 -c - >/dev/null`
-    : `echo "${sha256}  $__f" | sha256sum -c - >/dev/null`;
-  const install = platform === 'darwin'
-    ? `sudo installer -pkg "$__f" -target /`
-    // No official Linux package — the tarball IS the distribution. --strip-components
-    // drops the versioned top dir so bin/ lands directly in /usr/local/bin.
-    : `sudo tar -xJf "$__f" -C /usr/local --strip-components=1`;
+  const verify =
+    platform === 'darwin'
+      ? `echo "${sha256}  $__f" | shasum -a 256 -c - >/dev/null`
+      : `echo "${sha256}  $__f" | sha256sum -c - >/dev/null`;
+  const install =
+    platform === 'darwin'
+      ? `sudo installer -pkg "$__f" -target /`
+      : // No official Linux package — the tarball IS the distribution. --strip-components
+        // drops the versioned top dir so bin/ lands directly in /usr/local/bin.
+        `sudo tar -xJf "$__f" -C /usr/local --strip-components=1`;
 
   return [
     `echo '  Downloading Node.js ${version} (official installer)...'`,
@@ -219,6 +224,6 @@ export function buildNodeInstallScript(installer: NodeInstaller, platform: strin
     `rm -rf "$__tmp"`,
     // The shell that is running this script captured PATH before node existed.
     `PATH=/usr/local/bin:$PATH`,
-    `export PATH`
+    `export PATH`,
   ];
 }

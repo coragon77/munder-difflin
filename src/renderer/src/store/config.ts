@@ -5,20 +5,16 @@ import {
   providerPreset,
   inferAgentProvider,
   isClaudeProvider,
-  type AgentProvider
+  type AgentProvider,
 } from '@shared/agentProvider';
-import type {
-  ContextTriggerConfig,
-  OrgTriggerConfig,
-  WebhookTrigger
-} from '@shared/triggers';
+import type { ContextTriggerConfig, OrgTriggerConfig, WebhookTrigger } from '@shared/triggers';
 
 export {
   AGENT_PROVIDER_PRESETS,
   providerPreset,
   inferAgentProvider,
   isClaudeProvider,
-  type AgentProvider
+  type AgentProvider,
 };
 
 /** A recurring auto-dispatched mission (mirrors src/main/config.ts). */
@@ -188,7 +184,7 @@ export const AGENT_MODELS: ModelOption[] = [
   { id: 'claude-sonnet-5', label: 'Sonnet 5' },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
   { id: ASSISTANT_MODEL, label: 'Sonnet 4.6 · 1M' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' },
 ];
 
 /** Current OpenAI models offered by Codex for coding agents. The command field
@@ -200,7 +196,7 @@ export const CODEX_MODELS: ModelOption[] = [
   { id: undefined, label: 'CLI default' },
   { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
   { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
-  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' }
+  { id: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
 ];
 
 /** Models offered when an agent runs on the Antigravity CLI (`agy`). agy's
@@ -221,7 +217,7 @@ export const ANTIGRAVITY_MODELS: ModelOption[] = [
   { id: 'Gemini 3.5 Flash (Low)', label: 'Gemini 3.5 Flash · Low' },
   { id: 'Claude Sonnet 4.6 (Thinking)', label: 'Claude Sonnet 4.6' },
   { id: 'Claude Opus 4.6 (Thinking)', label: 'Claude Opus 4.6' },
-  { id: 'GPT-OSS 120B (Medium)', label: 'GPT-OSS 120B' }
+  { id: 'GPT-OSS 120B (Medium)', label: 'GPT-OSS 120B' },
 ];
 
 /** Models offered when an agent runs on qwen-code (`qwen`), the proxy-bridge CLI
@@ -231,7 +227,7 @@ export const QWEN_MODELS: ModelOption[] = [
   { id: undefined, label: 'default' },
   { id: 'qwen3-coder-plus', label: 'Qwen3 Coder Plus' },
   { id: 'qwen3-coder', label: 'Qwen3 Coder' },
-  { id: 'qwen-max', label: 'Qwen Max' }
+  { id: 'qwen-max', label: 'Qwen Max' },
 ];
 
 /** Models offered when an agent runs on OpenCode (`opencode`). OpenCode's `--model`
@@ -246,7 +242,7 @@ export const OPENCODE_MODELS: ModelOption[] = [
   { id: 'openai/gpt-5-mini', label: 'GPT-5 mini (OpenAI)' },
   { id: 'openrouter/anthropic/claude-sonnet-4.5', label: 'Claude Sonnet 4.5 (OpenRouter)' },
   { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro (Google)' },
-  { id: 'local/llama3', label: 'Local · OpenAI-compatible (set base-URL)' }
+  { id: 'local/llama3', label: 'Local · OpenAI-compatible (set base-URL)' },
 ];
 
 /** Models offered when an agent runs on Crush (`crush`). Crush's `--model` takes a
@@ -263,7 +259,7 @@ export const CRUSH_MODELS: ModelOption[] = [
   // OpenAI-wire local slug so traffic routes through the proxy (the harness overrides
   // the `openai` provider's base_url → loopback → your configured Crush base-URL).
   // An `ollama/*` slug would bypass the proxy (Dwight verify-crush NIT-2).
-  { id: 'openai/local', label: 'Local · OpenAI-compatible (set base-URL)' }
+  { id: 'openai/local', label: 'Local · OpenAI-compatible (set base-URL)' },
 ];
 
 /** Models offered when an agent runs on Pi (`pi`). Pi's `--model` takes a
@@ -276,7 +272,7 @@ export const PI_MODELS: ModelOption[] = [
   { id: 'openai/gpt-5', label: 'GPT-5 (OpenAI)' },
   { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro (Google)' },
   { id: 'groq/llama-3.3-70b', label: 'Llama 3.3 70B (Groq)' },
-  { id: 'local/llama3', label: 'Local · OpenAI-compatible (set base-URL)' }
+  { id: 'local/llama3', label: 'Local · OpenAI-compatible (set base-URL)' },
 ];
 
 /** Models offered when an agent runs on GitHub Copilot (`copilot`). Copilot's
@@ -289,7 +285,7 @@ export const COPILOT_MODELS: ModelOption[] = [
   { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5' },
   { id: 'claude-sonnet-4', label: 'Claude Sonnet 4' },
   { id: 'gpt-5.4', label: 'GPT-5.4' },
-  { id: 'gpt-5', label: 'GPT-5' }
+  { id: 'gpt-5', label: 'GPT-5' },
 ];
 
 /** Models reported by the installed Grok CLI (`grok models`). */
@@ -298,7 +294,7 @@ export const GROK_MODELS: ModelOption[] = [
   // harness's `config.defaultModel`; the pickers mark that one separately, and
   // labelling both "default" is what made the two impossible to tell apart.
   { id: undefined, label: 'CLI default' },
-  { id: 'grok-4.5', label: 'Grok 4.5' }
+  { id: 'grok-4.5', label: 'Grok 4.5' },
 ];
 
 /** Managed Kimi Code aliases accepted by `kimi --model <alias>`. */
@@ -309,7 +305,7 @@ export const KIMI_MODELS: ModelOption[] = [
   { id: undefined, label: 'CLI default' },
   { id: 'kimi-code/k3', label: 'Kimi K3' },
   { id: 'kimi-code/kimi-for-coding', label: 'Kimi K2.7 Code' },
-  { id: 'kimi-code/kimi-for-coding-highspeed', label: 'Kimi K2.7 · HighSpeed' }
+  { id: 'kimi-code/kimi-for-coding-highspeed', label: 'Kimi K2.7 · HighSpeed' },
 ];
 
 /** Split a command string into argv, respecting double/single quotes so a model
@@ -342,8 +338,8 @@ export function modelsForProvider(provider: AgentProvider): ModelOption[] {
  *  God must remain on a provider with a working inbox drain; otherwise switching
  *  to a terminal-only provider would silently disable orchestration. */
 export function modelProvidersForAgent(isGod = false) {
-  return AGENT_PROVIDER_PRESETS.filter((preset) =>
-    preset.supportsModel && (!isGod || preset.canReceiveInbox)
+  return AGENT_PROVIDER_PRESETS.filter(
+    (preset) => preset.supportsModel && (!isGod || preset.canReceiveInbox),
   );
 }
 
@@ -384,7 +380,7 @@ export function decodeProviderModel(value: string): {
 export function buildSpawnCommand(
   config: Pick<HarnessConfig, 'defaultCommand'>,
   model?: string,
-  provider: AgentProvider = inferAgentProvider(config.defaultCommand)
+  provider: AgentProvider = inferAgentProvider(config.defaultCommand),
 ): string {
   const preset = providerPreset(provider);
   // Claude keeps the user's configured defaultCommand; custom falls back to it

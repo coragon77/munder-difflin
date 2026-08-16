@@ -29,8 +29,11 @@ const { cardSessionActionStillValid } = loadTs('src/shared/cardSessions.ts');
 const { HiveManager } = loadTs('src/main/hive.ts');
 
 const CARD = (over = {}) => ({
-  id: 'card-1', title: 'Vacation state implementation', assignee: 'dwight',
-  status: 'doing', ...over
+  id: 'card-1',
+  title: 'Vacation state implementation',
+  assignee: 'dwight',
+  status: 'doing',
+  ...over,
 });
 
 // ——— the pure transition engine ——————————————————————————————————————
@@ -40,7 +43,7 @@ test('NEW card (no sessionId) → provider clear + card-title lead', () => {
     [CARD()],
     { 'card-1': { status: 'todo' } },
     { dwight: 'old-session' },
-    { dwight: 'claude' }
+    { dwight: 'claude' },
   );
   assert.equal(a.kind, 'clear');
   assert.equal(a.command, '/clear');
@@ -50,7 +53,10 @@ test('NEW card (no sessionId) → provider clear + card-title lead', () => {
 
 test('grok assignee gets the provider clear (/new), not claude /clear', () => {
   const [a] = cardSessionDecisions(
-    [CARD()], { 'card-1': { status: 'todo' } }, { dwight: 'x' }, { dwight: 'grok' }
+    [CARD()],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 'x' },
+    { dwight: 'grok' },
   );
   assert.equal(a.command, '/new');
 });
@@ -60,7 +66,7 @@ test('PAUSED card returning (stamp ≠ live session) → /resume <stamp> + lead'
     [CARD({ sessionId: 'card-session-uuid' })],
     { 'card-1': { status: 'todo' } },
     { dwight: 'a-different-live-session' },
-    { dwight: 'claude' }
+    { dwight: 'claude' },
   );
   assert.equal(a.kind, 'resume');
   assert.equal(a.command, '/resume card-session-uuid');
@@ -71,29 +77,46 @@ test('card whose session is already live → no-op (already in that conversation
     [CARD({ sessionId: 'live-now' })],
     { 'card-1': { status: 'todo' } },
     { dwight: 'live-now' },
-    { dwight: 'claude' }
+    { dwight: 'claude' },
   );
   assert.equal(actions.length, 0);
 });
 
 test('FIRST TICK (card unseen) → nothing — a restart never re-clears a working pane', () => {
   const actions = cardSessionDecisions(
-    [CARD()], {}, // empty seen = first tick after boot
-    { dwight: 's' }, { dwight: 'claude' }
+    [CARD()],
+    {}, // empty seen = first tick after boot
+    { dwight: 's' },
+    { dwight: 'claude' },
   );
   assert.equal(actions.length, 0);
 });
 
 test('no transition to doing (still todo / still doing / → done) → nothing', () => {
-  const reg = { dwight: 's' }, prov = { dwight: 'claude' };
-  assert.equal(cardSessionDecisions([CARD({ status: 'todo' })], { 'card-1': { status: 'todo' } }, reg, prov).length, 0);
-  assert.equal(cardSessionDecisions([CARD()], { 'card-1': { status: 'doing' } }, reg, prov).length, 0);
-  assert.equal(cardSessionDecisions([CARD({ status: 'done' })], { 'card-1': { status: 'doing' } }, reg, prov).length, 0);
+  const reg = { dwight: 's' },
+    prov = { dwight: 'claude' };
+  assert.equal(
+    cardSessionDecisions([CARD({ status: 'todo' })], { 'card-1': { status: 'todo' } }, reg, prov)
+      .length,
+    0,
+  );
+  assert.equal(
+    cardSessionDecisions([CARD()], { 'card-1': { status: 'doing' } }, reg, prov).length,
+    0,
+  );
+  assert.equal(
+    cardSessionDecisions([CARD({ status: 'done' })], { 'card-1': { status: 'doing' } }, reg, prov)
+      .length,
+    0,
+  );
 });
 
 test('card without assignee never steers anything', () => {
   const actions = cardSessionDecisions(
-    [CARD({ assignee: undefined })], { 'card-1': { status: 'todo' } }, {}, {}
+    [CARD({ assignee: undefined })],
+    { 'card-1': { status: 'todo' } },
+    {},
+    {},
   );
   assert.equal(actions.length, 0);
 });
@@ -107,29 +130,77 @@ test('card without assignee never steers anything', () => {
 test('validity: card gone / not doing / reassigned → stale', () => {
   const m = { cardId: 'card-1', agentId: 'dwight', kind: 'clear' };
   assert.equal(cardSessionActionStillValid(undefined, m), false);
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'blocked', assignee: 'dwight' }, m), false);
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'done', assignee: 'dwight' }, m), false);
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'kevin' }, m), false);
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight' }, m), true);
+  assert.equal(
+    cardSessionActionStillValid({ id: 'card-1', status: 'blocked', assignee: 'dwight' }, m),
+    false,
+  );
+  assert.equal(
+    cardSessionActionStillValid({ id: 'card-1', status: 'done', assignee: 'dwight' }, m),
+    false,
+  );
+  assert.equal(
+    cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'kevin' }, m),
+    false,
+  );
+  assert.equal(
+    cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight' }, m),
+    true,
+  );
 });
 
 test('validity: a clear whose card gained a sessionId is stale — a conversation already started; a late clear would wipe it', () => {
   const m = { cardId: 'card-1', agentId: 'dwight', kind: 'clear' };
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 's' }, m), false);
+  assert.equal(
+    cardSessionActionStillValid(
+      { id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 's' },
+      m,
+    ),
+    false,
+  );
 });
 
 test('validity: a resume is stale when the card re-stamped to a different session; unset or matching stays valid', () => {
   const m = { cardId: 'card-1', agentId: 'dwight', kind: 'resume', session: 'orig' };
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'other' }, m), false);
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'orig' }, m), true);
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight' }, m), true);
+  assert.equal(
+    cardSessionActionStillValid(
+      { id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'other' },
+      m,
+    ),
+    false,
+  );
+  assert.equal(
+    cardSessionActionStillValid(
+      { id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'orig' },
+      m,
+    ),
+    true,
+  );
+  assert.equal(
+    cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight' }, m),
+    true,
+  );
 });
 
 test('validity: an adopt lead is stale when the card re-stamped elsewhere; unstamped stays valid', () => {
   const m = { cardId: 'card-1', agentId: 'dwight', kind: 'adopt', session: 'young' };
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'other' }, m), false);
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight' }, m), true);
-  assert.equal(cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'young' }, m), true);
+  assert.equal(
+    cardSessionActionStillValid(
+      { id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'other' },
+      m,
+    ),
+    false,
+  );
+  assert.equal(
+    cardSessionActionStillValid({ id: 'card-1', status: 'doing', assignee: 'dwight' }, m),
+    true,
+  );
+  assert.equal(
+    cardSessionActionStillValid(
+      { id: 'card-1', status: 'doing', assignee: 'dwight', sessionId: 'young' },
+      m,
+    ),
+    true,
+  );
 });
 
 // ——— adopt: the manual-clear race (the 22:05 wipe) ————————————————
@@ -146,7 +217,7 @@ test('adopt: doing-flip with a YOUNG live session → lead only (no clear) + sta
     { dwight: 'fresh-conversation' },
     { dwight: 'claude' },
     { dwight: now - 25_000 }, // session started 25s ago (god's manual clear)
-    now
+    now,
   );
   assert.equal(actions.length, 1);
   assert.equal(actions[0].kind, 'adopt');
@@ -162,7 +233,7 @@ test('adopt: an OLD live session still gets the clear (the standing-engagement c
     { dwight: 'old-engagement' },
     { dwight: 'claude' },
     { dwight: now - 30 * 60_000 }, // 30min old
-    now
+    now,
   );
   assert.equal(actions.length, 1);
   assert.equal(actions[0].kind, 'clear');
@@ -170,7 +241,10 @@ test('adopt: an OLD live session still gets the clear (the standing-engagement c
 
 test('adopt: unknown session age (pre-upgrade registry) behaves like the old clear path', () => {
   const actions = cardSessionDecisions(
-    [CARD()], { 'card-1': { status: 'todo' } }, { dwight: 's' }, { dwight: 'claude' }
+    [CARD()],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 's' },
+    { dwight: 'claude' },
   );
   assert.equal(actions[0].kind, 'clear');
 });
@@ -191,11 +265,16 @@ function fakeDeps(tmp, agents = {}, emitResult = true) {
     deps: {
       root: () => tmp,
       registry: () => ({ agents }),
-      emit: (agentId, text, marker) => { emitted.push({ agentId, text, marker }); return emitResult; },
+      emit: (agentId, text, marker) => {
+        emitted.push({ agentId, text, marker });
+        return emitResult;
+      },
       informGod: (s, b) => informs.push({ subject: s, body: b }),
-      stampCard: (cardId, sessionId) => stamped.push({ cardId, sessionId })
+      stampCard: (cardId, sessionId) => stamped.push({ cardId, sessionId }),
     },
-    emitted, informs, stamped
+    emitted,
+    informs,
+    stamped,
   };
 }
 
@@ -206,18 +285,28 @@ function setCards(tmp, tasks) {
 test('tick: clear then lead are emitted in order; god is informed; snapshot advances', () => {
   const tmp = tmpHive();
   setCards(tmp, [CARD({ status: 'todo' })]);
-  const { deps, emitted, informs } = fakeDeps(tmp, { dwight: { sessionId: 'old', provider: 'claude' } });
+  const { deps, emitted, informs } = fakeDeps(tmp, {
+    dwight: { sessionId: 'old', provider: 'claude' },
+  });
   const seen = {};
   cardSessionTick(deps, seen); // first tick: snapshot only
   assert.equal(emitted.length, 0);
   setCards(tmp, [CARD()]); // god flips it to doing
   cardSessionTick(deps, seen);
-  assert.deepEqual(emitted.map((e) => e.text), ['/clear',
-    'Card "Vacation state implementation" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.']);
+  assert.deepEqual(
+    emitted.map((e) => e.text),
+    [
+      '/clear',
+      'Card "Vacation state implementation" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.',
+    ],
+  );
   assert.equal(emitted[0].agentId, 'dwight');
   // Both the command and the lead carry the cardFor marker so the queue-drain
   // can stale-drop them at delivery (card-session-stamp-never-fires-20260816).
-  assert.deepEqual(emitted.map((e) => e.marker && e.marker.cardId), ['card-1', 'card-1']);
+  assert.deepEqual(
+    emitted.map((e) => e.marker && e.marker.cardId),
+    ['card-1', 'card-1'],
+  );
   assert.equal(emitted[0].marker.kind, 'clear');
   assert.ok(informs.some((i) => /clear queued for dwight/.test(i.subject)));
   cardSessionTick(deps, seen); // steady state: nothing new
@@ -227,8 +316,9 @@ test('tick: clear then lead are emitted in order; god is informed; snapshot adva
 test('tick: adopt stamps the card through deps and emits ONLY the lead, with the adopt marker', () => {
   const tmp = tmpHive();
   setCards(tmp, [CARD({ status: 'todo' })]);
-  const { deps, emitted, informs, stamped } = fakeDeps(tmp,
-    { dwight: { sessionId: 'fresh', sessionStartedAt: Date.now() - 10_000, provider: 'claude' } });
+  const { deps, emitted, informs, stamped } = fakeDeps(tmp, {
+    dwight: { sessionId: 'fresh', sessionStartedAt: Date.now() - 10_000, provider: 'claude' },
+  });
   const seen = {};
   cardSessionTick(deps, seen); // snapshot
   setCards(tmp, [CARD()]); // → doing while a young conversation is live
@@ -244,7 +334,11 @@ test('tick: adopt stamps the card through deps and emits ONLY the lead, with the
 test('tick: failed emit leaves the card unseen → retries next tick; others still advance', () => {
   const tmp = tmpHive();
   setCards(tmp, [CARD({ id: 'a', status: 'todo' }), CARD({ id: 'b', status: 'todo' })]);
-  const { deps, emitted, informs } = fakeDeps(tmp, { dwight: { sessionId: 'old', provider: 'claude' } }, false);
+  const { deps, emitted, informs } = fakeDeps(
+    tmp,
+    { dwight: { sessionId: 'old', provider: 'claude' } },
+    false,
+  );
   const seen = {};
   cardSessionTick(deps, seen); // snapshot
   setCards(tmp, [CARD({ id: 'a' }), CARD({ id: 'b' })]);
@@ -253,13 +347,23 @@ test('tick: failed emit leaves the card unseen → retries next tick; others sti
   assert.ok(informs.some((i) => /not delivered/.test(i.subject)));
   // Re-arm the window: both transitions were left unseen → both retry, complete
   // (command + label each), in card order.
-  deps.emit = (agentId, text) => { emitted.push({ agentId, text }); return true; };
+  deps.emit = (agentId, text) => {
+    emitted.push({ agentId, text });
+    return true;
+  };
   cardSessionTick(deps, seen);
-  assert.deepEqual(emitted.map((e) => e.text), [
-    '/clear', '/clear', // the failed attempts (spy records them)
-    '/clear', CARD().title && `Card "Vacation state implementation" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.`,
-    '/clear', `Card "Vacation state implementation" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.`
-  ]);
+  assert.deepEqual(
+    emitted.map((e) => e.text),
+    [
+      '/clear',
+      '/clear', // the failed attempts (spy records them)
+      '/clear',
+      CARD().title &&
+        `Card "Vacation state implementation" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.`,
+      '/clear',
+      `Card "Vacation state implementation" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.`,
+    ],
+  );
   cardSessionTick(deps, seen); // steady state — no third round
   assert.equal(emitted.length, 6);
 });
@@ -271,15 +375,32 @@ test('stamp: a session change lands on the agent’s active doing card (and only
   const root = path.join(tmp, 'hive'); // root() = <home>/hive by construction
   fs.mkdirSync(root, { recursive: true });
   // Minimal hand-built hive: registry with the agent, tasks with a doing card.
-  fs.writeFileSync(path.join(root, 'registry.json'), JSON.stringify({
-    godId: 'god',
-    agents: { dwight: { id: 'dwight', name: 'Dwight', cwd: '/w', status: 'idle', lastSeen: 0, sessionId: 'old' } }
-  }));
-  fs.writeFileSync(path.join(root, 'tasks.json'), JSON.stringify({ tasks: [
-    CARD({ id: 'active', status: 'doing' }),
-    CARD({ id: 'paused', status: 'todo', sessionId: 'paused-session' }),
-    CARD({ id: 'other-guy', assignee: 'kevin', status: 'doing' })
-  ] }));
+  fs.writeFileSync(
+    path.join(root, 'registry.json'),
+    JSON.stringify({
+      godId: 'god',
+      agents: {
+        dwight: {
+          id: 'dwight',
+          name: 'Dwight',
+          cwd: '/w',
+          status: 'idle',
+          lastSeen: 0,
+          sessionId: 'old',
+        },
+      },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(root, 'tasks.json'),
+    JSON.stringify({
+      tasks: [
+        CARD({ id: 'active', status: 'doing' }),
+        CARD({ id: 'paused', status: 'todo', sessionId: 'paused-session' }),
+        CARD({ id: 'other-guy', assignee: 'kevin', status: 'doing' }),
+      ],
+    }),
+  );
   const hive = new HiveManager(() => tmp);
   hive.recordSession('dwight', 'new-conversation');
   const tasks = JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks;
@@ -292,7 +413,12 @@ test('stamp: a session change lands on the agent’s active doing card (and only
   assert.equal(typeof reg.agents.dwight.sessionStartedAt, 'number');
   // Unchanged session → no rewrite (idempotent no-op path).
   hive.recordSession('dwight', 'new-conversation');
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks.find((t) => t.id === 'active').sessionId, 'new-conversation');
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks.find(
+      (t) => t.id === 'active',
+    ).sessionId,
+    'new-conversation',
+  );
 });
 
 test('stampCard: stamps exactly the named card (the watcher’s adopt path)', () => {
@@ -300,9 +426,12 @@ test('stampCard: stamps exactly the named card (the watcher’s adopt path)', ()
   const root = path.join(tmp, 'hive');
   fs.mkdirSync(root, { recursive: true });
   fs.writeFileSync(path.join(root, 'registry.json'), JSON.stringify({ godId: 'god', agents: {} }));
-  fs.writeFileSync(path.join(root, 'tasks.json'), JSON.stringify({ tasks: [
-    CARD({ id: 'a', status: 'doing' }), CARD({ id: 'b', status: 'todo' })
-  ] }));
+  fs.writeFileSync(
+    path.join(root, 'tasks.json'),
+    JSON.stringify({
+      tasks: [CARD({ id: 'a', status: 'doing' }), CARD({ id: 'b', status: 'todo' })],
+    }),
+  );
   const hive = new HiveManager(() => tmp);
   hive.stampCard('a', 'adopted-session');
   const tasks = JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks;

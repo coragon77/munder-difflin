@@ -9,30 +9,37 @@ const loadTs = require('./load-ts.cjs');
 
 // The watcher module is dependency-injected (like realtimeActions.ts), so tests
 // drive it with a fake hive: tmp-dir root, in-memory registry, spy emit.
-const {
-  composeSessionCommand,
-  processSessionRequest,
-  sessionRequestsDir
-} = loadTs('src/main/sessionRequests.ts');
+const { composeSessionCommand, processSessionRequest, sessionRequestsDir } = loadTs(
+  'src/main/sessionRequests.ts',
+);
 
 // — request validation + queued command composition —
 
 test('compose: clear composes the provider table clear command (claude → /clear)', () => {
-  assert.deepEqual(composeSessionCommand({ agentId: 'x', verb: 'clear' }, 'claude'), { ok: true, command: '/clear' });
+  assert.deepEqual(composeSessionCommand({ agentId: 'x', verb: 'clear' }, 'claude'), {
+    ok: true,
+    command: '/clear',
+  });
 });
 
 test('compose: grok clear is /new (the provider table, not a hardcoded /clear)', () => {
-  assert.deepEqual(composeSessionCommand({ agentId: 'x', verb: 'clear' }, 'grok'), { ok: true, command: '/new' });
+  assert.deepEqual(composeSessionCommand({ agentId: 'x', verb: 'clear' }, 'grok'), {
+    ok: true,
+    command: '/new',
+  });
 });
 
 test('compose: unknown/undefined provider defaults to claude semantics', () => {
-  assert.deepEqual(composeSessionCommand({ agentId: 'x', verb: 'clear' }, undefined), { ok: true, command: '/clear' });
+  assert.deepEqual(composeSessionCommand({ agentId: 'x', verb: 'clear' }, undefined), {
+    ok: true,
+    command: '/clear',
+  });
 });
 
 test('compose: resume carries the sessionId verbatim', () => {
   assert.deepEqual(
     composeSessionCommand({ agentId: 'x', verb: 'resume', sessionId: '  abc-123  ' }, 'claude'),
-    { ok: true, command: '/resume abc-123' }
+    { ok: true, command: '/resume abc-123' },
   );
 });
 
@@ -64,11 +71,14 @@ function fakeDeps(tmp, { agents = {}, ptys = {}, emitResult = true } = {}) {
       root: () => tmp,
       registry: () => ({ agents }),
       ptyForAgent: (id) => ptys[id],
-      emit: (agentId, text) => { emitted.push({ agentId, text }); return emitResult; },
-      informGod: (subject, body) => informs.push({ subject, body })
+      emit: (agentId, text) => {
+        emitted.push({ agentId, text });
+        return emitResult;
+      },
+      informGod: (subject, body) => informs.push({ subject, body }),
     },
     emitted,
-    informs
+    informs,
   };
 }
 
@@ -92,7 +102,10 @@ const LIVE = { provider: 'claude' }; // registry entry shape the watcher reads
 
 test('valid clear request: emits the composed command and archives .done', () => {
   const tmp = setup();
-  const { deps, emitted, informs } = fakeDeps(tmp, { agents: { 'agent-x': { ...LIVE, archived: false } }, ptys: { 'agent-x': 'pty-1' } });
+  const { deps, emitted, informs } = fakeDeps(tmp, {
+    agents: { 'agent-x': { ...LIVE, archived: false } },
+    ptys: { 'agent-x': 'pty-1' },
+  });
   const fp = drop(tmp, 'ok', { agentId: 'agent-x', verb: 'clear' });
 
   processSessionRequest(fp, deps);
@@ -104,7 +117,10 @@ test('valid clear request: emits the composed command and archives .done', () =>
 
 test('valid resume request: emits /resume <sessionId>', () => {
   const tmp = setup();
-  const { deps, emitted } = fakeDeps(tmp, { agents: { 'agent-x': LIVE }, ptys: { 'agent-x': 'pty-1' } });
+  const { deps, emitted } = fakeDeps(tmp, {
+    agents: { 'agent-x': LIVE },
+    ptys: { 'agent-x': 'pty-1' },
+  });
   const fp = drop(tmp, 'res', { agentId: 'agent-x', verb: 'resume', sessionId: 'deadbeef-0000' });
 
   processSessionRequest(fp, deps);
@@ -115,7 +131,10 @@ test('valid resume request: emits /resume <sessionId>', () => {
 
 test('unparseable JSON → .failed + god informed, nothing emitted', () => {
   const tmp = setup();
-  const { deps, emitted, informs } = fakeDeps(tmp, { agents: { 'agent-x': LIVE }, ptys: { 'agent-x': 'pty-1' } });
+  const { deps, emitted, informs } = fakeDeps(tmp, {
+    agents: { 'agent-x': LIVE },
+    ptys: { 'agent-x': 'pty-1' },
+  });
   const fp = drop(tmp, 'bad', '{not json');
 
   processSessionRequest(fp, deps);
@@ -138,7 +157,10 @@ test('unknown agent → .failed with reason', () => {
 
 test('archived agent → .failed (card: "agent exists, not archived")', () => {
   const tmp = setup();
-  const { deps, informs } = fakeDeps(tmp, { agents: { 'agent-x': { ...LIVE, archived: true } }, ptys: { 'agent-x': 'pty-1' } });
+  const { deps, informs } = fakeDeps(tmp, {
+    agents: { 'agent-x': { ...LIVE, archived: true } },
+    ptys: { 'agent-x': 'pty-1' },
+  });
   const fp = drop(tmp, 'arch', { agentId: 'agent-x', verb: 'clear' });
 
   processSessionRequest(fp, deps);
@@ -149,7 +171,10 @@ test('archived agent → .failed (card: "agent exists, not archived")', () => {
 
 test('retired agent → .failed (retirement implies off-floor)', () => {
   const tmp = setup();
-  const { deps } = fakeDeps(tmp, { agents: { 'agent-x': { ...LIVE, retired: true } }, ptys: { 'agent-x': 'pty-1' } });
+  const { deps } = fakeDeps(tmp, {
+    agents: { 'agent-x': { ...LIVE, retired: true } },
+    ptys: { 'agent-x': 'pty-1' },
+  });
   const fp = drop(tmp, 'ret', { agentId: 'agent-x', verb: 'clear' });
 
   processSessionRequest(fp, deps);
@@ -170,7 +195,11 @@ test('no live pane → .failed (the command could never be delivered)', () => {
 
 test('emit refused (no floor window) → .failed, request survives for retry', () => {
   const tmp = setup();
-  const { deps } = fakeDeps(tmp, { agents: { 'agent-x': LIVE }, ptys: { 'agent-x': 'pty-1' }, emitResult: false });
+  const { deps } = fakeDeps(tmp, {
+    agents: { 'agent-x': LIVE },
+    ptys: { 'agent-x': 'pty-1' },
+    emitResult: false,
+  });
   const fp = drop(tmp, 'nowin', { agentId: 'agent-x', verb: 'clear' });
 
   processSessionRequest(fp, deps);
@@ -180,7 +209,10 @@ test('emit refused (no floor window) → .failed, request survives for retry', (
 
 test('missing agentId → .failed', () => {
   const tmp = setup();
-  const { deps, informs } = fakeDeps(tmp, { agents: { 'agent-x': LIVE }, ptys: { 'agent-x': 'pty-1' } });
+  const { deps, informs } = fakeDeps(tmp, {
+    agents: { 'agent-x': LIVE },
+    ptys: { 'agent-x': 'pty-1' },
+  });
   const fp = drop(tmp, 'noid', { verb: 'clear' });
 
   processSessionRequest(fp, deps);

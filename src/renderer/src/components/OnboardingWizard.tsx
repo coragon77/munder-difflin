@@ -4,7 +4,12 @@ import { PixelButton } from './PixelButton';
 import { Icon, type IconName } from './Icon';
 import { SpritePortrait } from './SpritePortrait';
 import { ProviderLogo } from './ProviderLogo';
-import { AGENT_PROVIDER_PRESETS, modelsForProvider, type AgentProvider, type HarnessConfig } from '@/store/config';
+import {
+  AGENT_PROVIDER_PRESETS,
+  modelsForProvider,
+  type AgentProvider,
+  type HarnessConfig,
+} from '@/store/config';
 import { canReceiveInbox, providerPreset } from '@shared/agentProvider';
 
 export interface OnboardingWizardProps {
@@ -20,54 +25,63 @@ type Step = 'persona' | 'welcome' | 'home' | 'orchestrator' | 'repos' | 'permiss
 interface Feature {
   icon: IconName;
   label: string;
-  desc: string;       // technical register
-  descPlain: string;  // non-technical register
-  tint: string;       // tile background token
-  edge: string;       // tile border token
+  desc: string; // technical register
+  descPlain: string; // non-technical register
+  tint: string; // tile background token
+  edge: string; // tile border token
 }
 const FEATURES: Feature[] = [
   {
     icon: 'mcp',
     label: 'TEN ENGINES, ONE OFFICE',
     desc: 'Claude Code, Codex, Grok, Kimi, Antigravity, Qwen, OpenCode, Crush, pi & Copilot — live agents on one floor.',
-    descPlain: 'Ten AI assistants — Claude, Codex, Gemini, Grok and more — working side by side in one shared office.',
-    tint: 'var(--cth-lilac-light)', edge: 'var(--cth-lilac)'
+    descPlain:
+      'Ten AI assistants — Claude, Codex, Gemini, Grok and more — working side by side in one shared office.',
+    tint: 'var(--cth-lilac-light)',
+    edge: 'var(--cth-lilac)',
   },
   {
     icon: 'gear',
     label: 'MICHAEL IS YOUR CLONE',
     desc: 'Your clone runs the floor — triages requests, routes tasks, and escalates only what needs you.',
-    descPlain: 'Your clone, Michael, takes your requests, hands work to the right agent, and only interrupts you when it matters.',
-    tint: 'var(--cth-sky-light)', edge: 'var(--cth-sky)'
+    descPlain:
+      'Your clone, Michael, takes your requests, hands work to the right agent, and only interrupts you when it matters.',
+    tint: 'var(--cth-sky-light)',
+    edge: 'var(--cth-sky)',
   },
   {
     icon: 'web',
     label: 'LONG-TERM MEMORY',
     desc: 'Each agent keeps notes, mined into a shared, searchable MemPalace.',
     descPlain: "Agents remember what they've done, so they don't start from scratch every time.",
-    tint: 'var(--cth-mint-light)', edge: 'var(--cth-mint)'
+    tint: 'var(--cth-mint-light)',
+    edge: 'var(--cth-mint)',
   },
   {
     icon: 'terminal',
     label: 'COMMAND CENTER',
     desc: 'Terminal · Floor · Memory · Activity · Tasks · Triggers in one control surface.',
     descPlain: "One dashboard to watch the work, the agents' memory, tasks, and triggers.",
-    tint: 'var(--cth-lemon-light)', edge: 'var(--cth-lemon)'
+    tint: 'var(--cth-lemon-light)',
+    edge: 'var(--cth-lemon)',
   },
   {
     icon: 'pause',
     label: 'GUARDRAILS',
     desc: 'Per-agent token budgets, a steer→constrain→stop circuit breaker, and human approvals.',
-    descPlain: 'Spending limits and safety stops keep agents in check — and they can ask you before big actions.',
-    tint: 'var(--cth-coral-light)', edge: 'var(--cth-coral)'
+    descPlain:
+      'Spending limits and safety stops keep agents in check — and they can ask you before big actions.',
+    tint: 'var(--cth-coral-light)',
+    edge: 'var(--cth-coral)',
   },
   {
     icon: 'sparkle',
     label: 'READY-MADE HIRES',
     desc: 'Grab a pre-configured agent from the Agent Gallery and spawn it in one click.',
     descPlain: 'Hire a ready-made agent from the gallery in one click — no setup needed.',
-    tint: 'var(--cth-peach-light)', edge: 'var(--cth-peach)'
-  }
+    tint: 'var(--cth-peach-light)',
+    edge: 'var(--cth-peach)',
+  },
 ];
 
 // One-liner of what each engine is, shown under its row on the orchestrator step
@@ -76,7 +90,7 @@ const PROVIDER_BLURB: Partial<Record<AgentProvider, string>> = {
   claude: 'Claude Code — Anthropic',
   codex: 'Codex — OpenAI',
   antigravity: 'Antigravity — Google Gemini',
-  qwen: 'Qwen — runs a local Qwen model on your machine'
+  qwen: 'Qwen — runs a local Qwen model on your machine',
 };
 
 export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
@@ -93,7 +107,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const [shareStats, setShareStats] = useState<boolean>(true);
   const [godProvider, setGodProvider] = useState<AgentProvider>('claude');
   const [godModel, setGodModel] = useState<string | undefined>(
-    providerPreset('claude').recommendedOrchestratorModel
+    providerPreset('claude').recommendedOrchestratorModel,
   );
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -108,20 +122,34 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
 
   const toggleStrongKeepalive = async (v: boolean) => {
     setStrongKeepalive(v); // optimistic
-    try { setStrongKeepalive((await window.cth.updateConfig({ strongKeepalive: v })).strongKeepalive === true); }
-    catch { setStrongKeepalive(!v); }
+    try {
+      setStrongKeepalive(
+        (await window.cth.updateConfig({ strongKeepalive: v })).strongKeepalive === true,
+      );
+    } catch {
+      setStrongKeepalive(!v);
+    }
   };
   const toggleNotifications = async (v: boolean) => {
     setNotifications(v); // optimistic
-    try { await window.cth.setNotifications(v); }
-    catch { setNotifications(!v); } // revert on failure
+    try {
+      await window.cth.setNotifications(v);
+    } catch {
+      setNotifications(!v);
+    } // revert on failure
   };
   const toggleOpenAtLogin = async (v: boolean) => {
     setOpenAtLogin(v); // optimistic
-    try { setOpenAtLogin(await window.cth.setLoginItem(v)); } // reconcile to OS truth
-    catch { setOpenAtLogin(!v); }
+    try {
+      setOpenAtLogin(await window.cth.setLoginItem(v));
+    } catch {
+      // reconcile to OS truth
+      setOpenAtLogin(!v);
+    }
   };
-  const openSettings = (url: string) => { void window.cth.openExternal(url); };
+  const openSettings = (url: string) => {
+    void window.cth.openExternal(url);
+  };
 
   // Default-suggest a sensible harness home on first render
   useEffect(() => {
@@ -148,12 +176,17 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
     else if (!res.ok && res.error !== 'cancelled') setError(res.error);
   };
 
-  const removeRepo = (path: string) => setRepos(repos.filter(r => r !== path));
+  const removeRepo = (path: string) => setRepos(repos.filter((r) => r !== path));
 
   const finish = async () => {
     setBusy(true);
     setError(undefined);
-    if (!home) { setError('Pick a harness home folder first.'); setBusy(false); setStep('home'); return; }
+    if (!home) {
+      setError('Pick a harness home folder first.');
+      setBusy(false);
+      setStep('home');
+      return;
+    }
     const ensure = await window.cth.ensureHarnessHome(home);
     if (!ensure.ok) {
       setError(ensure.error ?? 'could not create harness home');
@@ -167,64 +200,101 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
       registeredRepos: repos,
       godProvider,
       godModel,
-      telemetryEnabled: shareStats
+      telemetryEnabled: shareStats,
     });
     setBusy(false);
     onComplete(next);
   };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: 'var(--cth-cream-200)',
-      backgroundImage:
-        `repeating-linear-gradient(45deg, rgba(232, 217, 160, 0.4) 0 1px, transparent 1px 8px)`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 200,
-      padding: 32
-    }}>
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'var(--cth-cream-200)',
+        backgroundImage: `repeating-linear-gradient(45deg, rgba(232, 217, 160, 0.4) 0 1px, transparent 1px 8px)`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 200,
+        padding: 32,
+      }}
+    >
       <div style={{ width: 640, maxWidth: '94vw' }}>
         <PixelPanel
           variant="dialog"
           title={
-            step === 'persona' ? 'WELCOME TO MUNDER DIFFLIN'
-            : step === 'welcome' ? 'MEET YOUR OFFICE'
-            : step === 'home' ? (plain ? 'STEP 1 OF 4 · A HOME FOR THE APP' : 'STEP 1 OF 4 · HARNESS HOME')
-            : step === 'orchestrator' ? (plain ? "STEP 2 OF 4 · YOUR CLONE" : "STEP 2 OF 4 · YOUR CLONE'S ENGINE")
-            : step === 'repos' ? (plain ? 'STEP 3 OF 4 · YOUR PROJECTS' : 'STEP 3 OF 4 · YOUR REPOS')
-            : step === 'permissions' ? 'STEP 4 OF 4 · PERMISSIONS & RELIABILITY'
-            : 'ALL SET'
+            step === 'persona'
+              ? 'WELCOME TO MUNDER DIFFLIN'
+              : step === 'welcome'
+                ? 'MEET YOUR OFFICE'
+                : step === 'home'
+                  ? plain
+                    ? 'STEP 1 OF 4 · A HOME FOR THE APP'
+                    : 'STEP 1 OF 4 · HARNESS HOME'
+                  : step === 'orchestrator'
+                    ? plain
+                      ? 'STEP 2 OF 4 · YOUR CLONE'
+                      : "STEP 2 OF 4 · YOUR CLONE'S ENGINE"
+                    : step === 'repos'
+                      ? plain
+                        ? 'STEP 3 OF 4 · YOUR PROJECTS'
+                        : 'STEP 3 OF 4 · YOUR REPOS'
+                      : step === 'permissions'
+                        ? 'STEP 4 OF 4 · PERMISSIONS & RELIABILITY'
+                        : 'ALL SET'
           }
           noPadding
         >
           <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-
             {step === 'persona' && (
               <>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                  <div style={{
-                    width: 56, height: 56, flexShrink: 0,
-                    background: 'var(--cth-sky-light)',
-                    boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500)',
-                    display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden'
-                  }}>
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      flexShrink: 0,
+                      background: 'var(--cth-sky-light)',
+                      boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500)',
+                      display: 'flex',
+                      alignItems: 'flex-end',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                    }}
+                  >
                     <SpritePortrait character="michael" scale={2} />
                   </div>
                   <div>
-                    <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 12, lineHeight: '18px' }}>
+                    <div
+                      style={{
+                        fontFamily: 'var(--cth-font-display)',
+                        fontSize: 12,
+                        lineHeight: '18px',
+                      }}
+                    >
                       A CLONE OF YOU, WORKING 24/7
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: '19px' }}>
-                      Munder Difflin turns the CLI agent you already use into a clone of you —
-                      one that runs an office of long-running agents and keeps working while
-                      you're away. It manages everything around them: context, memory, tasks,
-                      triggers, environment, files, and integrations.
-                      <span style={{ color: 'var(--cth-ink-500)' }}> Everything runs on this machine.</span>
+                      Munder Difflin turns the CLI agent you already use into a clone of you — one
+                      that runs an office of long-running agents and keeps working while you're
+                      away. It manages everything around them: context, memory, tasks, triggers,
+                      environment, files, and integrations.
+                      <span style={{ color: 'var(--cth-ink-500)' }}>
+                        {' '}
+                        Everything runs on this machine.
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 10, color: 'var(--cth-ink-700)' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--cth-font-display)',
+                    fontSize: 10,
+                    color: 'var(--cth-ink-700)',
+                  }}
+                >
                   FIRST — WHO ARE YOU? (we'll tailor the setup)
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -233,14 +303,20 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                     title="I'M TECHNICAL"
                     desc="I write code or work in a terminal. Show me CLI commands, flags, and model ids."
                     selected={audience === 'technical'}
-                    onClick={() => { setAudience('technical'); setError(undefined); }}
+                    onClick={() => {
+                      setAudience('technical');
+                      setError(undefined);
+                    }}
                   />
                   <PersonaCard
                     icon="sparkle"
                     title="I'M NON-TECHNICAL"
                     desc="I'm in marketing, sales, ops, or just starting out. Explain things in plain language."
                     selected={audience === 'non-technical'}
-                    onClick={() => { setAudience('non-technical'); setError(undefined); }}
+                    onClick={() => {
+                      setAudience('non-technical');
+                      setError(undefined);
+                    }}
                   />
                 </div>
               </>
@@ -249,19 +325,31 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
             {step === 'welcome' && (
               <>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <div style={{
-                    width: 56, height: 56, flexShrink: 0,
-                    background: 'var(--cth-sky-light)',
-                    boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500)',
-                    display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden'
-                  }}>
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      flexShrink: 0,
+                      background: 'var(--cth-sky-light)',
+                      boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500)',
+                      display: 'flex',
+                      alignItems: 'flex-end',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                    }}
+                  >
                     <SpritePortrait character="michael" scale={2} />
                   </div>
                   <div>
-                    <div style={{
-                      fontFamily: 'var(--cth-font-display)',
-                      fontSize: 12, lineHeight: '18px'
-                    }}>YOUR CLONE AND THE FLOOR IT RUNS</div>
+                    <div
+                      style={{
+                        fontFamily: 'var(--cth-font-display)',
+                        fontSize: 12,
+                        lineHeight: '18px',
+                      }}
+                    >
+                      YOUR CLONE AND THE FLOOR IT RUNS
+                    </div>
                     <div style={{ fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: '18px' }}>
                       {plain
                         ? "Your clone runs a small office of AI workers, and you watch it all from one screen. Here's what's inside:"
@@ -272,26 +360,45 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   {FEATURES.map((f) => (
-                    <div key={f.label} style={{
-                      display: 'flex', gap: 10, alignItems: 'flex-start',
-                      padding: 10,
-                      background: f.tint,
-                      boxShadow: `inset 0 0 0 2px ${f.edge}`
-                    }}>
-                      <div style={{
-                        width: 28, height: 28, flexShrink: 0,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: 'var(--cth-paper-100)',
-                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-                      }}>
+                    <div
+                      key={f.label}
+                      style={{
+                        display: 'flex',
+                        gap: 10,
+                        alignItems: 'flex-start',
+                        padding: 10,
+                        background: f.tint,
+                        boxShadow: `inset 0 0 0 2px ${f.edge}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 28,
+                          height: 28,
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: 'var(--cth-paper-100)',
+                          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                        }}
+                      >
                         <Icon name={f.icon} />
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{
-                          fontFamily: 'var(--cth-font-display)',
-                          fontSize: 10, lineHeight: '14px', marginBottom: 3
-                        }}>{f.label}</div>
-                        <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-700)' }}>
+                        <div
+                          style={{
+                            fontFamily: 'var(--cth-font-display)',
+                            fontSize: 10,
+                            lineHeight: '14px',
+                            marginBottom: 3,
+                          }}
+                        >
+                          {f.label}
+                        </div>
+                        <div
+                          style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-700)' }}
+                        >
                           {plain ? f.descPlain : f.desc}
                         </div>
                       </div>
@@ -306,18 +413,30 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                 {plain ? (
                   <p style={{ margin: 0, lineHeight: '22px' }}>
                     Create a new, empty folder for the app to call home. Everything the app
-                    remembers — its own settings and your agents' memory — is stored here.
-                    Something like{' '}
-                    <code style={{ fontFamily: 'var(--cth-font-mono)', background: 'var(--cth-paper-100)', padding: '0 4px' }}>
+                    remembers — its own settings and your agents' memory — is stored here. Something
+                    like{' '}
+                    <code
+                      style={{
+                        fontFamily: 'var(--cth-font-mono)',
+                        background: 'var(--cth-paper-100)',
+                        padding: '0 4px',
+                      }}
+                    >
                       ~/HarnessAgents
                     </code>{' '}
                     works well. We'll create it for you if it doesn't exist.
                   </p>
                 ) : (
                   <p style={{ margin: 0, lineHeight: '22px' }}>
-                    Pick a folder where the harness will keep its own files — agent metadata,
-                    logs, and any new repos you create from here. Something like{' '}
-                    <code style={{ fontFamily: 'var(--cth-font-mono)', background: 'var(--cth-paper-100)', padding: '0 4px' }}>
+                    Pick a folder where the harness will keep its own files — agent metadata, logs,
+                    and any new repos you create from here. Something like{' '}
+                    <code
+                      style={{
+                        fontFamily: 'var(--cth-font-mono)',
+                        background: 'var(--cth-paper-100)',
+                        padding: '0 4px',
+                      }}
+                    >
                       ~/HarnessAgents
                     </code>{' '}
                     is a fine default. We'll create it if it doesn't exist.
@@ -348,37 +467,55 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
               <>
                 <p style={{ margin: 0, lineHeight: '22px' }}>
                   {plain ? (
-                    <><strong>Michael is your clone</strong> — he reads your requests, breaks
-                    them into tasks, and hands them to the right agent. He's the boss of the
-                    floor; you're still the boss of him. Choose which AI engine powers him.</>
+                    <>
+                      <strong>Michael is your clone</strong> — he reads your requests, breaks them
+                      into tasks, and hands them to the right agent. He's the boss of the floor;
+                      you're still the boss of him. Choose which AI engine powers him.
+                    </>
                   ) : (
-                    <><strong>Michael is your clone</strong> — the boss of the floor you just
-                    met. He triages your requests, assigns tasks, and manages the team, while
-                    escalating anything that genuinely needs you. Pick the engine and model that
-                    power him; give him a longer-context, higher-capability model.</>
+                    <>
+                      <strong>Michael is your clone</strong> — the boss of the floor you just met.
+                      He triages your requests, assigns tasks, and manages the team, while
+                      escalating anything that genuinely needs you. Pick the engine and model that
+                      power him; give him a longer-context, higher-capability model.
+                    </>
                   )}
                 </p>
 
                 {/* What is a CLI agent / your clone — item 3 */}
-                <div style={{
-                  display: 'flex', gap: 8, alignItems: 'flex-start', padding: 10,
-                  background: 'var(--cth-lemon-light)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                  fontSize: 12, lineHeight: '17px', color: 'var(--cth-ink-700)'
-                }}>
-                  <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="sparkle" /></span>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'flex-start',
+                    padding: 10,
+                    background: 'var(--cth-lemon-light)',
+                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                    fontSize: 12,
+                    lineHeight: '17px',
+                    color: 'var(--cth-ink-700)',
+                  }}
+                >
+                  <span style={{ flexShrink: 0, marginTop: 1 }}>
+                    <Icon name="sparkle" />
+                  </span>
                   <span>
                     {plain ? (
-                      <>A <strong>CLI agent</strong> is an AI coding assistant that runs on your
-                      computer — popular ones are Claude Code (Anthropic), Codex (OpenAI) and
-                      Antigravity (Google Gemini). <strong>Your clone</strong> is the always-on
-                      one that runs your whole office. We recommend Claude Code on Opus 4.8 (1M).
-                      You can add or switch the others later.</>
+                      <>
+                        A <strong>CLI agent</strong> is an AI coding assistant that runs on your
+                        computer — popular ones are Claude Code (Anthropic), Codex (OpenAI) and
+                        Antigravity (Google Gemini). <strong>Your clone</strong> is the always-on
+                        one that runs your whole office. We recommend Claude Code on Opus 4.8 (1M).
+                        You can add or switch the others later.
+                      </>
                     ) : (
-                      <>Each option is a <strong>CLI engine</strong> you have installed (Claude Code,
-                      Codex, Antigravity/Gemini, or a local proxy like Qwen).
-                      <strong> Your clone</strong> (Michael) is the engine that orchestrates the whole
-                      hive. Recommended: Claude Code · Opus 4.8 · 1M — other providers can be wired
-                      per agent later.</>
+                      <>
+                        Each option is a <strong>CLI engine</strong> you have installed (Claude
+                        Code, Codex, Antigravity/Gemini, or a local proxy like Qwen).
+                        <strong> Your clone</strong> (Michael) is the engine that orchestrates the
+                        whole hive. Recommended: Claude Code · Opus 4.8 · 1M — other providers can
+                        be wired per agent later.
+                      </>
                     )}
                   </span>
                 </div>
@@ -387,13 +524,18 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                   {AGENT_PROVIDER_PRESETS.filter((p) => canReceiveInbox(p.id)).map((p) => {
                     const sel = godProvider === p.id;
                     return (
-                      <label key={p.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '8px 10px',
-                        background: sel ? 'var(--cth-mint-light)' : 'var(--cth-paper-100)',
-                        boxShadow: `inset 0 0 0 ${sel ? 2 : 1}px ${sel ? 'var(--cth-mint)' : 'var(--cth-ink-300)'}`,
-                        cursor: 'pointer'
-                      }}>
+                      <label
+                        key={p.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '8px 10px',
+                          background: sel ? 'var(--cth-mint-light)' : 'var(--cth-paper-100)',
+                          boxShadow: `inset 0 0 0 ${sel ? 2 : 1}px ${sel ? 'var(--cth-mint)' : 'var(--cth-ink-300)'}`,
+                          cursor: 'pointer',
+                        }}
+                      >
                         <input
                           type="radio"
                           name="godProvider"
@@ -407,29 +549,55 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                           }}
                           style={{ width: 16, height: 16, flexShrink: 0 }}
                         />
-                        <span style={{
-                          width: 22, height: 22, flexShrink: 0, display: 'flex',
-                          alignItems: 'center', justifyContent: 'center', color: 'var(--cth-ink-900)'
-                        }}>
+                        <span
+                          style={{
+                            width: 22,
+                            height: 22,
+                            flexShrink: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'var(--cth-ink-900)',
+                          }}
+                        >
                           <ProviderLogo provider={p.id} size={18} />
                         </span>
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', fontFamily: 'var(--cth-font-display)', fontSize: 11 }}>
+                          <span
+                            style={{
+                              display: 'block',
+                              fontFamily: 'var(--cth-font-display)',
+                              fontSize: 11,
+                            }}
+                          >
                             {p.label.toUpperCase()}
                           </span>
                           {PROVIDER_BLURB[p.id] && (
-                            <span style={{ display: 'block', fontSize: 11, color: 'var(--cth-ink-500)' }}>
+                            <span
+                              style={{
+                                display: 'block',
+                                fontSize: 11,
+                                color: 'var(--cth-ink-500)',
+                              }}
+                            >
                               {PROVIDER_BLURB[p.id]}
                             </span>
                           )}
                         </span>
                         {p.id === 'claude' && (
-                          <span style={{
-                            fontSize: 10, padding: '1px 5px', lineHeight: '16px',
-                            background: 'var(--cth-lemon)',
-                            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                            fontFamily: 'var(--cth-font-display)', flexShrink: 0
-                          }}>RECOMMENDED</span>
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: '1px 5px',
+                              lineHeight: '16px',
+                              background: 'var(--cth-lemon)',
+                              boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                              fontFamily: 'var(--cth-font-display)',
+                              flexShrink: 0,
+                            }}
+                          >
+                            RECOMMENDED
+                          </span>
                         )}
                       </label>
                     );
@@ -443,7 +611,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                     style={inputStyle}
                   >
                     {modelsForProvider(godProvider).map((m) => (
-                      <option key={m.label} value={m.id ?? ''}>{m.label}</option>
+                      <option key={m.label} value={m.id ?? ''}>
+                        {m.label}
+                      </option>
                     ))}
                   </select>
                   <div style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>
@@ -457,45 +627,68 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
               <>
                 <p style={{ margin: 0, lineHeight: '22px' }}>
                   {plain ? (
-                    <>Add your <strong>projects</strong>. A project is simply a folder — it can hold
-                    code, documents, notes, or any files you want your agents to work with. You can
-                    create a brand-new folder or pick an existing one, and add more anytime.</>
+                    <>
+                      Add your <strong>projects</strong>. A project is simply a folder — it can hold
+                      code, documents, notes, or any files you want your agents to work with. You
+                      can create a brand-new folder or pick an existing one, and add more anytime.
+                    </>
                   ) : (
-                    <>Add the repos you want your agents to work in. Each folder becomes a
-                    <strong> project</strong> (a room on the floor) — multiple agents can share one.
-                    You can add more later.</>
+                    <>
+                      Add the repos you want your agents to work in. Each folder becomes a
+                      <strong> project</strong> (a room on the floor) — multiple agents can share
+                      one. You can add more later.
+                    </>
                   )}
                 </p>
-                <div style={{
-                  display: 'flex', flexDirection: 'column', gap: 6,
-                  maxHeight: 200, overflowY: 'auto'
-                }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                    maxHeight: 200,
+                    overflowY: 'auto',
+                  }}
+                >
                   {repos.length === 0 && (
-                    <div style={{
-                      padding: 12,
-                      fontSize: 13,
-                      color: 'var(--cth-ink-500)',
-                      background: 'var(--cth-paper-200)',
-                      textAlign: 'center'
-                    }}>
+                    <div
+                      style={{
+                        padding: 12,
+                        fontSize: 13,
+                        color: 'var(--cth-ink-500)',
+                        background: 'var(--cth-paper-200)',
+                        textAlign: 'center',
+                      }}
+                    >
                       {plain
                         ? 'No projects added yet. Optional — you can add one later.'
                         : 'No repos added yet. Optional, but recommended.'}
                     </div>
                   )}
                   {repos.map((r) => (
-                    <div key={r} style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '6px 10px',
-                      background: 'var(--cth-paper-100)',
-                      boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)'
-                    }}>
+                    <div
+                      key={r}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 10px',
+                        background: 'var(--cth-paper-100)',
+                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                      }}
+                    >
                       <Icon name="folder" />
-                      <span style={{
-                        flex: 1,
-                        fontFamily: 'var(--cth-font-mono)', fontSize: 13,
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                      }}>{r}</span>
+                      <span
+                        style={{
+                          flex: 1,
+                          fontFamily: 'var(--cth-font-mono)',
+                          fontSize: 13,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {r}
+                      </span>
                       <PixelButton variant="ghost" size="sm" onClick={() => removeRepo(r)}>
                         <Icon name="x" />
                       </PixelButton>
@@ -517,17 +710,33 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                     Claude Auto via the Add Agent selector; god's workers follow
                     Settings → Autonomy (worker bypass, default OFF). The old
                     install-wide autoMode checkbox retired with its key. */}
-                <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 10, color: 'var(--cth-ink-700)' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--cth-font-display)',
+                    fontSize: 10,
+                    color: 'var(--cth-ink-700)',
+                  }}
+                >
                   HOW MUCH CAN AGENTS DO ON THEIR OWN?
                 </div>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: 12,
-                  background: 'var(--cth-mint-light)',
-                  boxShadow: 'inset 0 0 0 2px var(--cth-mint)'
-                }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: 12,
+                    background: 'var(--cth-mint-light)',
+                    boxShadow: 'inset 0 0 0 2px var(--cth-mint)',
+                  }}
+                >
                   <div>
-                    <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 10, lineHeight: '14px' }}>
+                    <div
+                      style={{
+                        fontFamily: 'var(--cth-font-display)',
+                        fontSize: 10,
+                        lineHeight: '14px',
+                      }}
+                    >
                       {plain ? 'AGENTS WORK ON THEIR OWN' : 'AUTONOMOUS BY DEFAULT (CLAUDE AUTO)'}
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--cth-ink-700)' }}>
@@ -546,13 +755,26 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                 <div style={{ height: 1, background: 'var(--cth-ink-300)', margin: '2px 0' }} />
 
                 {/* RELIABILITY — keeping work firing while you're away. */}
-                <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 10, color: 'var(--cth-ink-700)' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--cth-font-display)',
+                    fontSize: 10,
+                    color: 'var(--cth-ink-700)',
+                  }}
+                >
                   KEEP THINGS RUNNING WHILE YOU'RE AWAY
                 </div>
-                <p style={{ margin: 0, lineHeight: '20px', fontSize: 12, color: 'var(--cth-ink-700)' }}>
+                <p
+                  style={{
+                    margin: 0,
+                    lineHeight: '20px',
+                    fontSize: 12,
+                    color: 'var(--cth-ink-700)',
+                  }}
+                >
                   {plain
                     ? 'Your agents keep working on a schedule and in live terminals, even when you step away. These settings keep you in the loop and keep things running.'
-                    : 'Your agents keep working on a schedule and in live terminals. If your Mac fully sleeps those timers pause and catch up the moment you\'re back — nothing is lost, it may just run late.'}
+                    : "Your agents keep working on a schedule and in live terminals. If your Mac fully sleeps those timers pause and catch up the moment you're back — nothing is lost, it may just run late."}
                 </p>
 
                 <ToggleRow
@@ -596,33 +818,58 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                 />
 
                 {/* LEVER 4 — instruction-only: macOS won't let the app flip Energy, so we deep-link the pane. */}
-                <div style={{
-                  display: 'flex', gap: 10, alignItems: 'flex-start', padding: 10,
-                  background: 'var(--cth-lemon-light)',
-                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-                }}>
-                  <span style={{
-                    width: 28, height: 28, flexShrink: 0, display: 'flex',
-                    alignItems: 'center', justifyContent: 'center',
-                    background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-                  }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 10,
+                    alignItems: 'flex-start',
+                    padding: 10,
+                    background: 'var(--cth-lemon-light)',
+                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 28,
+                      height: 28,
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'var(--cth-paper-100)',
+                      boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                    }}
+                  >
                     <Icon name="gear" />
                   </span>
                   <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div>
-                      <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 10, lineHeight: '14px', marginBottom: 3 }}>
+                      <div
+                        style={{
+                          fontFamily: 'var(--cth-font-display)',
+                          fontSize: 10,
+                          lineHeight: '14px',
+                          marginBottom: 3,
+                        }}
+                      >
                         STAY AWAKE ON POWER (MANUAL)
                       </div>
-                      <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-700)' }}>
-                        macOS only lets you set this one yourself. In Battery → Options,
-                        turn on “Prevent automatic sleeping when the display is off” (on
-                        power adapter) so timers keep firing with the display asleep.
-                        Without a sleep-preventing setting the Mac still truly sleeps —
-                        work survives and catches up on wake.
+                      <div
+                        style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-700)' }}
+                      >
+                        macOS only lets you set this one yourself. In Battery → Options, turn on
+                        “Prevent automatic sleeping when the display is off” (on power adapter) so
+                        timers keep firing with the display asleep. Without a sleep-preventing
+                        setting the Mac still truly sleeps — work survives and catches up on wake.
                       </div>
                     </div>
-                    <PixelButton variant="secondary" size="sm"
-                      onClick={() => openSettings('x-apple.systempreferences:com.apple.preference.battery')}>
+                    <PixelButton
+                      variant="secondary"
+                      size="sm"
+                      onClick={() =>
+                        openSettings('x-apple.systempreferences:com.apple.preference.battery')
+                      }
+                    >
                       <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                         <Icon name="arrow-right" /> open Battery settings
                       </span>
@@ -633,26 +880,47 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
             )}
 
             {error && (
-              <div style={{
-                padding: '6px 10px',
-                background: 'var(--cth-coral-light)',
-                boxShadow: 'inset 0 0 0 1px var(--cth-coral)',
-                fontSize: 13,
-                color: 'var(--cth-ink-900)'
-              }}>{error}</div>
+              <div
+                style={{
+                  padding: '6px 10px',
+                  background: 'var(--cth-coral-light)',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-coral)',
+                  fontSize: 13,
+                  color: 'var(--cth-ink-900)',
+                }}
+              >
+                {error}
+              </div>
             )}
 
             {/* Footer / nav */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: 4,
+              }}
+            >
               <Dots step={step} />
               <div style={{ display: 'flex', gap: 8 }}>
                 {step !== 'persona' && step !== 'welcome' && (
-                  <PixelButton variant="ghost" size="md" onClick={() => setStep(prevStep(step))} disabled={busy}>
+                  <PixelButton
+                    variant="ghost"
+                    size="md"
+                    onClick={() => setStep(prevStep(step))}
+                    disabled={busy}
+                  >
                     back
                   </PixelButton>
                 )}
                 {step === 'welcome' && (
-                  <PixelButton variant="ghost" size="md" onClick={() => setStep('persona')} disabled={busy}>
+                  <PixelButton
+                    variant="ghost"
+                    size="md"
+                    onClick={() => setStep('persona')}
+                    disabled={busy}
+                  >
                     back
                   </PixelButton>
                 )}
@@ -680,7 +948,13 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   );
 }
 
-function PersonaCard({ icon, title, desc, selected, onClick }: {
+function PersonaCard({
+  icon,
+  title,
+  desc,
+  selected,
+  onClick,
+}: {
   icon: IconName;
   title: string;
   desc: string;
@@ -691,29 +965,54 @@ function PersonaCard({ icon, title, desc, selected, onClick }: {
     <button
       onClick={onClick}
       style={{
-        textAlign: 'left', cursor: 'pointer', border: 'none',
-        padding: 12, display: 'flex', flexDirection: 'column', gap: 6,
+        textAlign: 'left',
+        cursor: 'pointer',
+        border: 'none',
+        padding: 12,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
         background: selected ? 'var(--cth-mint-light)' : 'var(--cth-paper-100)',
-        boxShadow: `inset 0 0 0 ${selected ? 2 : 1}px ${selected ? 'var(--cth-mint)' : 'var(--cth-ink-300)'}`
+        boxShadow: `inset 0 0 0 ${selected ? 2 : 1}px ${selected ? 'var(--cth-mint)' : 'var(--cth-ink-300)'}`,
       }}
     >
-      <span style={{
-        width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-      }}>
+      <span
+        style={{
+          width: 28,
+          height: 28,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--cth-paper-100)',
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+        }}
+      >
         <Icon name={icon} />
       </span>
-      <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 11, lineHeight: '15px', color: 'var(--cth-ink-900)' }}>
+      <span
+        style={{
+          fontFamily: 'var(--cth-font-display)',
+          fontSize: 11,
+          lineHeight: '15px',
+          color: 'var(--cth-ink-900)',
+        }}
+      >
         {title}
       </span>
-      <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-700)' }}>
-        {desc}
-      </span>
+      <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-700)' }}>{desc}</span>
     </button>
   );
 }
 
-function ToggleRow({ icon, label, desc, on, tint, edge, onChange }: {
+function ToggleRow({
+  icon,
+  label,
+  desc,
+  on,
+  tint,
+  edge,
+  onChange,
+}: {
   icon: IconName;
   label: string;
   desc: string;
@@ -723,30 +1022,57 @@ function ToggleRow({ icon, label, desc, on, tint, edge, onChange }: {
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label style={{
-      display: 'flex', gap: 10, alignItems: 'flex-start', padding: 10,
-      background: on ? tint : 'var(--cth-paper-100)',
-      boxShadow: `inset 0 0 0 ${on ? 2 : 1}px ${on ? edge : 'var(--cth-ink-300)'}`,
-      cursor: 'pointer'
-    }}>
+    <label
+      style={{
+        display: 'flex',
+        gap: 10,
+        alignItems: 'flex-start',
+        padding: 10,
+        background: on ? tint : 'var(--cth-paper-100)',
+        boxShadow: `inset 0 0 0 ${on ? 2 : 1}px ${on ? edge : 'var(--cth-ink-300)'}`,
+        cursor: 'pointer',
+      }}
+    >
       <input
         type="checkbox"
         checked={on}
         onChange={(e) => onChange(e.target.checked)}
         style={{ width: 18, height: 18, flexShrink: 0, marginTop: 5 }}
       />
-      <span style={{
-        width: 28, height: 28, flexShrink: 0, display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
-        background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-      }}>
+      <span
+        style={{
+          width: 28,
+          height: 28,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--cth-paper-100)',
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+        }}
+      >
         <Icon name={icon} />
       </span>
       <span style={{ minWidth: 0 }}>
-        <span style={{ display: 'block', fontFamily: 'var(--cth-font-display)', fontSize: 10, lineHeight: '14px', marginBottom: 3 }}>
+        <span
+          style={{
+            display: 'block',
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 10,
+            lineHeight: '14px',
+            marginBottom: 3,
+          }}
+        >
           {label}
         </span>
-        <span style={{ display: 'block', fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-700)' }}>
+        <span
+          style={{
+            display: 'block',
+            fontSize: 12,
+            lineHeight: '16px',
+            color: 'var(--cth-ink-700)',
+          }}
+        >
           {desc}
         </span>
       </span>
@@ -759,31 +1085,45 @@ function Dots({ step }: { step: Step }) {
   return (
     <div style={{ display: 'flex', gap: 4 }}>
       {order.map((s) => (
-        <span key={s} style={{
-          width: 8, height: 8,
-          background: s === step ? 'var(--cth-ink-900)' : 'var(--cth-cream-300)',
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-        }} />
+        <span
+          key={s}
+          style={{
+            width: 8,
+            height: 8,
+            background: s === step ? 'var(--cth-ink-900)' : 'var(--cth-cream-300)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+          }}
+        />
       ))}
     </div>
   );
 }
 
 function nextStep(s: Step): Step {
-  return s === 'persona' ? 'welcome'
-    : s === 'welcome' ? 'home'
-    : s === 'home' ? 'orchestrator'
-    : s === 'orchestrator' ? 'repos'
-    : s === 'repos' ? 'permissions'
-    : 'done';
+  return s === 'persona'
+    ? 'welcome'
+    : s === 'welcome'
+      ? 'home'
+      : s === 'home'
+        ? 'orchestrator'
+        : s === 'orchestrator'
+          ? 'repos'
+          : s === 'repos'
+            ? 'permissions'
+            : 'done';
 }
 function prevStep(s: Step): Step {
-  return s === 'permissions' ? 'repos'
-    : s === 'repos' ? 'orchestrator'
-    : s === 'orchestrator' ? 'home'
-    : s === 'home' ? 'welcome'
-    : s === 'welcome' ? 'persona'
-    : 'persona';
+  return s === 'permissions'
+    ? 'repos'
+    : s === 'repos'
+      ? 'orchestrator'
+      : s === 'orchestrator'
+        ? 'home'
+        : s === 'home'
+          ? 'welcome'
+          : s === 'welcome'
+            ? 'persona'
+            : 'persona';
 }
 
 const inputStyle: React.CSSProperties = {
@@ -795,5 +1135,5 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'var(--cth-font-mono)',
   fontSize: 13,
   color: 'var(--cth-ink-900)',
-  outline: 'none'
+  outline: 'none',
 };

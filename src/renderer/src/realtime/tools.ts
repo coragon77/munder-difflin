@@ -142,7 +142,7 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const god = godName ? ` ${godName} is the god orchestrator.` : '';
           const roster = lines.length ? ` Active workers: ${lines.join('; ')}.` : '';
           return head + god + roster;
-        }, 'fleet status')
+        }, 'fleet status'),
     }),
 
     // ── get_tasks ─────────────────────────────────────────────────────────
@@ -156,11 +156,11 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           status: {
             type: 'string',
             enum: ['todo', 'doing', 'blocked', 'done'],
-            description: 'Optional. Restrict the answer to one status.'
-          }
+            description: 'Optional. Restrict the answer to one status.',
+          },
         },
         required: [],
-        additionalProperties: false
+        additionalProperties: false,
       },
       execute: (input) =>
         spoken(async () => {
@@ -170,10 +170,11 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const list = Array.isArray(obj(raw).tasks) ? (obj(raw).tasks as unknown[]) : [];
           if (!list.length) return 'The task board is empty.';
           const tasks = list.map(obj);
-          const by = (s: string): Record<string, unknown>[] => tasks.filter((t) => str(t.status) === s);
+          const by = (s: string): Record<string, unknown>[] =>
+            tasks.filter((t) => str(t.status) === s);
           const counts = `${plural(by('todo').length, 'to do')}, ${by('doing').length} in progress, ${plural(
             by('blocked').length,
-            'blocked'
+            'blocked',
           )}, and ${by('done').length} done`;
           const describe = (t: Record<string, unknown>): string => {
             const who = str(t.assignee);
@@ -188,14 +189,14 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const blocked = by('blocked');
           const detail = [
             doing.length ? `In progress: ${doing.slice(0, 8).map(describe).join('; ')}.` : '',
-            blocked.length ? `Blocked: ${blocked.slice(0, 8).map(describe).join('; ')}.` : ''
+            blocked.length ? `Blocked: ${blocked.slice(0, 8).map(describe).join('; ')}.` : '',
           ]
             .filter(Boolean)
             .join(' ');
           return `There ${tasks.length === 1 ? 'is' : 'are'} ${plural(tasks.length, 'task')}: ${counts}.${
             detail ? ' ' + detail : ''
           }`;
-        }, 'task board')
+        }, 'task board'),
     }),
 
     // ── get_cost ──────────────────────────────────────────────────────────
@@ -227,9 +228,9 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
             .map(([id, tok]) => `${id} at ${tokens(tok)} tokens`);
           return `So far this session the hive has used ${tokens(totIn)} input and ${tokens(totOut)} output tokens across ${plural(
             perAgent.size,
-            'agent'
+            'agent',
           )}.${top.length ? ` Top users: ${top.join(', ')}.` : ''}`;
-        }, 'token usage')
+        }, 'token usage'),
     }),
 
     // ── get_triggers ──────────────────────────────────────────────────────
@@ -244,7 +245,8 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const list = Array.isArray(missions) ? missions : [];
           if (!list.length) return 'There are no scheduled missions configured.';
           const enabled = list.filter((m) => obj(m).enabled);
-          if (!enabled.length) return `There are ${plural(list.length, 'scheduled mission')}, but all are disabled.`;
+          if (!enabled.length)
+            return `There are ${plural(list.length, 'scheduled mission')}, but all are disabled.`;
           const lines = enabled.slice(0, 8).map((m) => {
             const o = obj(m);
             const label = str(o.label) || 'a mission';
@@ -254,9 +256,9 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           });
           return `There ${enabled.length === 1 ? 'is' : 'are'} ${plural(
             enabled.length,
-            'active scheduled mission'
+            'active scheduled mission',
           )}: ${lines.join('; ')}.`;
-        }, 'schedules')
+        }, 'schedules'),
     }),
 
     // ── get_config ────────────────────────────────────────────────────────
@@ -274,10 +276,14 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           // one (it is hand-mirrored across three files) without breaking us.
           const cc = obj(c);
           const parts: string[] = [];
-          parts.push(`Worker bypass is ${c.workerBypass ? 'on' : 'off'}; new hires default to Claude Auto.`);
+          parts.push(
+            `Worker bypass is ${c.workerBypass ? 'on' : 'off'}; new hires default to Claude Auto.`,
+          );
           if (c.defaultModel) parts.push(`The default model is ${c.defaultModel}.`);
           if (c.godProvider || c.godModel)
-            parts.push(`The god orchestrator runs ${[c.godProvider, c.godModel].filter(Boolean).join(' ')}.`);
+            parts.push(
+              `The god orchestrator runs ${[c.godProvider, c.godModel].filter(Boolean).join(' ')}.`,
+            );
           if (typeof cc.maxConcurrentWorkers === 'number')
             parts.push(`Up to ${plural(cc.maxConcurrentWorkers, 'worker')} run concurrently.`);
           // De-monetized: report only the token cap (no dollar cap), and avoid
@@ -293,11 +299,11 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
             c.freeflowEnabled && 'Free Flow voice',
             c.realtimeVoiceEnabled && 'realtime voice (this session)',
             c.semanticMemory && 'semantic memory',
-            obj(c.knowledgeGraph).enabled && 'the knowledge graph'
+            obj(c.knowledgeGraph).enabled && 'the knowledge graph',
           ].filter(Boolean);
           if (features.length) parts.push(`Enabled features: ${features.join(', ')}.`);
           return parts.join(' ');
-        }, 'configuration')
+        }, 'configuration'),
     }),
 
     // ── get_memory ────────────────────────────────────────────────────────
@@ -308,11 +314,18 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: "Optional. What to search for across the team's memory." },
-          agentId: { type: 'string', description: "Optional. An agent id to read or scope the search to — any agent, active or archived." }
+          query: {
+            type: 'string',
+            description: "Optional. What to search for across the team's memory.",
+          },
+          agentId: {
+            type: 'string',
+            description:
+              'Optional. An agent id to read or scope the search to — any agent, active or archived.',
+          },
         },
         required: [],
-        additionalProperties: false
+        additionalProperties: false,
       },
       execute: (input) =>
         spoken(async () => {
@@ -327,7 +340,10 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
             const res = await window.cth.textSearch(q);
             if (!res.ok || !res.results.length) return '';
             let hits = res.results;
-            if (onlyAgent) hits = hits.filter((r) => r.source.startsWith(`${onlyAgent}/`) || r.source === onlyAgent);
+            if (onlyAgent)
+              hits = hits.filter(
+                (r) => r.source.startsWith(`${onlyAgent}/`) || r.source === onlyAgent,
+              );
             if (!hits.length) return '';
             const bySource = new Map<string, string[]>();
             for (const r of hits.slice(0, 14)) {
@@ -335,7 +351,9 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
               if (!bySource.has(who)) bySource.set(who, []);
               bySource.get(who)!.push(r.excerpt);
             }
-            const lines = [...bySource.entries()].slice(0, 6).map(([who, ex]) => `${who} noted ${ex.slice(0, 2).join('; ')}`);
+            const lines = [...bySource.entries()]
+              .slice(0, 6)
+              .map(([who, ex]) => `${who} noted ${ex.slice(0, 2).join('; ')}`);
             return `From the team's notes — ${lines.join('. ')}.`;
           };
 
@@ -347,8 +365,13 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
             if (tf) return clip(tf, 1600);
             const mem = await window.cth.hiveMemory(agentId);
             const ql = query.toLowerCase();
-            const matched = mem.split('\n').map((l) => l.trim()).filter((l) => l.toLowerCase().includes(ql)).slice(0, 8);
-            if (matched.length) return clip(`From ${agentId}'s memory — ${matched.join(' ')}`, 1600);
+            const matched = mem
+              .split('\n')
+              .map((l) => l.trim())
+              .filter((l) => l.toLowerCase().includes(ql))
+              .slice(0, 8);
+            if (matched.length)
+              return clip(`From ${agentId}'s memory — ${matched.join(' ')}`, 1600);
             return mem.trim()
               ? `I read ${agentId}'s memory but found nothing about "${query}".`
               : `${agentId} has not recorded any memory yet.`;
@@ -366,7 +389,9 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           // agentId alone → read that agent's notes directly (any agent, active OR archived).
           if (agentId) {
             const mem = await window.cth.hiveMemory(agentId);
-            return mem.trim() ? clip(mem.trim(), 1600) : `${agentId} has not recorded any memory yet.`;
+            return mem.trim()
+              ? clip(mem.trim(), 1600)
+              : `${agentId} has not recorded any memory yet.`;
           }
 
           // neither → status, but make clear search always works.
@@ -374,10 +399,10 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const sem = status.active
             ? 'Semantic memory is active'
             : status.available
-            ? 'Semantic memory is enabled but idle'
-            : 'Semantic memory is offline';
+              ? 'Semantic memory is enabled but idle'
+              : 'Semantic memory is offline';
           return `${sem} — but I can always text-search every agent's notes, active or archived. Ask me to search a topic, or name an agent to read their memory.`;
-        }, 'memory')
+        }, 'memory'),
     }),
 
     // ── get_activity ──────────────────────────────────────────────────────
@@ -388,15 +413,21 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
       parameters: {
         type: 'object',
         properties: {
-          limit: { type: 'number', description: 'Optional. How many recent events to summarize (default 12, max 40).' }
+          limit: {
+            type: 'number',
+            description: 'Optional. How many recent events to summarize (default 12, max 40).',
+          },
         },
         required: [],
-        additionalProperties: false
+        additionalProperties: false,
       },
       execute: (input) =>
         spoken(async () => {
           const a = obj(input);
-          const want = typeof a.limit === 'number' && isFinite(a.limit) ? Math.max(1, Math.min(40, Math.round(a.limit))) : 12;
+          const want =
+            typeof a.limit === 'number' && isFinite(a.limit)
+              ? Math.max(1, Math.min(40, Math.round(a.limit)))
+              : 12;
           const log = await window.cth.hiveLog(want);
           const list = Array.isArray(log) ? log : [];
           if (!list.length) return 'There is no recorded hive activity yet.';
@@ -411,7 +442,7 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
               return `${kind}${who ? ` by ${who}` : ''} ${when}`;
             });
           return `Most recent activity: ${lines.join('; ')}.`;
-        }, 'activity log')
+        }, 'activity log'),
     }),
 
     // ── get_messages ──────────────────────────────────────────────────────
@@ -422,22 +453,45 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
       parameters: {
         type: 'object',
         properties: {
-          agentId: { type: 'string', description: "Optional. Focus on one agent's inbox and outbox (id or, if you have it, the exact id)." },
-          messageId: { type: 'string', description: 'Optional. Read one specific message in full by its id.' },
-          limit: { type: 'number', description: 'Optional. How many recent messages to summarize (default 8, max 40).' }
+          agentId: {
+            type: 'string',
+            description:
+              "Optional. Focus on one agent's inbox and outbox (id or, if you have it, the exact id).",
+          },
+          messageId: {
+            type: 'string',
+            description: 'Optional. Read one specific message in full by its id.',
+          },
+          limit: {
+            type: 'number',
+            description: 'Optional. How many recent messages to summarize (default 8, max 40).',
+          },
         },
         required: [],
-        additionalProperties: false
+        additionalProperties: false,
       },
       execute: (input) =>
         spoken(async () => {
           const a = obj(input);
           const agentId = str(a.agentId).trim();
           const messageId = str(a.messageId).trim();
-          const limit = typeof a.limit === 'number' && isFinite(a.limit) ? Math.max(1, Math.min(40, Math.round(a.limit))) : 8;
+          const limit =
+            typeof a.limit === 'number' && isFinite(a.limit)
+              ? Math.max(1, Math.min(40, Math.round(a.limit)))
+              : 8;
 
           // Speak one message's body relative to a perspective. from→to + subject + body.
-          const speakOne = (m: { from: string; to: string; subject: string; body: string; created_at: string; requires_reply: boolean }, full: boolean): string => {
+          const speakOne = (
+            m: {
+              from: string;
+              to: string;
+              subject: string;
+              body: string;
+              created_at: string;
+              requires_reply: boolean;
+            },
+            full: boolean,
+          ): string => {
             const subj = str(m.subject).trim();
             const body = despan(str(m.body)).trim();
             const head = `${str(m.from) || 'someone'} to ${str(m.to) || 'someone'}${subj ? ` about "${clip(subj, 80)}"` : ''} ${ago(Date.parse(m.created_at))}`;
@@ -453,11 +507,13 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
 
           const msgs = await window.cth.hiveMessages(agentId ? { agentId, limit } : { limit });
           if (!msgs.length)
-            return agentId ? `I don't see any messages in ${agentId}'s mailbox.` : 'There are no hive messages to read yet.';
+            return agentId
+              ? `I don't see any messages in ${agentId}'s mailbox.`
+              : 'There are no hive messages to read yet.';
           const scope = agentId ? `${agentId}'s mailbox` : 'the floor';
           const lines = msgs.slice(0, limit).map((m) => speakOne(m, false));
           return `${plural(lines.length, 'recent message')} from ${scope}: ${lines.join('. ')}.`;
-        }, 'messages')
+        }, 'messages'),
     }),
 
     // ── get_agent_detail ──────────────────────────────────────────────────
@@ -468,10 +524,14 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
       parameters: {
         type: 'object',
         properties: {
-          agentId: { type: 'string', description: 'The agent id or friendly name to look up (e.g. "kevin-mqpbq43v" or "Kevin").' }
+          agentId: {
+            type: 'string',
+            description:
+              'The agent id or friendly name to look up (e.g. "kevin-mqpbq43v" or "Kevin").',
+          },
         },
         required: ['agentId'],
-        additionalProperties: false
+        additionalProperties: false,
       },
       execute: (input) =>
         spoken(async () => {
@@ -483,27 +543,41 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const e =
             list.find((x) => x.id.toLowerCase() === want) ??
             list.find((x) => x.name.toLowerCase() === want) ??
-            list.find((x) => x.id.toLowerCase().startsWith(want) || x.name.toLowerCase().startsWith(want));
+            list.find(
+              (x) => x.id.toLowerCase().startsWith(want) || x.name.toLowerCase().startsWith(want),
+            );
           if (!e) return `I don't see an agent matching "${str(a.agentId)}".`;
           const parts: string[] = [];
           const role = e.role ? `, the ${e.role},` : '';
           const where = e.archived
             ? 'archived — its terminal is closed, but its working directory and memory are still here'
             : `active and ${e.status}`;
-          parts.push(`${e.name}${role} runs on ${e.provider}${e.model ? ` with model ${e.model}` : ''}, ${where}.`);
+          parts.push(
+            `${e.name}${role} runs on ${e.provider}${e.model ? ` with model ${e.model}` : ''}, ${where}.`,
+          );
           if (e.cwd)
             parts.push(
-              `Working directory: ${e.cwd}${e.cwdValid === false ? ', which is not a valid directory — spawning there would fail' : ''}.`
+              `Working directory: ${e.cwd}${e.cwdValid === false ? ', which is not a valid directory — spawning there would fail' : ''}.`,
             );
-          if (typeof e.contextPct === 'number') parts.push(`Its context window is ${e.contextPct} percent full.`);
-          else if (typeof e.contextTokens === 'number') parts.push(`It is carrying ${tokens(e.contextTokens)} tokens of context.`);
+          if (typeof e.contextPct === 'number')
+            parts.push(`Its context window is ${e.contextPct} percent full.`);
+          else if (typeof e.contextTokens === 'number')
+            parts.push(`It is carrying ${tokens(e.contextTokens)} tokens of context.`);
           if (e.tokens) parts.push(`It has used ${tokens(e.tokens)} tokens so far.`);
           parts.push(`Circuit breaker: ${e.breaker}.`);
-          if (e.lastTool) parts.push(`Last tool was ${e.lastTool}${typeof e.lastActiveSecAgo === 'number' ? `, ${ago(Date.now() - e.lastActiveSecAgo * 1000)}` : ''}.`);
-          if (e.inboxBacklog) parts.push(`${plural(e.inboxBacklog, 'message')} waiting in its inbox.`);
-          parts.push(e.hasMemory ? "It has recorded memory — ask me to read it." : 'It has not recorded much memory yet.');
+          if (e.lastTool)
+            parts.push(
+              `Last tool was ${e.lastTool}${typeof e.lastActiveSecAgo === 'number' ? `, ${ago(Date.now() - e.lastActiveSecAgo * 1000)}` : ''}.`,
+            );
+          if (e.inboxBacklog)
+            parts.push(`${plural(e.inboxBacklog, 'message')} waiting in its inbox.`);
+          parts.push(
+            e.hasMemory
+              ? 'It has recorded memory — ask me to read it.'
+              : 'It has not recorded much memory yet.',
+          );
           return parts.join(' ');
-        }, 'agent detail')
+        }, 'agent detail'),
     }),
 
     // ── list_agents ───────────────────────────────────────────────────────
@@ -514,10 +588,13 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
       parameters: {
         type: 'object',
         properties: {
-          includeArchived: { type: 'boolean', description: 'Default true. Set false to list only active agents.' }
+          includeArchived: {
+            type: 'boolean',
+            description: 'Default true. Set false to list only active agents.',
+          },
         },
         required: [],
-        additionalProperties: false
+        additionalProperties: false,
       },
       execute: (input) =>
         spoken(async () => {
@@ -531,13 +608,13 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const near = active
             .filter((e) => typeof e.contextPct === 'number' && e.contextPct >= 70)
             .map((e) => `${e.name} at ${e.contextPct} percent`);
-          const describe = (e: typeof all[number]): string =>
+          const describe = (e: (typeof all)[number]): string =>
             `${e.name} on ${e.provider}${e.cwd ? ` in ${shortDir(e.cwd)}` : ''}${
               typeof e.contextPct === 'number' ? `, context ${e.contextPct} percent` : ''
             }`;
           const parts: string[] = [];
           parts.push(
-            `${plural(active.length, 'active agent')}${archived.length ? ` and ${plural(archived.length, 'archived agent')}` : ''}.`
+            `${plural(active.length, 'active agent')}${archived.length ? ` and ${plural(archived.length, 'archived agent')}` : ''}.`,
           );
           if (active.length) parts.push(`Active: ${active.slice(0, 12).map(describe).join('; ')}.`);
           if (includeArchived && archived.length)
@@ -545,11 +622,11 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
               `Archived: ${archived
                 .slice(0, 12)
                 .map((e) => `${e.name}${e.cwd ? ` (last in ${shortDir(e.cwd)})` : ''}`)
-                .join('; ')}.`
+                .join('; ')}.`,
             );
           if (near.length) parts.push(`Near their context limit: ${near.join(', ')}.`);
           return parts.join(' ');
-        }, 'agent roster')
+        }, 'agent roster'),
     }),
 
     // ── get_board ─────────────────────────────────────────────────────────
@@ -564,7 +641,7 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const text = despan(board || '');
           if (!text) return 'The board is empty right now.';
           return clip(text, 1800);
-        }, 'board')
+        }, 'board'),
     }),
 
     // ── get_floor_state (v0.3.4) ──────────────────────────────────────────
@@ -577,7 +654,9 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
         spoken(async () => {
           const dir = await window.cth.hiveAgentDirectory();
           const tasksRaw = (await window.cth.hiveTasks()) as { tasks?: unknown } | null;
-          const tasks = Array.isArray(tasksRaw?.tasks) ? (tasksRaw!.tasks as unknown[]).map(obj) : [];
+          const tasks = Array.isArray(tasksRaw?.tasks)
+            ? (tasksRaw!.tasks as unknown[]).map(obj)
+            : [];
           const rows = (Array.isArray(dir?.agents) ? (dir.agents as unknown[]) : [])
             .map(obj)
             .filter((a) => !a.archived)
@@ -587,15 +666,22 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
               engine: str(a.provider) || undefined,
               contextPct: typeof a.contextPct === 'number' ? a.contextPct : undefined,
               breaker: str(a.breaker) && str(a.breaker) !== 'healthy' ? str(a.breaker) : undefined,
-              inbox: typeof a.inboxBacklog === 'number' && a.inboxBacklog > 0 ? a.inboxBacklog : undefined
+              inbox:
+                typeof a.inboxBacklog === 'number' && a.inboxBacklog > 0
+                  ? a.inboxBacklog
+                  : undefined,
             }));
-          const doing = tasks.filter((t) => str(t.status) === 'doing').map((t) => ({ title: str(t.title), owner: str(t.assignee) || undefined }));
-          const blocked = tasks.filter((t) => str(t.status) === 'blocked').map((t) => ({ title: str(t.title), owner: str(t.assignee) || undefined }));
+          const doing = tasks
+            .filter((t) => str(t.status) === 'doing')
+            .map((t) => ({ title: str(t.title), owner: str(t.assignee) || undefined }));
+          const blocked = tasks
+            .filter((t) => str(t.status) === 'blocked')
+            .map((t) => ({ title: str(t.title), owner: str(t.assignee) || undefined }));
           const summary = `${plural(rows.length, 'agent')} on the floor, ${doing.length} in progress, ${blocked.length} blocked.`;
           // Flagged JSON per the Realtime prompting guidance: precise fields the
           // model can quote verbatim, with the spoken line separate.
           return `${summary} DATA: ${JSON.stringify({ agents: rows, doing, blocked })}`;
-        }, 'floor state')
+        }, 'floor state'),
     }),
 
     // ── get_app_info (v0.3.4) ─────────────────────────────────────────────
@@ -609,8 +695,8 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const info = await window.cth.appInfo();
           const notes = despan(info.changelog || '');
           return `This is Munder Difflin version ${info.version}. ${notes ? `Latest release notes: ${clip(notes, 1600)}` : 'No release notes are bundled with this build.'}`;
-        }, 'app info')
-    })
+        }, 'app info'),
+    }),
   ];
 }
 
@@ -628,29 +714,47 @@ export async function realtimeSessionSummary(): Promise<string> {
     // instructions), so the cached prompt prefix stays byte-stable.
     const [dir, tasksRaw] = await Promise.all([
       window.cth.hiveAgentDirectory(),
-      window.cth.hiveTasks()
+      window.cth.hiveTasks(),
     ]);
-    const rows = (Array.isArray(dir?.agents) ? (dir.agents as unknown[]) : []).map(obj).filter((a) => !a.archived);
+    const rows = (Array.isArray(dir?.agents) ? (dir.agents as unknown[]) : [])
+      .map(obj)
+      .filter((a) => !a.archived);
     const godRow = rows.find((a) => a.isGod === true);
     const lines = rows.slice(0, 20).map((a) => {
       const bits = [
         `${str(a.name) || str(a.id)} is ${str(a.status) || 'in an unknown state'}`,
         str(a.provider) ? `on ${str(a.provider)}` : '',
-        typeof a.contextPct === 'number' ? `context ${Math.round(a.contextPct as number)} percent full` : '',
+        typeof a.contextPct === 'number'
+          ? `context ${Math.round(a.contextPct as number)} percent full`
+          : '',
         str(a.breaker) && str(a.breaker) !== 'healthy' ? `breaker ${str(a.breaker)}` : '',
-        typeof a.inboxBacklog === 'number' && (a.inboxBacklog as number) > 0 ? `${a.inboxBacklog} unread` : ''
+        typeof a.inboxBacklog === 'number' && (a.inboxBacklog as number) > 0
+          ? `${a.inboxBacklog} unread`
+          : '',
       ].filter(Boolean);
       return bits.join(', ');
     });
-    const list = Array.isArray(obj(tasksRaw).tasks) ? (obj(tasksRaw).tasks as unknown[]).map(obj) : [];
+    const list = Array.isArray(obj(tasksRaw).tasks)
+      ? (obj(tasksRaw).tasks as unknown[]).map(obj)
+      : [];
     const doing = list.filter((t) => str(t.status) === 'doing');
     const blocked = list.filter((t) => str(t.status) === 'blocked');
     const taskLine = [
       doing.length
-        ? `In progress: ${doing.slice(0, 5).map((t) => `"${str(t.title)}"${str(t.assignee) ? ` with ${str(t.assignee)}` : ''}`).join('; ')}.`
+        ? `In progress: ${doing
+            .slice(0, 5)
+            .map((t) => `"${str(t.title)}"${str(t.assignee) ? ` with ${str(t.assignee)}` : ''}`)
+            .join('; ')}.`
         : 'Nothing is in progress on the board.',
-      blocked.length ? `Blocked: ${blocked.slice(0, 4).map((t) => `"${str(t.title)}"`).join('; ')}.` : ''
-    ].filter(Boolean).join(' ');
+      blocked.length
+        ? `Blocked: ${blocked
+            .slice(0, 4)
+            .map((t) => `"${str(t.title)}"`)
+            .join('; ')}.`
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
     return (
       `Floor at connect — ${plural(rows.length, 'agent')} active` +
       `${godRow ? `, ${str(godRow.name)} orchestrating alongside you` : ''}. ` +

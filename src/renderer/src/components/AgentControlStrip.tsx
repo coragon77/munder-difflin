@@ -21,8 +21,17 @@ export function AgentControlStrip({ agentId }: { agentId: string }) {
 
   useEffect(() => {
     let alive = true;
-    window.cth.controlSnapshot(agentId).then((s) => { if (alive && s) setSnap(s); }).catch(() => { /* none */ });
-    return () => { alive = false; };
+    window.cth
+      .controlSnapshot(agentId)
+      .then((s) => {
+        if (alive && s) setSnap(s);
+      })
+      .catch(() => {
+        /* none */
+      });
+    return () => {
+      alive = false;
+    };
   }, [agentId]);
 
   const flash = (m: string) => {
@@ -32,7 +41,9 @@ export function AgentControlStrip({ agentId }: { agentId: string }) {
   };
 
   const togglePause = async () => {
-    const s = snap?.paused ? await window.cth.controlResume(agentId) : await window.cth.controlPause(agentId, true);
+    const s = snap?.paused
+      ? await window.cth.controlResume(agentId)
+      : await window.cth.controlPause(agentId, true);
     if (s) setSnap(s);
     flash(snap?.paused ? 'resumed' : 'paused — tool calls will be denied');
   };
@@ -51,38 +62,73 @@ export function AgentControlStrip({ agentId }: { agentId: string }) {
   };
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 6,
-      padding: '6px 8px', background: 'var(--cth-paper-100)',
-      borderBottom: '1px solid var(--cth-ink-300)', flexShrink: 0
-    }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        padding: '6px 8px',
+        background: 'var(--cth-paper-100)',
+        borderBottom: '1px solid var(--cth-ink-300)',
+        flexShrink: 0,
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 9, color: 'var(--cth-ink-500)', marginRight: 2 }}>CONTROL</span>
-        <PixelButton variant={snap?.paused ? 'primary' : 'secondary'} size="sm" onClick={togglePause}>
+        <span
+          style={{
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 9,
+            color: 'var(--cth-ink-500)',
+            marginRight: 2,
+          }}
+        >
+          CONTROL
+        </span>
+        <PixelButton
+          variant={snap?.paused ? 'primary' : 'secondary'}
+          size="sm"
+          onClick={togglePause}
+        >
           {snap?.paused ? 'resume' : 'pause'}
         </PixelButton>
-        <PixelButton variant="destructive" size="sm" onClick={halt}>halt</PixelButton>
+        <PixelButton variant="destructive" size="sm" onClick={halt}>
+          halt
+        </PixelButton>
         {/* v0.3.4: the auto-delivery switch moved to the god's Command Center
             header — ONE floor-wide control instead of a per-agent toggle. */}
         {snap?.autoDeliveryPaused && (
           <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>delivery paused (floor)</span>
         )}
         {snap?.halted && <span style={{ fontSize: 11, color: 'var(--cth-coral)' }}>halting…</span>}
-        {!!snap?.pendingSteers && <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>{snap.pendingSteers} steer queued</span>}
+        {!!snap?.pendingSteers && (
+          <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
+            {snap.pendingSteers} steer queued
+          </span>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <input
           value={steer}
           onChange={(e) => setSteer(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') sendSteer(); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') sendSteer();
+          }}
           placeholder="steer this agent (injected as context, no typing into its terminal)…"
           style={{
-            flex: 1, padding: '4px 6px', background: 'var(--cth-paper-100)', border: 'none',
-            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)', fontFamily: 'var(--cth-font-ui)',
-            fontSize: 12, color: 'var(--cth-ink-900)', outline: 'none'
+            flex: 1,
+            padding: '4px 6px',
+            background: 'var(--cth-paper-100)',
+            border: 'none',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+            fontFamily: 'var(--cth-font-ui)',
+            fontSize: 12,
+            color: 'var(--cth-ink-900)',
+            outline: 'none',
           }}
         />
-        <PixelButton variant="secondary" size="sm" onClick={sendSteer} disabled={!steer.trim()}>steer</PixelButton>
+        <PixelButton variant="secondary" size="sm" onClick={sendSteer} disabled={!steer.trim()}>
+          steer
+        </PixelButton>
       </div>
       {note && <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>{note}</span>}
     </div>

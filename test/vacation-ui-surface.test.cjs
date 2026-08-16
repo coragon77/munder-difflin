@@ -17,7 +17,10 @@ const read = (p) => readFileSync(join(root, p), 'utf8');
 
 test('vacation shelf renders Recall only, keeps no delete X, and stays off the ARCHIVED shelf', () => {
   const src = read('src/renderer/src/components/CommandCenterPanel.tsx');
-  const vac = src.slice(src.indexOf('function VacationSection'), src.indexOf('function ArchivedSection'));
+  const vac = src.slice(
+    src.indexOf('function VacationSection'),
+    src.indexOf('function ArchivedSection'),
+  );
   assert.ok(vac.includes("'Recall'"), 'Recall button stays');
   assert.ok(!vac.includes('End vacation'), 'End vacation button is gone');
   assert.ok(!vac.includes('hiveEndVacation'), 'no end-vacation IPC call remains');
@@ -26,12 +29,15 @@ test('vacation shelf renders Recall only, keeps no delete X, and stays off the A
   // the X can never reach a vacationer even if the lists drift.
   assert.ok(
     src.includes('archived.filter((a) => !a.vacation)'),
-    'ARCHIVED section still excludes vacationers from its delete X'
+    'ARCHIVED section still excludes vacationers from its delete X',
   );
 });
 
 test('the end-vacation verb is gone from every layer', () => {
   assert.ok(!read('src/main/index.ts').includes('hive:endVacation'), 'no IPC handler');
   assert.ok(!read('src/preload/index.ts').includes('hiveEndVacation'), 'no preload bridge');
-  assert.ok(!read('src/renderer/src/store/store.ts').includes('endVacationAgent'), 'no store action');
+  assert.ok(
+    !read('src/renderer/src/store/store.ts').includes('endVacationAgent'),
+    'no store action',
+  );
 });

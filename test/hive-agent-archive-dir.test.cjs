@@ -34,18 +34,35 @@ test('re-hiring a swept agent restores its folder instead of starting blind', as
   const { hive, agents } = floor(t);
   await hive.ensureAgent({ id: 'pam-1', name: 'Pam', provider: 'claude' });
 
-  fs.writeFileSync(path.join(agents, 'pam-1', 'memory.md'), '# Memory\n\nremember the toner order\n', 'utf8');
-  fs.writeFileSync(path.join(agents, 'pam-1', 'inbox', 'm1.json'),
-    JSON.stringify({ id: 'm1', from: 'god', to: 'pam-1', act: 'request', subject: 's', body: 'b' }), 'utf8');
+  fs.writeFileSync(
+    path.join(agents, 'pam-1', 'memory.md'),
+    '# Memory\n\nremember the toner order\n',
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(agents, 'pam-1', 'inbox', 'm1.json'),
+    JSON.stringify({ id: 'm1', from: 'god', to: 'pam-1', act: 'request', subject: 's', body: 'b' }),
+    'utf8',
+  );
   sweep(agents, 'pam-1');
   assert.equal(fs.existsSync(path.join(agents, 'pam-1')), false, 'precondition: swept away');
 
   await hive.ensureAgent({ id: 'pam-1', name: 'Pam', provider: 'claude' });
 
-  assert.match(fs.readFileSync(path.join(agents, 'pam-1', 'memory.md'), 'utf8'), /toner order/,
-    're-hire must get its memory back, not a fresh boilerplate file');
-  assert.ok(fs.existsSync(path.join(agents, 'pam-1', 'inbox', 'm1.json')), 'inbox must come back too');
-  assert.equal(fs.existsSync(path.join(agents, 'archive', 'pam-1')), false, 'no orphan copy left behind');
+  assert.match(
+    fs.readFileSync(path.join(agents, 'pam-1', 'memory.md'), 'utf8'),
+    /toner order/,
+    're-hire must get its memory back, not a fresh boilerplate file',
+  );
+  assert.ok(
+    fs.existsSync(path.join(agents, 'pam-1', 'inbox', 'm1.json')),
+    'inbox must come back too',
+  );
+  assert.equal(
+    fs.existsSync(path.join(agents, 'archive', 'pam-1')),
+    false,
+    'no orphan copy left behind',
+  );
 });
 
 test('a live folder is never clobbered by the archived copy', async (t) => {
@@ -58,7 +75,10 @@ test('a live folder is never clobbered by the archived copy', async (t) => {
   await hive.ensureAgent({ id: 'jim-1', name: 'Jim', provider: 'claude' });
 
   assert.equal(fs.readFileSync(path.join(agents, 'jim-1', 'memory.md'), 'utf8'), 'live\n');
-  assert.ok(fs.existsSync(path.join(agents, 'archive', 'jim-1')), 'archive copy left for the operator');
+  assert.ok(
+    fs.existsSync(path.join(agents, 'archive', 'jim-1')),
+    'archive copy left for the operator',
+  );
 });
 
 test('the archive sweep folder is never an agent owner', async (t) => {
@@ -73,10 +93,23 @@ test('the archive sweep folder is never an agent owner', async (t) => {
   // removes that accident so the invariant ("archive is a container, not an
   // agent") is actually asserted rather than assumed.
   fs.mkdirSync(path.join(agents, 'archive', 'inbox'), { recursive: true });
-  fs.writeFileSync(path.join(agents, 'archive', 'inbox', 'ghost.json'),
-    JSON.stringify({ id: 'ghost', from: 'god', to: 'archive', act: 'inform', subject: 's', body: 'b' }), 'utf8');
-  fs.writeFileSync(path.join(agents, 'dwight-1', 'outbox', 'a.json'),
-    JSON.stringify({ id: 'a', to: 'toby-1', act: 'inform', subject: 'beets', body: 'b' }), 'utf8');
+  fs.writeFileSync(
+    path.join(agents, 'archive', 'inbox', 'ghost.json'),
+    JSON.stringify({
+      id: 'ghost',
+      from: 'god',
+      to: 'archive',
+      act: 'inform',
+      subject: 's',
+      body: 'b',
+    }),
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(agents, 'dwight-1', 'outbox', 'a.json'),
+    JSON.stringify({ id: 'a', to: 'toby-1', act: 'inform', subject: 'beets', body: 'b' }),
+    'utf8',
+  );
   hive.routeOnce();
 
   const owners = new Set(hive.voiceMessages({ limit: 40 }).map((m) => m.owner));

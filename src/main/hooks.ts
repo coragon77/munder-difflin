@@ -73,14 +73,18 @@ export class HookServer {
      *  opencode, qwen sidecar — have no OTLP; their hook payloads are their ONLY
      *  telemetry). Optional so tests can omit it. Claude agents keep OTLP as
      *  their source; the collector overlays OTLP over these rows. */
-    private telemetry?: TelemetryCollector
+    private telemetry?: TelemetryCollector,
   ) {}
 
   start(): void {
     const sock = this.hive.sockPath();
     if (!sock || this.server) return;
     // Clear a stale socket file left by a previous run.
-    try { if (existsSync(sock)) rmSync(sock); } catch { /* noop */ }
+    try {
+      if (existsSync(sock)) rmSync(sock);
+    } catch {
+      /* noop */
+    }
 
     this.server = createServer((conn) => {
       let buf = '';
@@ -89,22 +93,40 @@ export class HookServer {
         const nl = buf.indexOf('\n');
         if (nl === -1) return; // wait for the full line
         let payload: HookPayload = {};
-        try { payload = JSON.parse(buf.slice(0, nl)); } catch { /* ignore */ }
+        try {
+          payload = JSON.parse(buf.slice(0, nl));
+        } catch {
+          /* ignore */
+        }
         let res: unknown = {};
-        try { res = this.handle(payload); } catch { res = {}; }
+        try {
+          res = this.handle(payload);
+        } catch {
+          res = {};
+        }
         conn.end(JSON.stringify(res ?? {}));
       });
-      conn.on('error', () => { /* shim hung up — ignore */ });
+      conn.on('error', () => {
+        /* shim hung up — ignore */
+      });
     });
     this.server.on('error', (e) => console.error('[hive] hook server error:', e));
     this.server.listen(sock);
   }
 
   stop(): void {
-    try { this.server?.close(); } catch { /* noop */ }
+    try {
+      this.server?.close();
+    } catch {
+      /* noop */
+    }
     this.server = null;
     const sock = this.hive.sockPath();
-    try { if (sock && existsSync(sock)) rmSync(sock); } catch { /* noop */ }
+    try {
+      if (sock && existsSync(sock)) rmSync(sock);
+    } catch {
+      /* noop */
+    }
   }
 
   /** The transcript file of an agent's CURRENT session, if any hook has fired. */
@@ -141,19 +163,24 @@ export class HookServer {
     // still captured above, where every payload shape benefits from it.
     if (event === 'Status') {
       const cw = p.context_window;
-      if (agentId && cw && typeof cw.total_input_tokens === 'number'
-        && typeof cw.context_window_size === 'number' && cw.context_window_size > 0) {
+      if (
+        agentId &&
+        cw &&
+        typeof cw.total_input_tokens === 'number' &&
+        typeof cw.context_window_size === 'number' &&
+        cw.context_window_size > 0
+      ) {
         // Retain for main-side reads (voice get_agent_detail / list_agents) …
         this.contextById.set(agentId, {
           tokens: cw.total_input_tokens,
           limit: cw.context_window_size,
-          ts: Date.now()
+          ts: Date.now(),
         });
         // … and forward live to the renderer's agent-card context gauge.
         this.getWebContents()?.send('hive:contextUpdate', {
           agentId,
           tokens: cw.total_input_tokens,
-          limit: cw.context_window_size
+          limit: cw.context_window_size,
         });
       }
       return {};
@@ -199,13 +226,17 @@ export class HookServer {
             inputTokens: input,
             outputTokens: output,
             cacheReadTokens: cacheRead,
-            cacheWriteTokens: cacheCreation
-          })
+            cacheWriteTokens: cacheCreation,
+          }),
         });
       }
       if (agentId) {
         this.telemetry?.recordHookUsage(agentId, p.session_id ?? '', {
-          input, output, cacheRead, cacheCreation, model: p.model ?? ''
+          input,
+          output,
+          cacheRead,
+          cacheCreation,
+          model: p.model ?? '',
         });
       }
       return {};
@@ -232,7 +263,10 @@ export class HookServer {
 
     if ((event === 'Stop' || event === 'SubagentStop') && agentId) {
       // Respect any upstream Stop hook that already re-entered this boundary.
-      if (p.stop_hook_active) { this.emit(agentId, event, p); return {}; }
+      if (p.stop_hook_active) {
+        this.emit(agentId, event, p);
+        return {};
+      }
       // Never turn unread hive mail into a forced continuation at Stop. That old
       // path bypassed terminal-draft/HITL safety and could spend credits while a
       // user was answering a question. Inbox files remain durable; the renderer
@@ -255,8 +289,8 @@ export class HookServer {
           hookSpecificOutput: {
             hookEventName: 'PreToolUse',
             permissionDecision: 'deny',
-            permissionDecisionReason: d.reason ?? 'Denied by operator.'
-          }
+            permissionDecisionReason: d.reason ?? 'Denied by operator.',
+          },
         };
       }
     }
@@ -276,8 +310,10 @@ export class HookServer {
     // additionalContext at the start of each session and on every prompt, so god
     // knows the floor all the time instead of only when it remembers to Read.
     // God-only and one line — every other agent is unaffected.
-    const wantsRoster = (event === 'SessionStart' || event === 'UserPromptSubmit')
-      && !!agentId && this.hive.isGod(agentId);
+    const wantsRoster =
+      (event === 'SessionStart' || event === 'UserPromptSubmit') &&
+      !!agentId &&
+      this.hive.isGod(agentId);
     const roster = wantsRoster ? this.hive.rosterContext() : null;
 
     if (steer || roster) {
@@ -285,8 +321,8 @@ export class HookServer {
       return {
         hookSpecificOutput: {
           hookEventName: event,
-          additionalContext: [roster, steer].filter(Boolean).join('\n\n')
-        }
+          additionalContext: [roster, steer].filter(Boolean).join('\n\n'),
+        },
       };
     }
 
@@ -315,7 +351,9 @@ export class HookServer {
     try {
       if (!Notification.isSupported()) return;
       new Notification({ title, body }).show();
-    } catch { /* notifications unsupported on this platform — ignore */ }
+    } catch {
+      /* notifications unsupported on this platform — ignore */
+    }
   }
 
   /** Tell the renderer a tool call was gated/denied (#7C.1) so it can surface it
@@ -332,7 +370,7 @@ export class HookServer {
       notificationType: p.notification_type,
       source: p.source,
       message: p.message,
-      blocked
+      blocked,
     });
   }
 }

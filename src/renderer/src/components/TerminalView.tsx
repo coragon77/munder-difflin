@@ -15,22 +15,22 @@ const theme = {
   cursorAccent: '#FCFAF0',
   selectionBackground: '#FFEC99',
   selectionForeground: '#1A1320',
-  black:        '#1A1320',
-  red:          '#D1453B',
-  green:        '#20904B',
-  yellow:       '#9C6B00',
-  blue:         '#2B6CB0',
-  magenta:      '#8A5CF0',
-  cyan:         '#1F9C94',
-  white:        '#3A2F44',
-  brightBlack:  '#6B5878',
-  brightRed:    '#E0584E',
-  brightGreen:  '#2E9E54',
+  black: '#1A1320',
+  red: '#D1453B',
+  green: '#20904B',
+  yellow: '#9C6B00',
+  blue: '#2B6CB0',
+  magenta: '#8A5CF0',
+  cyan: '#1F9C94',
+  white: '#3A2F44',
+  brightBlack: '#6B5878',
+  brightRed: '#E0584E',
+  brightGreen: '#2E9E54',
   brightYellow: '#B8860B',
-  brightBlue:   '#3B7DC4',
-  brightMagenta:'#9B72F2',
-  brightCyan:   '#2BA89F',
-  brightWhite:  '#1A1320'
+  brightBlue: '#3B7DC4',
+  brightMagenta: '#9B72F2',
+  brightCyan: '#2BA89F',
+  brightWhite: '#1A1320',
 };
 
 export interface TerminalViewProps {
@@ -58,7 +58,7 @@ export function TerminalView({ initialLines = [], feed = [] }: TerminalViewProps
       // Keep text legible on any program-set background colour (WCAG AA).
       // See terminalPool.ts for the full rationale.
       minimumContrastRatio: 4.5,
-      allowProposedApi: true
+      allowProposedApi: true,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -96,28 +96,38 @@ export function TerminalView({ initialLines = [], feed = [] }: TerminalViewProps
   }, [feed, initialLines.length]);
 
   return (
-    <div style={{
-      background: 'var(--cth-paper-100)',
-      boxShadow: 'var(--cth-panel-border-terminal)',
-      padding: 8,
-      height: '100%',
-      minHeight: 0,
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        fontFamily: 'var(--cth-font-ui)',
-        fontSize: 12,
-        color: 'var(--cth-ink-500)',
-        borderBottom: '1px dashed var(--cth-ink-300)',
-        paddingBottom: 4,
-        marginBottom: 4
-      }}>
-        <span style={{
-          width: 8, height: 8, background: 'var(--cth-coral)',
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-        }} />
+    <div
+      style={{
+        background: 'var(--cth-paper-100)',
+        boxShadow: 'var(--cth-panel-border-terminal)',
+        padding: 8,
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontFamily: 'var(--cth-font-ui)',
+          fontSize: 12,
+          color: 'var(--cth-ink-500)',
+          borderBottom: '1px dashed var(--cth-ink-300)',
+          paddingBottom: 4,
+          marginBottom: 4,
+        }}
+      >
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            background: 'var(--cth-coral)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+          }}
+        />
         live · pipe-pane
       </div>
       <div ref={hostRef} style={{ flex: 1, minHeight: 0 }} />

@@ -23,7 +23,9 @@ function load(): AppTheme {
   try {
     const v = window.localStorage.getItem(LS_KEY) ?? window.localStorage.getItem(LEGACY_LS_KEY);
     if (v === 'dark' || v === 'light') return v;
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
   return 'light';
 }
 
@@ -31,7 +33,11 @@ let theme: AppTheme = load();
 const subscribers = new Set<() => void>();
 
 function apply(): void {
-  try { document.documentElement.dataset.cthTheme = theme; } catch { /* SSR/tests */ }
+  try {
+    document.documentElement.dataset.cthTheme = theme;
+  } catch {
+    /* SSR/tests */
+  }
 }
 apply();
 
@@ -42,7 +48,11 @@ export function appTheme(): AppTheme {
 export function setAppTheme(next: AppTheme): void {
   if (next === theme) return;
   theme = next;
-  try { window.localStorage.setItem(LS_KEY, next); } catch { /* noop */ }
+  try {
+    window.localStorage.setItem(LS_KEY, next);
+  } catch {
+    /* noop */
+  }
   apply();
   subscribers.forEach((fn) => fn());
 }
@@ -59,7 +69,7 @@ export function useAppTheme(): AppTheme {
       subscribers.add(onChange);
       return () => subscribers.delete(onChange);
     },
-    () => theme
+    () => theme,
   );
 }
 
@@ -76,7 +86,9 @@ function loadTerm(): AppTheme | null {
   try {
     const v = window.localStorage.getItem(TERM_LS_KEY);
     if (v === 'dark' || v === 'light') return v;
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
   return null;
 }
 
@@ -89,7 +101,11 @@ export function terminalTheme(): AppTheme {
 export function setTerminalTheme(next: AppTheme): void {
   if (next === termTheme) return;
   termTheme = next;
-  try { window.localStorage.setItem(TERM_LS_KEY, next); } catch { /* noop */ }
+  try {
+    window.localStorage.setItem(TERM_LS_KEY, next);
+  } catch {
+    /* noop */
+  }
   subscribers.forEach((fn) => fn());
 }
 
@@ -105,6 +121,6 @@ export function useTerminalTheme(): AppTheme {
       subscribers.add(onChange);
       return () => subscribers.delete(onChange);
     },
-    () => termTheme ?? theme
+    () => termTheme ?? theme,
   );
 }

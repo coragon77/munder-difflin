@@ -39,11 +39,14 @@ const assetRe = /Munder-Difflin-(\d+\.\d+\.\d+)-([^\s`)]+)/g;
 const assets = new Set();
 for (const m of releaseMd.matchAll(assetRe)) {
   if (m[1] !== version) {
-    problems.push(`RELEASE.md advertises Munder-Difflin-${m[1]}-${m[2]} but package.json says ${version}`);
+    problems.push(
+      `RELEASE.md advertises Munder-Difflin-${m[1]}-${m[2]} but package.json says ${version}`,
+    );
   }
   assets.add(`Munder-Difflin-${m[1]}-${m[2]}`);
 }
-if (assets.size === 0) problems.push('RELEASE.md advertises no download assets at all — did the table move?');
+if (assets.size === 0)
+  problems.push('RELEASE.md advertises no download assets at all — did the table move?');
 
 // — 2. source tarball tags too; a stale tag silently ships last release's source —
 for (const m of releaseMd.matchAll(/archive\/refs\/tags\/v(\d+\.\d+\.\d+)/g)) {
@@ -67,7 +70,8 @@ if (fs.existsSync(indexHtml)) {
 const llms = path.join(root, 'docs/llms.txt');
 if (fs.existsSync(llms)) {
   const m = /Current version:\s*(\d+\.\d+\.\d+)/.exec(fs.readFileSync(llms, 'utf8'));
-  if (!m) problems.push('docs/llms.txt no longer states "Current version: x.y.z" — did the line move?');
+  if (!m)
+    problems.push('docs/llms.txt no longer states "Current version: x.y.z" — did the line move?');
   else if (m[1] !== version) {
     problems.push(`docs/llms.txt says current version ${m[1]}, package.json says ${version}`);
   }
@@ -97,7 +101,9 @@ async function checkLive() {
   if (problems.length) {
     console.error(`\n✗ release links are wrong (${problems.length}):`);
     for (const p of problems) console.error(`  - ${p}`);
-    console.error('\nFix RELEASE.md / docs/index.html / docs/llms.txt to match package.json before releasing.');
+    console.error(
+      '\nFix RELEASE.md / docs/index.html / docs/llms.txt to match package.json before releasing.',
+    );
     process.exit(1);
   }
   console.log(`✓ release links consistent at v${version}`);

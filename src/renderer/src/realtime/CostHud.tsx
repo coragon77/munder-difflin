@@ -29,14 +29,14 @@ const wrap: React.CSSProperties = {
   gap: 6,
   fontFamily: 'var(--cth-font-mono)',
   fontSize: 12,
-  color: 'var(--cth-ink-900)'
+  color: 'var(--cth-ink-900)',
 };
 const labelStyle: React.CSSProperties = {
   fontFamily: 'var(--cth-font-display)',
   fontSize: 8,
   lineHeight: '12px',
   color: 'var(--cth-ink-500)',
-  textTransform: 'uppercase'
+  textTransform: 'uppercase',
 };
 const capInputStyle: React.CSSProperties = {
   width: 92,
@@ -45,7 +45,7 @@ const capInputStyle: React.CSSProperties = {
   padding: '4px 6px',
   border: '2px solid var(--cth-ink-300)',
   background: 'var(--cth-paper-100)',
-  color: 'var(--cth-ink-900)'
+  color: 'var(--cth-ink-900)',
 };
 
 export interface CostHudProps {
@@ -74,7 +74,11 @@ export function CostHud({ compact = false }: CostHudProps): React.ReactElement |
   const live = startedTs != null;
   const ratio = capUsd != null && capUsd > 0 ? usd / capUsd : 0;
   const near = capUsd != null && !overCap && ratio >= WARN_RATIO;
-  const meterColor = overCap ? 'var(--cth-danger, #c0392b)' : near ? 'var(--cth-warn, #b8860b)' : 'var(--cth-ink-900)';
+  const meterColor = overCap
+    ? 'var(--cth-danger, #c0392b)'
+    : near
+      ? 'var(--cth-warn, #b8860b)'
+      : 'var(--cth-ink-900)';
 
   // Compact: a glanceable TOKEN chip next to the voice toggle, only while a session
   // runs. Money is intentionally NOT surfaced in the agent chrome — the spend cap
@@ -93,7 +97,7 @@ export function CostHud({ compact = false }: CostHudProps): React.ReactElement |
           fontWeight: 600,
           color: 'var(--cth-ink-900)',
           flexShrink: 0,
-          whiteSpace: 'nowrap'
+          whiteSpace: 'nowrap',
         }}
       >
         {tokLabel} tok

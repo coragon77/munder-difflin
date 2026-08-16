@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
-export const CODEX_REMOTE_SOCKET_RELATIVE =
-  'app-server-control/app-server-control.sock';
+export const CODEX_REMOTE_SOCKET_RELATIVE = 'app-server-control/app-server-control.sock';
 
 /** macOS caps a Unix socket path at 104 bytes (`sun_path`), and Codex builds its
  *  control socket as `$CODEX_HOME/app-server-control/app-server-control.sock` —
@@ -24,12 +23,9 @@ export const CODEX_REMOTE_SOCKET_MAX = 104;
 export function codexRemoteAliasPath(
   realHome: string,
   agentId: string,
-  tempRoot: string = CODEX_REMOTE_ALIAS_ROOT
+  tempRoot: string = CODEX_REMOTE_ALIAS_ROOT,
 ): string {
-  const digest = createHash('sha256')
-    .update(`${realHome}\0${agentId}`)
-    .digest('hex')
-    .slice(0, 8);
+  const digest = createHash('sha256').update(`${realHome}\0${agentId}`).digest('hex').slice(0, 8);
   return join(tempRoot, digest);
 }
 

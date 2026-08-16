@@ -10,16 +10,23 @@ import { DEFAULT_ORG_TRIGGER, type OrgTriggerConfig, type WebhookTrigger } from 
 import { isCompactionCommand } from '@shared/providerAutomation';
 
 export type ToolKind =
-  | 'Read' | 'Edit' | 'Write' | 'Bash' | 'WebFetch' | 'WebSearch'
-  | 'Grep' | 'Glob' | 'TodoWrite' | 'MCP';
+  | 'Read'
+  | 'Edit'
+  | 'Write'
+  | 'Bash'
+  | 'WebFetch'
+  | 'WebSearch'
+  | 'Grep'
+  | 'Glob'
+  | 'TodoWrite'
+  | 'MCP';
 
-export type StationKind =
-  | 'shelf' | 'terminal' | 'web' | 'board' | 'mailbox' | 'mcp' | 'desk';
+export type StationKind = 'shelf' | 'terminal' | 'web' | 'board' | 'mailbox' | 'mcp' | 'desk';
 
 export interface BlockReason {
-  summary: string;                 // short headline shown on banner
-  detail: string;                  // longer explanation
-  command?: string;                // verbatim command awaiting confirmation, if any
+  summary: string; // short headline shown on banner
+  detail: string; // longer explanation
+  command?: string; // verbatim command awaiting confirmation, if any
   actions: Array<{
     label: string;
     kind: 'approve' | 'deny' | 'neutral';
@@ -297,7 +304,16 @@ interface State {
   /** Park a message for an agent. Returns nothing; the flush loop delivers it.
    *  `meta.instruction`, when set, is what gets typed into the PTY instead of
    *  `text` (UI/card surfaces still show `text`). */
-  enqueueMessage: (agentId: string, text: string, meta?: { slack?: { channel: string; thread_ts: string }; instruction?: string; inboxFor?: string; cardFor?: CardSessionMarker }) => void;
+  enqueueMessage: (
+    agentId: string,
+    text: string,
+    meta?: {
+      slack?: { channel: string; thread_ts: string };
+      instruction?: string;
+      inboxFor?: string;
+      cardFor?: CardSessionMarker;
+    },
+  ) => void;
   /** Drop a single queued message (user removed it, or it was just delivered). */
   removeQueuedMessage: (agentId: string, messageId: string) => void;
   /** "Send now" while floor auto-delivery is paused: marks the message manual
@@ -332,7 +348,15 @@ const LS_QUEUES = 'cth.messageQueues';
 // Fields that are large or transient — not worth persisting across reloads.
 // contextTokens/contextLimit describe a LIVE session; persisting them showed a
 // dead session's context gauge after a restart until the poll caught up.
-type PersistedAgent = Omit<Agent, 'recentAssistantText' | 'recentTextTs' | 'blockReason' | 'contextTokens' | 'contextLimit' | 'seedPrompt'>;
+type PersistedAgent = Omit<
+  Agent,
+  | 'recentAssistantText'
+  | 'recentTextTs'
+  | 'blockReason'
+  | 'contextTokens'
+  | 'contextLimit'
+  | 'seedPrompt'
+>;
 
 // ─── The roster mirror ──────────────────────────────────────────────────────
 //
@@ -348,15 +372,20 @@ type PersistedAgent = Omit<Agent, 'recentAssistantText' | 'recentTextTs' | 'bloc
 // fallback when there is no file yet, and a standing backup afterwards. Main
 // keeps every previous version of the file under roster-backups/.
 const fileRoster = (() => {
-  try { return window.cth?.rosterReadSync?.() ?? null; } catch { return null; }
+  try {
+    return window.cth?.rosterReadSync?.() ?? null;
+  } catch {
+    return null;
+  }
 })();
 
 /** Prefer the shared file, but only when it actually holds a roster. An empty
  *  file must never win over a populated localStorage — that is exactly the
  *  "opened the build once and my floor went blank" failure this is here to
  *  prevent. A genuine delete-all clears both stores, so nothing resurrects. */
-const useFileRoster = !!fileRoster
-  && fileRoster.agents.length + fileRoster.archived.length + fileRoster.restorable.length > 0;
+const useFileRoster =
+  !!fileRoster &&
+  fileRoster.agents.length + fileRoster.archived.length + fileRoster.restorable.length > 0;
 
 /** The renderer's running copy of what should be on disk. Kept as a mutable
  *  mirror updated slice-by-slice rather than read back out of the store, because
@@ -374,7 +403,10 @@ const rosterMirror: {
 let rosterFlush: ReturnType<typeof setTimeout> | null = null;
 
 function flushRosterNow(): void {
-  if (rosterFlush) { clearTimeout(rosterFlush); rosterFlush = null; }
+  if (rosterFlush) {
+    clearTimeout(rosterFlush);
+    rosterFlush = null;
+  }
   try {
     void window.cth?.rosterWrite?.({
       version: 1,
@@ -383,9 +415,11 @@ function flushRosterNow(): void {
       archived: rosterMirror.archived,
       restorable: rosterMirror.restorable,
       queues: rosterMirror.queues,
-      selectedId: rosterMirror.selectedId
+      selectedId: rosterMirror.selectedId,
     });
-  } catch { /* the file is a mirror — localStorage already took the write */ }
+  } catch {
+    /* the file is a mirror — localStorage already took the write */
+  }
 }
 
 /** Coalesce a burst of persist* calls into one disk write. Agent edits arrive in
@@ -400,13 +434,30 @@ function scheduleRosterFlush(): void {
 // the other origin can read it too.
 try {
   window.addEventListener('beforeunload', flushRosterNow);
-} catch { /* not a browser context (unit tests) */ }
+} catch {
+  /* not a browser context (unit tests) */
+}
 
 function slimAgents(agents: Agent[]): PersistedAgent[] {
-  return agents.map(({ recentAssistantText, recentTextTs, blockReason, contextTokens, contextLimit, seedPrompt, ...rest }) => {
-    void recentAssistantText; void recentTextTs; void blockReason; void contextTokens; void contextLimit; void seedPrompt;
-    return rest;
-  });
+  return agents.map(
+    ({
+      recentAssistantText,
+      recentTextTs,
+      blockReason,
+      contextTokens,
+      contextLimit,
+      seedPrompt,
+      ...rest
+    }) => {
+      void recentAssistantText;
+      void recentTextTs;
+      void blockReason;
+      void contextTokens;
+      void contextLimit;
+      void seedPrompt;
+      return rest;
+    },
+  );
 }
 
 function persistAgents(agents: Agent[], selectedId: string | null): void {
@@ -414,7 +465,9 @@ function persistAgents(agents: Agent[], selectedId: string | null): void {
   try {
     window.localStorage.setItem(LS_AGENTS, JSON.stringify(slim));
     window.localStorage.setItem(LS_SELECTED, selectedId ?? '');
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
   rosterMirror.agents = slim;
   rosterMirror.selectedId = selectedId;
   scheduleRosterFlush();
@@ -425,9 +478,17 @@ function persistAgents(agents: Agent[], selectedId: string | null): void {
  *  the volatile set rather than the durable set on purpose — a new durable field
  *  then persists by default instead of being silently dropped. */
 const VOLATILE_AGENT_FIELDS = new Set<keyof Agent>([
-  'status', 'action', 'progress', 'currentStation', 'carrying',
-  'recentAssistantText', 'recentTextTs', 'blockReason',
-  'contextTokens', 'contextLimit', 'lastPrompt'
+  'status',
+  'action',
+  'progress',
+  'currentStation',
+  'carrying',
+  'recentAssistantText',
+  'recentTextTs',
+  'blockReason',
+  'contextTokens',
+  'contextLimit',
+  'lastPrompt',
 ]);
 
 function touchesDurableAgentField(patch: Partial<Agent>): boolean {
@@ -436,10 +497,7 @@ function touchesDurableAgentField(patch: Partial<Agent>): boolean {
 
 /** The persisted list for one slice: the shared file when it has a roster,
  *  otherwise this origin's localStorage. Returns [] on anything malformed. */
-function persistedSlice(
-  key: string,
-  fromFile: unknown[] | undefined
-): PersistedAgent[] {
+function persistedSlice(key: string, fromFile: unknown[] | undefined): PersistedAgent[] {
   if (useFileRoster) return Array.isArray(fromFile) ? (fromFile as PersistedAgent[]) : [];
   try {
     const raw = window.localStorage.getItem(key);
@@ -474,7 +532,9 @@ function persistArchived(archived: Agent[]): void {
   const slim = slimAgents(archived);
   try {
     window.localStorage.setItem(LS_ARCHIVED, JSON.stringify(slim));
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
   rosterMirror.archived = slim;
   scheduleRosterFlush();
 }
@@ -490,7 +550,7 @@ function loadPersistedArchived(): Agent[] {
       status: 'idle',
       ptyId: undefined,
       carrying: undefined,
-      currentStation: undefined
+      currentStation: undefined,
     }));
   } catch {
     return [];
@@ -501,13 +561,20 @@ function persistRestorable(restorable: Agent[]): void {
   // Keeps contextTokens/contextLimit, unlike the other two: a restorable entry
   // is a spawn recipe for a session that has not been re-entered yet, so its
   // last known context size is still meaningful.
-  const slim: PersistedAgent[] = restorable.map(({ recentAssistantText, recentTextTs, blockReason, seedPrompt, ...rest }) => {
-    void recentAssistantText; void recentTextTs; void blockReason; void seedPrompt;
-    return rest;
-  });
+  const slim: PersistedAgent[] = restorable.map(
+    ({ recentAssistantText, recentTextTs, blockReason, seedPrompt, ...rest }) => {
+      void recentAssistantText;
+      void recentTextTs;
+      void blockReason;
+      void seedPrompt;
+      return rest;
+    },
+  );
   try {
     window.localStorage.setItem(LS_RESTORABLE, JSON.stringify(slim));
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
   rosterMirror.restorable = slim;
   scheduleRosterFlush();
 }
@@ -521,7 +588,7 @@ function loadPersistedRestorable(): Agent[] {
       ...a,
       status: 'idle',
       carrying: undefined,
-      currentStation: undefined
+      currentStation: undefined,
     }));
   } catch {
     return [];
@@ -536,14 +603,19 @@ function persistQueues(queues: Record<string, QueuedMessage[]>): void {
     window.localStorage.setItem(LS_QUEUES, JSON.stringify(slim));
     rosterMirror.queues = slim;
     scheduleRosterFlush();
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
 }
 
 function loadPersistedQueues(): Record<string, QueuedMessage[]> {
   try {
     const parsed = useFileRoster
       ? (fileRoster?.queues as Record<string, QueuedMessage[]> | undefined)
-      : JSON.parse(window.localStorage.getItem(LS_QUEUES) ?? 'null') as Record<string, QueuedMessage[]> | null;
+      : (JSON.parse(window.localStorage.getItem(LS_QUEUES) ?? 'null') as Record<
+          string,
+          QueuedMessage[]
+        > | null);
     if (!parsed || typeof parsed !== 'object') return {};
     // Defensively keep only well-formed entries.
     const out: Record<string, QueuedMessage[]> = {};
@@ -571,14 +643,18 @@ const initialSidebarWidth = (() => {
     const v = window.localStorage.getItem(LS_SIDEBAR_WIDTH);
     const n = v ? parseInt(v, 10) : NaN;
     if (!Number.isNaN(n) && n >= 320 && n <= 1200) return n;
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
   return 420;
 })();
 const initialSidebarTab: SidebarTab = (() => {
   try {
     const v = window.localStorage.getItem(LS_SIDEBAR_TAB);
     if (v === 'terminal' || v === 'messages' || v === 'traces' || v === 'git') return v;
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
   return 'terminal';
 })();
 
@@ -599,7 +675,10 @@ rosterMirror.selectedId = initialSelectedId;
 // First run with the file: seed it from this origin's localStorage. Only when
 // there is something to seed — writing an empty file here would hand a blank
 // roster to the other side, which is precisely the outcome being designed out.
-if (!useFileRoster && rosterMirror.agents.length + rosterMirror.archived.length + rosterMirror.restorable.length > 0) {
+if (
+  !useFileRoster &&
+  rosterMirror.agents.length + rosterMirror.archived.length + rosterMirror.restorable.length > 0
+) {
   scheduleRosterFlush();
 }
 
@@ -634,10 +713,14 @@ export const useStore = create<State>((set) => ({
   bumpToolCount: (id) =>
     set((s) => ({ toolCounts: { ...s.toolCounts, [id]: (s.toolCounts[id] ?? 0) + 1 } })),
   setGodStatus: (status) => set({ godStatus: status }),
-  select: (id) => set((s) => { persistAgents(s.agents, id); return { selectedId: id, ccTabRequest: null }; }),
+  select: (id) =>
+    set((s) => {
+      persistAgents(s.agents, id);
+      return { selectedId: id, ccTabRequest: null };
+    }),
   updateAgent: (id, patch) =>
     set((s) => {
-      const agents = s.agents.map(a => a.id === id ? { ...a, ...patch } : a);
+      const agents = s.agents.map((a) => (a.id === id ? { ...a, ...patch } : a));
       // Persist only when something DURABLE changed. `updateAgent` is also the
       // pty parser's per-chunk write (status/action/progress), so persisting
       // unconditionally would rewrite localStorage on every burst of terminal
@@ -649,7 +732,7 @@ export const useStore = create<State>((set) => ({
     }),
   setAgentNote: (id, note) =>
     set((s) => {
-      const agents = s.agents.map((a) => a.id === id ? { ...a, note } : a);
+      const agents = s.agents.map((a) => (a.id === id ? { ...a, note } : a));
       persistAgents(agents, s.selectedId);
       return { agents };
     }),
@@ -669,18 +752,19 @@ export const useStore = create<State>((set) => ({
       const restorableAgents = s.restorableAgents.filter((a) => a.id !== agent.id);
       persistAgents(agents, agent.id);
       persistArchived(archivedAgents);
-      if (restorableAgents.length !== s.restorableAgents.length) persistRestorable(restorableAgents);
+      if (restorableAgents.length !== s.restorableAgents.length)
+        persistRestorable(restorableAgents);
       return {
         agents,
         archivedAgents,
         restorableAgents,
         selectedId: agent.id,
-        feeds: { ...s.feeds, [agent.id]: s.feeds[agent.id] ?? [] }
+        feeds: { ...s.feeds, [agent.id]: s.feeds[agent.id] ?? [] },
       };
     }),
   removeAgent: (id) =>
     set((s) => {
-      const agents = s.agents.filter(a => a.id !== id);
+      const agents = s.agents.filter((a) => a.id !== id);
       const { [id]: _gone, ...feeds } = s.feeds;
       const { [id]: _queueGone, ...messageQueues } = s.messageQueues;
       const selectedId = s.selectedId === id ? (agents[0]?.id ?? null) : s.selectedId;
@@ -707,8 +791,14 @@ export const useStore = create<State>((set) => ({
         if (opts?.vacation && s.archivedAgents.some((a) => a.id === id)) {
           const archivedAgents = s.archivedAgents.map((a) =>
             a.id === id
-              ? { ...a, vacation: true, vacationSince: opts.vacationSince ?? Date.now(), action: 'on vacation' }
-              : a);
+              ? {
+                  ...a,
+                  vacation: true,
+                  vacationSince: opts.vacationSince ?? Date.now(),
+                  action: 'on vacation',
+                }
+              : a,
+          );
           persistArchived(archivedAgents);
           return wasRestorable ? { archivedAgents, restorableAgents } : { archivedAgents };
         }
@@ -724,12 +814,14 @@ export const useStore = create<State>((set) => ({
         ...target,
         archived: true,
         // A park is an archive PLUS the flag — same teardown, different shelf.
-        ...(opts?.vacation ? { vacation: true, vacationSince: opts.vacationSince ?? Date.now() } : {}),
+        ...(opts?.vacation
+          ? { vacation: true, vacationSince: opts.vacationSince ?? Date.now() }
+          : {}),
         ptyId: undefined,
         status: 'idle',
         action: opts?.vacation ? 'on vacation' : 'archived',
         carrying: undefined,
-        currentStation: undefined
+        currentStation: undefined,
       };
       const archivedAgents = intern
         ? s.archivedAgents.filter((a) => a.id !== id)
@@ -786,11 +878,12 @@ export const useStore = create<State>((set) => ({
   setAnswerDraft: (taskId, text) =>
     set((s) => ({ answerDrafts: { ...s.answerDrafts, [taskId]: text } })),
   drafts: {},
-  setDraft: (agentId, text) =>
-    set((s) => ({ drafts: { ...s.drafts, [agentId]: text } })),
+  setDraft: (agentId, text) => set((s) => ({ drafts: { ...s.drafts, [agentId]: text } })),
   composerCollapsed: {},
   toggleComposerCollapsed: (agentId) =>
-    set((s) => ({ composerCollapsed: { ...s.composerCollapsed, [agentId]: !s.composerCollapsed[agentId] } })),
+    set((s) => ({
+      composerCollapsed: { ...s.composerCollapsed, [agentId]: !s.composerCollapsed[agentId] },
+    })),
   freeflowEnabled: false,
   setFreeflowEnabled: (on) => set({ freeflowEnabled: on }),
   hasGroqKey: false,
@@ -826,13 +919,18 @@ export const useStore = create<State>((set) => ({
         return s;
       }
       const msg: QueuedMessage = {
-        id: newQueuedId(), text: trimmed, ts: Date.now(),
+        id: newQueuedId(),
+        text: trimmed,
+        ts: Date.now(),
         ...(meta?.slack ? { slack: meta.slack } : {}),
         ...(meta?.instruction ? { instruction: meta.instruction } : {}),
         ...(meta?.inboxFor ? { inboxFor: meta.inboxFor } : {}),
-        ...(meta?.cardFor ? { cardFor: meta.cardFor } : {})
+        ...(meta?.cardFor ? { cardFor: meta.cardFor } : {}),
       };
-      const messageQueues = { ...s.messageQueues, [agentId]: [...(s.messageQueues[agentId] ?? []), msg] };
+      const messageQueues = {
+        ...s.messageQueues,
+        [agentId]: [...(s.messageQueues[agentId] ?? []), msg],
+      };
       persistQueues(messageQueues);
       return { messageQueues };
     }),
@@ -850,10 +948,7 @@ export const useStore = create<State>((set) => ({
       const current = s.messageQueues[agentId];
       const target = current?.find((m) => m.id === messageId);
       if (!current || !target) return s;
-      const next = [
-        { ...target, manual: true },
-        ...current.filter((m) => m.id !== messageId)
-      ];
+      const next = [{ ...target, manual: true }, ...current.filter((m) => m.id !== messageId)];
       const messageQueues = { ...s.messageQueues, [agentId]: next };
       persistQueues(messageQueues);
       return { messageQueues };
@@ -875,11 +970,11 @@ export const useStore = create<State>((set) => ({
       // (full spawn recipe retained) instead of silently vanishing. God and the
       // prep assistant are excluded — they auto-respawn at boot.
       const dead = s.agents.filter(
-        (a) => a.ptyId && !live.has(a.ptyId) && !a.isGod && !a.isAssistant
+        (a) => a.ptyId && !live.has(a.ptyId) && !a.isGod && !a.isAssistant,
       );
       const restorableAgents = [
         ...s.restorableAgents.filter((r) => !dead.some((d) => d.id === r.id)),
-        ...dead
+        ...dead,
       ];
       const feeds: Record<string, string[]> = {};
       for (const a of agents) feeds[a.id] = s.feeds[a.id] ?? [];
@@ -894,22 +989,31 @@ export const useStore = create<State>((set) => ({
   pendingHire: null,
   setPendingHire: (m) => set({ pendingHire: m }),
   setFullscreen: (id) => set({ fullscreenAgentId: id }),
-  setFullscreenFile: (path, view) => set({ fullscreenFilePath: path, fullscreenFileView: view ?? 'edit' }),
+  setFullscreenFile: (path, view) =>
+    set({ fullscreenFilePath: path, fullscreenFileView: view ?? 'edit' }),
   setIdeOpen: (open) => set({ ideOpen: open }),
   setIdeInitialFile: (path) => set({ ideInitialFile: path }),
   setSidebarWidth: (px) => {
     const clamped = Math.min(1200, Math.max(320, Math.round(px)));
-    try { window.localStorage.setItem(LS_SIDEBAR_WIDTH, String(clamped)); } catch { /* noop */ }
+    try {
+      window.localStorage.setItem(LS_SIDEBAR_WIDTH, String(clamped));
+    } catch {
+      /* noop */
+    }
     set({ sidebarWidth: clamped });
   },
   setSidebarTab: (tab) => {
-    try { window.localStorage.setItem(LS_SIDEBAR_TAB, tab); } catch { /* noop */ }
+    try {
+      window.localStorage.setItem(LS_SIDEBAR_TAB, tab);
+    } catch {
+      /* noop */
+    }
     set({ sidebarTab: tab });
-  }
+  },
 }));
 
 export function selectedAgent(s: State): Agent | undefined {
-  return s.agents.find(a => a.id === s.selectedId);
+  return s.agents.find((a) => a.id === s.selectedId);
 }
 
 /** Whether the Command Center's Trigger History tab has anything to be about

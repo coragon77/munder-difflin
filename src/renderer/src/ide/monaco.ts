@@ -46,7 +46,7 @@ import TsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
       default:
         return new EditorWorker();
     }
-  }
+  },
 };
 
 let themesDefined = false;
@@ -67,7 +67,7 @@ function defineThemes(m: typeof monaco): void {
       { token: 'type', foreground: '2A9D94' },
       { token: 'function', foreground: 'C2603A' },
       { token: 'variable', foreground: '1A1320' },
-      { token: 'delimiter', foreground: '6B5878' }
+      { token: 'delimiter', foreground: '6B5878' },
     ],
     colors: {
       'editor.background': '#FCFAF0',
@@ -83,8 +83,8 @@ function defineThemes(m: typeof monaco): void {
       'diffEditor.insertedTextBackground': '#6BCF7F33',
       'diffEditor.removedTextBackground': '#FF6B6B33',
       'diffEditor.insertedLineBackground': '#6BCF7F22',
-      'diffEditor.removedLineBackground': '#FF6B6B22'
-    }
+      'diffEditor.removedLineBackground': '#FF6B6B22',
+    },
   });
 }
 
@@ -107,41 +107,65 @@ export function languageForPath(path: string): string {
   const name = path.split(/[\\/]/).pop() ?? path;
   const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
   switch (ext) {
-    case 'ts': return 'typescript';
-    case 'tsx': return 'typescript';
+    case 'ts':
+      return 'typescript';
+    case 'tsx':
+      return 'typescript';
     case 'js':
     case 'jsx':
     case 'mjs':
-    case 'cjs': return 'javascript';
-    case 'json': return 'json';
+    case 'cjs':
+      return 'javascript';
+    case 'json':
+      return 'json';
     case 'md':
-    case 'markdown': return 'markdown';
-    case 'py': return 'python';
-    case 'rb': return 'ruby';
-    case 'go': return 'go';
-    case 'rs': return 'rust';
-    case 'java': return 'java';
+    case 'markdown':
+      return 'markdown';
+    case 'py':
+      return 'python';
+    case 'rb':
+      return 'ruby';
+    case 'go':
+      return 'go';
+    case 'rs':
+      return 'rust';
+    case 'java':
+      return 'java';
     case 'c':
-    case 'h': return 'c';
+    case 'h':
+      return 'c';
     case 'cpp':
     case 'cc':
-    case 'hpp': return 'cpp';
-    case 'cs': return 'csharp';
-    case 'php': return 'php';
+    case 'hpp':
+      return 'cpp';
+    case 'cs':
+      return 'csharp';
+    case 'php':
+      return 'php';
     case 'sh':
     case 'bash':
-    case 'zsh': return 'shell';
+    case 'zsh':
+      return 'shell';
     case 'html':
-    case 'htm': return 'html';
-    case 'css': return 'css';
-    case 'scss': return 'scss';
-    case 'less': return 'less';
+    case 'htm':
+      return 'html';
+    case 'css':
+      return 'css';
+    case 'scss':
+      return 'scss';
+    case 'less':
+      return 'less';
     case 'yml':
-    case 'yaml': return 'yaml';
-    case 'toml': return 'ini';
-    case 'xml': return 'xml';
-    case 'sql': return 'sql';
-    case 'dockerfile': return 'dockerfile';
+    case 'yaml':
+      return 'yaml';
+    case 'toml':
+      return 'ini';
+    case 'xml':
+      return 'xml';
+    case 'sql':
+      return 'sql';
+    case 'dockerfile':
+      return 'dockerfile';
     default:
       if (name.toLowerCase() === 'dockerfile') return 'dockerfile';
       return 'plaintext';

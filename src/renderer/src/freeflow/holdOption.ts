@@ -40,10 +40,10 @@ function isOptionKey(e: KeyboardEvent): boolean {
  *  mounted. Reads enablement + the focused agent from the store live. */
 export function useHoldOptionToTalk(): void {
   useEffect(() => {
-    let optionDown = false;     // Option physically held right now
+    let optionDown = false; // Option physically held right now
     let armTimer: ReturnType<typeof setTimeout> | null = null;
-    let recording = false;      // THIS gesture started a recording
-    let disqualified = false;   // another key joined → treat as a normal Alt combo
+    let recording = false; // THIS gesture started a recording
+    let disqualified = false; // another key joined → treat as a normal Alt combo
 
     const focusedAgentId = (): string | null => {
       const s = useStore.getState();
@@ -51,7 +51,10 @@ export function useHoldOptionToTalk(): void {
     };
 
     const clearArm = (): void => {
-      if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+      if (armTimer) {
+        clearTimeout(armTimer);
+        armTimer = null;
+      }
     };
 
     const reset = (): void => {
@@ -71,9 +74,15 @@ export function useHoldOptionToTalk(): void {
         optionDown = true;
         disqualified = false;
         // Don't start a second capture if one is already running/uploading.
-        if (freeflowRecorder.isBusy()) { disqualified = true; return; }
+        if (freeflowRecorder.isBusy()) {
+          disqualified = true;
+          return;
+        }
         const target = focusedAgentId();
-        if (!target) { disqualified = true; return; }
+        if (!target) {
+          disqualified = true;
+          return;
+        }
         clearArm();
         armTimer = setTimeout(() => {
           armTimer = null;

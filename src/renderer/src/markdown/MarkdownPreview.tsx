@@ -30,7 +30,10 @@ function resolveRel(baseRel: string | undefined, href: string): string {
   const parts = [...baseDir];
   for (const seg of href.split('/')) {
     if (seg === '' || seg === '.') continue;
-    if (seg === '..') { parts.pop(); continue; }
+    if (seg === '..') {
+      parts.pop();
+      continue;
+    }
     parts.push(seg);
   }
   return parts.join('/');
@@ -45,7 +48,9 @@ function isRelativeMd(href: string): boolean {
 }
 
 export const MarkdownPreview = memo(function MarkdownPreview({
-  source, baseRel, onOpenMarkdownLink
+  source,
+  baseRel,
+  onOpenMarkdownLink,
 }: MarkdownPreviewProps) {
   return (
     <div className="cth-md-preview">
@@ -56,7 +61,10 @@ export const MarkdownPreview = memo(function MarkdownPreview({
             const h = href ?? '';
             const onClick = (e: React.MouseEvent) => {
               e.preventDefault();
-              if (isExternal(h)) { void window.cth.openExternal?.(h); return; }
+              if (isExternal(h)) {
+                void window.cth.openExternal?.(h);
+                return;
+              }
               if (isRelativeMd(h) && onOpenMarkdownLink) {
                 onOpenMarkdownLink(resolveRel(baseRel, h.replace(/#.*$/, '')));
               }
@@ -68,7 +76,9 @@ export const MarkdownPreview = memo(function MarkdownPreview({
                 href={h || undefined}
                 onClick={onClick}
                 title={h}
-                style={clickable ? undefined : { cursor: 'default', textDecoration: 'underline dotted' }}
+                style={
+                  clickable ? undefined : { cursor: 'default', textDecoration: 'underline dotted' }
+                }
               >
                 {children}
               </a>
@@ -80,7 +90,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
             <span className="cth-md-img" title={typeof src === 'string' ? src : undefined}>
               🖼 {alt || 'image'}
             </span>
-          )
+          ),
         }}
       >
         {source}

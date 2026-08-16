@@ -3,13 +3,27 @@ import { PixelButton } from '../PixelButton';
 import { useStore } from '@/store/store';
 import { TRIGGER_MODES, type TriggerMode, type WebhookTrigger } from '@shared/triggers';
 import {
-  deleteWebhook, generateWebhookSecret, listWebhooks, newWebhook, saveWebhooks,
-  webhooksStatus, type WebhooksStatus
+  deleteWebhook,
+  generateWebhookSecret,
+  listWebhooks,
+  newWebhook,
+  saveWebhooks,
+  webhooksStatus,
+  type WebhooksStatus,
 } from './api';
 import { JsonEditor } from './JsonEditor';
 import {
-  Callout, Field, Hint, MiniButton, ModePicker, Muted, SecretField, SubCard, SubHeader,
-  Toggle, inputStyle
+  Callout,
+  Field,
+  Hint,
+  MiniButton,
+  ModePicker,
+  Muted,
+  SecretField,
+  SubCard,
+  SubHeader,
+  Toggle,
+  inputStyle,
 } from './ui';
 
 /**
@@ -45,14 +59,23 @@ export function WebhooksSection({ onSummary }: { onSummary?: (s: string) => void
         if (alive && l && useStore.getState().webhookTriggers.length === 0) setHooks(l);
       });
     }
-    const poll = () => { void webhooksStatus().then((s) => { if (alive) setStatus(s); }); };
+    const poll = () => {
+      void webhooksStatus().then((s) => {
+        if (alive) setStatus(s);
+      });
+    };
     poll();
     const t = setInterval(poll, STATUS_POLL_MS);
-    return () => { alive = false; clearInterval(t); };
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
   }, [setHooks]);
 
   useEffect(() => {
-    onSummary?.(hooks.length === 0 ? 'none' : `${hooks.length} · ${status.running ? 'live' : 'offline'}`);
+    onSummary?.(
+      hooks.length === 0 ? 'none' : `${hooks.length} · ${status.running ? 'live' : 'offline'}`,
+    );
   }, [hooks, status.running, onSummary]);
 
   /** Update the shared mirror; optionally write it through. Main sanitises what
@@ -61,14 +84,21 @@ export function WebhooksSection({ onSummary }: { onSummary?: (s: string) => void
   const apply = (next: WebhookTrigger[], persist = true) => {
     setHooks(next);
     if (!persist) return;
-    void saveWebhooks(next).then((canonical) => { if (canonical) setHooks(canonical); });
+    void saveWebhooks(next).then((canonical) => {
+      if (canonical) setHooks(canonical);
+    });
   };
   const patch = (id: string, fields: Partial<WebhookTrigger>, persist = true) =>
-    apply(hooks.map((w) => (w.id === id ? { ...w, ...fields } : w)), persist);
+    apply(
+      hooks.map((w) => (w.id === id ? { ...w, ...fields } : w)),
+      persist,
+    );
 
   const remove = (id: string) => {
     setHooks(hooks.filter((w) => w.id !== id));
-    void deleteWebhook(id).then((canonical) => { if (canonical) setHooks(canonical); });
+    void deleteWebhook(id).then((canonical) => {
+      if (canonical) setHooks(canonical);
+    });
   };
 
   const add = async () => {
@@ -104,7 +134,14 @@ export function WebhooksSection({ onSummary }: { onSummary?: (s: string) => void
       ))}
 
       <div style={{ marginTop: 8 }}>
-        <PixelButton variant="secondary" size="sm" onClick={() => { void add(); }} disabled={minting}>
+        <PixelButton
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            void add();
+          }}
+          disabled={minting}
+        >
           {minting ? 'minting…' : 'add webhook'}
         </PixelButton>
         <Hint>A new endpoint starts switched off. Copy its URL and secret, then turn it on.</Hint>
@@ -115,7 +152,13 @@ export function WebhooksSection({ onSummary }: { onSummary?: (s: string) => void
 
 /* ─────────────────────────────── one endpoint ────────────────────────────── */
 
-function WebhookRow({ hook, url, serverRunning, onPatch, onDelete }: {
+function WebhookRow({
+  hook,
+  url,
+  serverRunning,
+  onPatch,
+  onDelete,
+}: {
   hook: WebhookTrigger;
   url: string;
   serverRunning: boolean;
@@ -149,10 +192,17 @@ function WebhookRow({ hook, url, serverRunning, onPatch, onDelete }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schemaOpen]);
 
-  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+  useEffect(
+    () => () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    },
+    [],
+  );
 
   const copy = (what: 'url' | 'secret', text: string) => {
-    void window.cth.copyToClipboard(text).catch(() => { /* noop */ });
+    void window.cth.copyToClipboard(text).catch(() => {
+      /* noop */
+    });
     setCopied(what);
     if (copyTimer.current) clearTimeout(copyTimer.current);
     copyTimer.current = setTimeout(() => setCopied(null), 1300);
@@ -181,7 +231,11 @@ function WebhookRow({ hook, url, serverRunning, onPatch, onDelete }: {
         open={open}
         onToggle={() => setOpen((o) => !o)}
         title={hook.name || 'unnamed'}
-        sub={<>{modeLabel} · {url ? 'reachable' : serverRunning ? 'no URL yet' : 'server offline'}</>}
+        sub={
+          <>
+            {modeLabel} · {url ? 'reachable' : serverRunning ? 'no URL yet' : 'server offline'}
+          </>
+        }
         right={<Toggle on={hook.enabled} onClick={() => onPatch({ enabled: !hook.enabled })} />}
       />
 
@@ -201,13 +255,28 @@ function WebhookRow({ hook, url, serverRunning, onPatch, onDelete }: {
           <Field label="POST TO">
             {url ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{
-                  flex: 1, minWidth: 0, padding: '4px 6px',
-                  background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                  fontFamily: 'var(--cth-font-mono)', fontSize: 11, lineHeight: '15px',
-                  color: 'var(--cth-ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                }}>{url}</span>
-                <MiniButton onClick={() => copy('url', url)} tone={copied === 'url' ? 'good' : 'plain'}>
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: '4px 6px',
+                    background: 'var(--cth-paper-100)',
+                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                    fontFamily: 'var(--cth-font-mono)',
+                    fontSize: 11,
+                    lineHeight: '15px',
+                    color: 'var(--cth-ink-900)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {url}
+                </span>
+                <MiniButton
+                  onClick={() => copy('url', url)}
+                  tone={copied === 'url' ? 'good' : 'plain'}
+                >
                   {copied === 'url' ? 'copied' : 'copy'}
                 </MiniButton>
               </div>
@@ -246,13 +315,23 @@ function WebhookRow({ hook, url, serverRunning, onPatch, onDelete }: {
             )}
             {schemaOpen && (
               <>
-                <JsonEditor value={schemaText} onChange={(v) => { setSchemaText(v); setSchemaError(null); }} />
-                {schemaError && <Callout>Not valid JSON — {schemaError}. Nothing was saved.</Callout>}
+                <JsonEditor
+                  value={schemaText}
+                  onChange={(v) => {
+                    setSchemaText(v);
+                    setSchemaError(null);
+                  }}
+                />
+                {schemaError && (
+                  <Callout>Not valid JSON — {schemaError}. Nothing was saved.</Callout>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
                   <PixelButton variant="primary" size="sm" onClick={saveSchema}>
                     {schemaSaved ? 'saved' : 'save schema'}
                   </PixelButton>
-                  <PixelButton variant="ghost" size="sm" onClick={() => setSchemaOpen(false)}>close</PixelButton>
+                  <PixelButton variant="ghost" size="sm" onClick={() => setSchemaOpen(false)}>
+                    close
+                  </PixelButton>
                 </div>
               </>
             )}
@@ -260,11 +339,17 @@ function WebhookRow({ hook, url, serverRunning, onPatch, onDelete }: {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
             <span style={{ flex: 1 }} />
-            {!confirmDelete && <MiniButton tone="danger" onClick={() => setConfirmDelete(true)}>delete</MiniButton>}
+            {!confirmDelete && (
+              <MiniButton tone="danger" onClick={() => setConfirmDelete(true)}>
+                delete
+              </MiniButton>
+            )}
             {confirmDelete && (
               <>
                 <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>Sure?</span>
-                <MiniButton tone="danger" onClick={onDelete}>delete it</MiniButton>
+                <MiniButton tone="danger" onClick={onDelete}>
+                  delete it
+                </MiniButton>
                 <MiniButton onClick={() => setConfirmDelete(false)}>keep</MiniButton>
               </>
             )}

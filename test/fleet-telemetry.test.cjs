@@ -31,7 +31,14 @@ require.cache[electron] = {
   id: electron,
   filename: electron,
   loaded: true,
-  exports: { Notification: class { show() {} static isSupported() { return false; } } }
+  exports: {
+    Notification: class {
+      show() {}
+      static isSupported() {
+        return false;
+      }
+    },
+  },
 };
 
 const { TelemetryCollector } = loadTs('src/main/telemetry.ts');
@@ -44,14 +51,31 @@ const CONFIG = { notifications: false };
 function otlpTokenBatch(agentId, sessionId, type, value) {
   const attr = (key, stringValue) => ({ key, value: { stringValue } });
   return {
-    resourceMetrics: [{
-      scopeMetrics: [{
-        metrics: [{
-          name: 'claude_code.token.usage',
-          sum: { dataPoints: [{ attributes: [attr('agent.id', agentId), attr('session.id', sessionId), attr('type', type)], asInt: value }] }
-        }]
-      }]
-    }]
+    resourceMetrics: [
+      {
+        scopeMetrics: [
+          {
+            metrics: [
+              {
+                name: 'claude_code.token.usage',
+                sum: {
+                  dataPoints: [
+                    {
+                      attributes: [
+                        attr('agent.id', agentId),
+                        attr('session.id', sessionId),
+                        attr('type', type),
+                      ],
+                      asInt: value,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -59,7 +83,13 @@ test('hook-plane ingest lights up snapshot() for an agent with no OTLP', () => {
   const c = new TelemetryCollector();
   c.recordHookActivity('pi-1');
   c.recordHookSpan('pi-1', 'Bash');
-  c.recordHookUsage('pi-1', 'sess-9', { input: 100, output: 20, cacheRead: 3, cacheCreation: 4, model: 'glm-5.3' });
+  c.recordHookUsage('pi-1', 'sess-9', {
+    input: 100,
+    output: 20,
+    cacheRead: 3,
+    cacheCreation: 4,
+    model: 'glm-5.3',
+  });
 
   const snap = c.snapshot();
   const u = snap.usage.find((x) => x.agentId === 'pi-1');
@@ -75,7 +105,13 @@ test('hook-plane ingest lights up snapshot() for an agent with no OTLP', () => {
 
 test('OTLP stays the preferred source when both exist for one agent', () => {
   const c = new TelemetryCollector();
-  c.recordHookUsage('a1', 'hook-sess', { input: 5, output: 0, cacheRead: 0, cacheCreation: 0, model: 'm' });
+  c.recordHookUsage('a1', 'hook-sess', {
+    input: 5,
+    output: 0,
+    cacheRead: 0,
+    cacheCreation: 0,
+    model: 'm',
+  });
   c.ingestMetrics(otlpTokenBatch('a1', 'otlp-sess', 'input', 1000));
   const u = c.snapshot().usage.find((x) => x.agentId === 'a1');
   assert.equal(u.input, 1000, 'hook-plane rows must not shadow real OTLP totals');
@@ -84,7 +120,13 @@ test('OTLP stays the preferred source when both exist for one agent', () => {
 
 test('hook-plane rows never enter the locked getAgentUsage seam', () => {
   const c = new TelemetryCollector();
-  c.recordHookUsage('pi-1', 'sess-9', { input: 100, output: 20, cacheRead: 3, cacheCreation: 4, model: 'glm-5.3' });
+  c.recordHookUsage('pi-1', 'sess-9', {
+    input: 100,
+    output: 20,
+    cacheRead: 3,
+    cacheCreation: 4,
+    model: 'glm-5.3',
+  });
   // No OTLP session, no resolveCwd → the breaker/ledger pull must see nothing:
   // a truthy sessionId here would append cost-ledger rows on the ~30s beat.
   assert.equal(c.getAgentUsage('pi-1'), null);
@@ -97,10 +139,26 @@ test('HookServer forwards liveness, spans and CostSample into telemetry', async 
   await hive.ensureAgent({ id: 'pi-1', name: 'Piper', provider: 'claude', cwd: home });
 
   const collector = new TelemetryCollector();
-  const server = new HookServer(hive, () => null, () => CONFIG, undefined, undefined, collector);
+  const server = new HookServer(
+    hive,
+    () => null,
+    () => CONFIG,
+    undefined,
+    undefined,
+    collector,
+  );
 
   server.handle({ agent_id: 'pi-1', hook_event_name: 'PostToolUse', tool_name: 'Bash' });
-  server.handle({ agent_id: 'pi-1', hook_event_name: 'CostSample', session_id: 's1', input: 10, output: 5, cache_read: 1, cache_creation: 1, model: 'glm-5.3' });
+  server.handle({
+    agent_id: 'pi-1',
+    hook_event_name: 'CostSample',
+    session_id: 's1',
+    input: 10,
+    output: 5,
+    cache_read: 1,
+    cache_creation: 1,
+    model: 'glm-5.3',
+  });
   server.handle({ agent_id: 'pi-2', hook_event_name: 'Stop' }); // liveness only
 
   const snap = collector.snapshot();

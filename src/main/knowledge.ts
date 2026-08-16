@@ -20,17 +20,37 @@ import { readConfig } from './config';
 const core = require('./kg-core.cjs') as KgCore;
 
 interface KgMeta {
-  id: string; title: string; source: string; modality: string; mime: string | null;
-  origExt: string; bytes: number; tags: string[]; caption: string | null;
-  chunkCount: number; addedAt: string; extractor: string; truncated: boolean;
+  id: string;
+  title: string;
+  source: string;
+  modality: string;
+  mime: string | null;
+  origExt: string;
+  bytes: number;
+  tags: string[];
+  caption: string | null;
+  chunkCount: number;
+  addedAt: string;
+  extractor: string;
+  truncated: boolean;
 }
 interface KgHit {
-  docId: string; title: string; source: string; modality: string;
-  chunkIdx: number; score: number; snippet: string;
+  docId: string;
+  title: string;
+  source: string;
+  modality: string;
+  chunkIdx: number;
+  score: number;
+  snippet: string;
 }
 interface KgIngestInput {
-  srcPath?: string; text?: string; title?: string; tags?: string[];
-  caption?: string; modality?: string; source?: string;
+  srcPath?: string;
+  text?: string;
+  title?: string;
+  tags?: string[];
+  caption?: string;
+  modality?: string;
+  source?: string;
 }
 interface KgCore {
   ingest(root: string, input: KgIngestInput): { docId: string; chunkCount: number; meta: KgMeta };
@@ -86,10 +106,17 @@ export class KnowledgeManager {
   status(): KnowledgeStatus {
     const enabled = this.active();
     const root = this.root();
-    const s = enabled && existsSync(root)
-      ? core.stats(root)
-      : { docCount: 0, chunkCount: 0, byModality: {} };
-    return { enabled, root, docCount: s.docCount, chunkCount: s.chunkCount, byModality: s.byModality };
+    const s =
+      enabled && existsSync(root)
+        ? core.stats(root)
+        : { docCount: 0, chunkCount: 0, byModality: {} };
+    return {
+      enabled,
+      root,
+      docCount: s.docCount,
+      chunkCount: s.chunkCount,
+      byModality: s.byModality,
+    };
   }
 
   /** Ingest a file from disk. No-op-safe when off (callers gate on status). */

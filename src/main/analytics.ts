@@ -55,7 +55,7 @@ const EVENTS: Record<string, ReadonlySet<string>> = {
    *  at most once per feature per app session. */
   feature_used: new Set<string>(['feature']),
   /** Fired on quit. `duration_bucket` is a coarse label, never raw ms. */
-  session_ended: new Set<string>(['duration_bucket'])
+  session_ended: new Set<string>(['duration_bucket']),
 };
 
 /** The only values `feature_used.feature` may take. */
@@ -99,7 +99,7 @@ class Analytics {
     this.common = {
       app_version: opts.appVersion,
       os: process.platform,
-      arch: process.arch
+      arch: process.arch,
     };
     if (!__POSTHOG_KEY__ || dntSet()) return; // stay dark: no client, no id file
     try {
@@ -113,7 +113,7 @@ class Analytics {
         // posthog-node defaults GeoIP OFF (server lib); we re-enable it for
         // country-level numbers only — PostHog discards the IP after the
         // lookup and the event is anonymous either way (TELEMETRY.md).
-        disableGeoip: false
+        disableGeoip: false,
       });
     } catch (e) {
       console.error('[analytics] init failed (telemetry disabled):', e);
@@ -137,7 +137,7 @@ class Analytics {
     if (!allowed) return;
     const properties: Record<string, unknown> = {
       ...this.common,
-      $process_person_profile: false // anonymous event — no person profile
+      $process_person_profile: false, // anonymous event — no person profile
     };
     for (const [k, v] of Object.entries(props)) {
       if (allowed.has(k) && typeof v === 'string') properties[k] = v;

@@ -19,12 +19,23 @@ const assert = require('node:assert/strict');
 // at module load — same shim other store-backed tests use.
 const memoryStorage = {
   data: {},
-  getItem(k) { return  Object.hasOwn(this.data, k) ? this.data[k] : null; },
-  setItem(k, v) { this.data[k] = String(v); },
-  removeItem(k) { delete this.data[k]; }
+  getItem(k) {
+    return Object.hasOwn(this.data, k) ? this.data[k] : null;
+  },
+  setItem(k, v) {
+    this.data[k] = String(v);
+  },
+  removeItem(k) {
+    delete this.data[k];
+  },
 };
 globalThis.localStorage = memoryStorage;
-globalThis.window = { localStorage: memoryStorage, addEventListener() {}, setTimeout, clearTimeout };
+globalThis.window = {
+  localStorage: memoryStorage,
+  addEventListener() {},
+  setTimeout,
+  clearTimeout,
+};
 
 const loadTs = require('./load-ts.cjs');
 const { parkedAgentIds } = loadTs('src/renderer/src/hooks/useRestoreTeam.ts');
@@ -53,5 +64,8 @@ test('filtering a restorable list by the parked set drops the vacationer and kee
   const parked = parkedAgentIds(reg);
   const restorable = [{ id: 'pam-1' }, { id: 'dwight-1' }, { id: 'jim-1' }];
   const survivors = restorable.filter((a) => !parked.has(a.id));
-  assert.deepEqual(survivors.map((a) => a.id), ['dwight-1', 'jim-1']);
+  assert.deepEqual(
+    survivors.map((a) => a.id),
+    ['dwight-1', 'jim-1'],
+  );
 });

@@ -1,8 +1,20 @@
-import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
 import { useStore, type Agent, type QueuedMessage } from '@/store/store';
-import { clearTerminalDraft, dismissTerminalPicker, terminalAutomationBlockFor } from './terminalPool';
+import {
+  clearTerminalDraft,
+  dismissTerminalPicker,
+  terminalAutomationBlockFor,
+} from './terminalPool';
 import type { TerminalAutomationBlock } from './terminalAutomation';
 import { freeflowRecorder, useFreeflow } from '@/freeflow/recorder';
 import { useTerminalFontSize } from './terminalFontSize';
@@ -56,12 +68,12 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
   const ffHint = !freeflowEnabled
     ? null
     : ffMine && ff.status === 'recording'
-    ? '● recording — click stop to transcribe'
-    : ffMine && ff.status === 'transcribing'
-    ? 'transcribing…'
-    : ff.error && (ffMine || ff.targetAgentId === null)
-    ? `voice: ${ff.error}`
-    : null;
+      ? '● recording — click stop to transcribe'
+      : ffMine && ff.status === 'transcribing'
+        ? 'transcribing…'
+        : ff.error && (ffMine || ff.targetAgentId === null)
+          ? `voice: ${ff.error}`
+          : null;
 
   // The draft box is the terminal's twin — it should read at the same size the
   // agent's output does, at every zoom level.
@@ -136,9 +148,8 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
     // Prepend an "Attached files:" block using the same path-based convention as
     // the Slack inbound path (useHive.ts) so agents Read the files directly.
     const body = attachments.length
-      ? (text.trim()
-          ? `${text}\n\nAttached files:\n`
-          : 'Attached files:\n') + attachments.map((a) => `- ${a.path} (${a.name})`).join('\n')
+      ? (text.trim() ? `${text}\n\nAttached files:\n` : 'Attached files:\n') +
+        attachments.map((a) => `- ${a.path} (${a.name})`).join('\n')
       : text;
     enqueueMessage(agent.id, body);
     setText('');
@@ -162,19 +173,20 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
   // look permanently stuck with no explanation and no escape hatch.
   const deliveryPaused = useDeliveryPaused(agent.id, queue.length > 0);
 
-  const statusHint = queue.length === 0
-    ? null
-    : !idle
-    ? `${agent.name} is busy — ${queue.length} queued`
-    : deliveryPaused && !queue[0]?.manual
-    ? 'held — delivery paused floor-wide'
-    : block === 'draft'
-    ? `held — ${agent.name}'s terminal has unsent text on its prompt`
-    : block === 'picker'
-    ? `held — a slash-command picker is open in ${agent.name}'s terminal`
-    : block === 'exited'
-    ? `held — ${agent.name}'s terminal has exited`
-    : `sending to ${agent.name} one-by-one…`;
+  const statusHint =
+    queue.length === 0
+      ? null
+      : !idle
+        ? `${agent.name} is busy — ${queue.length} queued`
+        : deliveryPaused && !queue[0]?.manual
+          ? 'held — delivery paused floor-wide'
+          : block === 'draft'
+            ? `held — ${agent.name}'s terminal has unsent text on its prompt`
+            : block === 'picker'
+              ? `held — a slash-command picker is open in ${agent.name}'s terminal`
+              : block === 'exited'
+                ? `held — ${agent.name}'s terminal has exited`
+                : `sending to ${agent.name} one-by-one…`;
 
   // Collapsed: one slim bar — toggle, label, count, and (if any) the status
   // hint. Clicking anywhere on it expands again. The full composer stays
@@ -185,29 +197,52 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
         onClick={toggleCollapsed.bind(null, agent.id)}
         title="Expand the message queue box"
         style={{
-          flexShrink: 0, cursor: 'pointer',
+          flexShrink: 0,
+          cursor: 'pointer',
           borderTop: '1px solid var(--cth-ink-700)',
           background: 'var(--cth-cream-100)',
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '4px 8px'
-        }}>
-        <span style={{
-          fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '12px',
-          color: 'var(--cth-ink-700)'
-        }}>▾ QUEUE</span>
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '4px 8px',
+        }}
+      >
+        <span
+          style={{
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 9,
+            lineHeight: '12px',
+            color: 'var(--cth-ink-700)',
+          }}
+        >
+          ▾ QUEUE
+        </span>
         {queue.length > 0 && (
-          <span style={{
-            fontSize: 11, padding: '1px 6px 0',
-            background: 'var(--cth-cream-200)',
-            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-            fontFamily: 'var(--cth-font-ui)', color: 'var(--cth-ink-900)'
-          }}>{queue.length}</span>
+          <span
+            style={{
+              fontSize: 11,
+              padding: '1px 6px 0',
+              background: 'var(--cth-cream-200)',
+              boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+              fontFamily: 'var(--cth-font-ui)',
+              color: 'var(--cth-ink-900)',
+            }}
+          >
+            {queue.length}
+          </span>
         )}
         {statusHint && (
-          <span style={{
-            fontSize: 12, color: 'var(--cth-ink-500)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-          }}>{statusHint}</span>
+          <span
+            style={{
+              fontSize: 12,
+              color: 'var(--cth-ink-500)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {statusHint}
+          </span>
         )}
       </div>
     );
@@ -215,7 +250,10 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
 
   return (
     <div
-      onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!dragOver) setDragOver(true);
+      }}
       onDragLeave={(e) => {
         // Only clear when the cursor actually leaves the composer, not on child enter.
         if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
@@ -230,13 +268,21 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
         flexDirection: 'column',
         gap: 6,
         padding: 8,
-        boxShadow: dragOver ? 'inset 0 0 0 2px var(--cth-lilac)' : undefined
-      }}>
+        boxShadow: dragOver ? 'inset 0 0 0 2px var(--cth-lilac)' : undefined,
+      }}
+    >
       {dragOver && (
-        <span style={{
-          fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '12px',
-          color: 'var(--cth-ink-700)', textAlign: 'center'
-        }}>DROP TO ATTACH</span>
+        <span
+          style={{
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 9,
+            lineHeight: '12px',
+            color: 'var(--cth-ink-700)',
+            textAlign: 'center',
+          }}
+        >
+          DROP TO ATTACH
+        </span>
       )}
       {/* Header: label, count, status, clear-all */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -244,29 +290,49 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
           onClick={() => toggleCollapsed(agent.id)}
           title="Collapse the queue box — the terminal gets the space"
           style={{
-            border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
-            fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '12px',
-            color: 'var(--cth-ink-700)'
-          }}>▴ QUEUE</button>
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+            padding: 0,
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 9,
+            lineHeight: '12px',
+            color: 'var(--cth-ink-700)',
+          }}
+        >
+          ▴ QUEUE
+        </button>
         {queue.length > 0 && (
-          <span style={{
-            fontSize: 11, padding: '1px 6px 0',
-            background: 'var(--cth-cream-200)',
-            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-            fontFamily: 'var(--cth-font-ui)', color: 'var(--cth-ink-900)'
-          }}>{queue.length}</span>
+          <span
+            style={{
+              fontSize: 11,
+              padding: '1px 6px 0',
+              background: 'var(--cth-cream-200)',
+              boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+              fontFamily: 'var(--cth-font-ui)',
+              color: 'var(--cth-ink-900)',
+            }}
+          >
+            {queue.length}
+          </span>
         )}
         {statusHint && (
           <span
-            title={deliveryPaused && !queue[0]?.manual
-              ? 'Auto-delivery is paused for the whole floor. Resume it in the Command Center, or use "send now" on a message below.'
-              : statusHint}
+            title={
+              deliveryPaused && !queue[0]?.manual
+                ? 'Auto-delivery is paused for the whole floor. Resume it in the Command Center, or use "send now" on a message below.'
+                : statusHint
+            }
             style={{
               fontSize: 12,
               color: idle ? 'var(--cth-ink-700)' : 'var(--cth-ink-500)',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}
-          >{statusHint}</span>
+          >
+            {statusHint}
+          </span>
         )}
         {(block === 'draft' || block === 'picker') && agent.ptyId && (
           <button
@@ -276,42 +342,66 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
               // at a picker leaves it open while telling automation the prompt
               // is free, which is how a queued message ends up typed into a
               // menu and marked delivered.
-              if (block === 'picker') { dismissTerminalPicker(agent.ptyId!); return; }
+              if (block === 'picker') {
+                dismissTerminalPicker(agent.ptyId!);
+                return;
+              }
               // Keep whatever was on the prompt — it lands in this composer so
               // the user can send it properly instead of losing it to Ctrl-U.
               const discarded = clearTerminalDraft(agent.ptyId!);
               if (discarded.trim()) setText(text ? `${text}\n${discarded}` : discarded);
             }}
-            title={block === 'picker'
-              ? "Close the picker this agent has open so queued messages can be delivered"
-              : "Move the leftover text on this agent's prompt into this box so queued messages can be delivered"}
+            title={
+              block === 'picker'
+                ? 'Close the picker this agent has open so queued messages can be delivered'
+                : "Move the leftover text on this agent's prompt into this box so queued messages can be delivered"
+            }
             style={{
-              border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
-              fontFamily: 'var(--cth-font-ui)', fontSize: 12,
-              color: 'var(--cth-ink-900)', textDecoration: 'underline'
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              padding: 0,
+              fontFamily: 'var(--cth-font-ui)',
+              fontSize: 12,
+              color: 'var(--cth-ink-900)',
+              textDecoration: 'underline',
             }}
-          >{block === 'picker' ? 'close picker' : 'recover prompt'}</button>
+          >
+            {block === 'picker' ? 'close picker' : 'recover prompt'}
+          </button>
         )}
         {queue.length > 1 && (
           <button
             onClick={() => clearQueue(agent.id)}
             title="Clear all queued messages"
             style={{
-              marginLeft: 'auto', flexShrink: 0, whiteSpace: 'nowrap',
-              border: 'none', background: 'transparent', cursor: 'pointer',
-              fontFamily: 'var(--cth-font-ui)', fontSize: 12,
-              color: 'var(--cth-ink-500)'
+              marginLeft: 'auto',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              fontFamily: 'var(--cth-font-ui)',
+              fontSize: 12,
+              color: 'var(--cth-ink-500)',
             }}
-          >clear all</button>
+          >
+            clear all
+          </button>
         )}
       </div>
 
       {/* Pending list */}
       {queue.length > 0 && (
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: 4,
-          maxHeight: 280, overflowY: 'auto'
-        }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            maxHeight: 280,
+            overflowY: 'auto',
+          }}
+        >
           {queue.map((m, i) => (
             <QueuedMessageRow
               key={m.id}
@@ -327,11 +417,21 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
 
       {/* Free Flow recording / transcription status (entry point A) */}
       {ffHint && (
-        <span style={{
-          fontSize: 12, lineHeight: '16px',
-          color: ff.error && !(ffMine && ff.status !== 'idle') ? 'var(--cth-coral)' : 'var(--cth-ink-500)',
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-        }}>{ffHint}</span>
+        <span
+          style={{
+            fontSize: 12,
+            lineHeight: '16px',
+            color:
+              ff.error && !(ffMine && ff.status !== 'idle')
+                ? 'var(--cth-coral)'
+                : 'var(--cth-ink-500)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {ffHint}
+        </span>
       )}
 
       {/* Attached files/images — chips with a remove 'x', above the textarea. */}
@@ -342,26 +442,42 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
               key={a.path}
               title={a.path}
               style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
                 maxWidth: '100%',
                 padding: '2px 4px 2px 6px',
                 background: 'var(--cth-cream-200)',
                 boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                fontFamily: 'var(--cth-font-mono)', fontSize: 12, lineHeight: '16px',
-                color: 'var(--cth-ink-900)'
+                fontFamily: 'var(--cth-font-mono)',
+                fontSize: 12,
+                lineHeight: '16px',
+                color: 'var(--cth-ink-900)',
               }}
             >
               <Icon name="folder" />
-              <span style={{
-                overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', maxWidth: 180
-              }}>{a.name}</span>
+              <span
+                style={{
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis',
+                  maxWidth: 180,
+                }}
+              >
+                {a.name}
+              </span>
               <button
                 onClick={() => removeAttachment(a.path)}
                 title="Remove attachment"
                 style={{
-                  flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer',
-                  color: 'var(--cth-ink-500)', padding: 0,
-                  display: 'inline-flex', alignItems: 'center'
+                  flexShrink: 0,
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  color: 'var(--cth-ink-500)',
+                  padding: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
                 }}
               >
                 <Icon name="x" />
@@ -395,16 +511,26 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
             border: 'none',
             boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
             fontFamily: 'var(--cth-font-mono)',
-            fontSize: composerFontSize, lineHeight: `${composerLineHeight}px`,
+            fontSize: composerFontSize,
+            lineHeight: `${composerLineHeight}px`,
             color: 'var(--cth-ink-900)',
             outline: 'none',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
           }}
         />
         {/* Control bar: Attach + voice + Send aligned right. flexWrap so a
             narrow sidebar wraps the buttons onto a second row instead of
             pushing Send off-screen. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, rowGap: 6, flexWrap: 'wrap', minWidth: 0 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            rowGap: 6,
+            flexWrap: 'wrap',
+            minWidth: 0,
+          }}
+        >
           <span style={{ flex: 1 }} />
           <PixelButton variant="secondary" size="sm" onClick={pickFiles}>
             <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
@@ -429,7 +555,10 @@ export function MessageQueueComposer({ agent }: MessageQueueComposerProps) {
 function useTerminalBlock(ptyId: string | undefined, active: boolean): TerminalAutomationBlock {
   const [block, setBlock] = useState<TerminalAutomationBlock>(null);
   useEffect(() => {
-    if (!ptyId || !active) { setBlock(null); return; }
+    if (!ptyId || !active) {
+      setBlock(null);
+      return;
+    }
     const read = () => setBlock(terminalAutomationBlockFor(ptyId));
     read();
     const iv = setInterval(read, 1000);
@@ -445,16 +574,27 @@ function useTerminalBlock(ptyId: string | undefined, active: boolean): TerminalA
 function useDeliveryPaused(agentId: string, active: boolean): boolean {
   const [paused, setPaused] = useState(false);
   useEffect(() => {
-    if (!active) { setPaused(false); return; }
+    if (!active) {
+      setPaused(false);
+      return;
+    }
     let alive = true;
     const read = () => {
-      window.cth.controlSnapshot(agentId)
-        .then((s) => { if (alive) setPaused(!!s?.autoDeliveryPaused); })
-        .catch(() => { /* main not ready — assume not paused */ });
+      window.cth
+        .controlSnapshot(agentId)
+        .then((s) => {
+          if (alive) setPaused(!!s?.autoDeliveryPaused);
+        })
+        .catch(() => {
+          /* main not ready — assume not paused */
+        });
     };
     read();
     const iv = setInterval(read, 2000);
-    return () => { alive = false; clearInterval(iv); };
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
   }, [agentId, active]);
   return paused;
 }
@@ -464,16 +604,20 @@ function useDeliveryPaused(agentId: string, active: boolean): boolean {
  * in place so a long message can be read without hovering for the tooltip. The
  * toggle only renders when the text actually clips, so short messages stay tidy.
  */
-function QueuedMessageRow(
-  { index, message, paused, onSendNow, onRemove }: {
-    index: number;
-    message: QueuedMessage;
-    /** Floor-wide auto-delivery is paused — offer the per-message override. */
-    paused: boolean;
-    onSendNow: () => void;
-    onRemove: () => void;
-  }
-) {
+function QueuedMessageRow({
+  index,
+  message,
+  paused,
+  onSendNow,
+  onRemove,
+}: {
+  index: number;
+  message: QueuedMessage;
+  /** Floor-wide auto-delivery is paused — offer the per-message override. */
+  paused: boolean;
+  onSendNow: () => void;
+  onRemove: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [clipped, setClipped] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -495,34 +639,49 @@ function QueuedMessageRow(
   }, [message.text, expanded]);
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'flex-start', gap: 6,
-      padding: '4px 6px',
-      background: 'var(--cth-paper-100)',
-      boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-    }}>
-      <span style={{
-        fontFamily: 'var(--cth-font-mono)', fontSize: 12,
-        color: 'var(--cth-ink-500)', lineHeight: '18px', flexShrink: 0
-      }}>{`${index + 1}.`}</span>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 6,
+        padding: '4px 6px',
+        background: 'var(--cth-paper-100)',
+        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+      }}
+    >
+      <span
+        style={{
+          fontFamily: 'var(--cth-font-mono)',
+          fontSize: 12,
+          color: 'var(--cth-ink-500)',
+          lineHeight: '18px',
+          flexShrink: 0,
+        }}
+      >{`${index + 1}.`}</span>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div
           ref={bodyRef}
           title={expanded ? undefined : message.text}
           style={{
-            fontSize: 12, lineHeight: '18px',
+            fontSize: 12,
+            lineHeight: '18px',
             color: 'var(--cth-ink-900)',
-            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
             ...(expanded
-              // Cap the expanded body so one long message can't push the rest of
-              // the queue out of the list's own 280px scroll area.
-              ? { maxHeight: 220, overflowY: 'auto' as const }
+              ? // Cap the expanded body so one long message can't push the rest of
+                // the queue out of the list's own 280px scroll area.
+                { maxHeight: 220, overflowY: 'auto' as const }
               : {
-                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden'
-                })
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }),
           }}
-        >{message.text}</div>
+        >
+          {message.text}
+        </div>
         {(clipped || expanded || paused) && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {(clipped || expanded) && (
@@ -530,22 +689,38 @@ function QueuedMessageRow(
                 onClick={() => setExpanded((e) => !e)}
                 title={expanded ? 'Collapse this message' : 'Show the full message'}
                 style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
-                  fontFamily: 'var(--cth-font-ui)', fontSize: 12, lineHeight: '16px',
-                  color: 'var(--cth-ink-500)', textDecoration: 'underline'
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontFamily: 'var(--cth-font-ui)',
+                  fontSize: 12,
+                  lineHeight: '16px',
+                  color: 'var(--cth-ink-500)',
+                  textDecoration: 'underline',
                 }}
-              >{expanded ? 'see less' : 'see more'}</button>
+              >
+                {expanded ? 'see less' : 'see more'}
+              </button>
             )}
             {paused && !message.manual && (
               <button
                 onClick={onSendNow}
                 title="Deliver this message even though auto-delivery is paused. It moves to the front of the queue and types in as soon as the terminal is free."
                 style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
-                  fontFamily: 'var(--cth-font-ui)', fontSize: 12, lineHeight: '16px',
-                  color: 'var(--cth-ink-900)', textDecoration: 'underline'
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontFamily: 'var(--cth-font-ui)',
+                  fontSize: 12,
+                  lineHeight: '16px',
+                  color: 'var(--cth-ink-900)',
+                  textDecoration: 'underline',
                 }}
-              >send now</button>
+              >
+                send now
+              </button>
             )}
             {paused && message.manual && (
               <span style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-500)' }}>
@@ -559,10 +734,14 @@ function QueuedMessageRow(
         onClick={onRemove}
         title="Remove from queue"
         style={{
-          flexShrink: 0, border: 'none', background: 'transparent',
+          flexShrink: 0,
+          border: 'none',
+          background: 'transparent',
           cursor: 'pointer',
-          color: 'var(--cth-ink-500)', padding: 0,
-          display: 'inline-flex', alignItems: 'center'
+          color: 'var(--cth-ink-500)',
+          padding: 0,
+          display: 'inline-flex',
+          alignItems: 'center',
         }}
       >
         <Icon name="x" />
@@ -570,7 +749,6 @@ function QueuedMessageRow(
     </div>
   );
 }
-
 
 /**
  * Push-to-talk button for the queue composer. Click to start recording, click
@@ -593,9 +771,11 @@ function FreeFlowButton({ agentId, hasGroqKey }: { agentId: string; hasGroqKey: 
   const noKey = !hasGroqKey;
   const title = noKey
     ? 'Add a Groq API key in Settings → Free Flow to use voice mode.'
-    : recording ? 'Stop & transcribe'
-    : transcribing ? 'Transcribing…'
-    : 'Free Flow — dictate into the queue (push to talk)';
+    : recording
+      ? 'Stop & transcribe'
+      : transcribing
+        ? 'Transcribing…'
+        : 'Free Flow — dictate into the queue (push to talk)';
   // Wrap in a (non-disabled) span so the native title tooltip still shows on hover
   // even when the inner button is disabled — Chromium suppresses tooltips on a
   // disabled <button> itself.
@@ -604,7 +784,10 @@ function FreeFlowButton({ agentId, hasGroqKey }: { agentId: string; hasGroqKey: 
       <PixelButton
         variant={recording ? 'destructive' : 'secondary'}
         size="sm"
-        onClick={() => { if (noKey) return; freeflowRecorder.toggle(agentId); }}
+        onClick={() => {
+          if (noKey) return;
+          freeflowRecorder.toggle(agentId);
+        }}
         disabled={noKey || transcribing || busyElsewhere}
       >
         <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>

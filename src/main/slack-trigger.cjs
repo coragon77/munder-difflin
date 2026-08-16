@@ -40,8 +40,12 @@ class ActivatedThreads {
     this._order.push(threadTs);
   }
 
-  has(threadTs) { return this._set.has(threadTs); }
-  get size()    { return this._set.size; }
+  has(threadTs) {
+    return this._set.has(threadTs);
+  }
+  get size() {
+    return this._set.size;
+  }
 }
 
 /**
@@ -77,7 +81,9 @@ class SeenEvents {
     return false;
   }
 
-  get size() { return this._set.size; }
+  get size() {
+    return this._set.size;
+  }
 }
 
 /**

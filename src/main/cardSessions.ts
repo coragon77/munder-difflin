@@ -90,7 +90,7 @@ export function cardSessionDecisions(
   registrySessions: Record<string, string | undefined>,
   providers: Record<string, AgentProvider | undefined>,
   sessionStarted: Record<string, number | undefined> = {},
-  now: number = Date.now()
+  now: number = Date.now(),
 ): CardSessionAction[] {
   const actions: CardSessionAction[] = [];
   for (const card of cards) {
@@ -100,8 +100,12 @@ export function cardSessionDecisions(
     const live = registrySessions[card.assignee];
     let command: string | null = null;
     let session: string | undefined;
-    if (!card.sessionId && live && sessionStarted[card.assignee] !== undefined
-        && now - sessionStarted[card.assignee]! <= ADOPT_SESSION_MS) {
+    if (
+      !card.sessionId &&
+      live &&
+      sessionStarted[card.assignee] !== undefined &&
+      now - sessionStarted[card.assignee]! <= ADOPT_SESSION_MS
+    ) {
       // Young live conversation (started while the card was still not doing —
       // god's manual clear race): adopt it, don't wipe it. Lead only.
       session = live;
@@ -119,10 +123,16 @@ export function cardSessionDecisions(
     }
     if (command === null) continue;
     const title = (card.title ?? card.id).trim() || card.id;
-    const kind: CardSessionAction['kind'] = session && !card.sessionId ? 'adopt' : card.sessionId ? 'resume' : 'clear';
+    const kind: CardSessionAction['kind'] =
+      session && !card.sessionId ? 'adopt' : card.sessionId ? 'resume' : 'clear';
     actions.push({
-      kind, agentId: card.assignee, cardId: card.id, cardTitle: title,
-      command, label: `Card "${title}" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.`, session
+      kind,
+      agentId: card.assignee,
+      cardId: card.id,
+      cardTitle: title,
+      command,
+      label: `Card "${title}" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.`,
+      session,
     });
   }
   return actions;
@@ -134,7 +144,18 @@ export interface CardSessionDeps {
   /** Hive root, or null when the hive is disabled. */
   root(): string | null;
   /** Live registry snapshot (structural subset incl. the session stamps). */
-  registry(): { agents: Record<string, { provider?: AgentProvider; archived?: boolean; retired?: boolean; sessionId?: string; sessionStartedAt?: number }> };
+  registry(): {
+    agents: Record<
+      string,
+      {
+        provider?: AgentProvider;
+        archived?: boolean;
+        retired?: boolean;
+        sessionId?: string;
+        sessionStartedAt?: number;
+      }
+    >;
+  };
   /** Broadcast to the renderer's queue gate (same channel as session-requests).
    *  The marker rides along so the queue-drain can stale-drop at delivery. */
   emit(agentId: string, text: string, marker?: CardSessionMarker): boolean;
@@ -148,9 +169,13 @@ export interface CardSessionDeps {
 /** Read tasks.json's card list (best-effort: missing/corrupt → []). */
 function readCards(root: string): CardLike[] {
   try {
-    const raw = JSON.parse(readFileSync(join(root, 'tasks.json'), 'utf8')) as { tasks?: CardLike[] };
+    const raw = JSON.parse(readFileSync(join(root, 'tasks.json'), 'utf8')) as {
+      tasks?: CardLike[];
+    };
     return Array.isArray(raw.tasks) ? raw.tasks : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 /** One poll tick: diff tasks.json against `seen`, queue actions, update `seen`.
@@ -180,7 +205,12 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
   const actions = cardSessionDecisions(cards, seen, registrySessions, providers, sessionStarted);
   const failed = new Set<string>();
   for (const a of actions) {
-    const marker: CardSessionMarker = { cardId: a.cardId, agentId: a.agentId, kind: a.kind, ...(a.session ? { session: a.session } : {}) };
+    const marker: CardSessionMarker = {
+      cardId: a.cardId,
+      agentId: a.agentId,
+      kind: a.kind,
+      ...(a.session ? { session: a.session } : {}),
+    };
     // Command first, label second — FIFO queue keeps the order, so the fresh
     // conversation's FIRST user turn leads with the card title (its name).
     // (Adopt: command is '' — the lead is the only typed turn.)
@@ -191,7 +221,7 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
       failed.add(a.cardId);
       deps.informGod(
         `[card-session] ${a.kind} for ${a.agentId} not delivered`,
-        `Card "${a.cardTitle}" (${a.cardId}): the ${a.command || 'card lead'} could not reach a live floor window — it will retry on the next poll while the transition stays pending.`
+        `Card "${a.cardTitle}" (${a.cardId}): the ${a.command || 'card lead'} could not reach a live floor window — it will retry on the next poll while the transition stays pending.`,
       );
       continue;
     }
@@ -203,7 +233,7 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
       `[card-session] ${a.kind} queued for ${a.agentId}`,
       a.kind === 'adopt'
         ? `Card "${a.cardTitle}" (${a.cardId}) is now doing and ${a.agentId}'s conversation just started (god steering or fresh spawn) — adopted it as this card's conversation (stamped ${a.session!.slice(0, 8)}) and queued the card-title lead. No clear: the pane keeps its fresh conversation.`
-        : `Card "${a.cardTitle}" (${a.cardId}) is now doing: queued "${a.command}" into ${a.agentId}'s pane${a.kind === 'clear' ? ' for a fresh card-scoped conversation' : ' to resume the card\u2019s recorded conversation'}, followed by the card-title lead (the conversation is named after the card). The card\u2019s sessionId stamp updates automatically once the new conversation reports in.`
+        : `Card "${a.cardTitle}" (${a.cardId}) is now doing: queued "${a.command}" into ${a.agentId}'s pane${a.kind === 'clear' ? ' for a fresh card-scoped conversation' : ' to resume the card\u2019s recorded conversation'}, followed by the card-title lead (the conversation is named after the card). The card\u2019s sessionId stamp updates automatically once the new conversation reports in.`,
     );
   }
   for (const card of cards) {
@@ -225,9 +255,14 @@ const cardSeen: CardSeen = {};
 /** Start the watcher. Idempotent; re-reads deps.root() every tick. */
 export function startCardSessionWatcher(deps: CardSessionDeps): void {
   if (cardWatchTimer || !deps.root()) return;
-  cardWatchTimer = setInterval(() => { cardSessionTick(deps, cardSeen); }, CARD_TICK_MS);
+  cardWatchTimer = setInterval(() => {
+    cardSessionTick(deps, cardSeen);
+  }, CARD_TICK_MS);
 }
 
 export function stopCardSessionWatcher(): void {
-  if (cardWatchTimer) { clearInterval(cardWatchTimer); cardWatchTimer = null; }
+  if (cardWatchTimer) {
+    clearInterval(cardWatchTimer);
+    cardWatchTimer = null;
+  }
 }

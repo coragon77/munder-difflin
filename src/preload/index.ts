@@ -8,10 +8,18 @@ export type { IntegrationRecord, IntegrationTemplate } from '../shared/integrati
 import type { UpdateStatus } from '../shared/updateState';
 export type { UpdateStatus } from '../shared/updateState';
 import type {
-  ContextRule, ContextTriggerConfig, OrgTriggerConfig, TriggerHistoryEntry, WebhookTrigger
+  ContextRule,
+  ContextTriggerConfig,
+  OrgTriggerConfig,
+  TriggerHistoryEntry,
+  WebhookTrigger,
 } from '../shared/triggers';
 export type {
-  ContextRule, ContextTriggerConfig, OrgTriggerConfig, TriggerHistoryEntry, WebhookTrigger
+  ContextRule,
+  ContextTriggerConfig,
+  OrgTriggerConfig,
+  TriggerHistoryEntry,
+  WebhookTrigger,
 } from '../shared/triggers';
 
 /** Renderer-visible integration record: the secretRef handle is redacted to a
@@ -89,16 +97,19 @@ export interface HiveRegistry {
   godId: string | null;
   /** `archived` agents have had their terminal closed — retained + flagged, not
    *  deleted; only live-PTY agents are 'active'. */
-  agents: Record<string, HiveAgentMeta & {
-    status: string;
-    lastSeen: number;
-    archived?: boolean;
-    /** parked: off the floor, zero cost, recallable, NOT deletable */
-    vacation?: boolean;
-    vacationSince?: number;
-    retired?: boolean;
-    sessionId?: string;
-  }>;
+  agents: Record<
+    string,
+    HiveAgentMeta & {
+      status: string;
+      lastSeen: number;
+      archived?: boolean;
+      /** parked: off the floor, zero cost, recallable, NOT deletable */
+      vacation?: boolean;
+      vacationSince?: number;
+      retired?: boolean;
+      sessionId?: string;
+    }
+  >;
 }
 
 /** One row of the consolidated voice read-layer directory (`hive:agentDirectory`):
@@ -226,7 +237,10 @@ export interface SpawnPtyOptions {
   permissionMode?: HirePermissionMode;
 }
 
-export interface PtyExit { exitCode: number; signal?: number | undefined }
+export interface PtyExit {
+  exitCode: number;
+  signal?: number | undefined;
+}
 
 /** A recurring auto-dispatched mission fired on an interval by the scheduler. */
 export interface ScheduledMission {
@@ -307,7 +321,7 @@ export interface HarnessConfig {
   slackPort?: number;
   slackProactivePosting?: boolean;
   /** Telegram master toggle (unset = on, matching main's non-breaking default;
-  *  the token/chat id NEVER live here — they stay in .env.telegram, main-only). */
+   *  the token/chat id NEVER live here — they stay in .env.telegram, main-only). */
   telegramEnabled?: boolean;
   webhookEnabled?: boolean;
   webhookSecret?: string;
@@ -390,7 +404,13 @@ export interface KnowledgeHit {
 }
 export interface KnowledgeIngestResult {
   ok: boolean;
-  results: Array<{ ok: boolean; srcPath: string; docId?: string; chunkCount?: number; error?: string }>;
+  results: Array<{
+    ok: boolean;
+    srcPath: string;
+    docId?: string;
+    chunkCount?: number;
+    error?: string;
+  }>;
   error?: string;
 }
 
@@ -410,8 +430,16 @@ export interface GitCommit {
   time: number;
   refs: string[];
 }
-export interface GitStatusEntry { path: string; index: string; worktree: string }
-export interface GitStatus { staged: GitStatusEntry[]; unstaged: GitStatusEntry[]; untracked: string[] }
+export interface GitStatusEntry {
+  path: string;
+  index: string;
+  worktree: string;
+}
+export interface GitStatus {
+  staged: GitStatusEntry[];
+  unstaged: GitStatusEntry[];
+  untracked: string[];
+}
 /** A single file's two sides for a working-tree-vs-HEAD diff (see main git.getDiff). */
 export interface GitDiff {
   ok: true;
@@ -566,9 +594,9 @@ export interface WorkerSnapshot {
   baseBranch: string;
   spawnedAt: number;
   ageMs: number;
-  idleMs: number | null;        // null = PTY already gone
+  idleMs: number | null; // null = PTY already gone
   tokensUsed: number;
-  tokenCap: number | null;      // effective cap; null = unlimited (the default)
+  tokenCap: number | null; // effective cap; null = unlimited (the default)
   hasSlack: boolean;
   releasing: boolean;
   status: 'releasing' | 'working';
@@ -587,8 +615,17 @@ const api = {
   // ─── PTY ─────────────────────────────────────────────────────────────────
   /** `cwd` in the result is the TILDE-EXPANDED absolute path main actually spawned
    *  into — the renderer stores that, not the raw `~/…` the user typed. */
-  spawnPty: (opts: SpawnPtyOptions): Promise<{ ok: boolean; error?: string; cwd?: string; worktreePath?: string; resumeNotFound?: boolean; resumed?: boolean; seedPrompt?: string }> =>
-    ipcRenderer.invoke('pty:spawn', opts),
+  spawnPty: (
+    opts: SpawnPtyOptions,
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    cwd?: string;
+    worktreePath?: string;
+    resumeNotFound?: boolean;
+    resumed?: boolean;
+    seedPrompt?: string;
+  }> => ipcRenderer.invoke('pty:spawn', opts),
   writePty: (id: string, data: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('pty:write', id, data),
   resizePty: (id: string, cols: number, rows: number): Promise<{ ok: boolean; error?: string }> =>
@@ -597,15 +634,16 @@ const api = {
     ipcRenderer.invoke('pty:redraw', id),
   killPty: (id: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('pty:kill', id),
-  listPtys: (): Promise<Array<{
-    id: string;
-    cwd: string;
-    command: string;
-    pid: number;
-    lastOutputAt: number;
-    hasOutput: boolean;
-  }>> =>
-    ipcRenderer.invoke('pty:list'),
+  listPtys: (): Promise<
+    Array<{
+      id: string;
+      cwd: string;
+      command: string;
+      pid: number;
+      lastOutputAt: number;
+      hasOutput: boolean;
+    }>
+  > => ipcRenderer.invoke('pty:list'),
   /** Resolve a Claude session id to the cwd it originally ran in (Add Agent
    *  resume auto-fill), or null if the id is invalid/unknown. */
   resolveSessionCwd: (sessionId: string): Promise<string | null> =>
@@ -649,12 +687,10 @@ const api = {
   copyToClipboard: (text: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('app:copyToClipboard', text),
   /** Read the system clipboard as plain text ('' when empty/unreadable). */
-  readClipboard: (): Promise<string> =>
-    ipcRenderer.invoke('app:readClipboard'),
+  readClipboard: (): Promise<string> => ipcRenderer.invoke('app:readClipboard'),
 
   // ─── Config ──────────────────────────────────────────────────────────────
-  getConfig: (): Promise<HarnessConfig> =>
-    ipcRenderer.invoke('config:get'),
+  getConfig: (): Promise<HarnessConfig> => ipcRenderer.invoke('config:get'),
   updateConfig: (patch: Partial<HarnessConfig>): Promise<HarnessConfig> =>
     ipcRenderer.invoke('config:update', patch),
   ensureHarnessHome: (path: string): Promise<{ ok: boolean; error?: string }> =>
@@ -667,15 +703,23 @@ const api = {
     ipcRenderer.invoke('config:changeHome', { newHome, mode }),
 
   // ─── Filesystem (sandboxed to cwd) ───────────────────────────────────────
-  listDir: (root: string, rel: string): Promise<
-    { ok: true; entries: DirEntry[]; path: string } | { ok: false; error: string }
-  > => ipcRenderer.invoke('fs:listDir', root, rel),
-  readFile: (root: string, rel: string): Promise<
+  listDir: (
+    root: string,
+    rel: string,
+  ): Promise<{ ok: true; entries: DirEntry[]; path: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('fs:listDir', root, rel),
+  readFile: (
+    root: string,
+    rel: string,
+  ): Promise<
     { ok: true; content: string; path: string; size: number } | { ok: false; error: string }
   > => ipcRenderer.invoke('fs:readFile', root, rel),
-  writeFile: (root: string, rel: string, content: string): Promise<
-    { ok: true; path: string } | { ok: false; error: string }
-  > => ipcRenderer.invoke('fs:writeFile', root, rel, content),
+  writeFile: (
+    root: string,
+    rel: string,
+    content: string,
+  ): Promise<{ ok: true; path: string } | { ok: false; error: string }> =>
+    ipcRenderer.invoke('fs:writeFile', root, rel, content),
   /** v0.3.4: existence check for an absolute path (expands ~) — backs the
    *  terminal ⌘-click markdown flow. Metadata only, never contents. */
   statAbs: (p: string): Promise<{ exists: boolean; isFile: boolean; path: string }> =>
@@ -687,15 +731,21 @@ const api = {
    *  resolves to the original repo, not to itself. null when not a git repo. */
   gitMainRepo: (cwd: string): Promise<string | null> => ipcRenderer.invoke('git:mainRepo', cwd),
   gitBranch: (cwd: string) =>
-    ipcRenderer.invoke('git:branch', cwd) as Promise<{ current: string | null; detached: boolean } | { error: string }>,
+    ipcRenderer.invoke('git:branch', cwd) as Promise<
+      { current: string | null; detached: boolean } | { error: string }
+    >,
   gitStatus: (cwd: string) =>
     ipcRenderer.invoke('git:status', cwd) as Promise<GitStatus | { error: string }>,
   gitLog: (cwd: string, n?: number) =>
     ipcRenderer.invoke('git:log', cwd, n ?? 50) as Promise<GitCommit[] | { error: string }>,
   gitBranches: (cwd: string) =>
-    ipcRenderer.invoke('git:branches', cwd) as Promise<{ local: string[]; remote: string[]; current: string | null } | { error: string }>,
+    ipcRenderer.invoke('git:branches', cwd) as Promise<
+      { local: string[]; remote: string[]; current: string | null } | { error: string }
+    >,
   gitAheadBehind: (cwd: string) =>
-    ipcRenderer.invoke('git:aheadBehind', cwd) as Promise<{ ahead: number; behind: number; upstream: string | null } | { error: string }>,
+    ipcRenderer.invoke('git:aheadBehind', cwd) as Promise<
+      { ahead: number; behind: number; upstream: string | null } | { error: string }
+    >,
   /** Diff one repo-root-relative file: its HEAD content vs its working-tree content.
    *  Path-validated main-side against `cwd`; the renderer only ever gets the two
    *  text sides. Backs the IDE's git-diff (Monaco DiffEditor) view. */
@@ -703,16 +753,20 @@ const api = {
     ipcRenderer.invoke('git:diff', cwd, relPath) as Promise<GitDiff | { ok: false; error: string }>,
   // ── v0.3.4: history / compare / checkout (git visualization) ──
   gitLogGraph: (cwd: string, n: number, skip?: number) =>
-    ipcRenderer.invoke('git:logGraph', cwd, n, skip ?? 0) as Promise<GitCommitRow[] | { error: string }>,
+    ipcRenderer.invoke('git:logGraph', cwd, n, skip ?? 0) as Promise<
+      GitCommitRow[] | { error: string }
+    >,
   gitCommitFiles: (cwd: string, sha: string) =>
     ipcRenderer.invoke('git:commitFiles', cwd, sha) as Promise<GitFileChange[] | { error: string }>,
   gitShowFile: (cwd: string, rev: string, relPath: string) =>
     ipcRenderer.invoke('git:showFile', cwd, rev, relPath) as Promise<
-      { ok: true; exists: boolean; isBinary: boolean; content: string } | { ok: false; error: string }
+      | { ok: true; exists: boolean; isBinary: boolean; content: string }
+      | { ok: false; error: string }
     >,
   gitCompareRefs: (cwd: string, base: string, head: string, mode?: 'two' | 'three') =>
     ipcRenderer.invoke('git:compareRefs', cwd, base, head, mode ?? 'three') as Promise<
-      { ahead: number; behind: number; mergeBase: string | null; files: GitFileChange[] } | { error: string }
+      | { ahead: number; behind: number; mergeBase: string | null; files: GitFileChange[] }
+      | { error: string }
     >,
   gitWorktrees: (cwd: string) =>
     ipcRenderer.invoke('git:worktrees', cwd) as Promise<
@@ -740,23 +794,33 @@ const api = {
    *  main. Pass { id } for one message, { agentId } to scope to one mailbox, or
    *  {} for the whole floor. Backs Realtime Michael's get_messages. The renderer
    *  never sees a raw body or a secret — stripping happens main-side. */
-  hiveMessages: (opts?: { agentId?: string; id?: string; limit?: number; includeArchived?: boolean }): Promise<VoiceMessage[]> =>
-    ipcRenderer.invoke('hive:messages', opts ?? {}),
+  hiveMessages: (opts?: {
+    agentId?: string;
+    id?: string;
+    limit?: number;
+    includeArchived?: boolean;
+  }): Promise<VoiceMessage[]> => ipcRenderer.invoke('hive:messages', opts ?? {}),
   /** Consolidated per-agent directory (registry + telemetry + context), incl.
    *  archived agents. Backs Realtime Michael's get_agent_detail / list_agents. */
   hiveAgentDirectory: (): Promise<AgentDirectory> => ipcRenderer.invoke('hive:agentDirectory'),
 
   // ─── Ephemeral workers (P4 — Slack-triggered isolated workers) ───────────
   /** Live ephemeral workers + worktrees preserved awaiting integration/GC. */
-  listWorkers: (): Promise<{ live: WorkerSnapshot[]; preserved: PreservedWorktreeSnapshot[]; maxWorkers: number }> =>
-    ipcRenderer.invoke('workers:list'),
+  listWorkers: (): Promise<{
+    live: WorkerSnapshot[];
+    preserved: PreservedWorktreeSnapshot[];
+    maxWorkers: number;
+  }> => ipcRenderer.invoke('workers:list'),
   /** Manually stop a live ephemeral worker (safety-gated teardown; work preserved). */
   stopWorker: (workerId: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('workers:stop', workerId),
 
   // ─── Semantic memory (MemPalace CLI) ─────────────────────────────────────
   memoryStatus: (): Promise<MemoryStatus> => ipcRenderer.invoke('hive:memoryStatus'),
-  searchMemory: (query: string, wing?: string): Promise<{ ok: boolean; output: string; error?: string }> =>
+  searchMemory: (
+    query: string,
+    wing?: string,
+  ): Promise<{ ok: boolean; output: string; error?: string }> =>
     ipcRenderer.invoke('hive:searchMemory', query, wing),
   memoryWakeUp: (wing?: string): Promise<{ ok: boolean; output: string; error?: string }> =>
     ipcRenderer.invoke('hive:memoryWakeUp', wing),
@@ -764,8 +828,11 @@ const api = {
   /** Condense agent memory.md files (the janitor's missing half). With an id,
    *  condense that agent on demand; without, run a full threshold scan. Returns
    *  the per-agent outcomes ({ id, condensed, reason, oldBytes?, newBytes? }). */
-  reflectNow: (id?: string): Promise<Array<{ id: string; condensed: boolean; reason: string; oldBytes?: number; newBytes?: number }>> =>
-    ipcRenderer.invoke('memory:reflectNow', id),
+  reflectNow: (
+    id?: string,
+  ): Promise<
+    Array<{ id: string; condensed: boolean; reason: string; oldBytes?: number; newBytes?: number }>
+  > => ipcRenderer.invoke('memory:reflectNow', id),
 
   // ─── Enterprise Knowledge Graph (multimodal context for agents) ───────────
   kgStatus: (): Promise<KnowledgeStatus> => ipcRenderer.invoke('kg:status'),
@@ -795,30 +862,58 @@ const api = {
 
   // ─── Command history (SQLite — every prompt submitted to an agent) ─────────
   /** Record one submitted prompt. Fire-and-forget from the prompt-detection hook. */
-  historyAdd: (entry: { agentId: string; cwd?: string; text: string }): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('history:add', entry),
+  historyAdd: (entry: {
+    agentId: string;
+    cwd?: string;
+    text: string;
+  }): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('history:add', entry),
   /** Most-recent-first history, optionally scoped to one agent. */
   historyList: (agentId?: string, limit?: number): Promise<CommandHistoryEntry[]> =>
     ipcRenderer.invoke('history:list', agentId, limit),
   /** Substring search over prompt text, most-recent-first. */
   historySearch: (query: string, limit?: number): Promise<CommandHistoryEntry[]> =>
     ipcRenderer.invoke('history:search', query, limit),
-  hiveSend: (msg: Partial<HiveMessage>, from?: string): Promise<{ ok: boolean; error?: string; message?: HiveMessage }> =>
+  hiveSend: (
+    msg: Partial<HiveMessage>,
+    from?: string,
+  ): Promise<{ ok: boolean; error?: string; message?: HiveMessage }> =>
     ipcRenderer.invoke('hive:send', msg, from),
 
   onHiveHookEvent: (
-    cb: (e: { agentId?: string; event: string; tool?: string; notificationType?: string; source?: string; message?: string; blocked?: boolean }) => void
+    cb: (e: {
+      agentId?: string;
+      event: string;
+      tool?: string;
+      notificationType?: string;
+      source?: string;
+      message?: string;
+      blocked?: boolean;
+    }) => void,
   ): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: { agentId?: string; event: string; tool?: string; notificationType?: string; source?: string; message?: string; blocked?: boolean }) => cb(payload);
+    const listener = (
+      _e: IpcRendererEvent,
+      payload: {
+        agentId?: string;
+        event: string;
+        tool?: string;
+        notificationType?: string;
+        source?: string;
+        message?: string;
+        blocked?: boolean;
+      },
+    ) => cb(payload);
     ipcRenderer.on('hive:hookEvent', listener);
     return () => ipcRenderer.removeListener('hive:hookEvent', listener);
   },
   /** Push-based context accounting from the status line: live tokens + the
    *  session's EXACT context-window size. Same pattern as onHiveHookEvent. */
   onHiveContextUpdate: (
-    cb: (e: { agentId: string; tokens: number; limit: number }) => void
+    cb: (e: { agentId: string; tokens: number; limit: number }) => void,
   ): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: { agentId: string; tokens: number; limit: number }) => cb(payload);
+    const listener = (
+      _e: IpcRendererEvent,
+      payload: { agentId: string; tokens: number; limit: number },
+    ) => cb(payload);
     ipcRenderer.on('hive:contextUpdate', listener);
     return () => ipcRenderer.removeListener('hive:contextUpdate', listener);
   },
@@ -831,7 +926,8 @@ const api = {
    *  Codex). Main emits this instead of bouncing; the renderer enqueues the
    *  raw text so the drain effect types it into the agent's REPL when idle. */
   onHiveEnqueue: (cb: (e: { targetId: string; text: string }) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: { targetId: string; text: string }) => cb(payload);
+    const listener = (_e: IpcRendererEvent, payload: { targetId: string; text: string }) =>
+      cb(payload);
     ipcRenderer.on('hive:enqueueToAgent', listener);
     return () => ipcRenderer.removeListener('hive:enqueueToAgent', listener);
   },
@@ -839,11 +935,16 @@ const api = {
    *  the floor card from this descriptor since it didn't initiate the hire itself. */
   onHiveAgentSpawned: (
     cb: (rec: {
-      id: string; name: string; provider?: string; cwd: string;
-      command?: string; role?: string; worktreePath?: string;
+      id: string;
+      name: string;
+      provider?: string;
+      cwd: string;
+      command?: string;
+      role?: string;
+      worktreePath?: string;
       /** Engagement label (session naming) — leads the typed wake nudge. */
       spawnLabel?: string;
-    }) => void
+    }) => void,
   ): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: Parameters<typeof cb>[0]) => cb(payload);
     ipcRenderer.on('hive:agentSpawned', listener);
@@ -859,7 +960,8 @@ const api = {
   /** A MAIN-initiated park — the renderer moves the card into VACATION, since it
    *  did not initiate the park itself. Sibling of onHiveAgentArchived. */
   onHiveAgentVacationed: (cb: (e: { id: string; vacationSince: number }) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: { id: string; vacationSince: number }) => cb(payload);
+    const listener = (_e: IpcRendererEvent, payload: { id: string; vacationSince: number }) =>
+      cb(payload);
     ipcRenderer.on('hive:agentVacationed', listener);
     return () => ipcRenderer.removeListener('hive:agentVacationed', listener);
   },
@@ -889,8 +991,7 @@ const api = {
   },
   /** Signal readiness and pull any queued deep-linked manifests (cold-start
    *  links, links that arrived during load). Resolves the queued list. */
-  drainPendingHires: (): Promise<HireManifest[]> =>
-    ipcRenderer.invoke('hire:drainPending'),
+  drainPendingHires: (): Promise<HireManifest[]> => ipcRenderer.invoke('hire:drainPending'),
   /** Open a file picker and validate the chosen hire-manifest JSON. */
   importHireFile: (): Promise<{ ok: boolean; manifest?: HireManifest; error?: string }> =>
     ipcRenderer.invoke('hire:openFile'),
@@ -960,8 +1061,7 @@ const api = {
   telemetrySpans: (agentId: string): Promise<ToolSpan[]> =>
     ipcRenderer.invoke('telemetry:spans', agentId),
   /** Cold-start backfill of all agents' usage + recent spans. */
-  telemetrySnapshot: (): Promise<TelemetrySnapshot> =>
-    ipcRenderer.invoke('telemetry:snapshot'),
+  telemetrySnapshot: (): Promise<TelemetrySnapshot> => ipcRenderer.invoke('telemetry:snapshot'),
   /** Subscribe to live telemetry pushes; returns an unsubscribe fn. */
   onTelemetryEvent: (cb: (e: TelemetryEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: TelemetryEvent) => cb(payload);
@@ -991,7 +1091,11 @@ const api = {
   controlResume: (agentId: string): Promise<AgentControlSnapshot | null> =>
     ipcRenderer.invoke('control:resume', agentId),
   /** Gate/ungate a specific tool for an agent (denied at PreToolUse). */
-  controlGateTool: (agentId: string, tool: string, on: boolean): Promise<AgentControlSnapshot | null> =>
+  controlGateTool: (
+    agentId: string,
+    tool: string,
+    on: boolean,
+  ): Promise<AgentControlSnapshot | null> =>
     ipcRenderer.invoke('control:gateTool', agentId, tool, on),
   /** Queue a steer note — injected as context on the agent's next hook (#7C.2). */
   controlSteer: (agentId: string, text: string): Promise<AgentControlSnapshot | null> =>
@@ -1003,8 +1107,13 @@ const api = {
   controlSnapshot: (agentId: string): Promise<AgentControlSnapshot | null> =>
     ipcRenderer.invoke('control:snapshot', agentId),
   /** Subscribe to gate/deny events (a tool was blocked); returns unsubscribe fn. */
-  onApprovalRequest: (cb: (e: { agentId: string; tool?: string; reason?: string }) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: { agentId: string; tool?: string; reason?: string }) => cb(payload);
+  onApprovalRequest: (
+    cb: (e: { agentId: string; tool?: string; reason?: string }) => void,
+  ): (() => void) => {
+    const listener = (
+      _e: IpcRendererEvent,
+      payload: { agentId: string; tool?: string; reason?: string },
+    ) => cb(payload);
     ipcRenderer.on('control:approvalRequest', listener);
     return () => ipcRenderer.removeListener('control:approvalRequest', listener);
   },
@@ -1015,7 +1124,10 @@ const api = {
     ipcRenderer.invoke('hive:writeTasks', tasks),
   /** The human adds a todo card (origin 'human'). Main-process read-modify-write
    *  on tasks.json at action time. No wake-up — god triages at heartbeats. */
-  hiveAddHumanTask: (title: string, notes?: string): Promise<{ ok: boolean; task?: HiveTask; error?: string }> =>
+  hiveAddHumanTask: (
+    title: string,
+    notes?: string,
+  ): Promise<{ ok: boolean; task?: HiveTask; error?: string }> =>
     ipcRenderer.invoke('hive:addHumanTask', title, notes),
   /** Delete a human-origin card — only while it is still 'todo'. */
   hiveDeleteHumanTask: (id: string): Promise<{ ok: boolean; error?: string }> =>
@@ -1041,7 +1153,9 @@ const api = {
   },
 
   // ─── Full-text search across hive files (board, tasks, memory) ─────────────
-  textSearch: (q: string): Promise<{ ok: boolean; results: Array<{ source: string; excerpt: string }> }> =>
+  textSearch: (
+    q: string,
+  ): Promise<{ ok: boolean; results: Array<{ source: string; excerpt: string }> }> =>
     ipcRenderer.invoke('hive:textSearch', q),
 
   // ─── GitHub issue ingestion (gh CLI) ───────────────────────────────────────
@@ -1080,15 +1194,37 @@ const api = {
   // ─── Slack integration (Slack message → Michael's queue) ─────────────────────
   /** Register a listener for inbound Slack messages; returns an unsubscribe fn.
    *  The message carries the thread coordinates needed to reply in-thread. */
-  onSlackMessage: (cb: (msg: { text: string; channel: string; ts: string; thread_ts: string; autonomyPreamble?: string; files?: { path: string; name: string; mimetype: string }[] }) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, msg: { text: string; channel: string; ts: string; thread_ts: string; autonomyPreamble?: string; files?: { path: string; name: string; mimetype: string }[] }) => cb(msg);
+  onSlackMessage: (
+    cb: (msg: {
+      text: string;
+      channel: string;
+      ts: string;
+      thread_ts: string;
+      autonomyPreamble?: string;
+      files?: { path: string; name: string; mimetype: string }[];
+    }) => void,
+  ): (() => void) => {
+    const listener = (
+      _e: IpcRendererEvent,
+      msg: {
+        text: string;
+        channel: string;
+        ts: string;
+        thread_ts: string;
+        autonomyPreamble?: string;
+        files?: { path: string; name: string; mimetype: string }[];
+      },
+    ) => cb(msg);
     ipcRenderer.on('slack:incomingMessage', listener);
     return () => ipcRenderer.removeListener('slack:incomingMessage', listener);
   },
   // ─── Telegram integration (Telegram message → Michael's queue) ────────────
   /** Register a listener for inbound Telegram messages; returns unsubscribe. */
-  onTelegramMessage: (cb: (msg: { text: string; autonomyPreamble?: string }) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, msg: { text: string; autonomyPreamble?: string }) => cb(msg);
+  onTelegramMessage: (
+    cb: (msg: { text: string; autonomyPreamble?: string }) => void,
+  ): (() => void) => {
+    const listener = (_e: IpcRendererEvent, msg: { text: string; autonomyPreamble?: string }) =>
+      cb(msg);
     ipcRenderer.on('telegram:incomingMessage', listener);
     return () => ipcRenderer.removeListener('telegram:incomingMessage', listener);
   },
@@ -1097,33 +1233,40 @@ const api = {
   slackStart: (): Promise<{ ok: boolean; url?: string; error?: string }> =>
     ipcRenderer.invoke('slack:start'),
   /** Stop the Slack webhook server + tunnel. */
-  slackStop: (): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke('slack:stop'),
+  slackStop: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('slack:stop'),
   /** Current connection state + last Request URL (so Settings can hydrate the
    *  "Connected" badge and re-show the persisted tunnel URL on reopen). */
   slackStatus: (): Promise<{ running: boolean; url?: string }> =>
     ipcRenderer.invoke('slack:status'),
   /** Post a reply into a Slack thread (the bot token stays in main). Used for the
    *  renderer's immediate "queued" ack. */
-  slackReply: (m: { channel: string; thread_ts: string; text: string }): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('slack:reply', m),
+  slackReply: (m: {
+    channel: string;
+    thread_ts: string;
+    text: string;
+  }): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('slack:reply', m),
   /** Absolute path to the bundled reply helper, for the office worker's
    *  end-of-run "post your summary back to Slack" instruction. */
-  slackReplyScriptPath: (): Promise<string> =>
-    ipcRenderer.invoke('slack:replyScriptPath'),
+  slackReplyScriptPath: (): Promise<string> => ipcRenderer.invoke('slack:replyScriptPath'),
   /** Persist Slack settings (and stop the server if disabled / secret cleared). */
   slackSetConfig: (patch: {
-    signingSecret?: string; botToken?: string; channelId?: string; port?: number; enabled?: boolean;
+    signingSecret?: string;
+    botToken?: string;
+    channelId?: string;
+    port?: number;
+    enabled?: boolean;
     proactivePosting?: boolean;
-  }): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke('slack:setConfig', patch),
+  }): Promise<{ ok: boolean }> => ipcRenderer.invoke('slack:setConfig', patch),
   /** Non-secret Telegram runtime state (token value never crosses IPC). */
   telegramStatus: (): Promise<{ running: boolean; hasToken: boolean; chatId?: number | null }> =>
     ipcRenderer.invoke('telegram:status'),
   /** Persist Telegram settings (token/chat id → .env.telegram write-only,
    *  enabled → config) and reconcile the trigger live — no app restart. */
-  telegramSetConfig: (patch: { enabled?: boolean; botToken?: string; chatId?: string }):
-    Promise<{ ok: boolean; running: boolean; error?: string }> =>
+  telegramSetConfig: (patch: {
+    enabled?: boolean;
+    botToken?: string;
+    chatId?: string;
+  }): Promise<{ ok: boolean; running: boolean; error?: string }> =>
     ipcRenderer.invoke('telegram:setConfig', patch),
 
   // ─── Generic webhook + status API (POST → work, GET → status) ────────────────
@@ -1132,8 +1275,7 @@ const api = {
   webhookStart: (): Promise<{ ok: boolean; url?: string; error?: string }> =>
     ipcRenderer.invoke('webhook:start'),
   /** Stop the generic webhook server + tunnel. */
-  webhookStop: (): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke('webhook:stop'),
+  webhookStop: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('webhook:stop'),
   /** Current state + last endpoint URL (so Settings can hydrate the badge/URL). */
   webhookStatus: (): Promise<{ running: boolean; url?: string }> =>
     ipcRenderer.invoke('webhook:status'),
@@ -1142,14 +1284,14 @@ const api = {
     ipcRenderer.invoke('webhook:generateSecret'),
   /** Persist webhook settings (and stop the server if disabled / secret cleared). */
   webhookSetConfig: (patch: {
-    secret?: string; port?: number; enabled?: boolean;
-  }): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke('webhook:setConfig', patch),
+    secret?: string;
+    port?: number;
+    enabled?: boolean;
+  }): Promise<{ ok: boolean }> => ipcRenderer.invoke('webhook:setConfig', patch),
 
   // ─── Triggers: context (auto-compact / auto-clear) ──────────────────────────
   /** The two context rules (cadence + pressure gate + message), deep-filled. */
-  getContextTrigger: (): Promise<ContextTriggerConfig> =>
-    ipcRenderer.invoke('triggers:getContext'),
+  getContextTrigger: (): Promise<ContextTriggerConfig> => ipcRenderer.invoke('triggers:getContext'),
   /** Persist both rules and RE-ARM main's timers; resolves to what was stored
    *  (main clamps the cadence/percentages, so the echo is authoritative). */
   setContextTrigger: (cfg: ContextTriggerConfig): Promise<ContextTriggerConfig> =>
@@ -1157,8 +1299,13 @@ const api = {
   /** Fires when a context rule comes due. `rule` rides along because main owns
    *  only the CADENCE — the renderer applies the per-agent pressure gate and
    *  queues the command for each agent that qualifies. */
-  onContextTrigger: (cb: (evt: { action: 'compact' | 'clear'; rule: ContextRule }) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: { action: 'compact' | 'clear'; rule: ContextRule }) => cb(payload);
+  onContextTrigger: (
+    cb: (evt: { action: 'compact' | 'clear'; rule: ContextRule }) => void,
+  ): (() => void) => {
+    const listener = (
+      _e: IpcRendererEvent,
+      payload: { action: 'compact' | 'clear'; rule: ContextRule },
+    ) => cb(payload);
     ipcRenderer.on('trigger:context', listener);
     return () => ipcRenderer.removeListener('trigger:context', listener);
   },
@@ -1179,8 +1326,11 @@ const api = {
   generateWebhookSecret: (): Promise<string> => ipcRenderer.invoke('webhooks:generateSecret'),
   /** Server state, the tunnel root, and each endpoint's full public URL (`url` is
    *  '' until a tunnel has come up). */
-  webhooksStatus: (): Promise<{ running: boolean; url?: string; endpoints: { id: string; url: string }[] }> =>
-    ipcRenderer.invoke('webhooks:status'),
+  webhooksStatus: (): Promise<{
+    running: boolean;
+    url?: string;
+    endpoints: { id: string; url: string }[];
+  }> => ipcRenderer.invoke('webhooks:status'),
 
   // ─── Triggers: organisation (clone-node peer messaging) ─────────────────────
   /** PERSISTENCE ONLY — the peer transport does not exist yet, so setting this
@@ -1197,8 +1347,10 @@ const api = {
    *  request, the same path an auto-allowed message takes); 'rejected' only flips
    *  the verdict. Deciding an already-decided entry is a no-op, never a second
    *  dispatch. Resolves to the updated row, or null when the id is gone. */
-  decideTriggerHistory: (arg: { id: string; decision: 'approved' | 'rejected' }): Promise<TriggerHistoryEntry | null> =>
-    ipcRenderer.invoke('triggerHistory:decide', arg),
+  decideTriggerHistory: (arg: {
+    id: string;
+    decision: 'approved' | 'rejected';
+  }): Promise<TriggerHistoryEntry | null> => ipcRenderer.invoke('triggerHistory:decide', arg),
   /** Wipe the ledger, or just one source's half of it. */
   clearTriggerHistory: (source?: 'webhook' | 'org'): Promise<void> =>
     ipcRenderer.invoke('triggerHistory:clear', source),
@@ -1214,13 +1366,17 @@ const api = {
   /** Persist Free Flow settings (flag / Groq key / model). The Groq key is stored
    *  in main config; entry point B (hold-Option) is renderer-side, no hotkey here. */
   freeflowSetConfig: (patch: {
-    enabled?: boolean; apiKey?: string; model?: string;
-  }): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke('freeflow:setConfig', patch),
+    enabled?: boolean;
+    apiKey?: string;
+    model?: string;
+  }): Promise<{ ok: boolean }> => ipcRenderer.invoke('freeflow:setConfig', patch),
   /** Transcribe one captured audio clip via Groq (the key stays in main; only the
    *  audio bytes go in and the transcript comes back). Gated on the flag + a key. */
   freeflowTranscribe: (arg: {
-    audio: ArrayBuffer | Uint8Array; mimeType?: string; filename?: string; language?: string;
+    audio: ArrayBuffer | Uint8Array;
+    mimeType?: string;
+    filename?: string;
+    language?: string;
   }): Promise<{ ok: boolean; text?: string; error?: string }> =>
     ipcRenderer.invoke('freeflow:transcribe', arg),
 
@@ -1230,23 +1386,31 @@ const api = {
   // `integrationsSetSecret` takes a secret ONE WAY (never echoed); NO method ever
   // returns a secret value to the renderer. Method names match registryClient's
   // feature-detection (camelCase ↔ colon-channel), so its real path activates as-is.
-  integrationsList: (): Promise<IntegrationRecordView[]> =>
-    ipcRenderer.invoke('integrations:list'),
+  integrationsList: (): Promise<IntegrationRecordView[]> => ipcRenderer.invoke('integrations:list'),
   integrationsTemplates: (): Promise<IntegrationTemplate[]> =>
     ipcRenderer.invoke('integrations:templates'),
-  integrationsUpsert: (record: IntegrationRecord): Promise<{ ok: true; record: IntegrationRecord } | { ok: false; error: string }> =>
+  integrationsUpsert: (
+    record: IntegrationRecord,
+  ): Promise<{ ok: true; record: IntegrationRecord } | { ok: false; error: string }> =>
     ipcRenderer.invoke('integrations:upsert', record),
-  integrationsSetSecret: (req: { id: string; secret: string }): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('integrations:setSecret', req),
+  integrationsSetSecret: (req: {
+    id: string;
+    secret: string;
+  }): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('integrations:setSecret', req),
   integrationsRemove: (req: { id: string }): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('integrations:remove', req),
-  integrationsTest: (req: { id: string; path?: string }): Promise<{ ok: boolean; status?: number; error?: string }> =>
+  integrationsTest: (req: {
+    id: string;
+    path?: string;
+  }): Promise<{ ok: boolean; status?: number; error?: string }> =>
     ipcRenderer.invoke('integrations:test', req),
   // Per-CLI-provider BYOK keys — WRITE-ONLY. `providerKeySet` stores a backend key one
   // way (never echoed); `providerKeyHas` returns only a boolean; no method ever returns
   // the plaintext. Keys are materialized MAIN-ONLY at spawn.
-  providerKeySet: (req: { backend: string; key: string }): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('providerKey:set', req),
+  providerKeySet: (req: {
+    backend: string;
+    key: string;
+  }): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('providerKey:set', req),
   providerKeyHas: (backend: string): Promise<boolean> =>
     ipcRenderer.invoke('providerKey:has', backend),
   providerKeyClear: (backend: string): Promise<{ ok: boolean; error?: string }> =>
@@ -1254,11 +1418,10 @@ const api = {
   // Realtime Michael (voice orchestrator) — MAIN mints a short-lived EPHEMERAL token
   // from the BYOK OpenAI key; the real key NEVER crosses IPC. `realtimeHasOpenAiKey`
   // is a presence boolean only (gates the voice toggle, like providerKeyHas).
-  realtimeHasOpenAiKey: (): Promise<boolean> =>
-    ipcRenderer.invoke('realtime:hasKey'),
-  realtimeMintToken: (
-    req?: { model?: string }
-  ): Promise<
+  realtimeHasOpenAiKey: (): Promise<boolean> => ipcRenderer.invoke('realtime:hasKey'),
+  realtimeMintToken: (req?: {
+    model?: string;
+  }): Promise<
     | { ok: true; token: string; expiresAt: number | null; sessionConfig: { model: string } }
     | { ok: false; error: string; code?: string }
   > => ipcRenderer.invoke('realtime:mintToken', req ?? {}),
@@ -1266,19 +1429,27 @@ const api = {
   // the tiering, two-step verbal confirm, hard allowlist, and michael-voice
   // attribution. These just forward {verb,...args} and speak back `spoken`.
   realtimeAction: (
-    payload: { verb: string } & Record<string, unknown>
+    payload: { verb: string } & Record<string, unknown>,
   ): Promise<{ ok: boolean; spoken: string; needsConfirm?: boolean }> =>
     ipcRenderer.invoke('realtime:action', payload),
-  realtimeActionConfirm: (
-    req: { phrase: string }
-  ): Promise<{ ok: boolean; spoken: string; needsConfirm?: boolean }> =>
+  realtimeActionConfirm: (req: {
+    phrase: string;
+  }): Promise<{ ok: boolean; spoken: string; needsConfirm?: boolean }> =>
     ipcRenderer.invoke('realtime:action:confirm', req),
   realtimeActionCancel: (): Promise<{ ok: boolean; spoken: string; needsConfirm?: boolean }> =>
     ipcRenderer.invoke('realtime:action:cancel'),
   // rt-12 completion seam — a voice-dispatched task finished. `summary` is the
   // human-speakable line Michael relays; the rest is context for a toast/log.
   onRealtimeCompletion: (
-    cb: (evt: { correlationId: string; kind: string; targetAgentId: string; taskId?: string; summary: string; completedAt: number; objective?: string }) => void
+    cb: (evt: {
+      correlationId: string;
+      kind: string;
+      targetAgentId: string;
+      taskId?: string;
+      summary: string;
+      completedAt: number;
+      objective?: string;
+    }) => void,
   ): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: Parameters<typeof cb>[0]) => cb(payload);
     ipcRenderer.on('realtime:completion', listener);
@@ -1289,14 +1460,23 @@ const api = {
     ipcRenderer.invoke('realtime:setSessionLive', live),
   /** Drain completions that arrived while no session was open (warm-start catch-up). */
   realtimeDrainCompletions: (): Promise<
-    { correlationId: string; kind: string; targetAgentId: string; taskId?: string; summary: string; completedAt: number; objective?: string }[]
+    {
+      correlationId: string;
+      kind: string;
+      targetAgentId: string;
+      taskId?: string;
+      summary: string;
+      completedAt: number;
+      objective?: string;
+    }[]
   > => ipcRenderer.invoke('realtime:drainCompletions'),
   /** Block until a tracked task completes (or times out) — backs the wait_for tool. */
   realtimeWaitFor: (
     taskId: string,
-    timeoutMs?: number
-  ): Promise<{ summary: string; targetAgentId: string; taskId?: string } | { timedOut: true; taskId: string }> =>
-    ipcRenderer.invoke('realtime:waitFor', taskId, timeoutMs),
+    timeoutMs?: number,
+  ): Promise<
+    { summary: string; targetAgentId: string; taskId?: string } | { timedOut: true; taskId: string }
+  > => ipcRenderer.invoke('realtime:waitFor', taskId, timeoutMs),
   /** v0.3.4: coalesced floor deltas pushed while a voice session is live — the
    *  renderer injects them into the conversation as silent items. */
   onRealtimeFloorDelta: (cb: (evt: { text: string }) => void): (() => void) => {
@@ -1307,21 +1487,29 @@ const api = {
   /** v0.3.4: main-staged queue insertions (voice clear_context) — the renderer
    *  enqueues so delivery rides every existing safety gate. cardFor marks
    *  card-session pane actions for delivery-time stale-drop. */
-  onRealtimeEnqueue: (cb: (evt: { agentId: string; text: string; cardFor?: CardSessionMarker }) => void): (() => void) => {
-    const listener = (_e: IpcRendererEvent, payload: { agentId: string; text: string; cardFor?: CardSessionMarker }) => cb(payload);
+  onRealtimeEnqueue: (
+    cb: (evt: { agentId: string; text: string; cardFor?: CardSessionMarker }) => void,
+  ): (() => void) => {
+    const listener = (
+      _e: IpcRendererEvent,
+      payload: { agentId: string; text: string; cardFor?: CardSessionMarker },
+    ) => cb(payload);
     ipcRenderer.on('realtime:enqueue', listener);
     return () => ipcRenderer.removeListener('realtime:enqueue', listener);
   },
   /** v0.3.4: app self-knowledge — version + newest changelog sections. */
-  appInfo: (): Promise<{ version: string; changelog: string }> =>
-    ipcRenderer.invoke('app:info'),
+  appInfo: (): Promise<{ version: string; changelog: string }> => ipcRenderer.invoke('app:info'),
   // ─── Roster mirror (agents + notes + queues, shared dev ↔ packaged) ─────────
   /** Read the roster file beside the hive. SYNCHRONOUS on purpose: the zustand
    *  store is created at module load, so an async read would arrive after the
    *  first render and the floor would flash empty. One blocking round trip at
    *  boot. `null` = no file (or unreadable) — the caller then uses localStorage. */
   rosterReadSync: (): RosterSnapshot | null => {
-    try { return ipcRenderer.sendSync('roster:readSync') ?? null; } catch { return null; }
+    try {
+      return ipcRenderer.sendSync('roster:readSync') ?? null;
+    } catch {
+      return null;
+    }
   },
   /** Mirror the roster to disk. Debounced by the caller; main keeps the previous
    *  contents as a backup and refuses a first write that would empty a full file. */
@@ -1353,7 +1541,7 @@ const api = {
     ipcRenderer.invoke('update:download'),
   /** Open the project's releases page for a notify-only update. */
   updateOpenRelease: (url?: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke('update:openRelease', url)
+    ipcRenderer.invoke('update:openRelease', url),
 };
 
 contextBridge.exposeInMainWorld('cth', api);

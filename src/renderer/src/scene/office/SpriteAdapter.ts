@@ -1,10 +1,10 @@
 import { Texture, Rectangle } from 'pixi.js';
 
 export interface SpriteSheetConfig {
-  frameWidth: number;          // pixel width of one frame (LimeZu: 16)
-  frameHeight: number;         // pixel height of one frame (LimeZu: 32)
-  walkRow: number;             // which 32px row holds the walk frames (LimeZu: 1)
-  framesPerDirection: number;  // walk frames per direction in that row (LimeZu: 6)
+  frameWidth: number; // pixel width of one frame (LimeZu: 16)
+  frameHeight: number; // pixel height of one frame (LimeZu: 32)
+  walkRow: number; // which 32px row holds the walk frames (LimeZu: 1)
+  framesPerDirection: number; // walk frames per direction in that row (LimeZu: 6)
 }
 
 /**
@@ -21,7 +21,11 @@ export interface SpriteSheetConfig {
  */
 export class SpriteAdapter {
   private static readonly DIRECTION_GROUP = { down: 3, left: 2, up: 1, right: 0 };
-  private static readonly OUTPUT_DIRECTIONS: Array<'down' | 'up' | 'right'> = ['down', 'up', 'right'];
+  private static readonly OUTPUT_DIRECTIONS: Array<'down' | 'up' | 'right'> = [
+    'down',
+    'up',
+    'right',
+  ];
 
   static extractFrames(sheetTexture: Texture, config: SpriteSheetConfig): Texture[][] {
     const { frameWidth, frameHeight, walkRow, framesPerDirection } = config;

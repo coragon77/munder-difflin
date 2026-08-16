@@ -51,7 +51,13 @@ export class RealtimeFloorWatcher {
 
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => { try { this.tick(); } catch { /* never throw from a timer */ } }, POLL_MS);
+    this.timer = setInterval(() => {
+      try {
+        this.tick();
+      } catch {
+        /* never throw from a timer */
+      }
+    }, POLL_MS);
   }
 
   stop(): void {
@@ -76,10 +82,13 @@ export class RealtimeFloorWatcher {
       agents.set(id, { archived: !!m.archived, name: m.name || id });
     }
 
-    const tasksRaw = this.deps.tasks() as { tasks?: Array<{ id?: string; status?: string; title?: string }> } | null;
+    const tasksRaw = this.deps.tasks() as {
+      tasks?: Array<{ id?: string; status?: string; title?: string }>;
+    } | null;
     const tasks = new Map<string, { status: string; title: string }>();
     for (const t of Array.isArray(tasksRaw?.tasks) ? tasksRaw!.tasks! : []) {
-      if (typeof t?.id === 'string') tasks.set(t.id, { status: t.status ?? 'todo', title: t.title ?? t.id });
+      if (typeof t?.id === 'string')
+        tasks.set(t.id, { status: t.status ?? 'todo', title: t.title ?? t.id });
     }
 
     const now = Date.now();
@@ -94,13 +103,15 @@ export class RealtimeFloorWatcher {
         const prev = this.prevAgents.get(id);
         if (!prev) this.buffer.push(`${cur.name} joined the floor`);
         else if (!prev.archived && cur.archived) this.buffer.push(`${cur.name} was archived`);
-        else if (prev.archived && !cur.archived) this.buffer.push(`${cur.name} is back from the archive`);
+        else if (prev.archived && !cur.archived)
+          this.buffer.push(`${cur.name} is back from the archive`);
       }
       // task transitions
       for (const [id, cur] of tasks) {
         const prev = this.prevTasks.get(id);
         if (!prev) this.buffer.push(`new task "${cur.title.slice(0, 60)}"`);
-        else if (prev.status !== cur.status) this.buffer.push(`task "${cur.title.slice(0, 60)}" moved to ${cur.status}`);
+        else if (prev.status !== cur.status)
+          this.buffer.push(`task "${cur.title.slice(0, 60)}" moved to ${cur.status}`);
       }
       // activity flips (quiet ↔ streaming), named via the registry
       for (const [id, isActive] of active) {
@@ -117,7 +128,10 @@ export class RealtimeFloorWatcher {
     this.prevActive = active;
     this.primed = true;
 
-    if (!this.live || this.buffer.length === 0) { if (!this.live) this.buffer = []; return; }
+    if (!this.live || this.buffer.length === 0) {
+      if (!this.live) this.buffer = [];
+      return;
+    }
     if (now - this.lastPushAt < MIN_PUSH_GAP_MS) return;
 
     const text = this.buffer.join('; ').slice(0, MAX_PUSH_CHARS);

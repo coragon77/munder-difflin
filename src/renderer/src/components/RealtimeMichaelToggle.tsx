@@ -43,14 +43,14 @@ const STATE_VIEW: Record<
     variant: 'secondary',
     label: 'talk',
     dot: 'var(--cth-ink-300)',
-    help: 'Talk to Michael — start the voice session'
+    help: 'Talk to Michael — start the voice session',
   },
   connecting: {
     variant: 'secondary',
     label: '…',
     dot: 'var(--cth-lemon)',
     anim: 'cth-blink 700ms steps(2, end) infinite',
-    help: 'Connecting to Michael…'
+    help: 'Connecting to Michael…',
   },
   listening: {
     variant: 'primary',
@@ -58,7 +58,7 @@ const STATE_VIEW: Record<
     dot: 'var(--cth-mint)',
     anim: 'cth-pulse 1000ms steps(2, end) infinite',
     help: 'Listening — Michael is hearing you (click to stop)',
-    activeBg: 'var(--cth-mint)'
+    activeBg: 'var(--cth-mint)',
   },
   responding: {
     variant: 'primary',
@@ -66,15 +66,15 @@ const STATE_VIEW: Record<
     dot: 'var(--cth-sky)',
     anim: 'cth-pulse 600ms steps(2, end) infinite',
     help: 'Michael is speaking (click to stop)',
-    activeBg: 'var(--cth-sky)'
+    activeBg: 'var(--cth-sky)',
   },
   working: {
     variant: 'destructive',
     label: 'working',
     dot: 'var(--cth-coral)',
     anim: 'cth-blink 500ms steps(2, end) infinite',
-    help: 'Michael is running a tool — mic muted (click to stop)'
-  }
+    help: 'Michael is running a tool — mic muted (click to stop)',
+  },
 };
 
 export interface RealtimeMichaelToggleProps {
@@ -123,9 +123,7 @@ export function RealtimeMichaelToggle({ compact = false }: RealtimeMichaelToggle
   const openKeySettings = (e: MouseEvent): void => {
     e.stopPropagation();
     setHint(null);
-    window.dispatchEvent(
-      new CustomEvent('cth:open-settings', { detail: { section: 'Voice' } })
-    );
+    window.dispatchEvent(new CustomEvent('cth:open-settings', { detail: { section: 'Voice' } }));
   };
 
   const HINT_W = 210;
@@ -137,7 +135,10 @@ export function RealtimeMichaelToggle({ compact = false }: RealtimeMichaelToggle
    *  the viewport so it can never hang off an edge. */
   const toggleHint = (e: MouseEvent): void => {
     e.stopPropagation();
-    if (hint) { setHint(null); return; }
+    if (hint) {
+      setHint(null);
+      return;
+    }
     const r = iconRef.current?.getBoundingClientRect();
     if (!r) return;
     // Height is content-dependent; this is the two-line + link case, and the
@@ -161,7 +162,9 @@ export function RealtimeMichaelToggle({ compact = false }: RealtimeMichaelToggle
       if (hintRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       setHint(null);
     };
-    const onKey = (ev: KeyboardEvent): void => { if (ev.key === 'Escape') setHint(null); };
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === 'Escape') setHint(null);
+    };
     // A dock that scrolls or a window that resizes leaves fixed coords stale, and
     // a popover stranded away from its icon is worse than one that closed.
     const onReflow = (): void => setHint(null);
@@ -198,7 +201,11 @@ export function RealtimeMichaelToggle({ compact = false }: RealtimeMichaelToggle
         // Live mic → a clear accent fill (mint listening / sky speaking) so the
         // active button never reads as a flat black primary. Skipped when disabled
         // (no key) and when off/connecting, so those states are untouched.
-        style={!noKey && view.activeBg ? { background: view.activeBg, color: 'var(--cth-ink-900)' } : undefined}
+        style={
+          !noKey && view.activeBg
+            ? { background: view.activeBg, color: 'var(--cth-ink-900)' }
+            : undefined
+        }
       >
         <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
           {/* Live-state indicator dot — color + animation reflect the loop status. */}
@@ -210,14 +217,12 @@ export function RealtimeMichaelToggle({ compact = false }: RealtimeMichaelToggle
               flexShrink: 0,
               background: noKey ? 'var(--cth-ink-300)' : view.dot,
               boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-              animation: noKey ? 'none' : view.anim
+              animation: noKey ? 'none' : view.anim,
             }}
           />
           <Icon name="mic" />
           {!compact && (
-            <span style={{ fontFamily: 'var(--cth-font-ui)' }}>
-              {noKey ? 'talk' : view.label}
-            </span>
+            <span style={{ fontFamily: 'var(--cth-font-ui)' }}>{noKey ? 'talk' : view.label}</span>
           )}
         </span>
       </PixelButton>
@@ -239,59 +244,72 @@ export function RealtimeMichaelToggle({ compact = false }: RealtimeMichaelToggle
             aria-expanded={hintOpen}
             onClick={toggleHint}
             style={{
-              border: 'none', background: 'none', padding: 0, cursor: 'pointer',
-              display: 'inline-flex', alignItems: 'center',
-              opacity: hintOpen ? 1 : 0.75
+              border: 'none',
+              background: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              opacity: hintOpen ? 1 : 0.75,
             }}
           >
             <Icon name="info" />
           </button>
 
-          {hint && createPortal(
-            <div
-              ref={panelRef}
-              role="dialog"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                position: 'fixed',
-                left: hint.left,
-                top: hint.top,
-                zIndex: 460,
-                width: HINT_W,
-                padding: '8px 10px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 5,
-                boxSizing: 'border-box',
-                background: 'var(--cth-paper-100)',
-                // Matches the note editor's portalled popover: hairline + a hard
-                // drop shadow, so it reads as floating above the dock rather than
-                // as part of whichever card it happens to cover.
-                boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500), 4px 4px 0 rgba(26,19,32,0.25)',
-                fontFamily: 'var(--cth-font-ui)',
-                fontSize: 11,
-                lineHeight: '15px',
-                color: 'var(--cth-ink-900)',
-                textAlign: 'left',
-                whiteSpace: 'normal'
-              }}
-            >
-              <span>An <strong>OpenAI API key</strong> is needed to use this feature.</span>
-              <button
-                type="button"
-                onClick={openKeySettings}
+          {hint &&
+            createPortal(
+              <div
+                ref={panelRef}
+                role="dialog"
+                onClick={(e) => e.stopPropagation()}
                 style={{
-                  border: 'none', background: 'none', padding: 0, cursor: 'pointer',
-                  alignSelf: 'flex-start',
-                  fontFamily: 'var(--cth-font-ui)', fontSize: 11, lineHeight: '15px',
-                  color: 'var(--cth-ink-900)', textDecoration: 'underline'
+                  position: 'fixed',
+                  left: hint.left,
+                  top: hint.top,
+                  zIndex: 460,
+                  width: HINT_W,
+                  padding: '8px 10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 5,
+                  boxSizing: 'border-box',
+                  background: 'var(--cth-paper-100)',
+                  // Matches the note editor's portalled popover: hairline + a hard
+                  // drop shadow, so it reads as floating above the dock rather than
+                  // as part of whichever card it happens to cover.
+                  boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500), 4px 4px 0 rgba(26,19,32,0.25)',
+                  fontFamily: 'var(--cth-font-ui)',
+                  fontSize: 11,
+                  lineHeight: '15px',
+                  color: 'var(--cth-ink-900)',
+                  textAlign: 'left',
+                  whiteSpace: 'normal',
                 }}
               >
-                set it up now
-              </button>
-            </div>,
-            document.body
-          )}
+                <span>
+                  An <strong>OpenAI API key</strong> is needed to use this feature.
+                </span>
+                <button
+                  type="button"
+                  onClick={openKeySettings}
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    alignSelf: 'flex-start',
+                    fontFamily: 'var(--cth-font-ui)',
+                    fontSize: 11,
+                    lineHeight: '15px',
+                    color: 'var(--cth-ink-900)',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  set it up now
+                </button>
+              </div>,
+              document.body,
+            )}
         </span>
       )}
     </span>

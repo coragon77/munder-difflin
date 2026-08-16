@@ -14,19 +14,19 @@ export interface PixelPanelProps {
 }
 
 const borderByVariant: Record<Variant, string> = {
-  default:  'var(--cth-panel-border)',
-  inset:    'var(--cth-panel-border-inset)',
-  active:   'var(--cth-panel-border)',  // accent overlay added separately
+  default: 'var(--cth-panel-border)',
+  inset: 'var(--cth-panel-border-inset)',
+  active: 'var(--cth-panel-border)', // accent overlay added separately
   terminal: 'var(--cth-panel-border-terminal)',
-  dialog:   'var(--cth-panel-border-dialog)'
+  dialog: 'var(--cth-panel-border-dialog)',
 };
 
 const fillByVariant: Record<Variant, string> = {
-  default:  'var(--cth-cream-100)',
-  inset:    'var(--cth-cream-200)',
-  active:   'var(--cth-cream-100)',
+  default: 'var(--cth-cream-100)',
+  inset: 'var(--cth-cream-200)',
+  active: 'var(--cth-cream-100)',
   terminal: 'var(--cth-paper-100)',
-  dialog:   'var(--cth-cream-50)'
+  dialog: 'var(--cth-cream-50)',
 };
 
 export function PixelPanel({
@@ -36,14 +36,14 @@ export function PixelPanel({
   children,
   style,
   className,
-  noPadding = false
+  noPadding = false,
 }: PixelPanelProps) {
   const baseStyle: CSSProperties = {
     background: fillByVariant[variant],
     boxShadow: borderByVariant[variant],
     padding: noPadding ? 0 : 'var(--cth-space-3)',
     position: 'relative',
-    ...style
+    ...style,
   };
 
   // Active variant: paint accent over the middle border slot (3px ring at 1px inset)
@@ -66,7 +66,7 @@ export function PixelPanel({
             fontFamily: 'var(--cth-font-display)',
             fontSize: 'var(--cth-text-display-md)',
             lineHeight: 'var(--cth-lh-display-md)',
-            boxShadow: 'inset 0 -1px 0 var(--cth-ink-900)'
+            boxShadow: 'inset 0 -1px 0 var(--cth-ink-900)',
           }}
         >
           {title}

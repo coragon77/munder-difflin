@@ -25,5 +25,5 @@ if (!root) throw new Error('No root element');
 createRoot(root).render(
   <StrictMode>
     <App />
-  </StrictMode>
+  </StrictMode>,
 );

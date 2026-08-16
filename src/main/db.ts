@@ -64,7 +64,7 @@ const MIGRATIONS: Array<(db: Database.Database) => void> = [
       );
       CREATE INDEX IF NOT EXISTS idx_ch_agent_ts ON command_history(agent_id, ts DESC);
     `);
-  }
+  },
 ];
 
 export class PersistStore {
@@ -103,29 +103,43 @@ export class PersistStore {
 
   /** Close the handle (checkpoints WAL). Safe to call when already closed. */
   close(): void {
-    try { this.db?.close(); } catch { /* best-effort on shutdown */ }
+    try {
+      this.db?.close();
+    } catch {
+      /* best-effort on shutdown */
+    }
     this.db = null;
   }
 
-  get isOpen(): boolean { return this.db !== null; }
+  get isOpen(): boolean {
+    return this.db !== null;
+  }
 
   // ─── kv (scalar app state) ─────────────────────────────────────────────────
 
   /** Read a JSON-decoded scalar, or undefined if absent/unparseable. */
   getKv<T = unknown>(key: string): T | undefined {
     if (!this.db) return undefined;
-    const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as { value: string } | undefined;
+    const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as
+      | { value: string }
+      | undefined;
     if (!row) return undefined;
-    try { return JSON.parse(row.value) as T; } catch { return undefined; }
+    try {
+      return JSON.parse(row.value) as T;
+    } catch {
+      return undefined;
+    }
   }
 
   /** Upsert a JSON-encoded scalar. */
   setKv(key: string, value: unknown): void {
     if (!this.db) return;
-    this.db.prepare(
-      `INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-    ).run(key, JSON.stringify(value), Date.now());
+    this.db
+      .prepare(
+        `INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(key, JSON.stringify(value), Date.now());
   }
 
   // ─── command history (net-new) ─────────────────────────────────────────────
@@ -135,7 +149,8 @@ export class PersistStore {
     if (!this.db) return;
     const text = (entry.text ?? '').trim();
     if (!text || !entry.agentId) return;
-    this.db.prepare('INSERT INTO command_history (agent_id, cwd, text, ts) VALUES (?, ?, ?, ?)')
+    this.db
+      .prepare('INSERT INTO command_history (agent_id, cwd, text, ts) VALUES (?, ?, ?, ?)')
       .run(entry.agentId, entry.cwd ?? null, text, Date.now());
   }
 
@@ -144,12 +159,16 @@ export class PersistStore {
     if (!this.db) return [];
     const lim = clampLimit(limit, 100);
     const rows = agentId
-      ? this.db.prepare(
-          'SELECT id, agent_id AS agentId, cwd, text, ts FROM command_history WHERE agent_id = ? ORDER BY ts DESC, id DESC LIMIT ?'
-        ).all(agentId, lim)
-      : this.db.prepare(
-          'SELECT id, agent_id AS agentId, cwd, text, ts FROM command_history ORDER BY ts DESC, id DESC LIMIT ?'
-        ).all(lim);
+      ? this.db
+          .prepare(
+            'SELECT id, agent_id AS agentId, cwd, text, ts FROM command_history WHERE agent_id = ? ORDER BY ts DESC, id DESC LIMIT ?',
+          )
+          .all(agentId, lim)
+      : this.db
+          .prepare(
+            'SELECT id, agent_id AS agentId, cwd, text, ts FROM command_history ORDER BY ts DESC, id DESC LIMIT ?',
+          )
+          .all(lim);
     return rows as CommandHistoryRow[];
   }
 
@@ -161,9 +180,11 @@ export class PersistStore {
     const lim = clampLimit(limit, 50);
     // Escape LIKE wildcards so a literal % or _ in the query isn't a metachar.
     const needle = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
-    return this.db.prepare(
-      "SELECT id, agent_id AS agentId, cwd, text, ts FROM command_history WHERE text LIKE ? ESCAPE '\\' ORDER BY ts DESC, id DESC LIMIT ?"
-    ).all(needle, lim) as CommandHistoryRow[];
+    return this.db
+      .prepare(
+        "SELECT id, agent_id AS agentId, cwd, text, ts FROM command_history WHERE text LIKE ? ESCAPE '\\' ORDER BY ts DESC, id DESC LIMIT ?",
+      )
+      .all(needle, lim) as CommandHistoryRow[];
   }
 }
 

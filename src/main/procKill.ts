@@ -24,7 +24,12 @@ export const KILL_GRACE_MS = 4_000;
 
 /** Is the process still alive? Signal 0 probes without touching it. */
 export function isAlive(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Forcefully kill pid and its descendants NOW. Group-SIGKILL on POSIX (falls
@@ -34,11 +39,21 @@ export function isAlive(pid: number): boolean {
 export function hardKillTree(pid: number): void {
   if (!Number.isInteger(pid) || pid <= 0) return;
   if (process.platform === 'win32') {
-    try { spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { timeout: 10_000 }); } catch { /* gone */ }
+    try {
+      spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { timeout: 10_000 });
+    } catch {
+      /* gone */
+    }
     return;
   }
-  try { process.kill(-pid, 'SIGKILL'); } catch {
-    try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      /* gone */
+    }
   }
 }
 

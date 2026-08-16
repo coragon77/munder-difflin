@@ -25,21 +25,31 @@ export interface DirEntry {
   mtime: number;
 }
 
-export async function listDir(root: string, rel: string): Promise<{
-  ok: true; entries: DirEntry[]; path: string;
-} | { ok: false; error: string }> {
+export async function listDir(
+  root: string,
+  rel: string,
+): Promise<
+  | {
+      ok: true;
+      entries: DirEntry[];
+      path: string;
+    }
+  | { ok: false; error: string }
+> {
   const abs = safeJoin(root, rel);
   if (!abs) return { ok: false, error: 'path escapes root' };
   try {
     const names = await readdir(abs);
-    const entries = await Promise.all(names.map(async (name): Promise<DirEntry> => {
-      try {
-        const s = await stat(join(abs, name));
-        return { name, isDir: s.isDirectory(), size: s.size, mtime: s.mtimeMs };
-      } catch {
-        return { name, isDir: false, size: 0, mtime: 0 };
-      }
-    }));
+    const entries = await Promise.all(
+      names.map(async (name): Promise<DirEntry> => {
+        try {
+          const s = await stat(join(abs, name));
+          return { name, isDir: s.isDirectory(), size: s.size, mtime: s.mtimeMs };
+        } catch {
+          return { name, isDir: false, size: 0, mtime: 0 };
+        }
+      }),
+    );
     entries.sort((a, b) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
       return a.name.localeCompare(b.name);
@@ -52,9 +62,18 @@ export async function listDir(root: string, rel: string): Promise<{
 
 const MAX_READ_BYTES = 2 * 1024 * 1024; // 2 MB
 
-export async function readFileText(root: string, rel: string): Promise<{
-  ok: true; content: string; path: string; size: number;
-} | { ok: false; error: string }> {
+export async function readFileText(
+  root: string,
+  rel: string,
+): Promise<
+  | {
+      ok: true;
+      content: string;
+      path: string;
+      size: number;
+    }
+  | { ok: false; error: string }
+> {
   const abs = safeJoin(root, rel);
   if (!abs) return { ok: false, error: 'path escapes root' };
   try {
@@ -71,9 +90,17 @@ export async function readFileText(root: string, rel: string): Promise<{
   }
 }
 
-export async function writeFileText(root: string, rel: string, content: string): Promise<{
-  ok: true; path: string;
-} | { ok: false; error: string }> {
+export async function writeFileText(
+  root: string,
+  rel: string,
+  content: string,
+): Promise<
+  | {
+      ok: true;
+      path: string;
+    }
+  | { ok: false; error: string }
+> {
   const abs = safeJoin(root, rel);
   if (!abs) return { ok: false, error: 'path escapes root' };
   try {
@@ -116,7 +143,9 @@ export function expandTilde(p: string): string {
  *  ⌘-click markdown flow). `~/` is expanded here (the renderer doesn't know
  *  the home dir). Read-only metadata: returns whether a regular file exists and
  *  the normalized absolute path; never file contents. */
-export async function statAbs(p: string): Promise<{ exists: boolean; isFile: boolean; path: string }> {
+export async function statAbs(
+  p: string,
+): Promise<{ exists: boolean; isFile: boolean; path: string }> {
   let abs = p.startsWith('~/') ? join(homedir(), p.slice(2)) : p;
   if (!isAbsolute(abs)) return { exists: false, isFile: false, path: p };
   abs = normalize(abs);

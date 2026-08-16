@@ -28,17 +28,23 @@ interface RawGHIssue {
  * installed), non-zero exit (e.g. unauthenticated / not a repo), or a JSON
  * parse failure — so callers never have to try/catch.
  */
-export function listIssues(cwd: string): Promise<{ ok: boolean; issues?: GHIssue[]; error?: string }> {
+export function listIssues(
+  cwd: string,
+): Promise<{ ok: boolean; issues?: GHIssue[]; error?: string }> {
   return new Promise((resolve) => {
     const proc = spawn(
       'gh',
       ['issue', 'list', '--json', 'number,title,body,assignees,labels,url,state', '--limit', '30'],
-      { cwd }
+      { cwd },
     );
     let stdout = '';
     let stderr = '';
-    proc.stdout.on('data', (d) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.stdout.on('data', (d) => {
+      stdout += d.toString();
+    });
+    proc.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
     proc.on('error', (e) => resolve({ ok: false, error: e.message }));
     proc.on('close', (code) => {
       if (code !== 0) {
@@ -53,7 +59,7 @@ export function listIssues(cwd: string): Promise<{ ok: boolean; issues?: GHIssue
           body: i.body ?? '',
           url: i.url ?? '',
           labels: (i.labels ?? []).map((l) => l.name ?? '').filter(Boolean),
-          assignees: (i.assignees ?? []).map((a) => a.login ?? '').filter(Boolean)
+          assignees: (i.assignees ?? []).map((a) => a.login ?? '').filter(Boolean),
         }));
         resolve({ ok: true, issues });
       } catch (e) {
@@ -93,12 +99,16 @@ export function listCIRuns(cwd: string): Promise<{ ok: boolean; runs?: CIRun[]; 
     const proc = spawn(
       'gh',
       ['run', 'list', '--limit', '5', '--json', 'name,status,conclusion,url,databaseId'],
-      { cwd }
+      { cwd },
     );
     let stdout = '';
     let stderr = '';
-    proc.stdout.on('data', (d) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.stdout.on('data', (d) => {
+      stdout += d.toString();
+    });
+    proc.stderr.on('data', (d) => {
+      stderr += d.toString();
+    });
     proc.on('error', (e) => resolve({ ok: false, error: e.message }));
     proc.on('close', (code) => {
       if (code !== 0) {
@@ -111,7 +121,7 @@ export function listCIRuns(cwd: string): Promise<{ ok: boolean; runs?: CIRun[]; 
           name: r.name ?? '',
           status: r.status ?? '',
           conclusion: r.conclusion ?? null,
-          url: r.url ?? ''
+          url: r.url ?? '',
         }));
         resolve({ ok: true, runs });
       } catch (e) {

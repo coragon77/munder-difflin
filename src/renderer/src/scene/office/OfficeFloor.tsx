@@ -23,19 +23,19 @@ import type { Tile, Facing, ErrandKind, ErrandSpot } from './themeRegistry';
 /** A cafeteria break in progress for one agent — set by the coffee-break
  *  director, cleared when the agent leaves or gets pulled back to work. */
 interface CafeChat {
-  lines: readonly string[];        // alternating beats: even = initiator, odd = partner
+  lines: readonly string[]; // alternating beats: even = initiator, odd = partner
   partnerId: string;
-  idx: number;                     // next beat to speak
-  beat: number;                    // seconds until the next beat
+  idx: number; // next beat to speak
+  beat: number; // seconds until the next beat
 }
 
 interface CafeBreak {
-  spotIdx: number;                 // index into cafeSpots
+  spotIdx: number; // index into cafeSpots
   phase: 'walking' | 'lingering';
-  timer: number;                   // walking → elapsed watchdog; lingering → countdown
-  quipTimer: number;               // until the next solo quip swap
-  chat?: CafeChat;                 // set on the conversation's initiator
-  chattingWith?: string;           // set on the partner: stays put & stays quiet
+  timer: number; // walking → elapsed watchdog; lingering → countdown
+  quipTimer: number; // until the next solo quip swap
+  chat?: CafeChat; // set on the conversation's initiator
+  chattingWith?: string; // set on the partner: stays put & stays quiet
 }
 
 /** An idle errand in progress for one agent. */
@@ -48,10 +48,17 @@ interface ErrandRun {
 /** One leg of the coffee economy: fetch a clean mug from the sideboard, brew
  *  at the counter machine, (later) wash at the sink and rack the mug again. */
 interface CoffeeRun {
-  phase: 'toTray' | 'taking' | 'toMachine' | 'brewing' | 'toSink' | 'washing' | 'toTrayBack' | 'placing';
+  phase:
+    | 'toTray'
+    | 'taking'
+    | 'toMachine'
+    | 'brewing'
+    | 'toSink'
+    | 'washing'
+    | 'toTrayBack'
+    | 'placing';
   timer: number;
 }
-
 
 interface Runtime {
   character: Character;
@@ -81,13 +88,18 @@ const CHEER_MIN_BUSY_MS = 60_000;
 
 /** What an avatar mutters per errand, picked at random. */
 const ERRAND_THOUGHTS: Record<ErrandKind, readonly string[]> = {
-  water:     ['watering the plants 🌿', 'giving the plants a drink', 'they grow so fast'],
-  window:    ['letting some air in 🍃', 'a bit of fresh air', 'nice breeze today'],
+  water: ['watering the plants 🌿', 'giving the plants a drink', 'they grow so fast'],
+  window: ['letting some air in 🍃', 'a bit of fresh air', 'nice breeze today'],
   dispenser: ['getting some water 💧', 'hydration break', 'staying sharp'],
-  fridge:    ['anything good in the fridge?', 'who took my yogurt?', 'just looking…'],
-  shelf:     ['checking out the shelf 📚', 'anything new in here?', 'so much good stuff'],
-  bin:       ['out with the scrap paper 🗑️', 'desk cleanup day', 'tidying up a little'],
-  smoke:     ['the floor runs itself 🚬', 'boss break.', 'thinking big thoughts 🚬', 'I DECLARE… a break']
+  fridge: ['anything good in the fridge?', 'who took my yogurt?', 'just looking…'],
+  shelf: ['checking out the shelf 📚', 'anything new in here?', 'so much good stuff'],
+  bin: ['out with the scrap paper 🗑️', 'desk cleanup day', 'tidying up a little'],
+  smoke: [
+    'the floor runs itself 🚬',
+    'boss break.',
+    'thinking big thoughts 🚬',
+    'I DECLARE… a break',
+  ],
 };
 
 /** What workers blurt out when the boss walks by — performative excellence.
@@ -99,7 +111,7 @@ const SUCK_UP_LINES = [
   'I was JUST about to do exactly that!',
   'love the tie today, Michael',
   'working hard, boss! 💪',
-  'best boss ever. genuinely.'
+  'best boss ever. genuinely.',
 ] as const;
 
 /** What they actually say once he's out of earshot. */
@@ -110,13 +122,18 @@ const GOSSIP_LINES = [
   'he pinned MY task as his idea',
   'the cigar smell, honestly…',
   'he watered the plant. ONE plant. his own.',
-  "did you hear him? 'I DECLARE… a break'"
+  "did you hear him? 'I DECLARE… a break'",
 ] as const;
 
 /** Lines an avatar throws over its shoulder right after finishing a task. */
 const CHEER_LINES = [
-  'done! ✔', 'nailed it', "that's a wrap", 'ship it 🚀', 'another one done',
-  'crushed it', 'in the books'
+  'done! ✔',
+  'nailed it',
+  "that's a wrap",
+  'ship it 🚀',
+  'another one done',
+  'crushed it',
+  'in the books',
 ] as const;
 
 /** Load a texture via an <img> element. Unlike Pixi's Assets.load(), this
@@ -202,7 +219,10 @@ export function OfficeFloor() {
         width: host.clientWidth || 800,
         height: host.clientHeight || 600,
       });
-      if (mountIdRef.current !== mountId) { safeDestroy(app); return; }
+      if (mountIdRef.current !== mountId) {
+        safeDestroy(app);
+        return;
+      }
       while (host.firstChild) host.removeChild(host.firstChild);
       host.appendChild(app.canvas);
 
@@ -212,7 +232,9 @@ export function OfficeFloor() {
       // reports nothing when that happens: the floor just goes blank forever.
       // Rebuild instead. See glRecovery.ts.
       (app as any).__glRecovery = installContextLossRecovery(app.canvas, {
-        onRebuild: () => { if (mountIdRef.current === mountId) setGlGeneration((n) => n + 1); },
+        onRebuild: () => {
+          if (mountIdRef.current === mountId) setGlGeneration((n) => n + 1);
+        },
         onGiveUp: () => {
           if (mountIdRef.current !== mountId) return;
           const note = document.createElement('div');
@@ -224,14 +246,15 @@ export function OfficeFloor() {
             'Too many terminals are using the GPU at once.\n' +
             'Close a few agent terminals, or restart the app, to bring it back.';
           host.appendChild(note);
-        }
+        },
       });
 
       // Load tilesets in theme order (texture[i] lines up with map tilesets[i]).
-      const tilesetTextures = await Promise.all(
-        themeTilesetUrls(theme).map(loadTexture),
-      );
-      if (mountIdRef.current !== mountId) { safeDestroy(app); return; }
+      const tilesetTextures = await Promise.all(themeTilesetUrls(theme).map(loadTexture));
+      if (mountIdRef.current !== mountId) {
+        safeDestroy(app);
+        return;
+      }
 
       const world = new Container();
       app.stage.addChild(world);
@@ -239,12 +262,18 @@ export function OfficeFloor() {
       const mapRenderer = new TiledMapRenderer(resolveThemeMap(theme), tilesetTextures);
       world.addChild(mapRenderer.getContainer());
       const charLayer = mapRenderer.getCharacterContainer();
-      const tileCount = mapRenderer.getContainer().children.reduce(
-        (n, c) => n + ((c as Container).children?.length ?? 0), 0);
-      console.log(`[OfficeFloor] map ${mapRenderer.width}x${mapRenderer.height}, ${tileCount} tile sprites rendered`);
+      const tileCount = mapRenderer
+        .getContainer()
+        .children.reduce((n, c) => n + ((c as Container).children?.length ?? 0), 0);
+      console.log(
+        `[OfficeFloor] map ${mapRenderer.width}x${mapRenderer.height}, ${tileCount} tile sprites rendered`,
+      );
 
       const camera = new Camera(world);
-      camera.setMapSize(mapRenderer.width * mapRenderer.tileSize, mapRenderer.height * mapRenderer.tileSize);
+      camera.setMapSize(
+        mapRenderer.width * mapRenderer.tileSize,
+        mapRenderer.height * mapRenderer.tileSize,
+      );
       camera.setViewSize(app.screen.width, app.screen.height);
       camera.fitToScreen();
 
@@ -266,18 +295,18 @@ export function OfficeFloor() {
         st.requestCommandCenterTab('triggers');
       });
       // nail + ring binding above a white page with a red month header
-      calG.rect(7, -2, 2, 2).fill(0x4a3b52);                  // nail
-      calG.rect(0, 0, 16, 20).fill(0x4a3b52);                 // frame/shadow
-      calG.rect(1, 1, 14, 18).fill(0xf2ead8);                 // the page
-      calG.rect(1, 1, 14, 4).fill(0xc94f4f);                  // month banner
-      calG.rect(4, 0, 1, 2).fill(0xd8d3c4);                   // binding rings
+      calG.rect(7, -2, 2, 2).fill(0x4a3b52); // nail
+      calG.rect(0, 0, 16, 20).fill(0x4a3b52); // frame/shadow
+      calG.rect(1, 1, 14, 18).fill(0xf2ead8); // the page
+      calG.rect(1, 1, 14, 4).fill(0xc94f4f); // month banner
+      calG.rect(4, 0, 1, 2).fill(0xd8d3c4); // binding rings
       calG.rect(11, 0, 1, 2).fill(0xd8d3c4);
       for (let r = 0; r < 3; r++) {
         for (let c = 0; c < 5; c++) {
           calG.rect(2 + c * 3, 7 + r * 4, 2, 2).fill(0xb8ab90); // day grid
         }
       }
-      calG.rect(8, 11, 2, 2).fill(0xc94f4f);                  // today, circled red
+      calG.rect(8, 11, 2, 2).fill(0xc94f4f); // today, circled red
       charLayer.addChild(calG);
 
       // Build the ordered seat list once: PC desks + named desks first, then
@@ -302,25 +331,31 @@ export function OfficeFloor() {
           }
         }
       };
-      addZoneSeats('boardroom');       // conference room overflow
+      addZoneSeats('boardroom'); // conference room overflow
       // The bottom-right open area is the cafeteria (break room) — see the
       // coffee-break director below. It is deliberately NOT added as overflow
       // desk seating, so the café tables stay free for breaks.
 
       // Waiting spots near the entrance — where a blocked agent walks to signal
       // it needs the user. Collected as walkable tiles in rings around the door.
-      const entrance = mapRenderer.getSpawnPoint('entrance')
-        ?? { x: Math.floor(mapRenderer.width / 2), y: mapRenderer.height - 2 };
+      const entrance = mapRenderer.getSpawnPoint('entrance') ?? {
+        x: Math.floor(mapRenderer.width / 2),
+        y: mapRenderer.height - 2,
+      };
       const waitTiles: Tile[] = [];
       const waitSeen = new Set<string>();
       for (let radius = 0; radius <= 6 && waitTiles.length < 16; radius++) {
         for (let dy = -radius; dy <= radius; dy++) {
           for (let dx = -radius; dx <= radius; dx++) {
             if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
-            const x = entrance.x + dx, y = entrance.y + dy;
+            const x = entrance.x + dx,
+              y = entrance.y + dy;
             const k = `${x},${y}`;
             if (waitSeen.has(k)) continue;
-            if (mapRenderer.isWalkable(x, y)) { waitSeen.add(k); waitTiles.push({ x, y }); }
+            if (mapRenderer.isWalkable(x, y)) {
+              waitSeen.add(k);
+              waitTiles.push({ x, y });
+            }
           }
         }
       }
@@ -330,9 +365,15 @@ export function OfficeFloor() {
       // All other workers claim seats from 1 onward.
       const GOD_SEAT = 0;
       const claimSeat = (agent: Agent): number | null => {
-        if (agent.isGod) { seatClaims.add(GOD_SEAT); return GOD_SEAT; }
+        if (agent.isGod) {
+          seatClaims.add(GOD_SEAT);
+          return GOD_SEAT;
+        }
         for (let i = 1; i < seatTiles.length; i++) {
-          if (!seatClaims.has(i)) { seatClaims.add(i); return i; }
+          if (!seatClaims.has(i)) {
+            seatClaims.add(i);
+            return i;
+          }
         }
         return null;
       };
@@ -355,7 +396,13 @@ export function OfficeFloor() {
       // café table (or stand at the coffee machine / vending machine), emit an
       // in-character one-liner, then head back. Two agents at the same table
       // trade a two-beat quip. This is what makes "lingering" feel purposeful.
-      interface CafeSpot { tile: Tile; facing: Facing; spot: BreakSpot; seated: boolean; partner: number; }
+      interface CafeSpot {
+        tile: Tile;
+        facing: Facing;
+        spot: BreakSpot;
+        seated: boolean;
+        partner: number;
+      }
       const cafeSpots: CafeSpot[] = [];
 
       // Stand spots face the first adjacent non-walkable tile (the appliance).
@@ -369,18 +416,30 @@ export function OfficeFloor() {
       // Seats first (so partner indices are stable), then the standing spots.
       for (const name of theme.cafeSeatNames) {
         const p = mapRenderer.getSpawnPoint(name);
-        if (p) cafeSpots.push({ tile: p, facing: facingForSeat(p), spot: 'table', seated: true, partner: -1 });
+        if (p)
+          cafeSpots.push({
+            tile: p,
+            facing: facingForSeat(p),
+            spot: 'table',
+            seated: true,
+            partner: -1,
+          });
       }
       // Pair the two seats that share a table (same column, two tiles apart).
       for (let i = 0; i < cafeSpots.length; i++) {
         for (let j = i + 1; j < cafeSpots.length; j++) {
-          const a = cafeSpots[i].tile, b = cafeSpots[j].tile;
-          if (a.x === b.x && Math.abs(a.y - b.y) === 2) { cafeSpots[i].partner = j; cafeSpots[j].partner = i; }
+          const a = cafeSpots[i].tile,
+            b = cafeSpots[j].tile;
+          if (a.x === b.x && Math.abs(a.y - b.y) === 2) {
+            cafeSpots[i].partner = j;
+            cafeSpots[j].partner = i;
+          }
         }
       }
       for (const [name, spot] of theme.cafeStands) {
         const p = mapRenderer.getSpawnPoint(name);
-        if (p) cafeSpots.push({ tile: p, facing: faceFurniture(p), spot, seated: false, partner: -1 });
+        if (p)
+          cafeSpots.push({ tile: p, facing: faceFurniture(p), spot, seated: false, partner: -1 });
       }
       const cafeTaken: (string | null)[] = new Array(cafeSpots.length).fill(null);
 
@@ -393,10 +452,10 @@ export function OfficeFloor() {
       // brought back from the desk for a lazy refill); washing at the counter
       // sink puts a mug back into the clean stock. If every mug is parked on a
       // desk somewhere, the rack runs dry — and the floor feels it.
-      const TRAY_TILE: Tile = theme.coffee.trayTile;        // the sideboard (counter piece)
+      const TRAY_TILE: Tile = theme.coffee.trayTile; // the sideboard (counter piece)
       const TRAY_STAND: Tile = theme.coffee.trayStand;
       const MACHINE_STAND: Tile = theme.coffee.machineStand; // below the counter machine
-      const SINK_TILE: Tile = theme.coffee.sinkTile;        // free counter top, right end
+      const SINK_TILE: Tile = theme.coffee.sinkTile; // free counter top, right end
       const SINK_STAND: Tile = theme.coffee.sinkStand;
       const MAX_CUPS = theme.coffee.maxCups;
       let cleanCups = MAX_CUPS;
@@ -409,7 +468,12 @@ export function OfficeFloor() {
       charLayer.addChild(trayG);
       const drawTray = (): void => {
         trayG.clear();
-        const slots: Array<[number, number]> = [[2, 10], [9, 10], [2, 15], [9, 15]];
+        const slots: Array<[number, number]> = [
+          [2, 10],
+          [9, 10],
+          [2, 15],
+          [9, 15],
+        ];
         for (let i = 0; i < cleanCups && i < slots.length; i++) {
           paintCup(trayG, slots[i][0], slots[i][1]);
         }
@@ -427,8 +491,8 @@ export function OfficeFloor() {
         // steel basin set into the white counter top + a small faucet
         sinkG.rect(2, 6, 12, 8).fill(0xb9c2c9);
         sinkG.rect(3, 7, 10, 6).fill(0x87939d);
-        sinkG.rect(7, 9, 2, 2).fill(0x5d676f);          // drain
-        sinkG.rect(7, 2, 2, 4).fill(0x6b7680);          // faucet riser
+        sinkG.rect(7, 9, 2, 2).fill(0x5d676f); // drain
+        sinkG.rect(7, 2, 2, 4).fill(0x6b7680); // faucet riser
         sinkG.rect(6, 2, 4, 1).fill(0x6b7680);
         if (sinkBusy > 0) {
           // running water + a couple of suds while someone scrubs
@@ -452,7 +516,8 @@ export function OfficeFloor() {
         if (machineBusy <= 0) return;
         for (let i = 0; i < 2; i++) {
           const ph = (t * 0.9 + i * 0.5) % 1;
-          machineG.rect(6 + i * 3, 2 - Math.round(ph * 5), 1, 1)
+          machineG
+            .rect(6 + i * 3, 2 - Math.round(ph * 5), 1, 1)
             .fill({ color: 0xffffff, alpha: 0.6 * (1 - ph) });
         }
       };
@@ -463,7 +528,7 @@ export function OfficeFloor() {
         rt.run = undefined;
         const c = rt.character;
         if (c.isCarryingCup()) {
-          rt.cupCarryHome = true;   // whatever happened, a held cup goes home
+          rt.cupCarryHome = true; // whatever happened, a held cup goes home
           c.hideThought();
           c.sitAtDesk(false);
         } else {
@@ -472,12 +537,14 @@ export function OfficeFloor() {
         }
       };
 
-      const startRunLeg = (rt: Runtime, phase: 'toTray' | 'toMachine' | 'toSink' | 'toTrayBack'): void => {
+      const startRunLeg = (
+        rt: Runtime,
+        phase: 'toTray' | 'toMachine' | 'toSink' | 'toTrayBack',
+      ): void => {
         rt.run = { phase, timer: 0 };
         const c = rt.character;
-        const dest = phase === 'toMachine' ? MACHINE_STAND
-          : phase === 'toSink' ? SINK_STAND
-          : TRAY_STAND;
+        const dest =
+          phase === 'toMachine' ? MACHINE_STAND : phase === 'toSink' ? SINK_STAND : TRAY_STAND;
         c.walkToAndThen(dest, () => {
           if (!rt.run || rt.run.phase !== phase) return;
           c.faceDirection('up'); // every station faces its counter to the north
@@ -520,8 +587,14 @@ export function OfficeFloor() {
       let fxClock = 0;
       const updateCoffeeRuns = (dt: number): void => {
         fxClock += dt;
-        if (sinkBusy > 0) { sinkBusy -= dt; drawSink(fxClock); }
-        if (machineBusy > 0) { machineBusy -= dt; drawMachine(fxClock); }
+        if (sinkBusy > 0) {
+          sinkBusy -= dt;
+          drawSink(fxClock);
+        }
+        if (machineBusy > 0) {
+          machineBusy -= dt;
+          drawMachine(fxClock);
+        }
         for (const [, rt] of runtimes) {
           const run = rt.run;
           if (!run) continue;
@@ -585,7 +658,8 @@ export function OfficeFloor() {
         if (!partnerId) return false;
         const prt = runtimes.get(partnerId);
         if (!prt?.brk || prt.brk.phase !== 'lingering') return false;
-        if (rt.brk.chat || rt.brk.chattingWith || prt.brk.chat || prt.brk.chattingWith) return false;
+        if (rt.brk.chat || rt.brk.chattingWith || prt.brk.chat || prt.brk.chattingWith)
+          return false;
         const character = agentById(id)?.character ?? DEFAULT_CHARACTER;
         const lines = pickExchange(character, Math.floor(Math.random() * 1e6));
         rt.brk.chat = { lines, partnerId, idx: 0, beat: 0 };
@@ -620,12 +694,17 @@ export function OfficeFloor() {
         releaseBreak(rt);
         rt.character.hideThought();
         const agent = agentById(id);
-        if (agent?.isGod) { rt.character.sitAtDesk(true); return; }
+        if (agent?.isGod) {
+          rt.character.sitAtDesk(true);
+          return;
+        }
         const c = rt.character;
         if (!arrived) {
           // Never made it to the café (watchdog) — a held mug still goes home.
-          if (c.isCarryingCup()) { rt.cupCarryHome = true; c.sitAtDesk(false); }
-          else c.startWandering();
+          if (c.isCarryingCup()) {
+            rt.cupCarryHome = true;
+            c.sitAtDesk(false);
+          } else c.startWandering();
           return;
         }
         if (c.isCarryingCup()) {
@@ -651,7 +730,7 @@ export function OfficeFloor() {
           if (p >= 0 && cafeTaken[p]) social.push(i);
         }
         if (free.length === 0) return;
-        const pool = (social.length && Math.random() < 0.55) ? social : free;
+        const pool = social.length && Math.random() < 0.55 ? social : free;
         const idx = pool[Math.floor(Math.random() * pool.length)];
         const spot = cafeSpots[idx];
         cafeTaken[idx] = id;
@@ -668,9 +747,12 @@ export function OfficeFloor() {
           // Bail if the break was cancelled or reassigned while walking.
           if (!rt.brk || rt.brk.spotIdx !== idx) return;
           if (spot.seated) c.sitInPlace(spot.facing);
-          else { c.setIdle(); c.faceDirection(spot.facing); }
+          else {
+            c.setIdle();
+            c.faceDirection(spot.facing);
+          }
           rt.brk.phase = 'lingering';
-          rt.brk.timer = 8 + Math.random() * 8;   // 8–16s of lingering
+          rt.brk.timer = 8 + Math.random() * 8; // 8–16s of lingering
           rt.brk.quipTimer = 4 + Math.random() * 4;
           // Start a conversation if the table-mate is here; otherwise a solo quip.
           if (!maybePairChat(id, rt, idx)) emitQuip(id, rt, idx);
@@ -680,7 +762,7 @@ export function OfficeFloor() {
       const breakEligible = (agent: Agent, rt: Runtime): boolean => {
         if (agent.isGod || rt.brk || rt.err || rt.run || rt.cupCarryHome) return false;
         if (agent.status !== 'idle' && agent.status !== 'success') return false;
-        return !rt.character.isSitting();   // already parked at a desk → leave it
+        return !rt.character.isSitting(); // already parked at a desk → leave it
       };
 
       let cafeCooldown = 5;
@@ -691,7 +773,7 @@ export function OfficeFloor() {
           if (!b) continue;
           if (b.phase === 'walking') {
             b.timer += dt;
-            if (b.timer > 20) endBreak(id, rt);   // never arrived — give up
+            if (b.timer > 20) endBreak(id, rt); // never arrived — give up
             continue;
           }
           // lingering
@@ -700,10 +782,10 @@ export function OfficeFloor() {
             b.chat.beat -= dt;
             if (b.chat.beat <= 0) {
               if (b.chat.idx < b.chat.lines.length) {
-                const speaker = (b.chat.idx % 2 === 0) ? rt : runtimes.get(b.chat.partnerId);
+                const speaker = b.chat.idx % 2 === 0 ? rt : runtimes.get(b.chat.partnerId);
                 speaker?.character.showThought(b.chat.lines[b.chat.idx]);
                 b.chat.idx++;
-                b.chat.beat = 2.4;                // seconds per line
+                b.chat.beat = 2.4; // seconds per line
                 b.timer = Math.max(b.timer, 3.5); // keep both around to finish
                 const prt = runtimes.get(b.chat.partnerId);
                 if (prt?.brk) prt.brk.timer = Math.max(prt.brk.timer, 3.5);
@@ -733,7 +815,7 @@ export function OfficeFloor() {
         if (cafeCooldown > 0) return;
         cafeCooldown = 6 + Math.random() * 6;
         if (cafeTaken.filter(Boolean).length >= 4) return;
-        if (Math.random() >= 0.7) return;          // not every window — keep it casual
+        if (Math.random() >= 0.7) return; // not every window — keep it casual
         const candidates: Array<[Agent, Runtime]> = [];
         for (const agent of useStore.getState().agents) {
           const rt = runtimes.get(agent.id);
@@ -775,8 +857,10 @@ export function OfficeFloor() {
           // for 'smoke' the boss cracked HIS window open for the cigar.
           for (let i = 0; i < 3; i++) {
             const ph = (t * 0.7 + i / 3) % 1;
-            g.rect(2 + i * 9 - ph * 5, 26 + ph * 16, 7, 1)
-              .fill({ color: 0xd8f1f7, alpha: 0.55 * (1 - ph) });
+            g.rect(2 + i * 9 - ph * 5, 26 + ph * 16, 7, 1).fill({
+              color: 0xd8f1f7,
+              alpha: 0.55 * (1 - ph),
+            });
           }
         } else if (kind === 'dispenser') {
           // glugging bottle: a drip line + a bubble rising in the tank
@@ -791,14 +875,17 @@ export function OfficeFloor() {
         } else if (kind === 'shelf') {
           // a little glint wandering across the shelves
           const ph = (t * 0.5) % 1;
-          g.rect(2 + ph * 24, 4 + (Math.floor(t * 0.5) % 3) * 9, 2, 2)
-            .fill({ color: 0xfff7c8, alpha: 0.8 * Math.sin(ph * Math.PI) });
+          g.rect(2 + ph * 24, 4 + (Math.floor(t * 0.5) % 3) * 9, 2, 2).fill({
+            color: 0xfff7c8,
+            alpha: 0.8 * Math.sin(ph * Math.PI),
+          });
         } else if (kind === 'bin') {
           // a paper ball arcing in from the agent's side, once per second
           const ph = (t * 1.0) % 1;
           if (ph < 0.45) {
             const p = ph / 0.45;
-            const fromX = 18, toX = 8;
+            const fromX = 18,
+              toX = 8;
             const x = fromX + (toX - fromX) * p;
             const y = 2 - Math.sin(p * Math.PI) * 9;
             g.rect(Math.round(x), Math.round(y), 2, 2).fill({ color: 0xf5f1e6, alpha: 0.95 });
@@ -824,7 +911,10 @@ export function OfficeFloor() {
           err.timer += dt;
           const spot = ERRAND_SPOTS[err.idx];
           if (err.phase === 'walking') {
-            if (err.timer > 20) { releaseErrand(rt); rt.character.startWandering(); }
+            if (err.timer > 20) {
+              releaseErrand(rt);
+              rt.character.startWandering();
+            }
             continue;
           }
           // doing: animate the spot; watering + smoking complete via their
@@ -839,7 +929,7 @@ export function OfficeFloor() {
         errCooldown -= dt;
         if (errCooldown > 0) return;
         errCooldown = 14 + Math.random() * 18;
-        if (Math.random() >= 0.65) return;          // keep it occasional
+        if (Math.random() >= 0.65) return; // keep it occasional
         const free = ERRAND_SPOTS.map((_, i) => i).filter((i) => !errandTaken[i]);
         if (free.length === 0) return;
         const idx = free[Math.floor(Math.random() * free.length)];
@@ -852,10 +942,17 @@ export function OfficeFloor() {
         if (spot.godOnly) {
           const god = useStore.getState().agents.find((a) => a.isGod);
           const grt = god ? runtimes.get(god.id) : undefined;
-          if (!god || !grt || grt.err || grt.brk
-            || (god.status !== 'idle' && god.status !== 'success')
-            || Math.random() >= 0.5) return;        // the boss is unhurried
-          agent = god; rt = grt;
+          if (
+            !god ||
+            !grt ||
+            grt.err ||
+            grt.brk ||
+            (god.status !== 'idle' && god.status !== 'success') ||
+            Math.random() >= 0.5
+          )
+            return; // the boss is unhurried
+          agent = god;
+          rt = grt;
         } else {
           const candidates: Array<[Agent, Runtime]> = [];
           for (const a of useStore.getState().agents) {
@@ -879,7 +976,8 @@ export function OfficeFloor() {
             const wasGod = !!agent!.isGod;
             releaseErrand(rt!);
             c.hideThought();
-            if (wasGod) c.sitAtDesk(true);  // the boss returns to his throne
+            if (wasGod)
+              c.sitAtDesk(true); // the boss returns to his throne
             else c.startWandering();
           };
           if (spot.kind === 'water') c.startWatering(spot.duration, finish);
@@ -901,18 +999,24 @@ export function OfficeFloor() {
         statsAge += dt;
         if (statsAge > 30) {
           statsAge = 0;
-          void window.cth.hiveTasks().then((raw) => {
-            const arr = (raw && typeof raw === 'object' && Array.isArray((raw as { tasks?: unknown }).tasks))
-              ? (raw as { tasks: Array<{ status?: string; assignee?: string }> }).tasks
-              : [];
-            const m = new Map<string, number>();
-            for (const t of arr) {
-              if (t?.status === 'done' && typeof t.assignee === 'string' && t.assignee) {
-                m.set(t.assignee, (m.get(t.assignee) ?? 0) + 1);
+          void window.cth
+            .hiveTasks()
+            .then((raw) => {
+              const arr =
+                raw && typeof raw === 'object' && Array.isArray((raw as { tasks?: unknown }).tasks)
+                  ? (raw as { tasks: Array<{ status?: string; assignee?: string }> }).tasks
+                  : [];
+              const m = new Map<string, number>();
+              for (const t of arr) {
+                if (t?.status === 'done' && typeof t.assignee === 'string' && t.assignee) {
+                  m.set(t.assignee, (m.get(t.assignee) ?? 0) + 1);
+                }
               }
-            }
-            doneByAssignee = m;
-          }).catch(() => { /* keep last counts */ });
+              doneByAssignee = m;
+            })
+            .catch(() => {
+              /* keep last counts */
+            });
         }
         auraCooldown -= dt;
         if (auraCooldown > 0) return;
@@ -936,8 +1040,10 @@ export function OfficeFloor() {
           lastSuckUp.set(id, now);
           const done = doneByAssignee.get(id) ?? 0;
           const pool = done > 0 ? SUCK_UP_LINES : SUCK_UP_LINES.slice(2);
-          const line = pool[Math.floor(Math.random() * pool.length)]
-            .replace('{done}', String(done));
+          const line = pool[Math.floor(Math.random() * pool.length)].replace(
+            '{done}',
+            String(done),
+          );
           rt.character.showThought(line);
           rt.character.hideThought(); // linger briefly, then fade
         }
@@ -978,7 +1084,10 @@ export function OfficeFloor() {
       // between the two doorways spans tiles 6..12 (112px) — center it.
       const BOARD_CENTER_PAD = 15;
       const NOTE_COLORS: Record<string, number> = theme.palette.noteColors;
-      interface BoardTask { status: string; assignee?: string }
+      interface BoardTask {
+        status: string;
+        assignee?: string;
+      }
       const tsB = mapRenderer.tileSize;
       const boardG = new Graphics();
       boardG.eventMode = 'static';
@@ -996,22 +1105,25 @@ export function OfficeFloor() {
       // One small Graphics per desk currently holding a taken note.
       const deskNoteG = new Map<string, Graphics>();
       const clearDeskNotes = (): void => {
-        for (const g of deskNoteG.values()) { g.parent?.removeChild(g); g.destroy(); }
+        for (const g of deskNoteG.values()) {
+          g.parent?.removeChild(g);
+          g.destroy();
+        }
         deskNoteG.clear();
       };
 
       /** One cork board with a colored header at local x `ox`; draws up to 12
        *  of `notes`, overflow as a corner pile. */
       const drawCork = (ox: number, header: number, notes: string[]): void => {
-        boardG.rect(ox, -8, 30, 22).fill(0x6e5639);        // frame
-        boardG.rect(ox + 1, -7, 28, 3).fill(header);       // header strip
-        boardG.rect(ox + 1, -4, 28, 17).fill(0xc9b083);    // cork
+        boardG.rect(ox, -8, 30, 22).fill(0x6e5639); // frame
+        boardG.rect(ox + 1, -7, 28, 3).fill(header); // header strip
+        boardG.rect(ox + 1, -4, 28, 17).fill(0xc9b083); // cork
         const n = Math.min(notes.length, 12);
         for (let i = 0; i < n; i++) {
           const x = ox + 3 + (i % 4) * 7;
           const y = -2 + Math.floor(i / 4) * 5;
           boardG.rect(x, y, 5, 4).fill(NOTE_COLORS[notes[i]] ?? 0xf2eddc);
-          boardG.rect(x + 2, y, 1, 1).fill(0x4a3b52);      // pin
+          boardG.rect(x + 2, y, 1, 1).fill(0x4a3b52); // pin
         }
         if (notes.length > 12) {
           boardG.rect(ox + 22, 8, 5, 4).fill(0xe8e0c8);
@@ -1029,10 +1141,16 @@ export function OfficeFloor() {
         // resolvable desk (no assignee / not on the floor) it falls back onto
         // the TODO board as a blue note, so nothing ever silently disappears.
         for (const t of tasks) {
-          if (t.status === 'done') { done++; continue; }
+          if (t.status === 'done') {
+            done++;
+            continue;
+          }
           if (t.status !== 'doing') continue;
           const rt = t.assignee ? runtimes.get(t.assignee) : undefined;
-          if (!rt) { todoNotes.push('doing'); continue; }
+          if (!rt) {
+            todoNotes.push('doing');
+            continue;
+          }
           const desk = rt.character.getDeskTile();
           let g = deskNoteG.get(t.assignee!);
           if (!g) {
@@ -1049,17 +1167,18 @@ export function OfficeFloor() {
           g.rect(idx * 7, -(idx % 2), 5, 4).fill(NOTE_COLORS.doing);
           g.rect(idx * 7 + 2, -(idx % 2), 1, 1).fill(0x4a3b52);
         }
-        drawCork(0, NOTE_COLORS.blocked, blocked);   // left: what's burning
-        drawCork(34, NOTE_COLORS.todo, todoNotes);   // right: what's queued
+        drawCork(0, NOTE_COLORS.blocked, blocked); // left: what's burning
+        drawCork(34, NOTE_COLORS.todo, todoNotes); // right: what's queued
         // The archive table: every finished task adds a green sheet to the
         // pile (visible stack capped at 6 — beyond that it just sits proud).
-        boardG.rect(68, 6, 14, 4).fill(0xb08d5e);    // table top
-        boardG.rect(68, 10, 14, 4).fill(0x8a6f4d);   // table front
-        boardG.rect(69, 14, 2, 2).fill(0x6e5639);    // legs
+        boardG.rect(68, 6, 14, 4).fill(0xb08d5e); // table top
+        boardG.rect(68, 10, 14, 4).fill(0x8a6f4d); // table front
+        boardG.rect(69, 14, 2, 2).fill(0x6e5639); // legs
         boardG.rect(79, 14, 2, 2).fill(0x6e5639);
         const stack = Math.min(done, 6);
         for (let i = 0; i < stack; i++) {
-          boardG.rect(71 + (i % 2), 4 - i * 2, 8, 2)
+          boardG
+            .rect(71 + (i % 2), 4 - i * 2, 8, 2)
             .fill({ color: NOTE_COLORS.done, alpha: 1 })
             .stroke({ color: 0x6e8f6e, width: 0.5 });
         }
@@ -1075,7 +1194,9 @@ export function OfficeFloor() {
       clockG.eventMode = 'static';
       clockG.cursor = 'pointer';
       clockG.position.set(theme.anchors.clock.x * ts0, theme.anchors.clock.y * ts0);
-      clockG.hitArea = { contains: (x: number, y: number) => x >= 0 && x <= 16 && y >= 0 && y <= 32 };
+      clockG.hitArea = {
+        contains: (x: number, y: number) => x >= 0 && x <= 16 && y >= 0 && y <= 32,
+      };
       clockG.zIndex = 3 * ts0;
       clockG.on('pointertap', (ev) => {
         ev.stopPropagation();
@@ -1138,7 +1259,9 @@ export function OfficeFloor() {
       // state for that card — the redraw lands exactly when the actor acts.
       // Un-choreographable diffs (no actor on the floor, bulk edits, restarts)
       // simply redraw — animation is sugar, the ledger stays the truth.
-      interface LedgerTask extends BoardTask { id: string }
+      interface LedgerTask extends BoardTask {
+        id: string;
+      }
       interface BoardMove {
         kind: 'pin' | 'take' | 'archive';
         taskId: string;
@@ -1149,8 +1272,8 @@ export function OfficeFloor() {
         stand: Tile;
         thought: string;
       }
-      const PIN_STAND: Tile = { x: 8, y: 11 };      // under the blockers board
-      const TAKE_STAND: Tile = { x: 9, y: 11 };     // under the todo board
+      const PIN_STAND: Tile = { x: 8, y: 11 }; // under the blockers board
+      const TAKE_STAND: Tile = { x: 9, y: 11 }; // under the todo board
       const ARCHIVE_STAND: Tile = { x: 12, y: 11 }; // beside the archive table
       /** What the boards currently SHOW (lags the ledger while moves play). */
       let visualTasks = new Map<string, BoardTask>();
@@ -1167,7 +1290,11 @@ export function OfficeFloor() {
         redrawVisual();
         busyActors.delete(mv.actorId);
         const g = carriedNotes.get(mv.actorId);
-        if (g) { g.parent?.removeChild(g); g.destroy(); carriedNotes.delete(mv.actorId); }
+        if (g) {
+          g.parent?.removeChild(g);
+          g.destroy();
+          carriedNotes.delete(mv.actorId);
+        }
         if (rt) {
           rt.character.hideThought();
           const agent = agentById(mv.actorId);
@@ -1187,7 +1314,10 @@ export function OfficeFloor() {
 
       const startMove = (mv: BoardMove): void => {
         const rt = runtimes.get(mv.actorId);
-        if (!rt) { finishMove(mv, undefined); return; }
+        if (!rt) {
+          finishMove(mv, undefined);
+          return;
+        }
         busyActors.add(mv.actorId);
         const c = rt.character;
         if (mv.kind === 'archive') {
@@ -1205,7 +1335,10 @@ export function OfficeFloor() {
             if (mv.kind === 'take') {
               // carry it home: the desk note appears on arrival via finishMove
               const rt2 = runtimes.get(mv.actorId);
-              if (!rt2) { finishMove(mv, undefined); return; }
+              if (!rt2) {
+                finishMove(mv, undefined);
+                return;
+              }
               visualTasks.set(mv.taskId, { ...mv.after, status: '__carried__' });
               redrawVisual();
               rt2.character.walkToAndThen(rt2.character.getDeskTile(), () => finishMove(mv, rt2));
@@ -1244,9 +1377,15 @@ export function OfficeFloor() {
           for (const id of [...busyActors]) {
             busyActors.delete(id);
             const g = carriedNotes.get(id);
-            if (g) { g.parent?.removeChild(g); g.destroy(); carriedNotes.delete(id); }
+            if (g) {
+              g.parent?.removeChild(g);
+              g.destroy();
+              carriedNotes.delete(id);
+            }
           }
-          visualTasks = new Map(lastLedger.map((t) => [t.id, { status: t.status, assignee: t.assignee }]));
+          visualTasks = new Map(
+            lastLedger.map((t) => [t.id, { status: t.status, assignee: t.assignee }]),
+          );
           redrawVisual();
         }
       };
@@ -1263,18 +1402,26 @@ export function OfficeFloor() {
       let firstPoll = true;
       const pollTaskBoard = async (): Promise<void> => {
         try {
-          const raw = await window.cth.hiveTasks() as { tasks?: Array<{ id?: string; status?: string; assignee?: string; humanQA?: Array<{ q?: string; a?: string }> }> } | null;
-          const arr = (raw && Array.isArray(raw.tasks)) ? raw.tasks : [];
+          const raw = (await window.cth.hiveTasks()) as {
+            tasks?: Array<{
+              id?: string;
+              status?: string;
+              assignee?: string;
+              humanQA?: Array<{ q?: string; a?: string }>;
+            }>;
+          } | null;
+          const arr = raw && Array.isArray(raw.tasks) ? raw.tasks : [];
           const ledger: LedgerTask[] = arr.map((t, i) => ({
             id: typeof t?.id === 'string' && t.id ? t.id : `idx-${i}`,
             status: String(t?.status ?? 'todo'),
-            assignee: typeof t?.assignee === 'string' && t.assignee ? t.assignee : undefined
+            assignee: typeof t?.assignee === 'string' && t.assignee ? t.assignee : undefined,
           }));
           // tasks waiting on the HUMAN feed the ASK ME board's note count
-          const newAsk = arr.filter((t) =>
-            String(t?.status) === 'blocked'
-            && Array.isArray(t?.humanQA)
-            && t!.humanQA!.some((e) => e && typeof e.q === 'string' && !e.a)
+          const newAsk = arr.filter(
+            (t) =>
+              String(t?.status) === 'blocked' &&
+              Array.isArray(t?.humanQA) &&
+              t!.humanQA!.some((e) => e && typeof e.q === 'string' && !e.a),
           ).length;
           if (newAsk !== askCount) {
             askCount = newAsk;
@@ -1283,7 +1430,9 @@ export function OfficeFloor() {
           if (firstPoll) {
             // cold start: no theatre, just show the truth
             firstPoll = false;
-            visualTasks = new Map(ledger.map((t) => [t.id, { status: t.status, assignee: t.assignee }]));
+            visualTasks = new Map(
+              ledger.map((t) => [t.id, { status: t.status, assignee: t.assignee }]),
+            );
             redrawVisual();
             lastLedger = ledger;
             return;
@@ -1298,19 +1447,60 @@ export function OfficeFloor() {
             let mv: BoardMove | null = null;
             if (!old && (t.status === 'todo' || t.status === 'blocked')) {
               const actor = actorFor(undefined, true);
-              if (actor) mv = { kind: 'pin', taskId: t.id, actorId: actor, after, carryColor: NOTE_COLORS[t.status], stand: t.status === 'blocked' ? PIN_STAND : TAKE_STAND, thought: 'pinning a new task 📌' };
+              if (actor)
+                mv = {
+                  kind: 'pin',
+                  taskId: t.id,
+                  actorId: actor,
+                  after,
+                  carryColor: NOTE_COLORS[t.status],
+                  stand: t.status === 'blocked' ? PIN_STAND : TAKE_STAND,
+                  thought: 'pinning a new task 📌',
+                };
             } else if (oldS !== 'doing' && t.status === 'doing') {
               const actor = actorFor(t.assignee, false);
-              if (actor && actor === t.assignee) mv = { kind: 'take', taskId: t.id, actorId: actor, after, carryColor: NOTE_COLORS.doing, stand: TAKE_STAND, thought: 'grabbing my task' };
+              if (actor && actor === t.assignee)
+                mv = {
+                  kind: 'take',
+                  taskId: t.id,
+                  actorId: actor,
+                  after,
+                  carryColor: NOTE_COLORS.doing,
+                  stand: TAKE_STAND,
+                  thought: 'grabbing my task',
+                };
             } else if (t.status === 'done' && oldS !== 'done') {
               const actor = actorFor(old?.assignee ?? t.assignee, false);
-              if (actor) mv = { kind: 'archive', taskId: t.id, actorId: actor, after, carryColor: NOTE_COLORS.done, stand: ARCHIVE_STAND, thought: 'filing it as done ✔' };
+              if (actor)
+                mv = {
+                  kind: 'archive',
+                  taskId: t.id,
+                  actorId: actor,
+                  after,
+                  carryColor: NOTE_COLORS.done,
+                  stand: ARCHIVE_STAND,
+                  thought: 'filing it as done ✔',
+                };
             } else if (t.status === 'blocked' && oldS !== 'blocked') {
               const actor = actorFor(old?.assignee ?? t.assignee, false);
-              if (actor) mv = { kind: 'pin', taskId: t.id, actorId: actor, after, carryColor: NOTE_COLORS.blocked, stand: PIN_STAND, thought: 'this one is stuck 😤' };
+              if (actor)
+                mv = {
+                  kind: 'pin',
+                  taskId: t.id,
+                  actorId: actor,
+                  after,
+                  carryColor: NOTE_COLORS.blocked,
+                  stand: PIN_STAND,
+                  thought: 'this one is stuck 😤',
+                };
             }
-            if (mv && !busyActors.has(mv.actorId) && !moveQueue.some((q) => q.actorId === mv!.actorId)) {
-              if (!visualTasks.has(t.id) && mv.kind !== 'pin') visualTasks.set(t.id, { status: oldS ?? 'todo', assignee: old?.assignee });
+            if (
+              mv &&
+              !busyActors.has(mv.actorId) &&
+              !moveQueue.some((q) => q.actorId === mv!.actorId)
+            ) {
+              if (!visualTasks.has(t.id) && mv.kind !== 'pin')
+                visualTasks.set(t.id, { status: oldS ?? 'todo', assignee: old?.assignee });
               moveQueue.push(mv);
             } else {
               visualTasks.set(t.id, after);
@@ -1319,23 +1509,31 @@ export function OfficeFloor() {
           }
           // removed cards vanish without theatre
           for (const id of [...visualTasks.keys()]) {
-            if (!ledger.some((t) => t.id === id)) { visualTasks.delete(id); instant = true; }
+            if (!ledger.some((t) => t.id === id)) {
+              visualTasks.delete(id);
+              instant = true;
+            }
           }
           if (instant) redrawVisual();
           lastLedger = ledger;
-        } catch { /* keep the last drawing */ }
+        } catch {
+          /* keep the last drawing */
+        }
       };
       void pollTaskBoard();
-      const taskBoardPoll = setInterval(() => { void pollTaskBoard(); }, 5000);
+      const taskBoardPoll = setInterval(() => {
+        void pollTaskBoard();
+      }, 5000);
       (app as any).__taskBoardPoll = taskBoardPoll;
 
       const addCharacter = async (agent: Agent) => {
-        const charName = theme.cast.byName[agent.character] ? agent.character : theme.cast.defaultCharacter;
+        const charName = theme.cast.byName[agent.character]
+          ? agent.character
+          : theme.cast.defaultCharacter;
         const member = theme.cast.byName[charName];
         const seatIndex = claimSeat(agent);
-        const seatTile: Tile = (seatIndex != null ? seatTiles[seatIndex] : undefined)
-          ?? mapRenderer.getSpawnPoint('entrance')
-          ?? { x: 2, y: 2 };
+        const seatTile: Tile = (seatIndex != null ? seatTiles[seatIndex] : undefined) ??
+          mapRenderer.getSpawnPoint('entrance') ?? { x: 2, y: 2 };
         const waitTile = waitTiles[(seatIndex ?? 0) % waitTiles.length];
         const frames = await theme.cast.getFrames(charName);
         // Bail if the agent was removed (or scene torn down) while loading.
@@ -1361,7 +1559,10 @@ export function OfficeFloor() {
         // beside the monitor, exactly where the tileset's baked-in mug used
         // to sit before we cleared it (desks start clean now; cups only exist
         // where an agent actually carried one).
-        if (mapRenderer.gidAt('furniture-above', seatTile.x, seatTile.y - 2) === theme.monitor.offTopLeftGid) {
+        if (
+          mapRenderer.gidAt('furniture-above', seatTile.x, seatTile.y - 2) ===
+          theme.monitor.offTopLeftGid
+        ) {
           const top = { x: seatTile.x, y: seatTile.y - 2 };
           rt.screen = new DeskScreen(mapRenderer, top, theme.monitor);
           charLayer.addChild(rt.screen.container);
@@ -1375,16 +1576,17 @@ export function OfficeFloor() {
       const removeCharacter = (id: string) => {
         const rt = runtimes.get(id);
         if (!rt) return;
-        releaseBreak(rt);                // free any café seat it was holding
-        releaseErrand(rt);               // and any idle errand it was running
-        releaseRun(rt);                  // and any coffee run in progress
+        releaseBreak(rt); // free any café seat it was holding
+        releaseErrand(rt); // and any idle errand it was running
+        releaseRun(rt); // and any coffee run in progress
         // Facilities collects an abandoned mug (carried or parked on the desk)
         // back onto the sideboard, so the finite cup stock can never leak away.
         if (rt.character.isCarryingCup() || rt.character.hasCupOnDesk()) {
           // The clamp guarantees "never leak", but a clamp that actually FIRES
           // means the accounting double-counted somewhere — surface it instead
           // of silently pinning the stock at the cap.
-          if (cleanCups >= MAX_CUPS) console.warn('[office] mug reclaim over cap — cup accounting drifted');
+          if (cleanCups >= MAX_CUPS)
+            console.warn('[office] mug reclaim over cap — cup accounting drifted');
           cleanCups = Math.min(MAX_CUPS, cleanCups + 1);
           drawTray();
         }
@@ -1398,23 +1600,34 @@ export function OfficeFloor() {
 
       // Map an agent's store state onto its on-floor character.
       const applyState = (agent: Agent, rt: Runtime, force = false) => {
-        const changed = force
-          || rt.prevStatus !== agent.status
-          || rt.prevAction !== agent.action
-          || rt.prevCarrying !== agent.carrying
-          || rt.prevPrompt !== agent.lastPrompt;
+        const changed =
+          force ||
+          rt.prevStatus !== agent.status ||
+          rt.prevAction !== agent.action ||
+          rt.prevCarrying !== agent.carrying ||
+          rt.prevPrompt !== agent.lastPrompt;
         if (!changed) return;
         // Finishing real work (working/thinking/compacting → done) earns a
         // little celebration before the avatar goes back to roaming — but only
         // after a SUBSTANTIAL busy stretch (see CHEER_MIN_BUSY_MS): an inbox
         // nudge or heartbeat reply that flips busy for a few seconds ends
         // quietly instead of "celebrating" every few minutes over nothing.
-        const wasBusy = rt.prevStatus === 'working' || rt.prevStatus === 'thinking' || rt.prevStatus === 'compacting';
-        const isBusy = agent.status === 'working' || agent.status === 'thinking' || agent.status === 'compacting';
+        const wasBusy =
+          rt.prevStatus === 'working' ||
+          rt.prevStatus === 'thinking' ||
+          rt.prevStatus === 'compacting';
+        const isBusy =
+          agent.status === 'working' ||
+          agent.status === 'thinking' ||
+          agent.status === 'compacting';
         if (isBusy && !wasBusy) rt.busySince = Date.now();
-        const finishedWork = !force && !agent.isGod
-          && wasBusy && (agent.status === 'idle' || agent.status === 'success')
-          && rt.busySince !== undefined && Date.now() - rt.busySince >= CHEER_MIN_BUSY_MS;
+        const finishedWork =
+          !force &&
+          !agent.isGod &&
+          wasBusy &&
+          (agent.status === 'idle' || agent.status === 'success') &&
+          rt.busySince !== undefined &&
+          Date.now() - rt.busySince >= CHEER_MIN_BUSY_MS;
         if (!isBusy) rt.busySince = undefined;
         rt.prevStatus = agent.status;
         rt.prevAction = agent.action;
@@ -1493,7 +1706,11 @@ export function OfficeFloor() {
             break;
           case 'success':
             c.setStatusGlyph('success');
-            if (agent.isGod) { c.hideThought(); c.sitAtDesk(true); break; }
+            if (agent.isGod) {
+              c.hideThought();
+              c.sitAtDesk(true);
+              break;
+            }
             c.startWandering();
             if (finishedWork) {
               c.cheer();
@@ -1511,14 +1728,18 @@ export function OfficeFloor() {
           default:
             c.setStatusGlyph('none');
             // The god runs the floor from its desk; everyone else wanders when idle.
-            if (agent.isGod) { c.sitAtDesk(true); c.showThought(liveActivity(agent, 'running the floor')); }
-            else if (finishedWork) {
+            if (agent.isGod) {
+              c.sitAtDesk(true);
+              c.showThought(liveActivity(agent, 'running the floor'));
+            } else if (finishedWork) {
               // Task done → a quick cheer on the spot, then back to roaming.
               c.startWandering();
               c.cheer();
               c.showThought(CHEER_LINES[Math.floor(Math.random() * CHEER_LINES.length)]);
+            } else {
+              c.startWandering();
+              c.showThought(liveActivity(agent, 'idle'));
             }
-            else { c.startWandering(); c.showThought(liveActivity(agent, 'idle')); }
             break;
         }
       };
@@ -1581,7 +1802,9 @@ export function OfficeFloor() {
         ? window.cth.onHiveMessage((e) => {
             for (const target of e.targets) spawnHandoff(e.from, target, e.act, e.needsHuman);
           })
-        : () => { /* onHiveMessage unavailable — real handoffs disabled this session */ };
+        : () => {
+            /* onHiveMessage unavailable — real handoffs disabled this session */
+          };
       // Demo path: with no live hive, the mock loop dispatches synthetic handoffs
       // so the animation is still visible. Clearly demo-only, fed by mockEvents.ts.
       const onDemoHandoff = (ev: Event) => {
@@ -1609,22 +1832,26 @@ export function OfficeFloor() {
         }
         // Lower bubbles (greater bottom edge) and left-most ones hold their spot;
         // the rest get pushed above them. Deterministic ordering → no flicker.
-        items.sort((a, b) => (b.y + b.h) - (a.y + a.h) || a.x - b.x);
+        items.sort((a, b) => b.y + b.h - (a.y + a.h) || a.x - b.x);
         const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
         const pad = 2;
         for (const it of items) {
           let y = it.y;
-          let moved = true, guard = 0;
+          let moved = true,
+            guard = 0;
           while (moved && guard++ < 12) {
             moved = false;
             for (const p of placed) {
               const overlapX = it.x < p.x + p.w + pad && it.x + it.w + pad > p.x;
               const overlapY = y < p.y + p.h + pad && y + it.h + pad > p.y;
-              if (overlapX && overlapY) { y = p.y - it.h - pad; moved = true; }
+              if (overlapX && overlapY) {
+                y = p.y - it.h - pad;
+                moved = true;
+              }
             }
           }
           placed.push({ x: it.x, y, w: it.w, h: it.h });
-          it.rt.character.setThoughtLift(it.y - y);   // positive → shift up
+          it.rt.character.setThoughtLift(it.y - y); // positive → shift up
         }
       };
 
@@ -1673,7 +1900,8 @@ export function OfficeFloor() {
       banner.style.cssText =
         'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' +
         'padding:24px;color:#ffd0b5;font-family:monospace;font-size:13px;text-align:center;white-space:pre-wrap;';
-      banner.textContent = 'OfficeFloor failed to start:\n' + (err?.stack || err?.message || String(err));
+      banner.textContent =
+        'OfficeFloor failed to start:\n' + (err?.stack || err?.message || String(err));
       host.appendChild(banner);
     });
 
@@ -1683,9 +1911,21 @@ export function OfficeFloor() {
       if (a) {
         (a as any).__glRecovery?.();
         (a as any).__resize?.disconnect?.();
-        try { (a as any).__unsub?.(); } catch { /* noop */ }
-        try { (a as any).__offMessage?.(); } catch { /* noop */ }
-        try { clearInterval((a as any).__taskBoardPoll); } catch { /* noop */ }
+        try {
+          (a as any).__unsub?.();
+        } catch {
+          /* noop */
+        }
+        try {
+          (a as any).__offMessage?.();
+        } catch {
+          /* noop */
+        }
+        try {
+          clearInterval((a as any).__taskBoardPoll);
+        } catch {
+          /* noop */
+        }
         safeDestroy(a);
       }
       appRef.current = null;
@@ -1697,7 +1937,8 @@ export function OfficeFloor() {
     <div
       ref={hostRef}
       style={{
-        width: '100%', height: '100%',
+        width: '100%',
+        height: '100%',
         boxShadow: 'var(--cth-panel-border)',
         overflow: 'hidden',
         imageRendering: 'pixelated',
@@ -1707,9 +1948,21 @@ export function OfficeFloor() {
   );
 }
 
-function hexNum(n: number): number { return n; }
-function hex(n: number): string { return '#' + n.toString(16).padStart(6, '0'); }
+function hexNum(n: number): number {
+  return n;
+}
+function hex(n: number): string {
+  return '#' + n.toString(16).padStart(6, '0');
+}
 function safeDestroy(app: Application) {
-  try { app.ticker?.stop(); } catch { /* noop */ }
-  try { app.destroy(true, { children: true }); } catch { /* noop */ }
+  try {
+    app.ticker?.stop();
+  } catch {
+    /* noop */
+  }
+  try {
+    app.destroy(true, { children: true });
+  } catch {
+    /* noop */
+  }
 }

@@ -23,7 +23,15 @@
  *      into place, so a crash mid-write leaves the previous file untouched.
  *   3. Never let an empty renderer erase a full roster. See `write`.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 /** What the renderer mirrors to disk. The inner agent shape is deliberately
@@ -84,7 +92,11 @@ export class RosterStore {
   constructor(private readonly getHome: () => string | null) {}
 
   private home(): string | null {
-    try { return this.getHome(); } catch { return null; }
+    try {
+      return this.getHome();
+    } catch {
+      return null;
+    }
   }
 
   /** The stored roster, or null when there isn't one (or it can't be parsed).
@@ -142,7 +154,7 @@ export class RosterStore {
         archived: snap.archived,
         restorable: snap.restorable,
         queues: snap.queues && typeof snap.queues === 'object' ? snap.queues : {},
-        selectedId: typeof snap.selectedId === 'string' ? snap.selectedId : null
+        selectedId: typeof snap.selectedId === 'string' ? snap.selectedId : null,
       };
       // Temp + rename: `rename` is atomic within a filesystem, so a crash leaves
       // either the old file or the new one, never half of either.
@@ -152,7 +164,11 @@ export class RosterStore {
       this.wrote = true;
       return { ok: true };
     } catch (e) {
-      try { rmSync(`${p}.tmp`, { force: true }); } catch { /* noop */ }
+      try {
+        rmSync(`${p}.tmp`, { force: true });
+      } catch {
+        /* noop */
+      }
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   }
@@ -174,7 +190,9 @@ export class RosterStore {
       if (!existsSync(p)) return;
       this.backup(home, p, 'reset');
       rmSync(p, { force: true });
-    } catch { /* a reset must never fail on this */ }
+    } catch {
+      /* a reset must never fail on this */
+    }
   }
 
   /** Copy the current roster into the append-only backup folder. Never prunes:
@@ -188,6 +206,8 @@ export class RosterStore {
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       this.backupSeq += 1;
       copyFileSync(p, join(dir, `roster-${stamp}-${this.backupSeq}-${reason}.json`));
-    } catch { /* a failed backup must never block the write */ }
+    } catch {
+      /* a failed backup must never block the write */
+    }
   }
 }

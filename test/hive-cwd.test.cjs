@@ -56,10 +56,16 @@ test('cwdValidity repairs a "~" left in an older registry', async (t) => {
   // Entries written before the fix are still on disk; reading one must not
   // report it as permanently invalid.
   assert.equal(hive.cwdValidity('~').valid, true);
-  assert.equal(hive.cwdValidity(path.join('~', 'definitely-not-here-xyz')).valid, false,
-    'expansion must not paper over a genuinely missing directory');
-  assert.equal(hive.cwdValidity('relative/path').valid, false,
-    'a relative path is still an error, not silently resolved');
+  assert.equal(
+    hive.cwdValidity(path.join('~', 'definitely-not-here-xyz')).valid,
+    false,
+    'expansion must not paper over a genuinely missing directory',
+  );
+  assert.equal(
+    hive.cwdValidity('relative/path').valid,
+    false,
+    'a relative path is still an error, not silently resolved',
+  );
 });
 
 // ── role is identity: a respawn preserves the hired role ────────────────────
@@ -74,7 +80,13 @@ test('a respawn without a role preserves the hired role', async (t) => {
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const hive = new HiveManager(() => home);
 
-  await hive.ensureAgent({ id: 'intern-x', name: 'X', provider: 'claude', cwd: home, role: 'intern' });
+  await hive.ensureAgent({
+    id: 'intern-x',
+    name: 'X',
+    provider: 'claude',
+    cwd: home,
+    role: 'intern',
+  });
   // Respawn with NO role (the restore path after the fix) — same identity.
   await hive.ensureAgent({ id: 'intern-x', name: 'X', provider: 'claude', cwd: home });
 

@@ -16,7 +16,14 @@ const { join } = require('node:path');
 
 if (process.platform !== 'win32') process.exit(0);
 
-const agent = join(__dirname, '..', 'node_modules', 'node-pty', 'lib', 'conpty_console_list_agent.js');
+const agent = join(
+  __dirname,
+  '..',
+  'node_modules',
+  'node-pty',
+  'lib',
+  'conpty_console_list_agent.js',
+);
 if (!existsSync(agent)) process.exit(0);
 
 const src = readFileSync(agent, 'utf8');
@@ -33,9 +40,11 @@ const guarded =
 let out = src.replace('var consoleProcessList = getConsoleProcessList(shellPid);', guarded);
 out = out.replace(
   'process.send({ consoleProcessList: consoleProcessList });',
-  'try { process.send({ consoleProcessList: consoleProcessList }); } catch (e) { /* parent gone */ }'
+  'try { process.send({ consoleProcessList: consoleProcessList }); } catch (e) { /* parent gone */ }',
 );
 if (out !== src) {
   writeFileSync(agent, out, 'utf8');
-  console.log('[patch-node-pty-conpty] guarded conpty_console_list_agent against AttachConsole crash');
+  console.log(
+    '[patch-node-pty-conpty] guarded conpty_console_list_agent against AttachConsole crash',
+  );
 }

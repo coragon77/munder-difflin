@@ -102,7 +102,13 @@ export function useFleetTelemetry(): FleetTelemetry {
       const total = totalTokens(s);
       const r = rates.current[s.agentId];
       if (!r) {
-        rates.current[s.agentId] = { deltas: [], firstTs: s.ts, firstTotal: total, lastTs: s.ts, lastTotal: total };
+        rates.current[s.agentId] = {
+          deltas: [],
+          firstTs: s.ts,
+          firstTotal: total,
+          lastTs: s.ts,
+          lastTotal: total,
+        };
       } else {
         const delta = Math.max(0, total - r.lastTotal);
         r.deltas = [...r.deltas, delta].slice(-SPARK_LEN);
@@ -119,29 +125,39 @@ export function useFleetTelemetry(): FleetTelemetry {
     // states are part of it — the live stream is push-only (one per beat), so
     // without this backfill the breaker badge would show a stale level (or none
     // at all) until the next beat, minutes on the adaptive heartbeat.
-    window.cth.telemetrySnapshot?.().then((snap) => {
-      if (!alive || !snap) return;
-      for (const s of snap.usage ?? []) foldUsage(s as AgentUsageSample);
-      const tools: Record<string, string> = {};
-      for (const [id, spans] of Object.entries(snap.spans ?? {})) {
-        const arr = spans as ToolSpan[];
-        if (arr.length) tools[id] = arr[arr.length - 1].tool;
-      }
-      setLastTool((prev) => ({ ...tools, ...prev }));
-      const brk: Record<string, BreakerState> = {};
-      for (const b of snap.breakers ?? []) brk[b.agentId] = b;
-      setBreakers(brk);
-    }).catch(() => { /* collector not up — empty grid */ });
+    window.cth
+      .telemetrySnapshot?.()
+      .then((snap) => {
+        if (!alive || !snap) return;
+        for (const s of snap.usage ?? []) foldUsage(s as AgentUsageSample);
+        const tools: Record<string, string> = {};
+        for (const [id, spans] of Object.entries(snap.spans ?? {})) {
+          const arr = spans as ToolSpan[];
+          if (arr.length) tools[id] = arr[arr.length - 1].tool;
+        }
+        setLastTool((prev) => ({ ...tools, ...prev }));
+        const brk: Record<string, BreakerState> = {};
+        for (const b of snap.breakers ?? []) brk[b.agentId] = b;
+        setBreakers(brk);
+      })
+      .catch(() => {
+        /* collector not up — empty grid */
+      });
 
     const offEvent = window.cth.onTelemetryEvent?.((e: TelemetryEvent) => {
       if (e.kind === 'usage') foldUsage(e.sample);
-      else if (e.kind === 'tool_result') setLastTool((prev) => ({ ...prev, [e.span.agentId]: e.span.tool }));
+      else if (e.kind === 'tool_result')
+        setLastTool((prev) => ({ ...prev, [e.span.agentId]: e.span.tool }));
     });
     const offBreaker = window.cth.onBreakerState?.((s: BreakerState) => {
       setBreakers((prev) => ({ ...prev, [s.agentId]: s }));
     });
 
-    return () => { alive = false; offEvent?.(); offBreaker?.(); };
+    return () => {
+      alive = false;
+      offEvent?.();
+      offBreaker?.();
+    };
   }, []);
 
   return { samples, spark, rate, lastTool, breakers };
@@ -157,21 +173,39 @@ export function useAgentSpans(agentId: string): ToolSpan[] {
   useEffect(() => {
     let alive = true;
     setSpans([]);
-    window.cth.telemetrySpans?.(agentId).then((s) => {
-      if (alive && Array.isArray(s)) setSpans(s as ToolSpan[]);
-    }).catch(() => { /* none yet */ });
+    window.cth
+      .telemetrySpans?.(agentId)
+      .then((s) => {
+        if (alive && Array.isArray(s)) setSpans(s as ToolSpan[]);
+      })
+      .catch(() => {
+        /* none yet */
+      });
 
     const off = window.cth.onTelemetryEvent?.((e: TelemetryEvent) => {
       if (e.kind === 'tool_result' && e.span.agentId === agentId) {
         setSpans((prev) => [...prev, e.span].slice(-200));
       } else if (e.kind === 'api_error' && e.agentId === agentId) {
-        setSpans((prev) => [...prev, {
-          agentId, sessionId: e.sessionId, ts: e.ts, tool: 'api_error',
-          success: false, durationMs: 0, error: e.error
-        }].slice(-200));
+        setSpans((prev) =>
+          [
+            ...prev,
+            {
+              agentId,
+              sessionId: e.sessionId,
+              ts: e.ts,
+              tool: 'api_error',
+              success: false,
+              durationMs: 0,
+              error: e.error,
+            },
+          ].slice(-200),
+        );
       }
     });
-    return () => { alive = false; off?.(); };
+    return () => {
+      alive = false;
+      off?.();
+    };
   }, [agentId]);
 
   return spans;

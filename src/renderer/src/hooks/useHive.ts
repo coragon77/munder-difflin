@@ -1,24 +1,34 @@
 import { useEffect, useRef } from 'react';
-import { useStore, type Agent, type QueuedMessage, type StationKind, type ToolKind } from '@/store/store';
+import {
+  useStore,
+  type Agent,
+  type QueuedMessage,
+  type StationKind,
+  type ToolKind,
+} from '@/store/store';
 import {
   buildSpawnCommand,
   ASSISTANT_MODEL,
   inferAgentProvider,
   isClaudeProvider,
   tokenizeCommand,
-  type HarnessConfig
+  type HarnessConfig,
 } from '@/store/config';
 import {
   clearCommandForProvider,
   compactionCommandForProvider,
   nudgeGraceMsForProvider,
   remoteControlCommandForProvider,
-  terminalReadyToReceive
+  terminalReadyToReceive,
 } from '../../../shared/providerAutomation';
 import { isFyiMail } from '../../../shared/hiveMail';
 import { DEFAULT_CONTEXT_TRIGGER, type ContextRule } from '../../../shared/triggers';
 import type { AgentProvider } from '../../../shared/agentProvider';
-import { acquireTerminal, resetTerminal, isTerminalAutomationSafe } from '@/components/terminalPool';
+import {
+  acquireTerminal,
+  resetTerminal,
+  isTerminalAutomationSafe,
+} from '@/components/terminalPool';
 import { deliverWithAcknowledgement } from './queueDelivery';
 import { cardSessionActionStillValid, type CardSnapshotLike } from '../../../shared/cardSessions';
 import { OFFICE_CAST, DEFAULT_CHARACTER } from '@/scene/office/cast';
@@ -55,9 +65,9 @@ const INITIAL_GOD_PROMPT = [
   "You're online as Michael, the orchestrator of the hive. Get oriented, then start running the floor:",
   '1. Read your memory.md and drain every message in your inbox.',
   '2. Review board.md + tasks.json and the current roster of agents (active vs archived).',
-  '3. Check fleet health: read fleet.json in the hive root for every agent\'s live tokens, cost, status, breaker level, and inbox backlog (`claude agents` will NOT show your hive\'s agents). Flag anyone stalled, over-budget, or breaker-armed.',
+  "3. Check fleet health: read fleet.json in the hive root for every agent's live tokens, cost, status, breaker level, and inbox backlog (`claude agents` will NOT show your hive's agents). Flag anyone stalled, over-budget, or breaker-armed.",
   '4. Skim COMMANDS.md (hive root) for the Claude Code commands you can use — and run `mempalace wake-up` for a memory digest if the CLI is available.',
-  'Then begin orchestrating: triage requests, delegate work to the team, and keep everyone unblocked. You are fully autonomous — there is no approval queue, so handle tool-permission prompts in this session yourself (the human can approve them remotely from their phone).'
+  'Then begin orchestrating: triage requests, delegate work to the team, and keep everyone unblocked. You are fully autonomous — there is no approval queue, so handle tool-permission prompts in this session yourself (the human can approve them remotely from their phone).',
 ].join('\n');
 
 // Per-pty submission chain. Every submitToPty for a given pty is appended here so
@@ -70,7 +80,7 @@ const readyPids = new Map<string, number>();
 async function waitForTerminalReady(
   ptyId: string,
   provider: AgentProvider,
-  timeoutMs = 30_000
+  timeoutMs = 30_000,
 ): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -109,28 +119,32 @@ function submitToPty(
   ptyId: string,
   text: string,
   provider: AgentProvider,
-  settleMs = 250
+  settleMs = 250,
 ): Promise<void> {
   const prev = writeChains.get(ptyId) ?? Promise.resolve();
-  const next = prev.catch(() => { /* a failed prior write must not stall the chain */ }).then(async () => {
-    await waitForTerminalReady(ptyId, provider);
-    // Bracketed paste (ESC[200~ … ESC[201~) only matters for MULTI-LINE text, so a
-    // stray "\n" doesn't submit early (#24). Single-line text (nudges, slash
-    // commands) is sent raw — some TUIs (Antigravity's agy) treat the paste
-    // markers as literal input and never submit, so skipping them is more robust.
-    const payload = text.includes('\n') ? `\x1b[200~${text}\x1b[201~` : text;
-    // writePty NEVER rejects for a dead pty — it resolves { ok:false, error:
-    // 'no pty: …' } — so an unchecked await here made every failed delivery look
-    // successful (the queue-drain then destroyed the message it had already
-    // popped, #36). Surface the failure as a rejection; the chain itself is
-    // immune (the prev.catch above absorbs it for the next writer).
-    const wrote = await window.cth.writePty(ptyId, payload);
-    if (!wrote?.ok) throw new Error(wrote?.error ?? `pty write failed: ${ptyId}`);
-    await new Promise((r) => setTimeout(r, 140));
-    const submitted = await window.cth.writePty(ptyId, '\r');
-    if (!submitted?.ok) throw new Error(submitted?.error ?? `pty write failed: ${ptyId}`);
-    await new Promise((r) => setTimeout(r, settleMs));
-  });
+  const next = prev
+    .catch(() => {
+      /* a failed prior write must not stall the chain */
+    })
+    .then(async () => {
+      await waitForTerminalReady(ptyId, provider);
+      // Bracketed paste (ESC[200~ … ESC[201~) only matters for MULTI-LINE text, so a
+      // stray "\n" doesn't submit early (#24). Single-line text (nudges, slash
+      // commands) is sent raw — some TUIs (Antigravity's agy) treat the paste
+      // markers as literal input and never submit, so skipping them is more robust.
+      const payload = text.includes('\n') ? `\x1b[200~${text}\x1b[201~` : text;
+      // writePty NEVER rejects for a dead pty — it resolves { ok:false, error:
+      // 'no pty: …' } — so an unchecked await here made every failed delivery look
+      // successful (the queue-drain then destroyed the message it had already
+      // popped, #36). Surface the failure as a rejection; the chain itself is
+      // immune (the prev.catch above absorbs it for the next writer).
+      const wrote = await window.cth.writePty(ptyId, payload);
+      if (!wrote?.ok) throw new Error(wrote?.error ?? `pty write failed: ${ptyId}`);
+      await new Promise((r) => setTimeout(r, 140));
+      const submitted = await window.cth.writePty(ptyId, '\r');
+      if (!submitted?.ok) throw new Error(submitted?.error ?? `pty write failed: ${ptyId}`);
+      await new Promise((r) => setTimeout(r, settleMs));
+    });
   writeChains.set(ptyId, next);
   return next;
 }
@@ -142,7 +156,7 @@ function enrichTaskPrompt(text: string): string {
     `ENRICH TASK: ${text}`,
     '',
     '(Identify the relevant project, cd in, gather READ-ONLY context, then send the improved,',
-    'self-contained prompt to Michael via an outbox message with "to":"god". Do not do the task yourself.)'
+    'self-contained prompt to Michael via an outbox message with "to":"god". Do not do the task yourself.)',
   ].join('\n');
 }
 
@@ -168,7 +182,7 @@ function terminalWorkOrderPrompt(msg: {
     'Notes:',
     '- This arrived through your terminal because this provider does not support hive inbox.',
     '- Work in your current cwd.',
-    '- When done, report changes, validation, blockers, and next step in this terminal.'
+    '- When done, report changes, validation, blockers, and next step in this terminal.',
   ].join('\n');
 }
 
@@ -184,7 +198,7 @@ const TOOL_STATION: Record<string, { station: StationKind; carry?: ToolKind }> =
   WebSearch: { station: 'web', carry: 'WebSearch' },
   TodoWrite: { station: 'board', carry: 'TodoWrite' },
   // #5A — delegating to a sub-agent reads as "handing off at the outbox".
-  Task: { station: 'mailbox', carry: 'TodoWrite' }
+  Task: { station: 'mailbox', carry: 'TodoWrite' },
 };
 
 /** Resolve a tool name to its station/glyph. Falls back: any `mcp__*` tool →
@@ -197,10 +211,12 @@ function stationForTool(tool: string): { station: StationKind; carry?: ToolKind 
   // ListDir, write_file, … — its hook names differ from Claude's exact tags).
   // Match write/edit BEFORE read so "write_file" → desk, not shelf.
   const t = tool.toLowerCase();
-  if (/command|bash|shell|exec|terminal|run_/.test(t)) return { station: 'terminal', carry: 'Bash' };
+  if (/command|bash|shell|exec|terminal|run_/.test(t))
+    return { station: 'terminal', carry: 'Bash' };
   if (/web|fetch|browser|http|url/.test(t)) return { station: 'web', carry: 'WebFetch' };
   if (/write|edit|create|patch|replace|apply/.test(t)) return { station: 'desk', carry: 'Write' };
-  if (/read|list|view|dir|glob|grep|search|find|file|cat|\bls\b/.test(t)) return { station: 'shelf', carry: 'Read' };
+  if (/read|list|view|dir|glob|grep|search|find|file|cat|\bls\b/.test(t))
+    return { station: 'shelf', carry: 'Read' };
   return { station: 'desk' };
 }
 
@@ -221,9 +237,12 @@ const LARGE_CONTEXT_WINDOW = 500_000;
  */
 function contextFillPct(a: Agent): number | null {
   if (a.contextTokens === undefined || !Number.isFinite(a.contextTokens)) return null;
-  const limit = a.contextLimit && a.contextLimit > 0
-    ? a.contextLimit
-    : (/1m/i.test(a.model ?? '') ? 1_000_000 : 200_000);
+  const limit =
+    a.contextLimit && a.contextLimit > 0
+      ? a.contextLimit
+      : /1m/i.test(a.model ?? '')
+        ? 1_000_000
+        : 200_000;
   return (a.contextTokens / limit) * 100;
 }
 
@@ -307,7 +326,8 @@ export function useHive(config: HarnessConfig | null): void {
     const t = setTimeout(async () => {
       if (cancelled) return;
       const live = await window.cth.listPtys().catch(() => []);
-      if (live.some((p) => p.id === GOD_PTY)) { // already running — keep restored entry
+      if (live.some((p) => p.id === GOD_PTY)) {
+        // already running — keep restored entry
         if (!cancelled) useStore.getState().setGodStatus('ready');
         return;
       }
@@ -337,10 +357,24 @@ export function useHive(config: HarnessConfig | null): void {
         // The god sends NO explicit permission mode — spawnAgentCore's
         // Claude-Auto default (card permission-mode-config-20260816); the
         // satellite co-terminal (kittySatellite.godCommand) mirrors this.
-        hive: { id: GOD_ID, name: 'Michael', provider: godProvider, cwd: config.harnessHome!, isGod: true, role: 'orchestrator (god)' }
+        hive: {
+          id: GOD_ID,
+          name: 'Michael',
+          provider: godProvider,
+          cwd: config.harnessHome!,
+          isGod: true,
+          role: 'orchestrator (god)',
+        },
       });
-      if (cancelled) { godSpawning.current = false; return; }
-      if (!res.ok) { godSpawning.current = false; useStore.getState().setGodStatus('failed'); return; }
+      if (cancelled) {
+        godSpawning.current = false;
+        return;
+      }
+      if (!res.ok) {
+        godSpawning.current = false;
+        useStore.getState().setGodStatus('failed');
+        return;
+      }
       const god: Agent = {
         id: GOD_ID,
         name: 'Michael',
@@ -359,7 +393,7 @@ export function useHive(config: HarnessConfig | null): void {
         provider: godProvider,
         model: godModel,
         isGod: true,
-        recentTextTs: Date.now()
+        recentTextTs: Date.now(),
       };
       useStore.getState().addAgent(god);
       useStore.getState().setGodStatus('ready');
@@ -380,9 +414,10 @@ export function useHive(config: HarnessConfig | null): void {
           // godRemoteControl (Settings) gates the /remote-control link — off =
           // the orchestrator runs unwatched from the phone (Telegram still
           // reports what he says, but not what he does).
-          const remoteCommand = config.godRemoteControl !== false
-            ? remoteControlCommandForProvider(godProvider, 'Michael')
-            : null;
+          const remoteCommand =
+            config.godRemoteControl !== false
+              ? remoteControlCommandForProvider(godProvider, 'Michael')
+              : null;
           if (remoteCommand) {
             // settleMs pauses the chain ~1.5s after /remote-control before the
             // orientation prompt (fresh spawns only) is submitted next.
@@ -395,11 +430,17 @@ export function useHive(config: HarnessConfig | null): void {
             if (res.seedPrompt) await submitToPty(GOD_PTY, res.seedPrompt, godProvider);
             await submitToPty(GOD_PTY, INITIAL_GOD_PROMPT, godProvider);
           }
-        } catch { /* PTY may have died during startup */ }
-        finally { bootGraceUntil.current[GOD_ID] = 0; }
+        } catch {
+          /* PTY may have died during startup */
+        } finally {
+          bootGraceUntil.current[GOD_ID] = 0;
+        }
       })();
     }, 1200);
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [config?.onboardingComplete, config?.harnessHome]);
 
   // 2) Drive avatars from real hook events emitted by each agent's shim.
@@ -417,12 +458,24 @@ export function useHive(config: HarnessConfig | null): void {
       // pty-stream parser only refines the on-floor action/station).
       if (e.event === 'PreCompact') {
         // #5C — agent entered /compact; show it's boxing up context, not frozen.
-        if (!breakerArmed) updateAgent(e.agentId, { status: 'compacting', action: 'compacting context', carrying: undefined });
+        if (!breakerArmed)
+          updateAgent(e.agentId, {
+            status: 'compacting',
+            action: 'compacting context',
+            carrying: undefined,
+          });
       } else if (e.event === 'PostCompact') {
-        if (!breakerArmed) updateAgent(e.agentId, { status: 'working', action: 'resumed', carrying: undefined });
+        if (!breakerArmed)
+          updateAgent(e.agentId, { status: 'working', action: 'resumed', carrying: undefined });
       } else if (e.event === 'PreToolUse' && e.tool) {
         const m = stationForTool(e.tool);
-        if (!breakerArmed) updateAgent(e.agentId, { status: 'working', currentStation: m.station, carrying: m.carry, action: `using ${e.tool}` });
+        if (!breakerArmed)
+          updateAgent(e.agentId, {
+            status: 'working',
+            currentStation: m.station,
+            carrying: m.carry,
+            action: `using ${e.tool}`,
+          });
         useStore.getState().bumpToolCount(e.agentId); // usage proxy for the command center
       } else if (e.event === 'PostToolUse' || e.event === 'UserPromptSubmit') {
         // A turn is in progress (prompt submitted / tool just finished) — keep
@@ -436,12 +489,18 @@ export function useHive(config: HarnessConfig | null): void {
         // EXIT, so without this an agy worker would never register as idle and the
         // inbox-wake nudge (idle-only) could never reach it — its mail would sit
         // undrained. Treat it as idle; a follow-up tool/turn re-sets working.
-        if (!breakerArmed) updateAgent(e.agentId, { status: 'idle', action: 'idle', carrying: undefined });
+        if (!breakerArmed)
+          updateAgent(e.agentId, { status: 'idle', action: 'idle', carrying: undefined });
       } else if (e.event === 'Stop' || e.event === 'SubagentStop') {
         // A blocked Stop means the agent is being re-engaged to process its
         // inbox — it's NOT idle, so keep it working until it genuinely stops.
         if (e.blocked) {
-          if (!breakerArmed) updateAgent(e.agentId, { status: 'working', action: 'reading inbox', carrying: undefined });
+          if (!breakerArmed)
+            updateAgent(e.agentId, {
+              status: 'working',
+              action: 'reading inbox',
+              carrying: undefined,
+            });
         } else {
           // A genuine stop clears any breaker override — the run is over.
           breakerLevel.current[e.agentId] = 'healthy';
@@ -456,14 +515,16 @@ export function useHive(config: HarnessConfig | null): void {
         // march to the door with a red "!" right after finishing, so detect the
         // idle case and let him linger on the floor instead.
         const msg = (e.message ?? '').toLowerCase();
-        const idleWaiting = !msg
-          || msg.includes('waiting for your input')
-          || msg.includes('is idle')
-          || msg.includes('waiting for input');
-        const needsHuman = msg.includes('permission')
-          || msg.includes('approve')
-          || msg.includes('confirm')
-          || msg.includes('needs your');
+        const idleWaiting =
+          !msg ||
+          msg.includes('waiting for your input') ||
+          msg.includes('is idle') ||
+          msg.includes('waiting for input');
+        const needsHuman =
+          msg.includes('permission') ||
+          msg.includes('approve') ||
+          msg.includes('confirm') ||
+          msg.includes('needs your');
         if (needsHuman && !idleWaiting) {
           // Only the god agent escalates to the human; sub-agents are autonomous
           // and read as "waiting" (parked on god, not on you).
@@ -486,7 +547,11 @@ export function useHive(config: HarnessConfig | null): void {
       const { updateAgent, agents } = useStore.getState();
       if (!agents.some((a) => a.id === s.agentId)) return;
       if (s.level === 'constrained' || s.level === 'stopped') {
-        updateAgent(s.agentId, { status: 'looping', action: s.reason || 'breaker armed', carrying: undefined });
+        updateAgent(s.agentId, {
+          status: 'looping',
+          action: s.reason || 'breaker armed',
+          carrying: undefined,
+        });
       }
       // 'healthy'/'steering' clear the pin; the next hook event refreshes status.
     });
@@ -512,12 +577,17 @@ export function useHive(config: HarnessConfig | null): void {
           const limit = Math.max(hinted, ctx > 200_000 ? 1_000_000 : 0);
           const progress = Math.max(0, Math.min(8, Math.round((ctx / limit) * 8)));
           updateAgent(a.id, { contextTokens: ctx, progress });
-        } catch { /* ignore — try again next tick */ }
+        } catch {
+          /* ignore — try again next tick */
+        }
       }
     };
     const t = setTimeout(poll, 3000); // first fill shortly after boot
     const iv = setInterval(poll, 15000);
-    return () => { clearTimeout(t); clearInterval(iv); };
+    return () => {
+      clearTimeout(t);
+      clearInterval(iv);
+    };
   }, [config?.onboardingComplete]);
 
   // 2d) Push-based context gauge: the status-line shim forwards the session's
@@ -530,7 +600,9 @@ export function useHive(config: HarnessConfig | null): void {
       // into the store (NaN survives the Math.min/max clamp).
       if (!Number.isFinite(limit) || limit <= 0 || !Number.isFinite(tokens)) return;
       const progress = Math.max(0, Math.min(8, Math.round((tokens / limit) * 8)));
-      useStore.getState().updateAgent(agentId, { contextTokens: tokens, contextLimit: limit, progress });
+      useStore
+        .getState()
+        .updateAgent(agentId, { contextTokens: tokens, contextLimit: limit, progress });
     });
   }, []);
 
@@ -556,8 +628,8 @@ export function useHive(config: HarnessConfig | null): void {
         [
           `Terminal handoff failed for ${msg.to}: ${msg.subject}`,
           '',
-          `Message ${msg.id} from ${msg.from} could not be queued because ${msg.to} has no live PTY. Route it manually or respawn the agent.`
-        ].join('\n')
+          `Message ${msg.id} from ${msg.from} could not be queued because ${msg.to} has no live PTY. Route it manually or respawn the agent.`,
+        ].join('\n'),
       );
     });
   }, [config?.onboardingComplete]);
@@ -625,7 +697,10 @@ export function useHive(config: HarnessConfig | null): void {
           // Dedup by the newest message id, not the count — a count can oscillate
           // as messages drain and re-arrive, which would re-nudge for the same set.
           const newest = inbox.length
-            ? inbox.map((m) => m.id).sort().slice(-1)[0]
+            ? inbox
+                .map((m) => m.id)
+                .sort()
+                .slice(-1)[0]
             : '';
           if (newest && nudged.current[a.id] !== newest) {
             // Per-provider grace: a monitor-capable agent armed its own inbox
@@ -634,7 +709,8 @@ export function useHive(config: HarnessConfig | null): void {
             // nudge latency is unchanged. A NEWER message restarts the clock:
             // the monitor gets a fresh wake chance for it too.
             const seen = inboxWakeSeen.current[a.id];
-            if (!seen || seen.id !== newest) inboxWakeSeen.current[a.id] = { id: newest, since: Date.now() };
+            if (!seen || seen.id !== newest)
+              inboxWakeSeen.current[a.id] = { id: newest, since: Date.now() };
             const grace = nudgeGraceMsForProvider(inferAgentProvider(a.command, a.provider));
             if (Date.now() - inboxWakeSeen.current[a.id].since < grace) continue;
             // ONE nudge in flight at a time. The nudge text is generic ("read
@@ -654,20 +730,24 @@ export function useHive(config: HarnessConfig | null): void {
               // changes. Unlabeled agents (god, human hires, pre-label spawns)
               // keep today's exact text.
               const label = a.spawnLabel?.trim();
-              useStore.getState().enqueueMessage(
-                a.id,
-                label
-                  ? `${label} — read your hive inbox for the full dispatch, act on it now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.`
-                  : 'You have new hive inbox message(s) — read your inbox, act on them now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.',
-                { inboxFor: newest }
-              );
+              useStore
+                .getState()
+                .enqueueMessage(
+                  a.id,
+                  label
+                    ? `${label} — read your hive inbox for the full dispatch, act on it now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.`
+                    : 'You have new hive inbox message(s) — read your inbox, act on them now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.',
+                  { inboxFor: newest },
+                );
               nudged.current[a.id] = newest;
             }
           } else if (!newest) {
             nudged.current[a.id] = '';
             delete inboxWakeSeen.current[a.id];
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     }, 4000);
     return () => clearInterval(iv);
@@ -707,8 +787,9 @@ export function useHive(config: HarnessConfig | null): void {
             useStore.getState().updateAgent(a.id, { seedPrompt: seed });
             return;
           }
-          submitToPty(ptyId, seed, inferAgentProvider(live.command, live.provider))
-            .catch(() => { /* pty may have died */ });
+          submitToPty(ptyId, seed, inferAgentProvider(live.command, live.provider)).catch(() => {
+            /* pty may have died */
+          });
         }, SEED_BOOT_MS);
       }
     }, 1500);
@@ -737,7 +818,7 @@ export function useHive(config: HarnessConfig | null): void {
     const dispatch = async (
       srcId: string,
       target: Agent | undefined,
-      wrap?: (m: QueuedMessage) => string
+      wrap?: (m: QueuedMessage) => string,
     ): Promise<{ sent: boolean; message?: QueuedMessage }> => {
       const { messageQueues, removeQueuedMessage } = useStore.getState();
       const next = messageQueues[srcId]?.[0];
@@ -782,10 +863,12 @@ export function useHive(config: HarnessConfig | null): void {
       // Fail-open on a fetch error so a hiccup can never strand a live card.
       if (next.cardFor) {
         const data = await window.cth.hiveTasks().catch(() => null);
-        const card = data && typeof data === 'object' && Array.isArray((data as { tasks?: unknown[] }).tasks)
-          ? ((data as { tasks: Array<Record<string, unknown> | undefined> }).tasks
-              .find((t) => t?.id === next.cardFor!.cardId) as CardSnapshotLike | undefined)
-          : undefined;
+        const card =
+          data && typeof data === 'object' && Array.isArray((data as { tasks?: unknown[] }).tasks)
+            ? ((data as { tasks: Array<Record<string, unknown> | undefined> }).tasks.find(
+                (t) => t?.id === next.cardFor!.cardId,
+              ) as CardSnapshotLike | undefined)
+            : undefined;
         if (!cardSessionActionStillValid(card, next.cardFor)) {
           removeQueuedMessage(srcId, next.id);
           return { sent: false };
@@ -797,11 +880,12 @@ export function useHive(config: HarnessConfig | null): void {
         const sent = await deliverWithAcknowledgement(
           // `instruction` (when present) is the authoritative text to type into
           // the PTY; UI/card surfaces continue to show the readable `text`.
-          () => submitToPty(
-            target.ptyId!,
-            wrap ? wrap(next) : (next.instruction ?? next.text),
-            inferAgentProvider(target.command, target.provider)
-          ),
+          () =>
+            submitToPty(
+              target.ptyId!,
+              wrap ? wrap(next) : (next.instruction ?? next.text),
+              inferAgentProvider(target.command, target.provider),
+            ),
           () => {
             removeQueuedMessage(srcId, next.id);
             // Zero the gauge on a DELIVERED /clear — the new session's context
@@ -811,10 +895,10 @@ export function useHive(config: HarnessConfig | null): void {
               useStore.getState().updateAgent(target.id, {
                 contextTokens: 0,
                 contextLimit: undefined,
-                progress: 0
+                progress: 0,
               });
             }
-          }
+          },
         );
         if (sent) {
           delete sendFailures[next.id];
@@ -830,7 +914,7 @@ export function useHive(config: HarnessConfig | null): void {
           removeQueuedMessage(srcId, next.id);
           console.warn(
             `[queue-drain] dropping message ${next.id} for ${target.id} after ${attempts} failed pty writes ` +
-            `("${next.text.slice(0, 80)}${next.text.length > 80 ? '…' : ''}")`
+              `("${next.text.slice(0, 80)}${next.text.length > 80 ? '…' : ''}")`,
           );
         }
         return { sent: false };
@@ -866,10 +950,12 @@ export function useHive(config: HarnessConfig | null): void {
           dependsOn: [],
           priority: 1,
           createdAt: new Date().toISOString(),
-          slack
+          slack,
         };
         await window.cth.hiveWriteTasks([...existing, card]);
-      } catch { /* best-effort: card promotion must never sink dispatch */ }
+      } catch {
+        /* best-effort: card promotion must never sink dispatch */
+      }
     };
 
     const flush = () => {
@@ -890,12 +976,19 @@ export function useHive(config: HarnessConfig | null): void {
     let debounce: ReturnType<typeof setTimeout> | null = null;
     const schedule = () => {
       if (debounce) return;
-      debounce = setTimeout(() => { debounce = null; flush(); }, 200);
+      debounce = setTimeout(() => {
+        debounce = null;
+        flush();
+      }, 200);
     };
     const unsub = useStore.subscribe(schedule);
     const iv = setInterval(flush, 3000);
     schedule();
-    return () => { unsub(); if (debounce) clearTimeout(debounce); clearInterval(iv); };
+    return () => {
+      unsub();
+      if (debounce) clearTimeout(debounce);
+      clearInterval(iv);
+    };
   }, [config?.onboardingComplete]);
 
   // 5) Pipe inbound Slack messages into Michael's queue. The main-process Slack
@@ -928,7 +1021,7 @@ export function useHive(config: HarnessConfig | null): void {
       void window.cth.slackReply({
         channel: msg.channel,
         thread_ts: msg.thread_ts,
-        text: ':hourglass_flowing_sand: *Received.* Your request has been queued — the team is on it and will reply here when done.'
+        text: ':hourglass_flowing_sand: *Received.* Your request has been queued — the team is on it and will reply here when done.',
       });
     });
   }, [config?.onboardingComplete]);
@@ -996,7 +1089,7 @@ export function useHive(config: HarnessConfig | null): void {
         provider: rec.provider as Agent['provider'],
         isGod: false,
         spawnLabel: rec.spawnLabel, // leads the wake nudge → the CLI session's name
-        recentTextTs: Date.now()
+        recentTextTs: Date.now(),
       };
       useStore.getState().addAgent(agent);
     });
@@ -1007,9 +1100,14 @@ export function useHive(config: HarnessConfig | null): void {
     // shelf: the card lands in VACATION, keeps its record, and is undeletable
     // until the vacation ends.
     const offVacation = window.cth.onHiveAgentVacationed?.((e) => {
-      if (e?.id) useStore.getState().archiveAgent(e.id, { vacation: true, vacationSince: e.vacationSince });
+      if (e?.id)
+        useStore.getState().archiveAgent(e.id, { vacation: true, vacationSince: e.vacationSince });
     });
-    return () => { offSpawn?.(); offArchive?.(); offVacation?.(); };
+    return () => {
+      offSpawn?.();
+      offArchive?.();
+      offVacation?.();
+    };
   }, [config?.onboardingComplete]);
 
   // 5c) v0.3.4 voice bridge: main stages queue insertions (clear_context) and
@@ -1022,7 +1120,11 @@ export function useHive(config: HarnessConfig | null): void {
       if (!evt?.agentId || typeof evt.text !== 'string' || !evt.text.trim()) return;
       const { agents, enqueueMessage } = useStore.getState();
       if (!agents.some((a) => a.id === evt.agentId)) return;
-      enqueueMessage(evt.agentId, evt.text.trim(), evt.cardFor ? { cardFor: evt.cardFor } : undefined);
+      enqueueMessage(
+        evt.agentId,
+        evt.text.trim(),
+        evt.cardFor ? { cardFor: evt.cardFor } : undefined,
+      );
     });
   }, [config?.onboardingComplete]);
 
@@ -1051,9 +1153,10 @@ export function useHive(config: HarnessConfig | null): void {
       for (const a of agents) {
         if (!a.ptyId) continue;
         const provider = inferAgentProvider(a.command, a.provider);
-        const command = action === 'clear'
-          ? clearCommandForProvider(provider, rule.message)
-          : compactionCommandForProvider(provider, rule.message);
+        const command =
+          action === 'clear'
+            ? clearCommandForProvider(provider, rule.message)
+            : compactionCommandForProvider(provider, rule.message);
         // No trustworthy command for this CLI (Crush's palette-only TUI, Copilot's
         // print mode, an unknown custom binary) — leave its terminal alone.
         if (!command) continue;
@@ -1067,11 +1170,13 @@ export function useHive(config: HarnessConfig | null): void {
 
     // The typed `onContextTrigger` arrives with the main-process/preload change
     // that emits it; access it defensively so this lands independently of that.
-    const off = (window.cth as unknown as {
-      onContextTrigger?: (
-        cb: (p: { action: 'compact' | 'clear'; rule: ContextRule }) => void
-      ) => () => void;
-    }).onContextTrigger?.((p) => {
+    const off = (
+      window.cth as unknown as {
+        onContextTrigger?: (
+          cb: (p: { action: 'compact' | 'clear'; rule: ContextRule }) => void,
+        ) => () => void;
+      }
+    ).onContextTrigger?.((p) => {
       if (!p?.rule) return;
       fire(p.action === 'clear' ? 'clear' : 'compact', p.rule);
     });
@@ -1080,11 +1185,14 @@ export function useHive(config: HarnessConfig | null): void {
     // it switches over. Treat it as the default compact rule so behaviour is
     // continuous across that landing. Harmless if both fire — the dedupe above
     // drops the duplicate.
-    const offLegacy = window.cth.onAutoCompact(
-      () => fire('compact', DEFAULT_CONTEXT_TRIGGER.compact)
+    const offLegacy = window.cth.onAutoCompact(() =>
+      fire('compact', DEFAULT_CONTEXT_TRIGGER.compact),
     );
 
-    return () => { off?.(); offLegacy?.(); };
+    return () => {
+      off?.();
+      offLegacy?.();
+    };
   }, [config?.onboardingComplete]);
 
   // 7) Auto-revive wedged PTYs after the Mac sleeps/locks. Kevin's main-process
@@ -1126,13 +1234,27 @@ export function useHive(config: HarnessConfig | null): void {
         const hive = a.isGod
           ? { id: a.id, name: a.name, cwd, provider, isGod: true, role: 'orchestrator (god)' }
           : a.isAssistant
-          ? { id: a.id, name: a.name, cwd, provider, isAssistant: true, role: "Michael's prep assistant" }
-          : { id: a.id, name: a.name, cwd, provider };
+            ? {
+                id: a.id,
+                name: a.name,
+                cwd,
+                provider,
+                isAssistant: true,
+                role: "Michael's prep assistant",
+              }
+            : { id: a.id, name: a.name, cwd, provider };
         // Spawn at the terminal's real grid so the TUI's absolute cursor moves land
         // in the right cells (a size mismatch scatters the redraw).
         const entry = acquireTerminal(deadId);
-        let cols = 100, rows = 30;
-        try { entry.fit.fit(); cols = entry.term.cols; rows = entry.term.rows; } catch { /* host not sized yet */ }
+        let cols = 100,
+          rows = 30;
+        try {
+          entry.fit.fit();
+          cols = entry.term.cols;
+          rows = entry.term.rows;
+        } catch {
+          /* host not sized yet */
+        }
         const res = await window.cth.spawnPty({
           id: deadId,
           cwd,
@@ -1149,7 +1271,7 @@ export function useHive(config: HarnessConfig | null): void {
           // The agent's own hire-time permission mode — revives keep the choice
           // they were hired with (card permission-mode-config-20260816).
           permissionMode: a.permissionMode,
-          hive
+          hive,
         });
         if (res.ok) {
           reviving.current[deadId] = Date.now(); // re-stamp so the debounce covers the spawn

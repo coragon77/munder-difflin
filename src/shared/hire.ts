@@ -31,7 +31,7 @@ export const HIRE_SPEC_V1 = 'munder-difflin/hire@1';
 export const BUNDLED_SKILL_IDS: ReadonlySet<string> = new Set([
   'md-hive-sync',
   'md-fetch-summarize',
-  'md-audit'
+  'md-audit',
 ]);
 
 /** Providers a manifest may request ('agy' is accepted as an alias for
@@ -139,7 +139,7 @@ const SAFE_FLAG_NAMES: ReadonlySet<string> = new Set([
   '--model',
   '--max-turns',
   '--output-format',
-  '--verbose'
+  '--verbose',
 ]);
 
 /** True if a commandFlags token is an allowed flag. Handles `--x` and `--x=value`
@@ -151,17 +151,34 @@ function isSafeFlag(token: string): boolean {
   return SAFE_FLAG_NAMES.has(name);
 }
 
-function str(v: unknown): v is string { return typeof v === 'string'; }
+function str(v: unknown): v is string {
+  return typeof v === 'string';
+}
 
-function capped(v: unknown, max: number, field: string, errors: string[], required = false): string | undefined {
+function capped(
+  v: unknown,
+  max: number,
+  field: string,
+  errors: string[],
+  required = false,
+): string | undefined {
   if (v === undefined || v === null) {
     if (required) errors.push(`"${field}" is required`);
     return undefined;
   }
-  if (!str(v)) { errors.push(`"${field}" must be a string`); return undefined; }
+  if (!str(v)) {
+    errors.push(`"${field}" must be a string`);
+    return undefined;
+  }
   const t = v.trim();
-  if (required && !t) { errors.push(`"${field}" must not be empty`); return undefined; }
-  if (t.length > max) { errors.push(`"${field}" exceeds ${max} chars`); return undefined; }
+  if (required && !t) {
+    errors.push(`"${field}" must not be empty`);
+    return undefined;
+  }
+  if (t.length > max) {
+    errors.push(`"${field}" exceeds ${max} chars`);
+    return undefined;
+  }
   return t || undefined;
 }
 
@@ -174,7 +191,10 @@ export function validateHireManifest(raw: unknown): HireValidation {
   const o = raw as Record<string, unknown>;
 
   if (o.spec !== HIRE_SPEC_V1) {
-    return { ok: false, errors: [`unsupported spec "${String(o.spec)}" (expected "${HIRE_SPEC_V1}")`] };
+    return {
+      ok: false,
+      errors: [`unsupported spec "${String(o.spec)}" (expected "${HIRE_SPEC_V1}")`],
+    };
   }
 
   const name = capped(o.name, 40, 'name', errors, true);
@@ -184,7 +204,9 @@ export function validateHireManifest(raw: unknown): HireValidation {
   const accent = capped(o.accent, 24, 'accent', errors)?.toLowerCase();
   const model = capped(o.model, 80, 'model', errors);
   if (model !== undefined && !MODEL_RE.test(model)) {
-    errors.push('"model" contains disallowed characters (it goes onto the spawn command line; letters, digits, spaces and . _ - ( ) [ ] / : @ + only)');
+    errors.push(
+      '"model" contains disallowed characters (it goes onto the spawn command line; letters, digits, spaces and . _ - ( ) [ ] / : @ + only)',
+    );
   }
   const author = capped(o.author, 80, 'author', errors);
   const homepage = capped(o.homepage, 300, 'homepage', errors);
@@ -221,7 +243,9 @@ export function validateHireManifest(raw: unknown): HireValidation {
         }
         if (f.startsWith('-')) {
           if (!isSafeFlag(f)) {
-            errors.push(`commandFlags entry ${JSON.stringify(f)} is not in the shared-hire safe-flag list — for safety a shared hire may only embed known-harmless flags (${[...SAFE_FLAG_NAMES].join(', ')}). If you need this flag, add it by hand in the command field after importing.`);
+            errors.push(
+              `commandFlags entry ${JSON.stringify(f)} is not in the shared-hire safe-flag list — for safety a shared hire may only embed known-harmless flags (${[...SAFE_FLAG_NAMES].join(', ')}). If you need this flag, add it by hand in the command field after importing.`,
+            );
             valueAllowed = false;
             continue;
           }
@@ -229,7 +253,9 @@ export function validateHireManifest(raw: unknown): HireValidation {
           valueAllowed = !f.includes('='); // a `--flag value` form may take one value next
         } else {
           if (!valueAllowed) {
-            errors.push(`commandFlags entry ${JSON.stringify(f)} is not allowed here (a value may only follow an allowed flag such as "--model")`);
+            errors.push(
+              `commandFlags entry ${JSON.stringify(f)} is not allowed here (a value may only follow an allowed flag such as "--model")`,
+            );
             continue;
           }
           commandFlags.push(f);
@@ -245,7 +271,10 @@ export function validateHireManifest(raw: unknown): HireValidation {
     if (!Array.isArray(o.capabilities) || o.capabilities.length > 12) {
       errors.push('"capabilities" must be an array of at most 12 items');
     } else {
-      capabilities = o.capabilities.filter(str).map(c => c.trim().slice(0, 40)).filter(Boolean);
+      capabilities = o.capabilities
+        .filter(str)
+        .map((c) => c.trim().slice(0, 40))
+        .filter(Boolean);
       if (capabilities.length === 0) capabilities = undefined;
     }
   }
@@ -258,7 +287,13 @@ export function validateHireManifest(raw: unknown): HireValidation {
 
   let tokenCap: number | undefined;
   if (o.tokenCap !== undefined) {
-    if (typeof o.tokenCap === 'number' && Number.isInteger(o.tokenCap) && o.tokenCap > 0 && o.tokenCap <= 1e10) tokenCap = o.tokenCap;
+    if (
+      typeof o.tokenCap === 'number' &&
+      Number.isInteger(o.tokenCap) &&
+      o.tokenCap > 0 &&
+      o.tokenCap <= 1e10
+    )
+      tokenCap = o.tokenCap;
     else errors.push('"tokenCap" must be a positive integer (max 1e10)');
   }
 
@@ -270,10 +305,15 @@ export function validateHireManifest(raw: unknown): HireValidation {
     } else {
       skills = [];
       for (const s of o.skills) {
-        if (!str(s) || !s.trim()) { errors.push('"skills" entries must be non-empty strings'); continue; }
+        if (!str(s) || !s.trim()) {
+          errors.push('"skills" entries must be non-empty strings');
+          continue;
+        }
         const id = s.trim();
         if (!BUNDLED_SKILL_IDS.has(id)) {
-          errors.push(`"skills" entry ${JSON.stringify(id)} is not a bundled skill id — a hire may only reference the built-in safe skills (${[...BUNDLED_SKILL_IDS].join(', ')})`);
+          errors.push(
+            `"skills" entry ${JSON.stringify(id)} is not a bundled skill id — a hire may only reference the built-in safe skills (${[...BUNDLED_SKILL_IDS].join(', ')})`,
+          );
         } else {
           skills.push(id);
         }
@@ -291,11 +331,16 @@ export function validateHireManifest(raw: unknown): HireValidation {
     } else {
       mcpServers = [];
       for (const s of o.mcpServers) {
-        if (!str(s) || !s.trim()) { errors.push('"mcpServers" entries must be non-empty strings'); continue; }
+        if (!str(s) || !s.trim()) {
+          errors.push('"mcpServers" entries must be non-empty strings');
+          continue;
+        }
         const id = s.trim();
         const entry = mcpCatalogEntry(id);
         if (!entry) {
-          errors.push(`"mcpServers" entry ${JSON.stringify(id)} is not a known catalog id — a hire may only reference built-in MCP servers`);
+          errors.push(
+            `"mcpServers" entry ${JSON.stringify(id)} is not a known catalog id — a hire may only reference built-in MCP servers`,
+          );
         } else {
           mcpServers.push(id);
           if (entry.tier !== 'safe-readonly') consentRequired.push(id);
@@ -312,7 +357,24 @@ export function validateHireManifest(raw: unknown): HireValidation {
     ok: true,
     errors: [],
     consentRequired: consentRequired.length > 0 ? consentRequired : undefined,
-    manifest: { spec: HIRE_SPEC_V1, name, description, goal, character, accent, provider, model, commandFlags, capabilities, isolate, tokenCap, author, homepage, skills, mcpServers }
+    manifest: {
+      spec: HIRE_SPEC_V1,
+      name,
+      description,
+      goal,
+      character,
+      accent,
+      provider,
+      model,
+      commandFlags,
+      capabilities,
+      isolate,
+      tokenCap,
+      author,
+      homepage,
+      skills,
+      mcpServers,
+    },
   };
 }
 
@@ -320,7 +382,11 @@ export function validateHireManifest(raw: unknown): HireValidation {
  *  manifest URL, or null if the link is not a well-formed hire link. */
 export function parseHireDeepLink(link: string): string | null {
   let u: URL;
-  try { u = new URL(link); } catch { return null; }
+  try {
+    u = new URL(link);
+  } catch {
+    return null;
+  }
   if (u.protocol !== 'munderdifflin:') return null;
   // Both munderdifflin://hire?src= (host) and munderdifflin:hire?src= (path).
   const action = (u.host || u.pathname.replace(/^\/+/, '')).toLowerCase();
@@ -328,7 +394,11 @@ export function parseHireDeepLink(link: string): string | null {
   const src = u.searchParams.get('src');
   if (!src) return null;
   let s: URL;
-  try { s = new URL(src); } catch { return null; }
+  try {
+    s = new URL(src);
+  } catch {
+    return null;
+  }
   if (!isAllowedManifestUrl(s)) return null;
   return s.toString();
 }

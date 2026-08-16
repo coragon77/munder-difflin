@@ -63,7 +63,9 @@ export interface UsageProvider {
 /** What the stub needs to turn an agentId into a transcript read + sample fields.
  *  Wired (in index.ts) to the hive registry: cwd for the transcript dir,
  *  sessionId for the resume/dedup key, model for the (best-effort) tier. */
-export type UsageResolver = (agentId: string) => { cwd: string; sessionId?: string | null; model?: string | null } | null
+export type UsageResolver = (
+  agentId: string,
+) => { cwd: string; sessionId?: string | null; model?: string | null } | null;
 
 /** Strip the `[1m]` (or `[…]`) context-window suffix so the model id matches the
  *  normalized form Oscar's OTel ingest emits. */
@@ -94,7 +96,7 @@ export class StubUsageProvider implements UsageProvider {
       cacheRead: u.cacheReadTokens,
       cacheCreation: u.cacheWriteTokens,
       model: normalizeModel(info.model),
-      usd: u.estimatedCostUsd // interim fallback estimate; Oscar's provider supplies Claude-precomputed usd
+      usd: u.estimatedCostUsd, // interim fallback estimate; Oscar's provider supplies Claude-precomputed usd
     };
   }
 }

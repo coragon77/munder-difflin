@@ -43,7 +43,7 @@ export const DEFAULT_REBUILD_DELAY_MS = 1500;
  *  call it from the effect cleanup so a torn-down scene stops responding. */
 export function installContextLossRecovery(
   canvas: EventTarget,
-  opts: GlRecoveryOptions
+  opts: GlRecoveryOptions,
 ): () => void {
   const max = opts.maxRebuilds ?? DEFAULT_MAX_REBUILDS;
   const delay = opts.delayMs ?? DEFAULT_REBUILD_DELAY_MS;
@@ -60,14 +60,20 @@ export function installContextLossRecovery(
     e.preventDefault();
     if (!live) return;
     if (rebuilds >= max) {
-      log(`[OfficeFloor] WebGL context lost again after ${max} rebuilds — too many live contexts on this floor; giving up until restart`);
+      log(
+        `[OfficeFloor] WebGL context lost again after ${max} rebuilds — too many live contexts on this floor; giving up until restart`,
+      );
       opts.onGiveUp?.();
       live = false;
       return;
     }
     rebuilds += 1;
-    log(`[OfficeFloor] WebGL context lost (Chromium evicted the oldest context) — rebuilding the scene, attempt ${rebuilds}/${max}`);
-    schedule(() => { if (live) opts.onRebuild(); }, delay);
+    log(
+      `[OfficeFloor] WebGL context lost (Chromium evicted the oldest context) — rebuilding the scene, attempt ${rebuilds}/${max}`,
+    );
+    schedule(() => {
+      if (live) opts.onRebuild();
+    }, delay);
   };
 
   canvas.addEventListener('webglcontextlost', onLost as EventListener, false);

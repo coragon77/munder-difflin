@@ -31,17 +31,19 @@ function loadFile(filename) {
       // builtin (`import path from 'node:path'`) compiles to `path_1.default`,
       // which is undefined at run time — the module loads fine and then explodes
       // on first use. Test harness only; no shipped code compiles through here.
-      esModuleInterop: true
+      esModuleInterop: true,
     },
     fileName: filename,
-    reportDiagnostics: true
+    reportDiagnostics: true,
   });
   if (output.diagnostics?.length) {
-    throw new Error(ts.formatDiagnosticsWithColorAndContext(output.diagnostics, {
-      getCurrentDirectory: () => process.cwd(),
-      getCanonicalFileName: (name) => name,
-      getNewLine: () => '\n'
-    }));
+    throw new Error(
+      ts.formatDiagnosticsWithColorAndContext(output.diagnostics, {
+        getCurrentDirectory: () => process.cwd(),
+        getCanonicalFileName: (name) => name,
+        getNewLine: () => '\n',
+      }),
+    );
   }
   const mod = { exports: {} };
   cache.set(filename, mod);
@@ -52,7 +54,14 @@ function loadFile(filename) {
     }
     return require(request);
   };
-  const run = new Function('module', 'exports', 'require', '__filename', '__dirname', output.outputText);
+  const run = new Function(
+    'module',
+    'exports',
+    'require',
+    '__filename',
+    '__dirname',
+    output.outputText,
+  );
   run(mod, mod.exports, localRequire, filename, path.dirname(filename));
   return mod.exports;
 }

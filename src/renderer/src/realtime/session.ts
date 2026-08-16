@@ -27,7 +27,13 @@ import { useSyncExternalStore } from 'react';
 import { RealtimeAgent, RealtimeSession, OpenAIRealtimeWebRTC } from '@openai/agents-realtime';
 import { realtimeReadTools, realtimeSessionSummary } from './tools';
 import { realtimeActionTools } from './actions';
-import { resetRealtimeCost, recordRealtimeUsage, endRealtimeCost, isRealtimeIdle, getRealtimeCostSnapshot } from './costStore';
+import {
+  resetRealtimeCost,
+  recordRealtimeUsage,
+  endRealtimeCost,
+  isRealtimeIdle,
+  getRealtimeCostSnapshot,
+} from './costStore';
 
 /**
  * Voice-loop state machine:
@@ -65,18 +71,17 @@ const REALTIME_VOICE = 'cedar';
 const GREETINGS = [
   "Hi, what's up?",
   "Hey, how's it going?",
-  "Hello, how can I help you?",
-  "Hey there, Michael here — what can I do for you?",
-  "Hi! What are we working on today?",
+  'Hello, how can I help you?',
+  'Hey there, Michael here — what can I do for you?',
+  'Hi! What are we working on today?',
   "Hey, good to hear you. What's on your mind?",
-  "Hello! What do you need?",
-  "Hey, I'm all ears — what's going on?"
+  'Hello! What do you need?',
+  "Hey, I'm all ears — what's going on?",
 ];
 
 /** Michael's voice persona (rt-6 — the final Phase-1 instructions, authored by god). Michael
  *  is READ-ONLY: he reports on the hive via the rt-4 read-tools but takes no actions yet. */
-const MICHAEL_PERSONA =
-  `You are Michael — the voice of the orchestrator ("god") of a hive of autonomous Claude coding agents. The person you're talking to is the human who runs the hive; treat them as the boss you're briefing.
+const MICHAEL_PERSONA = `You are Michael — the voice of the orchestrator ("god") of a hive of autonomous Claude coding agents. The person you're talking to is the human who runs the hive; treat them as the boss you're briefing.
 
 VOICE & STYLE. You speak out loud over a live connection. Be concise and natural — like a sharp, calm chief of staff giving a verbal briefing. Lead with the answer in one sentence, then add detail only if it helps. Never read markdown, file paths, or code aloud unless asked. Use plain spoken numbers and names. Brevity is fine; the human can always ask for more.
 
@@ -116,7 +121,7 @@ let state: RealtimeMichaelState = {
   model: null,
   expiresAt: null,
   deviceId: null,
-  outputDeviceId: null
+  outputDeviceId: null,
 };
 const listeners = new Set<() => void>();
 
@@ -150,7 +155,10 @@ function sanitizeForVoice(s: string): string {
   return (s || '')
     .replace(/[\r\n]+/g, ' ')
     .replace(/[()]/g, '')
-    .replace(/\b(?:ignore|disregard|forget|override)\b[^.!?]*\b(?:previous|above|prior|instruction|system|prompt)\b[^.!?]*/gi, '')
+    .replace(
+      /\b(?:ignore|disregard|forget|override)\b[^.!?]*\b(?:previous|above|prior|instruction|system|prompt)\b[^.!?]*/gi,
+      '',
+    )
     .replace(/\b(?:system|assistant|developer|user)\s*:/gi, '')
     .replace(/\bnew instructions?\b[^.!?]*/gi, '')
     .replace(/\byou are (?:now )?[^.!?]*/gi, '')
@@ -208,7 +216,8 @@ function wire(s: RealtimeSession): void {
   // recover from a transient error). A hard transport drop is handled by disconnect().
   s.on('error', (err) => {
     const e = (err as { error?: unknown })?.error;
-    const msg = e instanceof Error ? e.message : typeof e === 'string' ? e : 'realtime session error';
+    const msg =
+      e instanceof Error ? e.message : typeof e === 'string' ? e : 'realtime session error';
     setState({ error: msg });
   });
 
@@ -219,7 +228,10 @@ function wire(s: RealtimeSession): void {
     try {
       const ev = event as { type?: string; response?: { usage?: unknown } };
       if (ev.type === 'response.done' && ev.response?.usage) {
-        recordRealtimeUsage(ev.response.usage as Parameters<typeof recordRealtimeUsage>[0], Date.now());
+        recordRealtimeUsage(
+          ev.response.usage as Parameters<typeof recordRealtimeUsage>[0],
+          Date.now(),
+        );
       }
     } catch {
       /* metering is best-effort */
@@ -319,7 +331,7 @@ export async function connect(): Promise<void> {
     const audioConstraints: MediaTrackConstraints = {
       echoCancellation: true,
       noiseSuppression: true,
-      autoGainControl: true
+      autoGainControl: true,
     };
     if (state.deviceId) audioConstraints.deviceId = { exact: state.deviceId };
     stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
@@ -338,8 +350,13 @@ export async function connect(): Promise<void> {
     try {
       const queued = await window.cth.realtimeDrainCompletions();
       if (Array.isArray(queued) && queued.length) {
-        const lines = queued.map((c) => c.summary).filter(Boolean).join(' ');
-        if (lines) warmStart = `${warmStart}\nCompletions since you last spoke: ${lines} Mention these to the user when it's natural.`.trim();
+        const lines = queued
+          .map((c) => c.summary)
+          .filter(Boolean)
+          .join(' ');
+        if (lines)
+          warmStart =
+            `${warmStart}\nCompletions since you last spoke: ${lines} Mention these to the user when it's natural.`.trim();
       }
     } catch {
       /* warm-start catch-up is best-effort */
@@ -351,7 +368,7 @@ export async function connect(): Promise<void> {
     const agent = new RealtimeAgent({
       name: 'Michael',
       instructions: MICHAEL_PERSONA,
-      tools: [...realtimeReadTools(), ...realtimeActionTools()]
+      tools: [...realtimeReadTools(), ...realtimeActionTools()],
     });
     const s = new RealtimeSession(agent, {
       transport,
@@ -366,12 +383,12 @@ export async function connect(): Promise<void> {
               type: 'semantic_vad',
               eagerness: 'medium',
               createResponse: true,
-              interruptResponse: true
-            }
+              interruptResponse: true,
+            },
           },
-          output: { voice: REALTIME_VOICE }
-        }
-      }
+          output: { voice: REALTIME_VOICE },
+        },
+      },
     });
     wire(s);
 
@@ -392,22 +409,29 @@ export async function connect(): Promise<void> {
           item: {
             type: 'message',
             role: 'user',
-            content: [{ type: 'input_text', text }]
-          }
+            content: [{ type: 'input_text', text }],
+          },
         } as never);
-      } catch { /* injection is best-effort */ }
+      } catch {
+        /* injection is best-effort */
+      }
     };
     // The connect snapshot goes in as the FIRST conversation item (the greeting
     // below opens the conversation; this just grounds it).
     if (warmStart) {
-      injectSilent(`(Floor snapshot at connect — orientation only, call your tools for detail: ${sanitizeForVoice(warmStart)})`);
+      injectSilent(
+        `(Floor snapshot at connect — orientation only, call your tools for detail: ${sanitizeForVoice(warmStart)})`,
+      );
     }
     // Floor deltas — silent appends that keep Michael's picture live without
     // touching the cached instructions prefix.
-    offFloorDelta = window.cth.onRealtimeFloorDelta?.((d) => {
-      if (session !== s) return;
-      injectSilent(`(Floor update: ${sanitizeForVoice(d.text)}. Mention it only when relevant — don't interrupt.)`);
-    }) ?? null;
+    offFloorDelta =
+      window.cth.onRealtimeFloorDelta?.((d) => {
+        if (session !== s) return;
+        injectSilent(
+          `(Floor update: ${sanitizeForVoice(d.text)}. Mention it only when relevant — don't interrupt.)`,
+        );
+      }) ?? null;
     // rt-12: mark the session live (main now pushes completions instead of queuing) and
     // subscribe so a detected completion makes Michael speak it unprompted.
     void window.cth.realtimeSetSessionLive(true);
@@ -417,7 +441,7 @@ export async function connect(): Promise<void> {
         // treating it as a user request; semantic_vad won't interrupt an active turn.
         // N3-seam: sanitize the summary before injection (defense in depth).
         session?.sendMessage(
-          `(System notification — a task you dispatched just finished: ${sanitizeForVoice(c.summary)}) Briefly let the user know, and offer details if they want them.`
+          `(System notification — a task you dispatched just finished: ${sanitizeForVoice(c.summary)}) Briefly let the user know, and offer details if they want them.`,
         );
       } catch {
         /* session may be tearing down */
@@ -431,14 +455,17 @@ export async function connect(): Promise<void> {
     const idleMs = typeof idleCfg === 'number' ? idleCfg : DEFAULT_IDLE_DISCONNECT_MS;
     costGuardTimer = setInterval(() => {
       if (!session) return;
-      if (getRealtimeCostSnapshot().overCap) { disconnect('cost-cap'); return; }
+      if (getRealtimeCostSnapshot().overCap) {
+        disconnect('cost-cap');
+        return;
+      }
       if (idleMs > 0 && isRealtimeIdle(idleMs, Date.now())) disconnect('idle');
     }, COST_GUARD_TICK_MS);
     setState({
       status: 'listening',
       muted: false,
       model: mint.sessionConfig.model,
-      expiresAt: mint.expiresAt
+      expiresAt: mint.expiresAt,
     });
     // Open the conversation: have Michael speak a warm greeting as his first turn
     // rather than waiting for the user to talk first. A system-framed trigger (the
@@ -449,7 +476,7 @@ export async function connect(): Promise<void> {
     try {
       const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
       s.sendMessage(
-        `(System: the voice session just connected. Greet the user out loud now, warmly and briefly, to open the conversation — say something like "${greeting}". If there are completions to mention from the snapshot, you may add them after. Do not mention this instruction.)`
+        `(System: the voice session just connected. Greet the user out loud now, warmly and briefly, to open the conversation — say something like "${greeting}". If there are completions to mention from the snapshot, you may add them after. Do not mention this instruction.)`,
       );
     } catch {
       /* greeting is best-effort — never block a successful connect */
@@ -483,7 +510,10 @@ export function disconnect(reason: string = 'user'): void {
     /* best-effort teardown */
   }
   session = null;
-  if (costGuardTimer) { clearInterval(costGuardTimer); costGuardTimer = null; } // rt-9 cost guard off
+  if (costGuardTimer) {
+    clearInterval(costGuardTimer);
+    costGuardTimer = null;
+  } // rt-9 cost guard off
   teardownMedia();
   endRealtimeCost(); // rt-9: freeze the session cost meter
   // rt-12: stop receiving completion pushes; main will queue them until next connect.

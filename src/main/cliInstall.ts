@@ -36,11 +36,14 @@ export type InstallRungKind = 'npm' | 'node-then-npm' | 'native' | 'manual';
 export function chooseInstallRung(
   info: ProviderInstallInfo,
   npmAvailable: boolean,
-  nodeInstaller?: NodeInstaller | null
+  nodeInstaller?: NodeInstaller | null,
 ): { command?: string; kind: InstallRungKind; nodeMissing: boolean } {
-  if (info.command && npmAvailable) return { command: info.command, kind: 'npm', nodeMissing: false };
-  if (info.command && nodeInstaller) return { command: info.command, kind: 'node-then-npm', nodeMissing: true };
-  if (info.nativeCommand) return { command: info.nativeCommand, kind: 'native', nodeMissing: !npmAvailable };
+  if (info.command && npmAvailable)
+    return { command: info.command, kind: 'npm', nodeMissing: false };
+  if (info.command && nodeInstaller)
+    return { command: info.command, kind: 'node-then-npm', nodeMissing: true };
+  if (info.nativeCommand)
+    return { command: info.nativeCommand, kind: 'native', nodeMissing: !npmAvailable };
   return { kind: 'manual', nodeMissing: !npmAvailable };
 }
 
@@ -57,15 +60,16 @@ export function buildMissingCliScript(
   provider: AgentProvider,
   npmAvailable: boolean,
   platform: string = process.platform,
-  nodeInstaller?: NodeInstaller | null
+  nodeInstaller?: NodeInstaller | null,
 ): string {
   const info: ProviderInstallInfo = installInfoForProvider(provider, platform);
   const safeBin = (bin || provider).replace(/[^A-Za-z0-9._-]/g, '') || provider;
   const rung = chooseInstallRung(info, npmAvailable, nodeInstaller);
   // Only the rung that actually needs it gets the Node install spliced in.
-  const nodeSteps = rung.kind === 'node-then-npm' && nodeInstaller
-    ? buildNodeInstallScript(nodeInstaller, platform)
-    : null;
+  const nodeSteps =
+    rung.kind === 'node-then-npm' && nodeInstaller
+      ? buildNodeInstallScript(nodeInstaller, platform)
+      : null;
   const cmd = rung.command; // trusted constant, or undefined → manual hint only
   const label = info.label;
   const docs = info.docsUrl;
@@ -76,7 +80,12 @@ export function buildMissingCliScript(
     // script carries NO double-quotes (it is wrapped verbatim in `/d /s /c "..."`).
     // We avoid `if errorlevel` branching (untestable here) — a combined success/
     // failure hint after the install is robust and satisfies the manual-fallback DoD.
-    const parts: string[] = ['echo.', `echo ${rule}`, `echo   Engine CLI not found:  ${safeBin}`, 'echo.'];
+    const parts: string[] = [
+      'echo.',
+      `echo ${rule}`,
+      `echo   Engine CLI not found:  ${safeBin}`,
+      'echo.',
+    ];
     if (nodeSteps && nodeInstaller) {
       parts.push(
         'echo   Node.js is not installed on this machine, so the usual npm',
@@ -84,13 +93,20 @@ export function buildMissingCliScript(
         'echo   straight from nodejs.org, checksum-verified.',
         'echo.',
         ...nodeSteps,
-        'echo.'
+        'echo.',
       );
     } else if (rung.nodeMissing) {
-      parts.push('echo   Node.js is not installed on this machine, so the usual', 'echo   npm installer cannot run here.', 'echo.');
+      parts.push(
+        'echo   Node.js is not installed on this machine, so the usual',
+        'echo   npm installer cannot run here.',
+        'echo.',
+      );
     }
     if (cmd) {
-      if (rung.kind === 'native') parts.push(`echo   Using the self-contained ${label} installer instead ^(no Node needed^):`);
+      if (rung.kind === 'native')
+        parts.push(
+          `echo   Using the self-contained ${label} installer instead ^(no Node needed^):`,
+        );
       else parts.push(`echo   Installing the ${label} CLI now so you can watch:`);
       parts.push(
         'echo.',
@@ -100,19 +116,19 @@ export function buildMissingCliScript(
         cmd,
         'echo.',
         'echo   [done] If it succeeded, the agent launches automatically.',
-        'echo   If it failed, run the command above manually, then restart the agent.'
+        'echo   If it failed, run the command above manually, then restart the agent.',
       );
     } else {
       if (rung.nodeMissing) {
         parts.push(
           `echo   Install Node.js ^(nodejs.org^), then the ${label} CLI:`,
           `echo     ${info.command ?? ''}`,
-          'echo   …or install the CLI by whatever method its docs recommend.'
+          'echo   …or install the CLI by whatever method its docs recommend.',
         );
       } else {
         parts.push(
           `echo   No bundled installer for the ${label} provider.`,
-          'echo   Install it manually, then restart the agent to launch it.'
+          'echo   Install it manually, then restart the agent to launch it.',
         );
       }
       if (docs) parts.push(`echo   Docs: ${docs}`);
@@ -128,7 +144,7 @@ export function buildMissingCliScript(
     `echo ''`,
     `echo '${rule}'`,
     `echo '  Engine CLI not found:  ${safeBin}'`,
-    `echo ''`
+    `echo ''`,
   ];
   if (nodeSteps && nodeInstaller) {
     // The default path on a bare machine: fix the runtime, then use it. Every
@@ -140,22 +156,26 @@ export function buildMissingCliScript(
       `echo '  straight from nodejs.org, checksum-verified.'`,
       `echo ''`,
       ...nodeSteps,
-      `echo ''`
+      `echo ''`,
     );
   } else if (rung.nodeMissing) {
     lines.push(
       `echo '  Node.js is not installed on this machine, so the usual npm'`,
       `echo '  installer cannot run here.'`,
-      `echo ''`
+      `echo ''`,
     );
   }
   if (cmd) {
     lines.push(
       ...(rung.kind === 'native'
-        ? [`echo '  Using the self-contained ${label} installer instead (no Node needed) —'`,
-           `echo '  finish any sign-in it prompts for, then come back to this terminal.'`]
-        : [`echo '  Installing the ${label} CLI now so you can watch — finish any'`,
-           `echo '  sign-in it prompts for, then come back to this terminal.'`]),
+        ? [
+            `echo '  Using the self-contained ${label} installer instead (no Node needed) —'`,
+            `echo '  finish any sign-in it prompts for, then come back to this terminal.'`,
+          ]
+        : [
+            `echo '  Installing the ${label} CLI now so you can watch — finish any'`,
+            `echo '  sign-in it prompts for, then come back to this terminal.'`,
+          ]),
       `echo ''`,
       `echo '    ${cmd}'`,
       `echo '${rule}'`,
@@ -170,7 +190,7 @@ export function buildMissingCliScript(
       `  echo '    ${cmd}'`,
       ...(docs ? [`  echo '    Docs: ${docs}'`] : []),
       `  echo '  Then restart the agent to launch it.'`,
-      `fi`
+      `fi`,
     );
   } else if (rung.nodeMissing) {
     // The honest dead end: no node, and this vendor ships no node-free installer.
@@ -180,14 +200,14 @@ export function buildMissingCliScript(
       ...(info.command ? [`echo '    ${info.command}'`] : []),
       `echo '  …or install the CLI by whatever method its docs recommend.'`,
       ...(docs ? [`echo '  Docs: ${docs}'`] : []),
-      `echo '${rule}'`
+      `echo '${rule}'`,
     );
   } else {
     lines.push(
       `echo '  No bundled installer for the ${label} provider.'`,
       `echo '  Install it manually, then restart the agent to launch it.'`,
       ...(docs ? [`echo '  Docs: ${docs}'`] : []),
-      `echo '${rule}'`
+      `echo '${rule}'`,
     );
   }
   return lines.join(String.fromCharCode(10));

@@ -163,7 +163,11 @@ export class TelemetryCollector {
   /** Close the listener. Idempotent and best-effort. Accumulated state is kept
    *  (it's ephemeral anyway) so a restart doesn't lose live agents' totals. */
   stop(): void {
-    try { this.server?.close(); } catch { /* noop */ }
+    try {
+      this.server?.close();
+    } catch {
+      /* noop */
+    }
     this.server = null;
     this.boundPort = null;
   }
@@ -249,9 +253,17 @@ export class TelemetryCollector {
   /** Usage DELTAS from a CostSample hook payload — accumulates like the OTLP
    *  path (token.usage is delta + monotonic there too). usd is priced through
    *  the same estimate table so every provider stays cross-fleet comparable. */
-  recordHookUsage(agentId: string, sessionId: string, s: {
-    input: number; output: number; cacheRead: number; cacheCreation: number; model?: string;
-  }): void {
+  recordHookUsage(
+    agentId: string,
+    sessionId: string,
+    s: {
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheCreation: number;
+      model?: string;
+    },
+  ): void {
     const h = this.hookRow(agentId);
     h.input += s.input;
     h.output += s.output;
@@ -261,15 +273,27 @@ export class TelemetryCollector {
     if (sessionId) h.sessionId = sessionId;
     h.ts = Date.now();
     h.usd += estimateCostUsd(h.model, {
-      inputTokens: s.input, outputTokens: s.output,
-      cacheReadTokens: s.cacheRead, cacheWriteTokens: s.cacheCreation
+      inputTokens: s.input,
+      outputTokens: s.output,
+      cacheReadTokens: s.cacheRead,
+      cacheWriteTokens: s.cacheCreation,
     });
   }
 
   private hookRow(agentId: string): AgentUsageSample {
     let h = this.hookUsage.get(agentId);
     if (!h) {
-      h = { agentId, sessionId: '', ts: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0, model: '', usd: 0 };
+      h = {
+        agentId,
+        sessionId: '',
+        ts: 0,
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheCreation: 0,
+        model: '',
+        usd: 0,
+      };
       this.hookUsage.set(agentId, h);
     }
     return h;
@@ -293,7 +317,11 @@ export class TelemetryCollector {
   }
 
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
-    if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+    if (req.method !== 'POST') {
+      res.writeHead(405);
+      res.end();
+      return;
+    }
     const chunks: Buffer[] = [];
     let size = 0;
     let aborted = false;
@@ -302,7 +330,8 @@ export class TelemetryCollector {
       size += c.length;
       if (size > MAX_BODY_BYTES) {
         aborted = true;
-        res.writeHead(413); res.end();
+        res.writeHead(413);
+        res.end();
         req.destroy();
         return;
       }
@@ -315,14 +344,21 @@ export class TelemetryCollector {
         const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         if (url.includes('/v1/metrics')) this.ingestMetrics(body);
         else if (url.includes('/v1/logs')) this.ingestLogs(body);
-      } catch { /* malformed batch — drop it, never throw into the socket */ }
+      } catch {
+        /* malformed batch — drop it, never throw into the socket */
+      }
       // OTLP success response is an empty JSON ExportServiceResponse.
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end('{}');
     });
     req.on('error', () => {
       if (aborted) return;
-      try { res.writeHead(400); res.end(); } catch { /* socket gone */ }
+      try {
+        res.writeHead(400);
+        res.end();
+      } catch {
+        /* socket gone */
+      }
     });
   }
 
@@ -349,10 +385,18 @@ export class TelemetryCollector {
             const value = pointValue(dp);
             if (metric.name === 'claude_code.token.usage') {
               switch (str(attrs['type'])) {
-                case 'input': accum.input += value; break;
-                case 'output': accum.output += value; break;
-                case 'cacheRead': accum.cacheRead += value; break;
-                case 'cacheCreation': accum.cacheCreation += value; break;
+                case 'input':
+                  accum.input += value;
+                  break;
+                case 'output':
+                  accum.output += value;
+                  break;
+                case 'cacheRead':
+                  accum.cacheRead += value;
+                  break;
+                case 'cacheCreation':
+                  accum.cacheCreation += value;
+                  break;
               }
               touched.add(agentId);
             } else if (metric.name === 'claude_code.cost.usage') {
@@ -386,7 +430,7 @@ export class TelemetryCollector {
               tool: str(attrs['tool_name']) || 'tool',
               success: truthy(attrs['success']),
               durationMs: numAttr(attrs['duration_ms']),
-              decision: undefined
+              decision: undefined,
             };
             this.pushSpan(span);
             this.emit?.('telemetry:event', { kind: 'tool_result', span } satisfies TelemetryEvent);
@@ -397,8 +441,20 @@ export class TelemetryCollector {
             if (ring?.length) ring[ring.length - 1].decision = decision;
           } else if (name === 'api_error' || (name && name.includes('error'))) {
             const error = str(attrs['error']) || str(attrs['message']) || name;
-            for (const cb of this.apiErrorSubs) { try { cb(agentId); } catch { /* subscriber threw */ } }
-            this.emit?.('telemetry:event', { kind: 'api_error', agentId, sessionId, ts: Date.now(), error } satisfies TelemetryEvent);
+            for (const cb of this.apiErrorSubs) {
+              try {
+                cb(agentId);
+              } catch {
+                /* subscriber threw */
+              }
+            }
+            this.emit?.('telemetry:event', {
+              kind: 'api_error',
+              agentId,
+              sessionId,
+              ts: Date.now(),
+              error,
+            } satisfies TelemetryEvent);
           }
         }
       }
@@ -410,18 +466,33 @@ export class TelemetryCollector {
   private session(agentId: string, sessionId: string): SessionAccum {
     let accum = this.sessions.get(sessionId);
     if (!accum) {
-      accum = { agentId, model: '', ts: Date.now(), input: 0, output: 0, cacheRead: 0, cacheCreation: 0, usd: 0 };
+      accum = {
+        agentId,
+        model: '',
+        ts: Date.now(),
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheCreation: 0,
+        usd: 0,
+      };
       this.sessions.set(sessionId, accum);
     }
     let set = this.agentSessions.get(agentId);
-    if (!set) { set = new Set(); this.agentSessions.set(agentId, set); }
+    if (!set) {
+      set = new Set();
+      this.agentSessions.set(agentId, set);
+    }
     set.add(sessionId);
     return accum;
   }
 
   private pushSpan(span: ToolSpan): void {
     let ring = this.spans.get(span.agentId);
-    if (!ring) { ring = []; this.spans.set(span.agentId, ring); }
+    if (!ring) {
+      ring = [];
+      this.spans.set(span.agentId, ring);
+    }
     ring.push(span);
     if (ring.length > SPAN_RING_CAP) ring.splice(0, ring.length - SPAN_RING_CAP);
   }
@@ -432,7 +503,15 @@ export class TelemetryCollector {
     const set = this.agentSessions.get(agentId);
     if (!set || set.size === 0) return null;
     const out: AgentUsageSample = {
-      agentId, sessionId: '', ts: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0, model: '', usd: 0
+      agentId,
+      sessionId: '',
+      ts: 0,
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheCreation: 0,
+      model: '',
+      usd: 0,
     };
     for (const sid of set) {
       const a = this.sessions.get(sid);
@@ -442,7 +521,11 @@ export class TelemetryCollector {
       out.cacheRead += a.cacheRead;
       out.cacheCreation += a.cacheCreation;
       out.usd += a.usd;
-      if (a.ts >= out.ts) { out.ts = a.ts; out.sessionId = sid; out.model = a.model; }
+      if (a.ts >= out.ts) {
+        out.ts = a.ts;
+        out.sessionId = sid;
+        out.model = a.model;
+      }
     }
     return out;
   }
@@ -461,39 +544,76 @@ export class TelemetryCollector {
       cacheRead: u.cacheReadTokens,
       cacheCreation: u.cacheWriteTokens,
       model: u.model ?? '',
-      usd: u.estimatedCostUsd
+      usd: u.estimatedCostUsd,
     };
   }
 
   private publishUsage(agentId: string): void {
     const sample = this.aggregateLive(agentId);
     if (!sample) return;
-    for (const cb of this.usageSubs) { try { cb(sample); } catch { /* subscriber threw */ } }
+    for (const cb of this.usageSubs) {
+      try {
+        cb(sample);
+      } catch {
+        /* subscriber threw */
+      }
+    }
     this.emit?.('telemetry:event', { kind: 'usage', sample } satisfies TelemetryEvent);
   }
 }
 
 // ─── OTLP/JSON attribute decoding ─────────────────────────────────────────────
 
-interface OtelKV { key?: string; value?: OtelAnyValue }
+interface OtelKV {
+  key?: string;
+  value?: OtelAnyValue;
+}
 interface OtelAnyValue {
   stringValue?: string;
   intValue?: string | number;
   doubleValue?: number;
   boolValue?: boolean;
 }
-interface OtelDataPoint { attributes?: OtelKV[]; asInt?: string | number; asDouble?: number; timeUnixNano?: string }
-interface OtelMetric { name?: string; sum?: { dataPoints?: OtelDataPoint[] }; gauge?: { dataPoints?: OtelDataPoint[] } }
-interface ResourceMetrics { resource?: { attributes?: OtelKV[] }; scopeMetrics?: { metrics?: OtelMetric[] }[] }
-interface OtelLogRecord { attributes?: OtelKV[]; body?: { stringValue?: string } }
-interface ResourceLogs { resource?: { attributes?: OtelKV[] }; scopeLogs?: { logRecords?: OtelLogRecord[] }[] }
+interface OtelDataPoint {
+  attributes?: OtelKV[];
+  asInt?: string | number;
+  asDouble?: number;
+  timeUnixNano?: string;
+}
+interface OtelMetric {
+  name?: string;
+  sum?: { dataPoints?: OtelDataPoint[] };
+  gauge?: { dataPoints?: OtelDataPoint[] };
+}
+interface ResourceMetrics {
+  resource?: { attributes?: OtelKV[] };
+  scopeMetrics?: { metrics?: OtelMetric[] }[];
+}
+interface OtelLogRecord {
+  attributes?: OtelKV[];
+  body?: { stringValue?: string };
+}
+interface ResourceLogs {
+  resource?: { attributes?: OtelKV[] };
+  scopeLogs?: { logRecords?: OtelLogRecord[] }[];
+}
 
 /** Allowlist of attribute keys we ever read — anything else (notably the PII:
  *  user.email, user.account_id/uuid, organization.id, user.id) is ignored, so
  *  nothing this module emits can carry identity. */
 const ATTR_ALLOWLIST = new Set([
-  'agent.id', 'agent.name', 'session.id', 'model', 'type',
-  'tool_name', 'success', 'duration_ms', 'decision', 'event.name', 'error', 'message'
+  'agent.id',
+  'agent.name',
+  'session.id',
+  'model',
+  'type',
+  'tool_name',
+  'success',
+  'duration_ms',
+  'decision',
+  'event.name',
+  'error',
+  'message',
 ]);
 
 /** Flatten an OTLP KeyValue[] to a plain object, keeping only allowlisted keys. */

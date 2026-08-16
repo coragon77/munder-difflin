@@ -32,10 +32,16 @@ assert.ok(match, 'must find the generated pi extension template');
 const ts = require('typescript');
 const extDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-bridge-'));
 const extFile = path.join(extDir, 'hive-bridge.mjs');
-fs.writeFileSync(extFile, ts.transpileModule(match[1], {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-  fileName: 'hive-bridge.ts'
-}).outputText.replace(/import net from ['"]node:net['"];?/, 'const net = globalThis.__hiveNet;'), 'utf8');
+fs.writeFileSync(
+  extFile,
+  ts
+    .transpileModule(match[1], {
+      compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+      fileName: 'hive-bridge.ts',
+    })
+    .outputText.replace(/import net from ['"]node:net['"];?/, 'const net = globalThis.__hiveNet;'),
+  'utf8',
+);
 
 // The extracted module binds `net` to __hiveNet at FIRST import and is then
 // cached — so the fake must be installed once and route to a swappable sink.
@@ -44,18 +50,24 @@ async function loadExtension(posts, sessionId) {
   globalThis.__hiveNet ??= {
     createConnection(_sock, connected) {
       const connection = {
-        end(payload) { sink?.(payload); },
-        on() {}
+        end(payload) {
+          sink?.(payload);
+        },
+        on() {},
       };
       queueMicrotask(connected);
       return connection;
-    }
+    },
   };
   sink = (payload) => posts.push(JSON.parse(payload.slice(0, payload.lastIndexOf('}') + 1)));
   process.env.HIVE_SOCK = '/fake/hive.sock';
   const mod = await import(pathToFileURL(extFile).href);
   const handlers = {};
-  const pi = { on: (ev, fn) => { handlers[ev] = fn; } };
+  const pi = {
+    on: (ev, fn) => {
+      handlers[ev] = fn;
+    },
+  };
   const ctx = { sessionManager: { getSessionId: () => sessionId } };
   mod.default(pi);
   return { handlers, ctx };
@@ -68,11 +80,18 @@ test('every hook post carries the session id from ctx.sessionManager (recordSess
   await handlers.tool_call({ toolName: 'bash', input: { command: 'ls' } }, ctx);
   await handlers.tool_result({ toolName: 'bash' }, ctx);
   await handlers.agent_settled({}, ctx);
-  await handlers.message_end({ message: { role: 'assistant', usage: { input: 10, output: 5 } } }, ctx);
+  await handlers.message_end(
+    { message: { role: 'assistant', usage: { input: 10, output: 5 } } },
+    ctx,
+  );
 
   assert.equal(posts.length, 4);
   for (const p of posts) {
-    assert.equal(p.session_id, 'pi-session-uuid-1', `${p.hook_event_name} post must carry the session id`);
+    assert.equal(
+      p.session_id,
+      'pi-session-uuid-1',
+      `${p.hook_event_name} post must carry the session id`,
+    );
   }
   assert.equal(posts[0].hook_event_name, 'PreToolUse');
   assert.equal(posts[3].hook_event_name, 'CostSample');

@@ -9,7 +9,7 @@ import {
   MIN_TERMINAL_FONT_SIZE,
   getTerminalFontSize,
   setTerminalFontSize,
-  useTerminalFontSize
+  useTerminalFontSize,
 } from './terminalFontSize';
 import { useTerminalTheme } from '@/design/theme';
 
@@ -37,7 +37,7 @@ const zoomBtnStyle: CSSProperties = {
   background: 'var(--cth-paper-100)',
   border: '1px solid var(--cth-ink-300)',
   cursor: 'pointer',
-  padding: 0
+  padding: 0,
 };
 
 // Light theme — cream paper. The ANSI "white" / "yellow" / bright slots are
@@ -57,22 +57,22 @@ const lightTheme = {
   cursorAccent: '#FCFAF0',
   selectionBackground: '#FFEC99',
   selectionForeground: '#1A1320',
-  black:        '#1A1320',
-  red:          '#D1453B',
-  green:        '#20904B',    // deep green → readable as text on cream
-  yellow:       '#9C6B00',    // deep amber → readable as text on cream
-  blue:         '#2B6CB0',
-  magenta:      '#8A5CF0',
-  cyan:         '#1F9C94',
-  white:        '#3A2F44',   // default "white" text → dark, so it's visible
-  brightBlack:  '#6B5878',
-  brightRed:    '#E0584E',
-  brightGreen:  '#2E9E54',
+  black: '#1A1320',
+  red: '#D1453B',
+  green: '#20904B', // deep green → readable as text on cream
+  yellow: '#9C6B00', // deep amber → readable as text on cream
+  blue: '#2B6CB0',
+  magenta: '#8A5CF0',
+  cyan: '#1F9C94',
+  white: '#3A2F44', // default "white" text → dark, so it's visible
+  brightBlack: '#6B5878',
+  brightRed: '#E0584E',
+  brightGreen: '#2E9E54',
   brightYellow: '#B8860B',
-  brightBlue:   '#3B7DC4',
-  brightMagenta:'#9B72F2',
-  brightCyan:   '#2BA89F',
-  brightWhite:  '#1A1320'
+  brightBlue: '#3B7DC4',
+  brightMagenta: '#9B72F2',
+  brightCyan: '#2BA89F',
+  brightWhite: '#1A1320',
 };
 
 // Dark theme — v0.3.4: matches the app's dark surface ramp (tokens.css
@@ -85,22 +85,22 @@ const darkTheme = {
   cursorAccent: '#1D1C21',
   selectionBackground: '#37363E',
   selectionForeground: '#E8E6E3',
-  black:        '#26252C',
-  red:          '#DF8078',
-  green:        '#6FB88B',
-  yellow:       '#D8B052',
-  blue:         '#64ACBB',
-  magenta:      '#A493E0',
-  cyan:         '#64ACBB',
-  white:        '#E8E6E3',
-  brightBlack:  '#8F8C90',
-  brightRed:    '#EBA39C',
-  brightGreen:  '#96CDA9',
+  black: '#26252C',
+  red: '#DF8078',
+  green: '#6FB88B',
+  yellow: '#D8B052',
+  blue: '#64ACBB',
+  magenta: '#A493E0',
+  cyan: '#64ACBB',
+  white: '#E8E6E3',
+  brightBlack: '#8F8C90',
+  brightRed: '#EBA39C',
+  brightGreen: '#96CDA9',
   brightYellow: '#E5C87E',
-  brightBlue:   '#8FC5D1',
-  brightMagenta:'#C0B3EB',
-  brightCyan:   '#8FC5D1',
-  brightWhite:  '#F5F4F2'
+  brightBlue: '#8FC5D1',
+  brightMagenta: '#C0B3EB',
+  brightCyan: '#8FC5D1',
+  brightWhite: '#F5F4F2',
 };
 
 const THEMES: Record<PtyTheme, typeof lightTheme> = { light: lightTheme, dark: darkTheme };
@@ -119,7 +119,14 @@ export interface PtyTerminalViewProps {
   embedded?: boolean;
 }
 
-export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFullscreen, fullscreen, embedded }: PtyTerminalViewProps) {
+export function PtyTerminalView({
+  ptyId,
+  onStreamData,
+  onUserPrompt,
+  onToggleFullscreen,
+  fullscreen,
+  embedded,
+}: PtyTerminalViewProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const onStreamDataRef = useRef(onStreamData);
   onStreamDataRef.current = onStreamData;
@@ -146,7 +153,11 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
     entry.onPrompt = (text) => onUserPromptRef.current?.(text);
 
     // Snap to bottom immediately on re-attach before fit settles
-    try { entry.term.scrollToBottom(); } catch { /* not yet open */ }
+    try {
+      entry.term.scrollToBottom();
+    } catch {
+      /* not yet open */
+    }
 
     // `scrollToEnd` is true only for the initial attach (switching agents /
     // toggling fullscreen) so we land on the most recent output. Re-parenting
@@ -177,7 +188,9 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
         }
         entry.term.refresh(0, Math.max(0, entry.term.rows - 1));
         initialFitDone = true;
-      } catch { /* host may not be sized yet */ }
+      } catch {
+        /* host may not be sized yet */
+      }
       if (scrollToEnd) {
         try {
           // Re-parenting the pooled terminal resets the DOM viewport's
@@ -196,7 +209,9 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
           // re-syncs the DOM scrollTop itself, atomically with its flag.
           entry.term.scrollLines(-1);
           entry.term.scrollToBottom();
-        } catch { /* noop */ }
+        } catch {
+          /* noop */
+        }
       }
     };
     // Fit once layout has settled and again once the web font has loaded —
@@ -219,10 +234,14 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
             entry.term.options.fontFamily = fam;
             entry.term.options.fontSize = fontSizeRef.current;
             entry.term.clearTextureAtlas?.();
-          } catch { /* noop */ }
+          } catch {
+            /* noop */
+          }
           tryFit(true);
         })
-        .catch(() => { /* noop */ });
+        .catch(() => {
+          /* noop */
+        });
     }
 
     // The ResizeObserver is the authoritative trigger: it fires when the host
@@ -269,7 +288,8 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
   // Apply app-theme changes to the pooled terminal (persistence lives in
   // design/theme.ts — the title-bar toggle owns it).
   useEffect(() => {
-    acquireTerminal(ptyId, THEMES[ptyTheme], fontSizeRef.current).term.options.theme = THEMES[ptyTheme];
+    acquireTerminal(ptyId, THEMES[ptyTheme], fontSizeRef.current).term.options.theme =
+      THEMES[ptyTheme];
   }, [ptyTheme, ptyId]);
 
   // Apply font-size (zoom) changes to the pooled terminal and re-fit cols/rows.
@@ -280,7 +300,9 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
     try {
       entry.fit.fit();
       window.cth.resizePty(ptyId, entry.term.cols, entry.term.rows);
-    } catch { /* host may not be sized yet */ }
+    } catch {
+      /* host may not be sized yet */
+    }
   }, [fontSize, ptyId]);
 
   // Drag-and-drop a file (image, etc.) onto the terminal → inject its absolute
@@ -314,15 +336,34 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
       // (String.fromCharCode keeps backslashes/control chars out of this source.)
       .map((p) => {
         const BS = String.fromCharCode(92);
-        const CTRL = new RegExp('[' + String.fromCharCode(0) + '-' + String.fromCharCode(31) + String.fromCharCode(127) + ']', 'g');
+        const CTRL = new RegExp(
+          '[' +
+            String.fromCharCode(0) +
+            '-' +
+            String.fromCharCode(31) +
+            String.fromCharCode(127) +
+            ']',
+          'g',
+        );
         // Backslash is FIRST in the set so escaping each ORIGINAL char exactly once
         // turns a literal backslash into a pair (never forming a new escape).
         const SPECIAL = new Set(
-          (BS + ' $' + String.fromCharCode(96) + String.fromCharCode(34) + String.fromCharCode(39) + ';|&<>(){}[]*?!~#')
-            .split('').map((c) => c.charCodeAt(0))
+          (
+            BS +
+            ' $' +
+            String.fromCharCode(96) +
+            String.fromCharCode(34) +
+            String.fromCharCode(39) +
+            ';|&<>(){}[]*?!~#'
+          )
+            .split('')
+            .map((c) => c.charCodeAt(0)),
         );
-        return p.replace(CTRL, '').split('')
-          .map((ch) => (SPECIAL.has(ch.charCodeAt(0)) ? BS + ch : ch)).join('');
+        return p
+          .replace(CTRL, '')
+          .split('')
+          .map((ch) => (SPECIAL.has(ch.charCodeAt(0)) ? BS + ch : ch))
+          .join('');
       });
     if (paths.length === 0) return;
     // Trailing space separates consecutive drops and lets the user keep typing.
@@ -336,42 +377,59 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.key === '=' || e.key === '+') { e.preventDefault(); zoom(1); }
-      else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoom(-1); }
-      else if (e.key === '0') { e.preventDefault(); resetZoom(); }
+      if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        zoom(1);
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        zoom(-1);
+      } else if (e.key === '0') {
+        e.preventDefault();
+        resetZoom();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   return (
-    <div style={{
-      background: 'var(--cth-paper-100)',
-      boxShadow: embedded ? 'none' : 'var(--cth-panel-border-terminal)',
-      padding: embedded ? 0 : 8,
-      height: '100%',
-      width: '100%',
-      minHeight: 0,
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        fontFamily: 'var(--cth-font-ui)',
-        fontSize: 12,
-        color: 'var(--cth-ink-500)',
-        borderBottom: '1px dashed var(--cth-ink-300)',
-        paddingBottom: 4,
-        marginBottom: 4,
-        paddingLeft: embedded ? 8 : 0,
-        paddingRight: embedded ? 8 : 0,
-        paddingTop: embedded ? 6 : 0
-      }}>
-        <span style={{
-          width: 8, height: 8, background: 'var(--cth-mint)',
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-          animation: 'cth-pulse 1200ms steps(2, end) infinite'
-        }} />
+    <div
+      style={{
+        background: 'var(--cth-paper-100)',
+        boxShadow: embedded ? 'none' : 'var(--cth-panel-border-terminal)',
+        padding: embedded ? 0 : 8,
+        height: '100%',
+        width: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontFamily: 'var(--cth-font-ui)',
+          fontSize: 12,
+          color: 'var(--cth-ink-500)',
+          borderBottom: '1px dashed var(--cth-ink-300)',
+          paddingBottom: 4,
+          marginBottom: 4,
+          paddingLeft: embedded ? 8 : 0,
+          paddingRight: embedded ? 8 : 0,
+          paddingTop: embedded ? 6 : 0,
+        }}
+      >
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            background: 'var(--cth-mint)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+            animation: 'cth-pulse 1200ms steps(2, end) infinite',
+          }}
+        />
         live · pty {ptyId}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
           {/* v0.3.4: the theme + enter-fullscreen buttons moved to the TITLE BAR
@@ -382,18 +440,24 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
             disabled={fontSize <= MIN_FONT_SIZE}
             title="Zoom out (Cmd -)"
             style={zoomBtnStyle}
-          >−</button>
+          >
+            −
+          </button>
           <button
             onClick={resetZoom}
             title="Reset zoom (Cmd 0)"
             style={{ ...zoomBtnStyle, width: 'auto', padding: '0 4px', minWidth: 28 }}
-          >{fontSize}px</button>
+          >
+            {fontSize}px
+          </button>
           <button
             onClick={() => zoom(1)}
             disabled={fontSize >= MAX_FONT_SIZE}
             title="Zoom in (Cmd +)"
             style={zoomBtnStyle}
-          >+</button>
+          >
+            +
+          </button>
           {fullscreen && onToggleFullscreen && (
             <button
               onClick={onToggleFullscreen}
@@ -405,10 +469,16 @@ export function PtyTerminalView({ ptyId, onStreamData, onUserPrompt, onToggleFul
           )}
         </div>
       </div>
-      <div ref={hostRef} onDragOver={onDragOver} onDrop={onDrop} style={{
-        flex: 1, minHeight: 0,
-        padding: embedded ? '0 8px 8px' : 0
-      }} />
+      <div
+        ref={hostRef}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          padding: embedded ? '0 8px 8px' : 0,
+        }}
+      />
     </div>
   );
 }

@@ -21,7 +21,11 @@ test('expands the tilde-home forms', () => {
   assert.equal(expandTilde('~/dev/proj'), path.join(HOME, 'dev/proj'));
   assert.equal(expandTilde('~'), HOME, 'a bare ~ is a valid cwd too');
   assert.equal(expandTilde('~/'), HOME);
-  assert.equal(expandTilde('  ~/dev/proj  '), path.join(HOME, 'dev/proj'), 'pasted paths carry whitespace');
+  assert.equal(
+    expandTilde('  ~/dev/proj  '),
+    path.join(HOME, 'dev/proj'),
+    'pasted paths carry whitespace',
+  );
 });
 
 test('leaves absolute paths alone (beyond normalizing)', () => {
@@ -33,7 +37,11 @@ test('leaves absolute paths alone (beyond normalizing)', () => {
 test('does not touch anything that is not a tilde-home path', () => {
   assert.equal(expandTilde(''), '');
   assert.equal(expandTilde('~notauser/x'), '~notauser/x', '~user is not a form we expand');
-  assert.equal(expandTilde('C:\\Users\\me\\proj'), 'C:\\Users\\me\\proj', 'windows paths must survive');
+  assert.equal(
+    expandTilde('C:\\Users\\me\\proj'),
+    'C:\\Users\\me\\proj',
+    'windows paths must survive',
+  );
 });
 
 test('a still-relative path is returned untouched, NOT resolved', () => {

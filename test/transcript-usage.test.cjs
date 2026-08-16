@@ -28,7 +28,11 @@ const SRC = path.join(__dirname, '..', 'src', 'main');
 const out = fs.mkdtempSync(path.join(os.tmpdir(), 'transcript-'));
 for (const name of ['pricing', 'transcript']) {
   const js = ts.transpileModule(fs.readFileSync(path.join(SRC, `${name}.ts`), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true }
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      esModuleInterop: true,
+    },
   }).outputText;
   fs.writeFileSync(path.join(out, `${name}.js`), js, 'utf8');
 }
@@ -48,15 +52,25 @@ function rec(output, opts = {}) {
     sessionId: opts.sessionId ?? 's1',
     message: {
       model: opts.model ?? 'claude-haiku-4-5',
-      usage: { input_tokens: opts.input ?? 10, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
-    }
+      usage: {
+        input_tokens: opts.input ?? 10,
+        output_tokens: output,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    },
   });
 }
 
 let failures = 0;
 function test(name, fn) {
-  try { fn(); console.log(`  ok  ${name}`); }
-  catch (e) { failures++; console.error(`FAIL  ${name}\n      ${e.message}`); }
+  try {
+    fn();
+    console.log(`  ok  ${name}`);
+  } catch (e) {
+    failures++;
+    console.error(`FAIL  ${name}\n      ${e.message}`);
+  }
 }
 
 test('sums usage across records and files', () => {
@@ -127,15 +141,19 @@ test('sessionId filter sums only that session, incrementally too', () => {
 
 test('malformed lines and non-assistant records are skipped', () => {
   const { cwd, dir } = makeProject();
-  fs.writeFileSync(path.join(dir, 'a.jsonl'),
-    'not json\n' + JSON.stringify({ type: 'user' }) + '\n' + rec(70) + '\n\n');
+  fs.writeFileSync(
+    path.join(dir, 'a.jsonl'),
+    'not json\n' + JSON.stringify({ type: 'user' }) + '\n' + rec(70) + '\n\n',
+  );
   assert.equal(readAgentUsage(cwd).outputTokens, 70);
 });
 
 test('model is the last one seen (per current semantics)', () => {
   const { cwd, dir } = makeProject();
-  fs.writeFileSync(path.join(dir, 'a.jsonl'),
-    rec(1, { model: 'claude-haiku-4-5' }) + '\n' + rec(2, { model: 'claude-opus-4-8' }) + '\n');
+  fs.writeFileSync(
+    path.join(dir, 'a.jsonl'),
+    rec(1, { model: 'claude-haiku-4-5' }) + '\n' + rec(2, { model: 'claude-opus-4-8' }) + '\n',
+  );
   assert.equal(readAgentUsage(cwd).model, 'claude-opus-4-8');
 });
 

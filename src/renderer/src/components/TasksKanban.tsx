@@ -56,10 +56,10 @@ export function waitsOnHuman(t: HiveTask): boolean {
 type Status = HiveTask['status'];
 
 const COLUMNS: { key: Status; label: string; accent: string }[] = [
-  { key: 'todo',    label: 'TODO',    accent: 'var(--cth-sky)' },
-  { key: 'doing',   label: 'DOING',   accent: 'var(--cth-lemon)' },
+  { key: 'todo', label: 'TODO', accent: 'var(--cth-sky)' },
+  { key: 'doing', label: 'DOING', accent: 'var(--cth-lemon)' },
   { key: 'blocked', label: 'BLOCKED', accent: 'var(--cth-coral)' },
-  { key: 'done',    label: 'DONE',    accent: 'var(--cth-mint)' }
+  { key: 'done', label: 'DONE', accent: 'var(--cth-mint)' },
 ];
 
 const POLL_MS = 5000;
@@ -79,37 +79,47 @@ function stableId(seed: string): string {
  *  in practice, so EVERY consumer must go through this (exported for the
  *  detail overlay; a raw card without dependsOn once crashed it). */
 export function parseTasks(raw: unknown): HiveTask[] {
-  const list = (raw && typeof raw === 'object' && Array.isArray((raw as { tasks?: unknown }).tasks))
-    ? (raw as { tasks: unknown[] }).tasks
-    : [];
+  const list =
+    raw && typeof raw === 'object' && Array.isArray((raw as { tasks?: unknown }).tasks)
+      ? (raw as { tasks: unknown[] }).tasks
+      : [];
   return list
     .filter((t): t is Record<string, unknown> => !!t && typeof t === 'object')
     .map((t, i) => ({
-      id: typeof t.id === 'string' && t.id
-        ? t.id
-        : stableId(`${typeof t.title === 'string' ? t.title : ''}|${typeof t.createdAt === 'string' ? t.createdAt : ''}|${i}`),
+      id:
+        typeof t.id === 'string' && t.id
+          ? t.id
+          : stableId(
+              `${typeof t.title === 'string' ? t.title : ''}|${typeof t.createdAt === 'string' ? t.createdAt : ''}|${i}`,
+            ),
       title: typeof t.title === 'string' ? t.title : '(untitled)',
       description: typeof t.description === 'string' ? t.description : undefined,
       assignee: typeof t.assignee === 'string' ? t.assignee : undefined,
       status: (['todo', 'doing', 'blocked', 'done'] as const).includes(t.status as Status)
-        ? (t.status as Status) : 'todo',
-      dependsOn: Array.isArray(t.dependsOn) ? t.dependsOn.filter((d): d is string => typeof d === 'string') : [],
+        ? (t.status as Status)
+        : 'todo',
+      dependsOn: Array.isArray(t.dependsOn)
+        ? t.dependsOn.filter((d): d is string => typeof d === 'string')
+        : [],
       priority: typeof t.priority === 'number' ? t.priority : 3,
       createdAt: typeof t.createdAt === 'string' ? t.createdAt : new Date().toISOString(),
       humanQA: Array.isArray(t.humanQA)
         ? (t.humanQA as unknown[])
-          .filter((e): e is Record<string, unknown> => !!e && typeof e === 'object' && typeof (e as { q?: unknown }).q === 'string')
-          .map((e) => ({
-            q: e.q as string,
-            a: typeof e.a === 'string' ? e.a : undefined,
-            askedAt: typeof e.askedAt === 'string' ? e.askedAt : undefined,
-            answeredAt: typeof e.answeredAt === 'string' ? e.answeredAt : undefined,
-            // Preserve a dismissal across the 5s re-parse, else the card would
-            // resurface on the next poll (openQuestion would see it as open).
-            dismissedAt: typeof e.dismissedAt === 'string' ? e.dismissedAt : undefined
-          }))
+            .filter(
+              (e): e is Record<string, unknown> =>
+                !!e && typeof e === 'object' && typeof (e as { q?: unknown }).q === 'string',
+            )
+            .map((e) => ({
+              q: e.q as string,
+              a: typeof e.a === 'string' ? e.a : undefined,
+              askedAt: typeof e.askedAt === 'string' ? e.askedAt : undefined,
+              answeredAt: typeof e.answeredAt === 'string' ? e.answeredAt : undefined,
+              // Preserve a dismissal across the 5s re-parse, else the card would
+              // resurface on the next poll (openQuestion would see it as open).
+              dismissedAt: typeof e.dismissedAt === 'string' ? e.dismissedAt : undefined,
+            }))
         : undefined,
-      origin: t.origin === 'human' ? 'human' : undefined
+      origin: t.origin === 'human' ? 'human' : undefined,
     }));
 }
 
@@ -136,7 +146,11 @@ export function TasksKanban() {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
-    try { setTasks(parseTasks(await window.cth.hiveTasks())); } catch { /* keep last good */ }
+    try {
+      setTasks(parseTasks(await window.cth.hiveTasks()));
+    } catch {
+      /* keep last good */
+    }
   }, []);
 
   // Human-created card: main process does the read-modify-write on tasks.json
@@ -148,7 +162,10 @@ export function TasksKanban() {
     try {
       const res = await window.cth.hiveAddHumanTask(title, newNotes.trim() || undefined);
       if (!res.ok) throw new Error(res.error ?? 'failed');
-      setNewTitle(''); setNewNotes(''); setAdding(false); setAddError(null);
+      setNewTitle('');
+      setNewNotes('');
+      setAdding(false);
+      setAddError(null);
       await refresh();
     } catch (e) {
       setAddError(e instanceof Error ? e.message : String(e));
@@ -158,7 +175,9 @@ export function TasksKanban() {
   useEffect(() => {
     refresh();
     timer.current = setInterval(refresh, POLL_MS);
-    return () => { if (timer.current) clearInterval(timer.current); };
+    return () => {
+      if (timer.current) clearInterval(timer.current);
+    };
   }, [refresh]);
 
   const restorableAgents = useStore((s) => s.restorableAgents);
@@ -167,24 +186,52 @@ export function TasksKanban() {
    *  terminal is gone, then to the raw id. */
   const nameFor = (id?: string): string | undefined =>
     id
-      ? (agents.find((a) => a.id === id)?.name
-        ?? restorableAgents.find((a) => a.id === id)?.name
-        ?? id)
+      ? (agents.find((a) => a.id === id)?.name ??
+        restorableAgents.find((a) => a.id === id)?.name ??
+        id)
       : undefined;
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--cth-paper-200)', position: 'relative' }}>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--cth-paper-200)',
+        position: 'relative',
+      }}
+    >
       {/* Toolbar — the god writes the ledger, but the human can ADD cards
           (origin 'human'; triaged by the god at heartbeats) and delete their
           own while still untouched todo (detail view). */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', flexShrink: 0,
-        borderBottom: '1px solid var(--cth-ink-300)'
-      }}>
-        <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 9, color: 'var(--cth-ink-500)' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 10px',
+          flexShrink: 0,
+          borderBottom: '1px solid var(--cth-ink-300)',
+        }}
+      >
+        <span
+          style={{
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 9,
+            color: 'var(--cth-ink-500)',
+          }}
+        >
           {tasks.length} task{tasks.length === 1 ? '' : 's'}
         </span>
-        <PixelButton variant="secondary" size="sm" onClick={() => { setAdding((a) => !a); setAddError(null); }}>
+        <PixelButton
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            setAdding((a) => !a);
+            setAddError(null);
+          }}
+        >
           + task
         </PixelButton>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--cth-ink-300)' }}>
@@ -192,57 +239,124 @@ export function TasksKanban() {
         </span>
       </div>
       {adding && (
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', flexShrink: 0,
-          borderBottom: '1px solid var(--cth-ink-300)', background: 'var(--cth-cream-100)'
-        }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            padding: '8px 10px',
+            flexShrink: 0,
+            borderBottom: '1px solid var(--cth-ink-300)',
+            background: 'var(--cth-cream-100)',
+          }}
+        >
           <input
             autoFocus
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void addTask(); if (e.key === 'Escape') setAdding(false); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void addTask();
+              if (e.key === 'Escape') setAdding(false);
+            }}
             placeholder="task title — becomes a todo card for Michael to triage"
             style={inputStyle}
           />
           <input
             value={newNotes}
             onChange={(e) => setNewNotes(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void addTask(); if (e.key === 'Escape') setAdding(false); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void addTask();
+              if (e.key === 'Escape') setAdding(false);
+            }}
             placeholder="notes (optional)"
             style={inputStyle}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <PixelButton variant="primary" size="sm" disabled={!newTitle.trim()} onClick={() => void addTask()}>
+            <PixelButton
+              variant="primary"
+              size="sm"
+              disabled={!newTitle.trim()}
+              onClick={() => void addTask()}
+            >
               add
             </PixelButton>
-            <PixelButton variant="ghost" size="sm" onClick={() => setAdding(false)}>cancel</PixelButton>
-            {addError && <span style={{ fontSize: 11, color: 'var(--cth-coral)' }}>{addError}</span>}
+            <PixelButton variant="ghost" size="sm" onClick={() => setAdding(false)}>
+              cancel
+            </PixelButton>
+            {addError && (
+              <span style={{ fontSize: 11, color: 'var(--cth-coral)' }}>{addError}</span>
+            )}
           </div>
         </div>
       )}
 
       {/* Columns */}
-      <div style={{
-        flex: 1, minHeight: 0, display: 'flex', gap: 8, padding: 10, overflowX: 'auto'
-      }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          gap: 8,
+          padding: 10,
+          overflowX: 'auto',
+        }}
+      >
         {COLUMNS.map((col) => {
           const cards = tasks.filter((t) => t.status === col.key);
           return (
-            <div key={col.key} style={{
-              flex: '1 1 0', minWidth: 170, display: 'flex', flexDirection: 'column',
-              background: 'var(--cth-cream-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-            }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px 4px',
-                background: col.accent, boxShadow: 'inset 0 -1px 0 var(--cth-ink-900)',
-                fontFamily: 'var(--cth-font-display)', fontSize: 9, color: 'var(--cth-ink-900)'
-              }}>
+            <div
+              key={col.key}
+              style={{
+                flex: '1 1 0',
+                minWidth: 170,
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'var(--cth-cream-100)',
+                boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '5px 8px 4px',
+                  background: col.accent,
+                  boxShadow: 'inset 0 -1px 0 var(--cth-ink-900)',
+                  fontFamily: 'var(--cth-font-display)',
+                  fontSize: 9,
+                  color: 'var(--cth-ink-900)',
+                }}
+              >
                 {col.label}
-                <span style={{ marginLeft: 'auto', fontSize: 11, fontFamily: 'var(--cth-font-ui)' }}>{cards.length}</span>
+                <span
+                  style={{ marginLeft: 'auto', fontSize: 11, fontFamily: 'var(--cth-font-ui)' }}
+                >
+                  {cards.length}
+                </span>
               </div>
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: 'auto',
+                  padding: 6,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
                 {cards.length === 0 && (
-                  <div style={{ fontSize: 12, color: 'var(--cth-ink-300)', textAlign: 'center', padding: '8px 0' }}>—</div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--cth-ink-300)',
+                      textAlign: 'center',
+                      padding: '8px 0',
+                    }}
+                  >
+                    —
+                  </div>
                 )}
                 {cards.map((t) => (
                   <TaskCard
@@ -267,7 +381,12 @@ export function TasksKanban() {
 // assignee. Everything else (the full contract, deps, controls) lives in the
 // detail view a click away: a kanban card can carry a title at most.
 
-function TaskCard({ task, accent, assigneeName, onOpen }: {
+function TaskCard({
+  task,
+  accent,
+  assigneeName,
+  onOpen,
+}: {
   task: HiveTask;
   accent: string;
   assigneeName?: string;
@@ -279,33 +398,80 @@ function TaskCard({ task, accent, assigneeName, onOpen }: {
         onClick={onOpen}
         title="open task details"
         style={{
-          flex: 1, minWidth: 0,
-          display: 'flex', alignItems: 'stretch', gap: 0, padding: 0,
-          border: 'none', cursor: 'pointer', textAlign: 'left',
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          alignItems: 'stretch',
+          gap: 0,
+          padding: 0,
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
           background: 'var(--cth-paper-100)',
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)'
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
         }}
       >
-        <span style={{ width: 4, flexShrink: 0, background: accent, boxShadow: 'inset -1px 0 0 var(--cth-ink-700)' }} />
-        <span style={{ flex: 1, minWidth: 0, padding: '6px 7px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{
-            fontFamily: 'var(--cth-font-ui)', fontSize: 12, lineHeight: '16px',
-            color: 'var(--cth-ink-900)',
-            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'
-          }}>{task.title}</span>
+        <span
+          style={{
+            width: 4,
+            flexShrink: 0,
+            background: accent,
+            boxShadow: 'inset -1px 0 0 var(--cth-ink-700)',
+          }}
+        />
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: '6px 7px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
+          <span
+            style={{
+              fontFamily: 'var(--cth-font-ui)',
+              fontSize: 12,
+              lineHeight: '16px',
+              color: 'var(--cth-ink-900)',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {task.title}
+          </span>
           {assigneeName && (
-            <span style={{ fontSize: 10, color: 'var(--cth-ink-500)', fontFamily: 'var(--cth-font-display)' }}>
+            <span
+              style={{
+                fontSize: 10,
+                color: 'var(--cth-ink-500)',
+                fontFamily: 'var(--cth-font-display)',
+              }}
+            >
               {assigneeName.toUpperCase()}
             </span>
           )}
         </span>
         {waitsOnHuman(task) && (
-          <span title="waiting on YOUR answer — see the ASK ME tab" style={{
-            alignSelf: 'center', marginRight: 6, flexShrink: 0,
-            fontFamily: 'var(--cth-font-display)', fontSize: 10, padding: '2px 5px 1px',
-            background: 'var(--cth-lilac)', color: 'var(--cth-ink-900)',
-            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-          }}>?</span>
+          <span
+            title="waiting on YOUR answer — see the ASK ME tab"
+            style={{
+              alignSelf: 'center',
+              marginRight: 6,
+              flexShrink: 0,
+              fontFamily: 'var(--cth-font-display)',
+              fontSize: 10,
+              padding: '2px 5px 1px',
+              background: 'var(--cth-lilac)',
+              color: 'var(--cth-ink-900)',
+              boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+            }}
+          >
+            ?
+          </span>
         )}
       </button>
     </div>
@@ -321,7 +487,15 @@ function TaskCard({ task, accent, assigneeName, onOpen }: {
 // the big stage instead of the narrow side panel. Exported for App's
 // TaskDetailOverlay; opened via the store's openTaskDetail from anywhere.
 
-export function TaskDetail({ task, all, assigneeName, onMove, onAssign, onClose, onDelete }: {
+export function TaskDetail({
+  task,
+  all,
+  assigneeName,
+  onMove,
+  onAssign,
+  onClose,
+  onDelete,
+}: {
   task: HiveTask;
   all: HiveTask[];
   assigneeName?: string;
@@ -343,73 +517,168 @@ export function TaskDetail({ task, all, assigneeName, onMove, onAssign, onClose,
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, zIndex: 280,
+        position: 'fixed',
+        inset: 0,
+        zIndex: 280,
         background: 'rgba(26, 19, 32, 0.6)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
       }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 720, maxWidth: '94vw', maxHeight: '90vh', display: 'flex' }}>
-        <PixelPanel variant="dialog" title="TASK" noPadding style={{ display: 'flex', flexDirection: 'column', width: '100%', minHeight: 0 }}>
-          <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0, overflowY: 'auto' }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 720, maxWidth: '94vw', maxHeight: '90vh', display: 'flex' }}
+      >
+        <PixelPanel
+          variant="dialog"
+          title="TASK"
+          noPadding
+          style={{ display: 'flex', flexDirection: 'column', width: '100%', minHeight: 0 }}
+        >
+          <div
+            style={{
+              padding: 14,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              minHeight: 0,
+              overflowY: 'auto',
+            }}
+          >
             {/* Title under a status-colored bar */}
             <div style={{ borderLeft: `4px solid ${col.accent}`, paddingLeft: 8 }}>
-              <div style={{ fontFamily: 'var(--cth-font-ui)', fontSize: 15, lineHeight: '20px', color: 'var(--cth-ink-900)' }}>
+              <div
+                style={{
+                  fontFamily: 'var(--cth-font-ui)',
+                  fontSize: 15,
+                  lineHeight: '20px',
+                  color: 'var(--cth-ink-900)',
+                }}
+              >
                 {task.title}
               </div>
             </div>
 
             {/* Fact row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{
-                fontFamily: 'var(--cth-font-display)', fontSize: 8, padding: '2px 6px 1px',
-                background: col.accent, color: 'var(--cth-ink-900)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-              }}>{col.label}</span>
-              {assigneeName
-                ? <PixelBadge status="working" label={assigneeName} />
-                : <span style={{ fontSize: 11, color: 'var(--cth-ink-300)' }}>unassigned</span>}
+              <span
+                style={{
+                  fontFamily: 'var(--cth-font-display)',
+                  fontSize: 8,
+                  padding: '2px 6px 1px',
+                  background: col.accent,
+                  color: 'var(--cth-ink-900)',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                }}
+              >
+                {col.label}
+              </span>
+              {assigneeName ? (
+                <PixelBadge status="working" label={assigneeName} />
+              ) : (
+                <span style={{ fontSize: 11, color: 'var(--cth-ink-300)' }}>unassigned</span>
+              )}
               <PriorityDots level={Math.max(1, Math.min(5, task.priority))} />
-              <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--cth-ink-500)', fontFamily: 'var(--cth-font-display)' }}>
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  fontSize: 10,
+                  color: 'var(--cth-ink-500)',
+                  fontFamily: 'var(--cth-font-display)',
+                }}
+              >
                 {isNaN(created.getTime()) ? '' : created.toLocaleString()}
               </span>
             </div>
 
             {/* The contract — preserved line by line */}
-            <div style={{
-              padding: 10, background: 'var(--cth-paper-100)',
-              boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-              fontFamily: 'var(--cth-font-mono)', fontSize: 12, lineHeight: '18px',
-              color: 'var(--cth-ink-900)', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
-            }}>
-              {task.description?.trim() || <span style={{ color: 'var(--cth-ink-300)' }}>(no description on this card)</span>}
+            <div
+              style={{
+                padding: 10,
+                background: 'var(--cth-paper-100)',
+                boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                fontFamily: 'var(--cth-font-mono)',
+                fontSize: 12,
+                lineHeight: '18px',
+                color: 'var(--cth-ink-900)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {task.description?.trim() || (
+                <span style={{ color: 'var(--cth-ink-300)' }}>(no description on this card)</span>
+              )}
             </div>
 
             {/* The human Q&A trail — every decision documented on the card */}
             {(task.humanQA?.length ?? 0) > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 8, color: 'var(--cth-ink-500)' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--cth-font-display)',
+                    fontSize: 8,
+                    color: 'var(--cth-ink-500)',
+                  }}
+                >
                   HUMAN Q&A
                 </div>
                 {task.humanQA!.map((e, i) => (
                   <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{
-                      padding: '5px 7px', background: 'var(--cth-lilac-light, #ece2f5)',
-                      boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                      fontSize: 12, lineHeight: '17px', color: 'var(--cth-ink-900)', whiteSpace: 'pre-wrap'
-                    }}>
-                      <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 8, marginRight: 6 }}>Q</span>
+                    <div
+                      style={{
+                        padding: '5px 7px',
+                        background: 'var(--cth-lilac-light, #ece2f5)',
+                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                        fontSize: 12,
+                        lineHeight: '17px',
+                        color: 'var(--cth-ink-900)',
+                        whiteSpace: 'pre-wrap',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: 'var(--cth-font-display)',
+                          fontSize: 8,
+                          marginRight: 6,
+                        }}
+                      >
+                        Q
+                      </span>
                       {e.q}
                     </div>
                     {e.a ? (
-                      <div style={{
-                        padding: '5px 7px', background: 'var(--cth-mint-light, #d9eed9)',
-                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                        fontSize: 12, lineHeight: '17px', color: 'var(--cth-ink-900)', whiteSpace: 'pre-wrap'
-                      }}>
-                        <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 8, marginRight: 6 }}>A</span>
+                      <div
+                        style={{
+                          padding: '5px 7px',
+                          background: 'var(--cth-mint-light, #d9eed9)',
+                          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                          fontSize: 12,
+                          lineHeight: '17px',
+                          color: 'var(--cth-ink-900)',
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontFamily: 'var(--cth-font-display)',
+                            fontSize: 8,
+                            marginRight: 6,
+                          }}
+                        >
+                          A
+                        </span>
                         {e.a}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 11, color: 'var(--cth-coral)', fontFamily: 'var(--cth-font-display)' }}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--cth-coral)',
+                          fontFamily: 'var(--cth-font-display)',
+                        }}
+                      >
                         AWAITING YOUR ANSWER — ASK ME TAB
                       </div>
                     )}
@@ -421,19 +690,49 @@ export function TaskDetail({ task, all, assigneeName, onMove, onAssign, onClose,
             {/* Dependencies, resolved to titles */}
             {deps.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 8, color: 'var(--cth-ink-500)' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--cth-font-display)',
+                    fontSize: 8,
+                    color: 'var(--cth-ink-500)',
+                  }}
+                >
                   DEPENDS ON
                 </div>
                 {deps.map((d) => {
                   const dc = COLUMNS.find((c) => c.key === d.status) ?? COLUMNS[0];
                   return (
-                    <div key={d.id} style={{
-                      display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px',
-                      background: 'var(--cth-cream-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                      fontSize: 12, color: 'var(--cth-ink-700)'
-                    }}>
-                      <span style={{ width: 8, height: 8, background: dc.accent, boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)', flexShrink: 0 }} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</span>
+                    <div
+                      key={d.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '3px 6px',
+                        background: 'var(--cth-cream-200)',
+                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                        fontSize: 12,
+                        color: 'var(--cth-ink-700)',
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 8,
+                          height: 8,
+                          background: dc.accent,
+                          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {d.title}
+                      </span>
                     </div>
                   );
                 })}
@@ -446,25 +745,39 @@ export function TaskDetail({ task, all, assigneeName, onMove, onAssign, onClose,
                 value={task.status}
                 onChange={(e) => onMove(e.target.value as Status)}
                 style={{
-                  flex: 1, padding: '4px 6px', background: 'var(--cth-paper-100)', border: 'none',
-                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)', fontFamily: 'var(--cth-font-ui)',
-                  fontSize: 12, color: 'var(--cth-ink-900)', cursor: 'pointer'
+                  flex: 1,
+                  padding: '4px 6px',
+                  background: 'var(--cth-paper-100)',
+                  border: 'none',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                  fontFamily: 'var(--cth-font-ui)',
+                  fontSize: 12,
+                  color: 'var(--cth-ink-900)',
+                  cursor: 'pointer',
                 }}
               >
-                {COLUMNS.map((c) => (<option key={c.key} value={c.key}>{c.label.toLowerCase()}</option>))}
+                {COLUMNS.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.label.toLowerCase()}
+                  </option>
+                ))}
               </select>
               <PixelButton variant="secondary" size="sm" onClick={onAssign}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                   <Icon name="arrow-right" /> assign
                 </span>
               </PixelButton>
-              <PixelButton variant="ghost" size="sm" onClick={onClose}>close</PixelButton>
+              <PixelButton variant="ghost" size="sm" onClick={onClose}>
+                close
+              </PixelButton>
             </div>
             {/* Delete — human-origin todo cards only. Everything else (god's
                 cards, anything the hive picked up) is not the UI's to remove. */}
             {onDelete && task.origin === 'human' && task.status === 'todo' && (
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <PixelButton variant="destructive" size="sm" onClick={onDelete}>delete card</PixelButton>
+                <PixelButton variant="destructive" size="sm" onClick={onDelete}>
+                  delete card
+                </PixelButton>
               </div>
             )}
           </div>
@@ -476,32 +789,55 @@ export function TaskDetail({ task, all, assigneeName, onMove, onAssign, onClose,
 
 function PriorityDots({ level }: { level: number }) {
   // 1 = lowest, 5 = highest. Warmer fill as priority climbs.
-  const color = level >= 4 ? 'var(--cth-coral)' : level === 3 ? 'var(--cth-lemon)' : 'var(--cth-mint)';
+  const color =
+    level >= 4 ? 'var(--cth-coral)' : level === 3 ? 'var(--cth-lemon)' : 'var(--cth-mint)';
   return (
-    <span title={`Priority ${level}/5`} style={{ display: 'inline-flex', gap: 1, flexShrink: 0, marginTop: 2 }}>
+    <span
+      title={`Priority ${level}/5`}
+      style={{ display: 'inline-flex', gap: 1, flexShrink: 0, marginTop: 2 }}
+    >
       {[1, 2, 3, 4, 5].map((i) => (
-        <span key={i} style={{
-          width: 4, height: 8,
-          background: i <= level ? color : 'var(--cth-cream-200)',
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-        }} />
+        <span
+          key={i}
+          style={{
+            width: 4,
+            height: 8,
+            background: i <= level ? color : 'var(--cth-cream-200)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+          }}
+        />
       ))}
     </span>
   );
 }
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '6px 8px', background: 'var(--cth-paper-100)', border: 'none',
-  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)', fontFamily: 'var(--cth-font-ui)',
-  fontSize: 12, lineHeight: '17px', color: 'var(--cth-ink-900)', outline: 'none', boxSizing: 'border-box'
+  width: '100%',
+  padding: '6px 8px',
+  background: 'var(--cth-paper-100)',
+  border: 'none',
+  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 12,
+  lineHeight: '17px',
+  color: 'var(--cth-ink-900)',
+  outline: 'none',
+  boxSizing: 'border-box',
 };
 
 const selectStyle: React.CSSProperties = {
-  padding: '3px 6px', background: 'var(--cth-paper-100)', border: 'none',
-  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)', fontFamily: 'var(--cth-font-ui)',
-  fontSize: 12, color: 'var(--cth-ink-900)', cursor: 'pointer'
+  padding: '3px 6px',
+  background: 'var(--cth-paper-100)',
+  border: 'none',
+  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 12,
+  color: 'var(--cth-ink-900)',
+  cursor: 'pointer',
 };
 
 const labelStyle: React.CSSProperties = {
-  fontFamily: 'var(--cth-font-display)', fontSize: 8, color: 'var(--cth-ink-500)'
+  fontFamily: 'var(--cth-font-display)',
+  fontSize: 8,
+  color: 'var(--cth-ink-500)',
 };

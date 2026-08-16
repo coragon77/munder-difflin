@@ -28,20 +28,28 @@ const { join } = require('node:path');
 // (same shim as restore-team.test.cjs).
 const memoryStorage = {
   data: {},
-  getItem(k) { return  Object.hasOwn(this.data, k) ? this.data[k] : null; },
-  setItem(k, v) { this.data[k] = String(v); },
-  removeItem(k) { delete this.data[k]; }
+  getItem(k) {
+    return Object.hasOwn(this.data, k) ? this.data[k] : null;
+  },
+  setItem(k, v) {
+    this.data[k] = String(v);
+  },
+  removeItem(k) {
+    delete this.data[k];
+  },
 };
 globalThis.localStorage = memoryStorage;
-globalThis.window = { localStorage: memoryStorage, addEventListener() {}, setTimeout, clearTimeout };
+globalThis.window = {
+  localStorage: memoryStorage,
+  addEventListener() {},
+  setTimeout,
+  clearTimeout,
+};
 
 const loadTs = require('./load-ts.cjs');
 const { godCommand } = loadTs('src/main/kittySatellite.ts');
 const { useStore } = loadTs('src/renderer/src/store/store.ts');
-const {
-  DEFAULT_HIRE_PERMISSION_MODE,
-  permissionModeArgs
-} = loadTs('src/shared/agentProvider.ts');
+const { DEFAULT_HIRE_PERMISSION_MODE, permissionModeArgs } = loadTs('src/shared/agentProvider.ts');
 
 // ── 1) god co-terminal ───────────────────────────────────────────────────
 
@@ -53,7 +61,8 @@ const withTempXdg = (run) => {
     mkdirSync(join(dir, 'munder-difflin'), { recursive: true });
     return run(join(dir, 'munder-difflin', 'config.json'));
   } finally {
-    if (prev === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = prev;
+    if (prev === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = prev;
     rmSync(dir, { recursive: true, force: true });
   }
 };
@@ -63,14 +72,20 @@ test('god co-terminal defaults to Claude Auto, not bypass', () => {
     writeFileSync(cfgPath, JSON.stringify({ defaultCommand: 'claude' }));
     const { file, args } = godCommand();
     assert.equal(file, 'claude');
-    assert.deepEqual(args, ['--permission-mode', 'auto'],
-      'the satellite god mirrors the in-app god default (Claude Auto)');
+    assert.deepEqual(
+      args,
+      ['--permission-mode', 'auto'],
+      'the satellite god mirrors the in-app god default (Claude Auto)',
+    );
   });
 });
 
 test('god co-terminal respects a typed --permission-mode, never doubles', () => {
   withTempXdg((cfgPath) => {
-    writeFileSync(cfgPath, JSON.stringify({ defaultCommand: 'claude --permission-mode acceptEdits' }));
+    writeFileSync(
+      cfgPath,
+      JSON.stringify({ defaultCommand: 'claude --permission-mode acceptEdits' }),
+    );
     const { args } = godCommand();
     assert.deepEqual(args, ['--permission-mode', 'acceptEdits']);
   });
@@ -79,22 +94,36 @@ test('god co-terminal respects a typed --permission-mode, never doubles', () => 
 // ── 2) persistence slim keeps the stored choice ──────────────────────────
 
 const agent = (id, extra = {}) => ({
-  id, name: id, character: 'jim', accent: 'coral', description: '',
-  project: 'p', tmuxTarget: '', cwd: '/tmp', command: 'claude',
-  status: 'idle', action: 'idle', progress: 0, ...extra
+  id,
+  name: id,
+  character: 'jim',
+  accent: 'coral',
+  description: '',
+  project: 'p',
+  tmuxTarget: '',
+  cwd: '/tmp',
+  command: 'claude',
+  status: 'idle',
+  action: 'idle',
+  progress: 0,
+  ...extra,
 });
 
 test('a restorable agent keeps its stored permissionMode through the slim', () => {
   useStore.setState({
-    agents: [], archivedAgents: [],
-    restorableAgents: [agent('stefans-pick', { permissionMode: 'bypass' }), agent('other-worker')]
+    agents: [],
+    archivedAgents: [],
+    restorableAgents: [agent('stefans-pick', { permissionMode: 'bypass' }), agent('other-worker')],
   });
   // Archiving an UNRELATED agent re-persists the remaining restorable list.
   useStore.getState().archiveAgent('other-worker');
   const saved = JSON.parse(memoryStorage.getItem('cth.restorableAgents'));
   assert.equal(saved.length, 1);
-  assert.equal(saved[0].permissionMode, 'bypass',
-    'the slim must never grow a permissionMode strip — restarts read this field');
+  assert.equal(
+    saved[0].permissionMode,
+    'bypass',
+    'the slim must never grow a permissionMode strip — restarts read this field',
+  );
 });
 
 // ── 3) spawnAgentCore resolution mirror ───────────────────────────────────
@@ -104,13 +133,21 @@ test('resolution: stored mode wins; legacy agents fall back to Claude Auto, neve
   const argvFor = (storedMode) => {
     const cmd = 'claude --model claude-sonnet-5';
     const mode = storedMode ?? DEFAULT_HIRE_PERMISSION_MODE;
-    return [...['claude', '--model', 'claude-sonnet-5'], ...permissionModeArgs(cmd, undefined, mode)];
+    return [
+      ...['claude', '--model', 'claude-sonnet-5'],
+      ...permissionModeArgs(cmd, undefined, mode),
+    ];
   };
-  assert.deepEqual(argvFor('bypass'),
-    ['claude', '--model', 'claude-sonnet-5', '--dangerously-skip-permissions']);
-  assert.deepEqual(argvFor('default'),
-    ['claude', '--model', 'claude-sonnet-5']);
-  assert.deepEqual(argvFor(undefined),
+  assert.deepEqual(argvFor('bypass'), [
+    'claude',
+    '--model',
+    'claude-sonnet-5',
+    '--dangerously-skip-permissions',
+  ]);
+  assert.deepEqual(argvFor('default'), ['claude', '--model', 'claude-sonnet-5']);
+  assert.deepEqual(
+    argvFor(undefined),
     ['claude', '--model', 'claude-sonnet-5', '--permission-mode', 'auto'],
-    'legacy agents (hired before the selector) restart in Claude Auto, not bypass');
+    'legacy agents (hired before the selector) restart in Claude Auto, not bypass',
+  );
 });

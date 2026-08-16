@@ -54,7 +54,11 @@ export function hasOpenAiKey(): boolean {
 export async function mintRealtimeToken(model: string = REALTIME_MODEL): Promise<MintResult> {
   const key = getSecret(OPENAI_KEY_REF);
   if (!key) {
-    return { ok: false, error: 'no OpenAI API key set — add one in Settings → Voice', code: 'no_key' };
+    return {
+      ok: false,
+      error: 'no OpenAI API key set — add one in Settings → Voice',
+      code: 'no_key',
+    };
   }
 
   const post = async (url: string, body: unknown) => {
@@ -65,11 +69,15 @@ export async function mintRealtimeToken(model: string = REALTIME_MODEL): Promise
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: ac.signal
+        signal: ac.signal,
       });
       const text = await r.text();
       let json: Record<string, unknown> | undefined;
-      try { json = text ? (JSON.parse(text) as Record<string, unknown>) : undefined; } catch { /* non-JSON body */ }
+      try {
+        json = text ? (JSON.parse(text) as Record<string, unknown>) : undefined;
+      } catch {
+        /* non-JSON body */
+      }
       return { status: r.status, ok: r.ok, json, text };
     } finally {
       clearTimeout(timer);
@@ -91,7 +99,9 @@ export async function mintRealtimeToken(model: string = REALTIME_MODEL): Promise
     }
 
     // Normalize across GA ({ value }) and legacy ({ client_secret: { value } }) shapes.
-    const clientSecret = res.json?.client_secret as { value?: unknown; expires_at?: unknown } | undefined;
+    const clientSecret = res.json?.client_secret as
+      | { value?: unknown; expires_at?: unknown }
+      | undefined;
     const token =
       (typeof res.json?.value === 'string' && (res.json.value as string)) ||
       (typeof clientSecret?.value === 'string' && clientSecret.value) ||
@@ -104,7 +114,11 @@ export async function mintRealtimeToken(model: string = REALTIME_MODEL): Promise
     return { ok: true, token, expiresAt, sessionConfig: { model } };
   } catch (e) {
     const err =
-      e instanceof Error ? (e.name === 'AbortError' ? 'token mint timed out' : e.message) : String(e);
+      e instanceof Error
+        ? e.name === 'AbortError'
+          ? 'token mint timed out'
+          : e.message
+        : String(e);
     return { ok: false, error: err, code: 'network' };
   }
 }

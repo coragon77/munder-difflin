@@ -24,10 +24,17 @@ export function UpdateBadge() {
   useEffect(() => {
     // Subscribe first, then pull — main may have emitted before this window
     // finished loading (or before a reload), and `update:current` re-serves it.
-    const off = window.cth.onUpdateStatus?.((next) => setStatus((prev) => reduceStatus(prev, next)));
-    void window.cth.updateCurrent?.().then((cur) => {
-      if (cur) setStatus((prev) => reduceStatus(prev, cur));
-    }).catch(() => { /* older main without the handler — the push channel still works */ });
+    const off = window.cth.onUpdateStatus?.((next) =>
+      setStatus((prev) => reduceStatus(prev, next)),
+    );
+    void window.cth
+      .updateCurrent?.()
+      .then((cur) => {
+        if (cur) setStatus((prev) => reduceStatus(prev, cur));
+      })
+      .catch(() => {
+        /* older main without the handler — the push channel still works */
+      });
     return off;
   }, []);
 
@@ -41,9 +48,13 @@ export function UpdateBadge() {
       else if (view.action === 'download') await window.cth.updateDownload();
       else if (view.action === 'check') await window.cth.updateCheckNow();
       else if (view.action === 'open-release') {
-        await window.cth.updateOpenRelease(status?.state === 'available-manual' ? status.url : undefined);
+        await window.cth.updateOpenRelease(
+          status?.state === 'available-manual' ? status.url : undefined,
+        );
       }
-    } catch { /* the emitted status carries the failure — nothing to do here */ }
+    } catch {
+      /* the emitted status carries the failure — nothing to do here */
+    }
     setBusy(false);
   }, [view.action, busy, status]);
 
@@ -52,20 +63,26 @@ export function UpdateBadge() {
   // me), warn = amber (something went wrong), busy/idle stay in the titlebar's
   // own greys so a quiet app looks exactly like it did before.
   const chipBg =
-    view.tone === 'ready' ? 'var(--cth-mint-light, #d0f0e0)'
-      : view.tone === 'warn' ? 'var(--cth-amber-light, #f6e2b3)'
+    view.tone === 'ready'
+      ? 'var(--cth-mint-light, #d0f0e0)'
+      : view.tone === 'warn'
+        ? 'var(--cth-amber-light, #f6e2b3)'
         : 'transparent';
 
   return (
     <button
       className="cth-titlebar-nodrag"
-      onClick={() => { void onClick(); }}
+      onClick={() => {
+        void onClick();
+      }}
       disabled={!interactive}
       title={view.title}
       aria-label={view.label ? `${view.title}` : `Version ${__APP_VERSION__} — check for updates`}
       aria-busy={view.busy || busy}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
         padding: view.label ? '2px 8px' : '2px 4px',
         margin: 0,
         background: chipBg,
@@ -76,13 +93,15 @@ export function UpdateBadge() {
         fontSize: 13,
         lineHeight: '18px',
         color: view.tone === 'idle' ? 'var(--cth-ink-500)' : 'var(--cth-ink-900)',
-        cursor: interactive ? 'pointer' : 'default'
+        cursor: interactive ? 'pointer' : 'default',
       }}
     >
       <span>v{__APP_VERSION__}</span>
       {view.label && (
         <>
-          <span aria-hidden style={{ color: 'var(--cth-ink-500)' }}>·</span>
+          <span aria-hidden style={{ color: 'var(--cth-ink-500)' }}>
+            ·
+          </span>
           <span style={{ fontWeight: 600 }}>{view.label}</span>
         </>
       )}

@@ -15,8 +15,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const loadTs = require('./load-ts.cjs');
 
-const { parseVersion, isNewer, clampPercent, reduceStatus, describeUpdate } =
-  loadTs('src/shared/updateState.ts');
+const { parseVersion, isNewer, clampPercent, reduceStatus, describeUpdate } = loadTs(
+  'src/shared/updateState.ts',
+);
 
 test('parseVersion accepts v-prefixed and bare semver, rejects junk', () => {
   assert.deepEqual(parseVersion('0.3.6'), [0, 3, 6]);
@@ -90,25 +91,42 @@ test('every actionable state offers the action its label promises', () => {
   check({ state: 'available', version: '0.3.7' }, { action: 'download', busy: false });
   check({ state: 'downloading', version: '0.3.7', percent: 42 }, { action: 'none', busy: true });
   check({ state: 'downloaded', version: '0.3.7' }, { action: 'restart', busy: false });
-  check({ state: 'available-manual', version: '0.3.7', url: 'https://x' }, { action: 'open-release' });
+  check(
+    { state: 'available-manual', version: '0.3.7', url: 'https://x' },
+    { action: 'open-release' },
+  );
   check({ state: 'error', message: 'boom' }, { action: 'check' });
 });
 
 test('labels name the version so the badge is self-explanatory', () => {
   assert.match(describeUpdate({ state: 'available', version: '0.3.7' }, '0.3.6').label, /0\.3\.7/);
-  assert.match(describeUpdate({ state: 'downloaded', version: '0.3.7' }, '0.3.6').label, /restart/i);
-  assert.match(describeUpdate({ state: 'downloading', version: '0.3.7', percent: 42.4 }, '0.3.6').label, /42%/);
+  assert.match(
+    describeUpdate({ state: 'downloaded', version: '0.3.7' }, '0.3.6').label,
+    /restart/i,
+  );
+  assert.match(
+    describeUpdate({ state: 'downloading', version: '0.3.7', percent: 42.4 }, '0.3.6').label,
+    /42%/,
+  );
 });
 
 test('the underlying failure reaches the tooltip instead of being swallowed', () => {
   // This is the regression guard for the v0.3.4-0.3.6 bug: the real error was
   // caught and dropped, leaving "open the releases page" with no explanation.
-  const err = describeUpdate({ state: 'error', message: 'Cannot set properties of undefined' }, '0.3.6');
+  const err = describeUpdate(
+    { state: 'error', message: 'Cannot set properties of undefined' },
+    '0.3.6',
+  );
   assert.match(err.title, /Cannot set properties of undefined/);
 
   const manual = describeUpdate(
-    { state: 'available-manual', version: '0.3.7', url: 'https://x', reason: 'ENOTFOUND github.com' },
-    '0.3.6'
+    {
+      state: 'available-manual',
+      version: '0.3.7',
+      url: 'https://x',
+      reason: 'ENOTFOUND github.com',
+    },
+    '0.3.6',
   );
   assert.match(manual.title, /ENOTFOUND github\.com/);
 });
@@ -134,7 +152,7 @@ test('every update state produces a headline and a sentence', () => {
     { state: 'downloading', version: '0.4.0', percent: 12 },
     { state: 'downloaded', version: '0.4.0' },
     { state: 'available-manual', version: '0.4.0', url: 'https://x' },
-    { state: 'error', message: 'ENOTFOUND github.com' }
+    { state: 'error', message: 'ENOTFOUND github.com' },
   ];
   for (const s of states) {
     const v = describeUpdateSettings(s, '0.3.9');
@@ -171,8 +189,16 @@ test('an available update offers the download, not the restart', () => {
 
 test('the two mid-flight states have no button to press', () => {
   assert.equal(describeUpdateSettings({ state: 'checking' }, '0.3.9').button, null);
-  assert.equal(describeUpdateSettings({ state: 'downloading', version: '0.4.0', percent: 42.4 }, '0.3.9').button, null);
-  assert.match(describeUpdateSettings({ state: 'downloading', version: '0.4.0', percent: 42.4 }, '0.3.9').detail, /42%/);
+  assert.equal(
+    describeUpdateSettings({ state: 'downloading', version: '0.4.0', percent: 42.4 }, '0.3.9')
+      .button,
+    null,
+  );
+  assert.match(
+    describeUpdateSettings({ state: 'downloading', version: '0.4.0', percent: 42.4 }, '0.3.9')
+      .detail,
+    /42%/,
+  );
   assert.equal(describeUpdateSettings({ state: 'checking' }, '0.3.9').busy, true);
 });
 
@@ -183,7 +209,7 @@ test('failures reach Settings verbatim, same as the tooltip', () => {
 
   const manual = describeUpdateSettings(
     { state: 'available-manual', version: '0.4.0', url: 'https://x', reason: 'win-portable' },
-    '0.3.9'
+    '0.3.9',
   );
   assert.match(manual.detail, /win-portable/);
   assert.equal(manual.action, 'open-release');

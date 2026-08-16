@@ -2,10 +2,7 @@ import { app } from 'electron';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import {
-  providerPreset,
-  type AgentProvider
-} from '../shared/agentProvider';
+import { providerPreset, type AgentProvider } from '../shared/agentProvider';
 import { defaultMcpDefaults } from '../shared/mcpCatalog';
 import { expandTilde } from './fs';
 import type { IntegrationRecord } from '../shared/integrations';
@@ -16,7 +13,7 @@ import {
   DEFAULT_WEBHOOK_SCHEMA,
   type ContextTriggerConfig,
   type OrgTriggerConfig,
-  type WebhookTrigger
+  type WebhookTrigger,
 } from '../shared/triggers';
 
 /** A recurring auto-dispatched mission fired on an interval by the scheduler. */
@@ -66,12 +63,12 @@ export const OPS_STANDUP_MISSION: ScheduledMission = {
     'is still running (not stalled or idle-stale). Check the task board — are ' +
     'in-flight tasks on track, and is anything blocked or unowned? Flag stale ' +
     'agents and at-risk tasks, and keep the board accurate. (As part of this ' +
-    "standup each working agent is asked to summarise its current task and the " +
+    'standup each working agent is asked to summarise its current task and the ' +
     'next step, then compact and resume from the same point — so terminal ' +
     'contexts stay bounded without losing work. The compaction is queued and ' +
     'runs when an agent is idle, so it never interrupts work mid-step.)',
   enabled: true,
-  skipWhenFloorQuiet: true
+  skipWhenFloorQuiet: true,
   // NO autoCompact. Compaction belongs to contextTrigger.compact and nothing else.
   // This flag used to live here as well, which meant a default install asked for
   // compaction on TWO cadences — hourly from this standup and 2-hourly from the
@@ -101,7 +98,7 @@ export const HEARTBEAT_MISSION: ScheduledMission = {
     'if the work is genuinely done.',
   enabled: false,
   kind: 'heartbeat',
-  quietThresholdMs: 300_000
+  quietThresholdMs: 300_000,
 };
 
 /** The dedicated auto-compact MAINTENANCE schedule (maint-1). DECOUPLED from the
@@ -127,7 +124,7 @@ export const COMPACT_MAINTENANCE_MISSION: ScheduledMission = {
   body: '',
   enabled: false,
   autoCompact: true,
-  kind: 'compact'
+  kind: 'compact',
 };
 
 /** The 1h cadence `compact-maintenance` was seeded with before Triggers doubled
@@ -494,7 +491,7 @@ const DEFAULTS: HarnessConfig = {
   // v0.3.4 fix: default OFF, matching the field's own documentation ("Default
   // OFF / dark until enabled") — the true default contradicted it. Existing
   // installs keep their persisted value.
-  knowledgeGraph: { enabled: false }
+  knowledgeGraph: { enabled: false },
 };
 
 function configPath(): string {
@@ -521,12 +518,12 @@ function withTriggerDefaults(cfg: HarnessConfig): HarnessConfig {
     ...cfg,
     contextTrigger: {
       compact: { ...DEFAULT_CONTEXT_TRIGGER.compact, ...cfg.contextTrigger?.compact },
-      clear: { ...DEFAULT_CONTEXT_TRIGGER.clear, ...cfg.contextTrigger?.clear }
+      clear: { ...DEFAULT_CONTEXT_TRIGGER.clear, ...cfg.contextTrigger?.clear },
     },
     orgTrigger: { ...DEFAULT_ORG_TRIGGER, ...cfg.orgTrigger },
     webhookTriggers: Array.isArray(cfg.webhookTriggers)
       ? cfg.webhookTriggers.map((t) => ({ ...t }))
-      : []
+      : [],
   };
 }
 
@@ -571,18 +568,18 @@ function migrateTriggersV1(cfg: HarnessConfig): HarnessConfig {
           enabled: cfg.webhookEnabled ?? false,
           mode: DEFAULT_TRIGGER_MODE,
           schema: DEFAULT_WEBHOOK_SCHEMA,
-          createdAt: Date.now()
-        }
+          createdAt: Date.now(),
+        },
       ];
     }
 
     const missions = Array.isArray(cfg.missions) ? cfg.missions : [];
     const stale = (m: ScheduledMission): boolean =>
-      m?.id === COMPACT_MAINTENANCE_MISSION.id
-      && m.intervalMs === LEGACY_COMPACT_MAINTENANCE_INTERVAL_MS;
+      m?.id === COMPACT_MAINTENANCE_MISSION.id &&
+      m.intervalMs === LEGACY_COMPACT_MAINTENANCE_INTERVAL_MS;
     if (missions.some(stale)) {
       next.missions = missions.map((m) =>
-        stale(m) ? { ...m, intervalMs: COMPACT_MAINTENANCE_MISSION.intervalMs } : m
+        stale(m) ? { ...m, intervalMs: COMPACT_MAINTENANCE_MISSION.intervalMs } : m,
       );
     }
 
@@ -635,7 +632,10 @@ export function writeConfig(patch: Partial<HarnessConfig>): HarnessConfig {
   // deduped and capped. Skips empty/null so a clear doesn't pollute the list.
   if (typeof patch.harnessHome === 'string' && patch.harnessHome) {
     const prior = current.recentHives ?? [];
-    next.recentHives = [patch.harnessHome, ...prior.filter((h) => h !== patch.harnessHome)].slice(0, 8);
+    next.recentHives = [patch.harnessHome, ...prior.filter((h) => h !== patch.harnessHome)].slice(
+      0,
+      8,
+    );
   }
   return persistConfig(next);
 }
@@ -655,9 +655,9 @@ export function resetConfig(): HarnessConfig {
 
 /** Model ids by tier (Lane A #6.4). Kept in sync with AGENT_MODELS in
  *  src/renderer/src/store/config.ts. */
-const MODEL_GOD = 'claude-opus-4-8';                  // orchestration — highest capability
-const MODEL_WORKER = 'claude-sonnet-4-6';             // general execution
-const MODEL_HELPER = 'claude-haiku-4-5-20251001';     // narrow, cheap helpers
+const MODEL_GOD = 'claude-opus-4-8'; // orchestration — highest capability
+const MODEL_WORKER = 'claude-sonnet-4-6'; // general execution
+const MODEL_HELPER = 'claude-haiku-4-5-20251001'; // narrow, cheap helpers
 
 /** Minimal structural shape for tiering — a subset of AgentMeta so config.ts
  *  stays free of a hive.ts import. */
@@ -674,7 +674,7 @@ export interface RoleHint {
  *  explicit per-agent model selection always wins. */
 export function modelForRole(
   meta: RoleHint,
-  config?: Pick<HarnessConfig, 'godProvider' | 'godModel'>
+  config?: Pick<HarnessConfig, 'godProvider' | 'godModel'>,
 ): string | undefined {
   if (meta.isGod) {
     // GOD engine is selectable: an explicit godModel wins, else the chosen
@@ -719,7 +719,11 @@ export function ensureClaudePermissionsAccepted(cwd?: string): void {
     const p = join(dir, 'settings.json');
     let s: Record<string, unknown> = {};
     if (existsSync(p)) {
-      try { s = JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>; } catch { s = {}; }
+      try {
+        s = JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>;
+      } catch {
+        s = {};
+      }
     }
     if (s.skipDangerousModePermissionPrompt !== true || s.skipAutoPermissionPrompt !== true) {
       s.skipDangerousModePermissionPrompt = true;
@@ -727,20 +731,28 @@ export function ensureClaudePermissionsAccepted(cwd?: string): void {
       mkdirSync(dir, { recursive: true });
       writeFileSync(p, JSON.stringify(s, null, 2), 'utf8');
     }
-  } catch { /* best-effort; never block a spawn */ }
+  } catch {
+    /* best-effort; never block a spawn */
+  }
   // 2) Per-folder trust dialog gate (only when this cwd isn't already trusted).
   if (cwd) {
     try {
       const p = join(home, '.claude.json');
       let c: { projects?: Record<string, { hasTrustDialogAccepted?: boolean }> } = {};
       if (existsSync(p)) {
-        try { c = JSON.parse(readFileSync(p, 'utf8')); } catch { c = {}; }
+        try {
+          c = JSON.parse(readFileSync(p, 'utf8'));
+        } catch {
+          c = {};
+        }
       }
       if (c.projects?.[cwd]?.hasTrustDialogAccepted !== true) {
         c.projects = c.projects ?? {};
         c.projects[cwd] = { ...(c.projects[cwd] ?? {}), hasTrustDialogAccepted: true };
         writeFileSync(p, JSON.stringify(c, null, 2), 'utf8');
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 }

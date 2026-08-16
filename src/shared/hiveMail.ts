@@ -14,7 +14,13 @@
 /** Senders whose mail is the system talking to itself (scheduler beats, breaker
  *  steers, ephemeral-worker lifecycle notices, generic 'system') — never a reason
  *  to wake an agent on its own. */
-export const SYSTEM_SENDERS = new Set(['heartbeat', 'scheduler', 'breaker', 'system', 'ephemeral-worker']);
+export const SYSTEM_SENDERS = new Set([
+  'heartbeat',
+  'scheduler',
+  'breaker',
+  'system',
+  'ephemeral-worker',
+]);
 
 /** Is this message mail from a system sender (not a real agent/human)? */
 export function isSystemMail(from: string | undefined): boolean {

@@ -30,11 +30,16 @@ export interface CardSnapshotLike {
  *  the next transition if the card still needs steering). */
 export function cardSessionActionStillValid(
   card: CardSnapshotLike | undefined,
-  marker: CardSessionMarker
+  marker: CardSessionMarker,
 ): boolean {
   if (!card || card.status !== 'doing' || card.assignee !== marker.agentId) return false;
   if (marker.kind === 'clear' && card.sessionId) return false; // a conversation already started — a late clear would wipe it
-  if (marker.kind !== 'clear' && marker.session && card.sessionId && card.sessionId !== marker.session) {
+  if (
+    marker.kind !== 'clear' &&
+    marker.session &&
+    card.sessionId &&
+    card.sessionId !== marker.session
+  ) {
     return false; // re-stamped to a different conversation meanwhile
   }
   return true;

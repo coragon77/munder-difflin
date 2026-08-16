@@ -8,12 +8,7 @@
 // the office theme so a bad/absent bundle never breaks the floor (report §E).
 
 import type { TiledMap } from './TiledMapRenderer';
-import {
-  getTheme,
-  OFFICE_THEME,
-  type ThemeConfig,
-  type ThemeId,
-} from './themeRegistry';
+import { getTheme, OFFICE_THEME, type ThemeConfig, type ThemeId } from './themeRegistry';
 
 /** Parse a theme's raw Tiled JSON and patch its tileset array.
  *  `embedded` atlases keep the map's own inline metadata; the rest are replaced
@@ -43,9 +38,12 @@ function isThemeRenderable(theme: ThemeConfig): boolean {
   try {
     const m = JSON.parse(theme.mapRaw) as TiledMap;
     return (
-      typeof m.width === 'number' && m.width > 0 &&
-      typeof m.height === 'number' && m.height > 0 &&
-      Array.isArray(m.layers) && Array.isArray(m.tilesets)
+      typeof m.width === 'number' &&
+      m.width > 0 &&
+      typeof m.height === 'number' &&
+      m.height > 0 &&
+      Array.isArray(m.layers) &&
+      Array.isArray(m.tilesets)
     );
   } catch {
     return false;

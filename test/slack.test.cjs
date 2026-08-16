@@ -1,8 +1,15 @@
 'use strict';
 
 const assert = require('assert');
-const { shouldTrigger, ActivatedThreads, SeenEvents, dedupKey, ACTIVATED_THREADS_MAX, SEEN_EVENTS_MAX, MAX_FILES_PER_MESSAGE } =
-  require('../src/main/slack-trigger.cjs');
+const {
+  shouldTrigger,
+  ActivatedThreads,
+  SeenEvents,
+  dedupKey,
+  ACTIVATED_THREADS_MAX,
+  SEEN_EVENTS_MAX,
+  MAX_FILES_PER_MESSAGE,
+} = require('../src/main/slack-trigger.cjs');
 
 let failures = 0;
 async function test(name, fn) {
@@ -49,7 +56,9 @@ function ev(overrides = {}) {
     const threads = new ActivatedThreads();
     const result = shouldTrigger(
       ev({ text: `<@${BOT_ID}> please help`, ts: '1000.0002' }),
-      BOT_ID, null, threads
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, true);
     assert.ok(result.text.includes('please help'), 'text forwarded');
@@ -60,7 +69,9 @@ function ev(overrides = {}) {
     const threads = new ActivatedThreads();
     const result = shouldTrigger(
       ev({ type: 'app_mention', text: 'do something', ts: '1000.0003' }),
-      null, null, threads // botUserId=null — type alone is enough
+      null,
+      null,
+      threads, // botUserId=null — type alone is enough
     );
     assert.strictEqual(result.trigger, true);
     assert.ok(threads.has('1000.0003'), 'app_mention activates thread root');
@@ -76,7 +87,9 @@ function ev(overrides = {}) {
     // Then: a plain reply in that thread triggers
     const result = shouldTrigger(
       ev({ text: 'follow-up question', ts: '2000.0002', thread_ts: '2000.0001' }),
-      BOT_ID, null, threads
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, true, 'thread reply should trigger');
     assert.strictEqual(result.text, 'follow-up question');
@@ -90,8 +103,15 @@ function ev(overrides = {}) {
     shouldTrigger(ev({ text: `<@${BOT_ID}> hi`, ts: '3000.0001' }), BOT_ID, null, threads);
     // Bot posts a reply — must NOT trigger
     const result = shouldTrigger(
-      ev({ text: 'I am the bot response', ts: '3000.0002', thread_ts: '3000.0001', bot_id: 'B_BOT' }),
-      BOT_ID, null, threads
+      ev({
+        text: 'I am the bot response',
+        ts: '3000.0002',
+        thread_ts: '3000.0001',
+        bot_id: 'B_BOT',
+      }),
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, false, 'bot reply must not loop back');
   });
@@ -100,7 +120,9 @@ function ev(overrides = {}) {
     const threads = new ActivatedThreads();
     const result = shouldTrigger(
       ev({ text: `<@${BOT_ID}> edit`, subtype: 'message_changed' }),
-      BOT_ID, null, threads
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, false);
   });
@@ -114,7 +136,9 @@ function ev(overrides = {}) {
     // Bot is mentioned in a reply (not a root message)
     const result = shouldTrigger(
       ev({ text: `<@${BOT_ID}> help in thread`, ts: replyTs, thread_ts: rootTs }),
-      BOT_ID, null, threads
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, true);
     // thread_ts is the key, not ts
@@ -128,7 +152,9 @@ function ev(overrides = {}) {
     const threads = new ActivatedThreads();
     const result = shouldTrigger(
       ev({ text: `<@${BOT_ID}> help`, channel: 'C_OTHER' }),
-      BOT_ID, CHANNEL, threads // channelId = CHANNEL, event is in C_OTHER
+      BOT_ID,
+      CHANNEL,
+      threads, // channelId = CHANNEL, event is in C_OTHER
     );
     assert.strictEqual(result.trigger, false);
     assert.strictEqual(threads.size, 0, 'wrong-channel mention must not activate thread');
@@ -138,7 +164,9 @@ function ev(overrides = {}) {
     const threads = new ActivatedThreads();
     const result = shouldTrigger(
       ev({ text: `<@${BOT_ID}> hello`, channel: CHANNEL }),
-      BOT_ID, CHANNEL, threads
+      BOT_ID,
+      CHANNEL,
+      threads,
     );
     assert.strictEqual(result.trigger, true);
   });
@@ -147,7 +175,9 @@ function ev(overrides = {}) {
     const threads = new ActivatedThreads();
     const result = shouldTrigger(
       ev({ text: `<@${BOT_ID}> hi`, channel: 'C_RANDOM' }),
-      BOT_ID, null, threads
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, true);
   });
@@ -205,7 +235,15 @@ function ev(overrides = {}) {
     return ev({
       subtype: 'file_share',
       text: '',
-      files: [{ id: 'F001', url_private: 'https://files.slack.com/files-pri/T01/F001/img.png', name: 'img.png', mimetype: 'image/png', size: 102400 }],
+      files: [
+        {
+          id: 'F001',
+          url_private: 'https://files.slack.com/files-pri/T01/F001/img.png',
+          name: 'img.png',
+          mimetype: 'image/png',
+          size: 102400,
+        },
+      ],
       ...overrides,
     });
   }
@@ -214,12 +252,17 @@ function ev(overrides = {}) {
     const threads = new ActivatedThreads();
     const result = shouldTrigger(
       fileEv({ text: `<@${BOT_ID}> look at this`, ts: '5000.0001' }),
-      BOT_ID, null, threads
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, true, 'should trigger on mentioned file_share');
     assert.ok(Array.isArray(result.files), 'files must be an array');
     assert.strictEqual(result.files.length, 1, 'one file extracted');
-    assert.strictEqual(result.files[0].url_private, 'https://files.slack.com/files-pri/T01/F001/img.png');
+    assert.strictEqual(
+      result.files[0].url_private,
+      'https://files.slack.com/files-pri/T01/F001/img.png',
+    );
     assert.strictEqual(result.files[0].name, 'img.png');
     assert.strictEqual(result.files[0].mimetype, 'image/png');
     assert.ok(threads.has('5000.0001'), 'thread activated on file_share mention');
@@ -231,7 +274,9 @@ function ev(overrides = {}) {
     shouldTrigger(ev({ text: `<@${BOT_ID}> start`, ts: '5001.0001' }), BOT_ID, null, threads);
     const result = shouldTrigger(
       fileEv({ ts: '5001.0002', thread_ts: '5001.0001' }),
-      BOT_ID, null, threads
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, true, 'file in activated thread must trigger');
     assert.strictEqual(result.files.length, 1, 'file extracted from activated-thread upload');
@@ -247,8 +292,14 @@ function ev(overrides = {}) {
   await test('other subtype (message_changed) even with files → NOT triggered', () => {
     const threads = new ActivatedThreads();
     const result = shouldTrigger(
-      ev({ subtype: 'message_changed', text: `<@${BOT_ID}> edit`, files: [{ url_private: 'https://x.slack.com/f' }] }),
-      BOT_ID, null, threads
+      ev({
+        subtype: 'message_changed',
+        text: `<@${BOT_ID}> edit`,
+        files: [{ url_private: 'https://x.slack.com/f' }],
+      }),
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, false, 'message_changed must always be blocked');
   });
@@ -259,12 +310,19 @@ function ev(overrides = {}) {
       ev({
         text: `<@${BOT_ID}> see these`,
         files: [
-          { id: 'F001', url_private: 'https://files.slack.com/f1', name: 'f1.txt', mimetype: 'text/plain' },
+          {
+            id: 'F001',
+            url_private: 'https://files.slack.com/f1',
+            name: 'f1.txt',
+            mimetype: 'text/plain',
+          },
           { id: 'F002', name: 'no-url.txt' }, // no url_private
-          { url_private: '' },                  // empty url_private
-        ]
+          { url_private: '' }, // empty url_private
+        ],
       }),
-      BOT_ID, null, threads
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, true);
     assert.strictEqual(result.files.length, 1, 'only the file with url_private is kept');
@@ -274,22 +332,28 @@ function ev(overrides = {}) {
   await test(`files capped at MAX_FILES_PER_MESSAGE (${MAX_FILES_PER_MESSAGE})`, () => {
     const threads = new ActivatedThreads();
     const manyFiles = Array.from({ length: MAX_FILES_PER_MESSAGE + 5 }, (_, i) => ({
-      id: `F${i}`, url_private: `https://files.slack.com/f${i}`, name: `f${i}.txt`, mimetype: 'text/plain',
+      id: `F${i}`,
+      url_private: `https://files.slack.com/f${i}`,
+      name: `f${i}.txt`,
+      mimetype: 'text/plain',
     }));
     const result = shouldTrigger(
       ev({ text: `<@${BOT_ID}> lots`, files: manyFiles }),
-      BOT_ID, null, threads
+      BOT_ID,
+      null,
+      threads,
     );
     assert.strictEqual(result.trigger, true);
-    assert.strictEqual(result.files.length, MAX_FILES_PER_MESSAGE, `capped to ${MAX_FILES_PER_MESSAGE}`);
+    assert.strictEqual(
+      result.files.length,
+      MAX_FILES_PER_MESSAGE,
+      `capped to ${MAX_FILES_PER_MESSAGE}`,
+    );
   });
 
   await test('text-only trigger still returns empty files array', () => {
     const threads = new ActivatedThreads();
-    const result = shouldTrigger(
-      ev({ text: `<@${BOT_ID}> just text` }),
-      BOT_ID, null, threads
-    );
+    const result = shouldTrigger(ev({ text: `<@${BOT_ID}> just text` }), BOT_ID, null, threads);
     assert.strictEqual(result.trigger, true);
     assert.ok(Array.isArray(result.files), 'files must always be an array');
     assert.strictEqual(result.files.length, 0, 'no files for text-only message');
@@ -302,9 +366,13 @@ function ev(overrides = {}) {
     // We test the filename sanitization rules inline (pure logic, no HTTPS).
     const sanitize = (name, tag) => {
       const { basename } = require('node:path');
-      const safe = (typeof name === 'string' && name)
-        ? basename(name).replace(/[^\w.-]/g, '_').replace(/^\.+/, '_').slice(0, 200) || 'file'
-        : 'file';
+      const safe =
+        typeof name === 'string' && name
+          ? basename(name)
+              .replace(/[^\w.-]/g, '_')
+              .replace(/^\.+/, '_')
+              .slice(0, 200) || 'file'
+          : 'file';
       return `${tag}-${safe}`;
     };
     // Path traversal attempt
@@ -319,7 +387,9 @@ function ev(overrides = {}) {
   await test('bot token is NOT included in files array sent via IPC (structural check)', () => {
     // The IPC message shape: { text, channel, ts, thread_ts, files?: [{path, name, mimetype}] }
     // No url_private, no bot token field.
-    const ipcFiles = [{ path: '/tmp/slack-files/abc-img.png', name: 'img.png', mimetype: 'image/png' }];
+    const ipcFiles = [
+      { path: '/tmp/slack-files/abc-img.png', name: 'img.png', mimetype: 'image/png' },
+    ];
     assert.ok(!JSON.stringify(ipcFiles).includes('Bearer'), 'no Bearer token in IPC files');
     assert.ok(!JSON.stringify(ipcFiles).includes('url_private'), 'no url_private in IPC files');
     assert.ok(ipcFiles[0].path.startsWith('/'), 'path is absolute');
@@ -330,7 +400,7 @@ function ev(overrides = {}) {
   await test('dedupKey is identical for app_mention and message events of the SAME message', () => {
     // The two deliveries share channel + ts but get distinct outer event_ids.
     const appMention = ev({ type: 'app_mention', text: `<@${BOT_ID}> hi`, ts: '1700.0001' });
-    const message    = ev({ type: 'message',     text: `<@${BOT_ID}> hi`, ts: '1700.0001' });
+    const message = ev({ type: 'message', text: `<@${BOT_ID}> hi`, ts: '1700.0001' });
     const k1 = dedupKey(appMention);
     const k2 = dedupKey(message);
     assert.strictEqual(k1, `${CHANNEL}:1700.0001`, 'key is channel:ts');
@@ -359,7 +429,9 @@ function ev(overrides = {}) {
 
   await test('SeenEvents is bounded FIFO — oldest key evicted past the cap', () => {
     const seen = new SeenEvents(3);
-    seen.seen('a'); seen.seen('b'); seen.seen('c');
+    seen.seen('a');
+    seen.seen('b');
+    seen.seen('c');
     assert.strictEqual(seen.size, 3, 'at cap');
     seen.seen('d'); // evicts 'a'
     assert.strictEqual(seen.size, 3, 'still at cap after eviction');
@@ -386,7 +458,7 @@ function ev(overrides = {}) {
     };
     // SAME @-mention delivered as both event types (shared channel:ts).
     ingest(ev({ type: 'app_mention', text: `<@${BOT_ID}> ship it`, ts: '1800.0009' }));
-    ingest(ev({ type: 'message',     text: `<@${BOT_ID}> ship it`, ts: '1800.0009' }));
+    ingest(ev({ type: 'message', text: `<@${BOT_ID}> ship it`, ts: '1800.0009' }));
     assert.strictEqual(fires, 1, 'onMessage fires exactly once for the duplicated message');
   });
 
@@ -402,7 +474,7 @@ function ev(overrides = {}) {
       fires++;
     };
     ingest(ev({ type: 'app_mention', text: `<@${BOT_ID}> one`, ts: '1900.0001' }));
-    ingest(ev({ type: 'message',     text: `<@${BOT_ID}> one`, ts: '1900.0001' })); // dup
+    ingest(ev({ type: 'message', text: `<@${BOT_ID}> one`, ts: '1900.0001' })); // dup
     ingest(ev({ type: 'app_mention', text: `<@${BOT_ID}> two`, ts: '1900.0002' })); // new
     assert.strictEqual(fires, 2, 'distinct ts values each fire once');
   });

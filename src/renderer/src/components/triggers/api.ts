@@ -5,7 +5,7 @@ import {
   type ContextRule,
   type ContextTriggerConfig,
   type OrgTriggerConfig,
-  type WebhookTrigger
+  type WebhookTrigger,
 } from '@shared/triggers';
 
 /**
@@ -29,11 +29,13 @@ function fillRule(partial: Partial<ContextRule> | undefined, fallback: ContextRu
   return {
     enabled: partial?.enabled ?? fallback.enabled,
     everyMs: typeof partial?.everyMs === 'number' ? partial.everyMs : fallback.everyMs,
-    minContextPct: typeof partial?.minContextPct === 'number' ? partial.minContextPct : fallback.minContextPct,
-    minContextPctLargeWindow: typeof partial?.minContextPctLargeWindow === 'number'
-      ? partial.minContextPctLargeWindow
-      : fallback.minContextPctLargeWindow,
-    message: typeof partial?.message === 'string' ? partial.message : fallback.message
+    minContextPct:
+      typeof partial?.minContextPct === 'number' ? partial.minContextPct : fallback.minContextPct,
+    minContextPctLargeWindow:
+      typeof partial?.minContextPctLargeWindow === 'number'
+        ? partial.minContextPctLargeWindow
+        : fallback.minContextPctLargeWindow,
+    message: typeof partial?.message === 'string' ? partial.message : fallback.message,
   };
 }
 
@@ -44,7 +46,7 @@ export async function getContextTrigger(): Promise<ContextTriggerConfig> {
     const cfg: Partial<ContextTriggerConfig> | null = await window.cth.getContextTrigger();
     return {
       compact: fillRule(cfg?.compact, DEFAULT_CONTEXT_TRIGGER.compact),
-      clear: fillRule(cfg?.clear, DEFAULT_CONTEXT_TRIGGER.clear)
+      clear: fillRule(cfg?.clear, DEFAULT_CONTEXT_TRIGGER.clear),
     };
   } catch {
     return DEFAULT_CONTEXT_TRIGGER;
@@ -54,7 +56,9 @@ export async function getContextTrigger(): Promise<ContextTriggerConfig> {
 /** Fire and forget — the controls have already moved, which is the house
  *  pattern for config writes across the Command Center. */
 export function setContextTrigger(cfg: ContextTriggerConfig): void {
-  void window.cth.setContextTrigger(cfg).catch(() => { /* optimistic */ });
+  void window.cth.setContextTrigger(cfg).catch(() => {
+    /* optimistic */
+  });
 }
 
 /* ─────────────────────────────── webhooks ────────────────────────────────── */
@@ -111,7 +115,9 @@ export async function generateWebhookSecret(): Promise<string> {
   try {
     const secret = await window.cth.generateWebhookSecret();
     if (secret) return secret;
-  } catch { /* fall through to a local mint */ }
+  } catch {
+    /* fall through to a local mint */
+  }
   return localSecret();
 }
 
@@ -134,7 +140,7 @@ export function newWebhook(secret: string, index: number): WebhookTrigger {
     enabled: false,
     mode: DEFAULT_TRIGGER_MODE,
     schema: DEFAULT_WEBHOOK_SCHEMA,
-    createdAt: Date.now()
+    createdAt: Date.now(),
   };
 }
 
@@ -150,5 +156,7 @@ export async function getOrgTrigger(): Promise<OrgTriggerConfig | null> {
 }
 
 export function setOrgTrigger(cfg: OrgTriggerConfig): void {
-  void window.cth.setOrgTrigger(cfg).catch(() => { /* optimistic */ });
+  void window.cth.setOrgTrigger(cfg).catch(() => {
+    /* optimistic */
+  });
 }

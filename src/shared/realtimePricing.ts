@@ -46,10 +46,11 @@ export function normalizeRealtimeUsage(u: RealtimeUsage | null | undefined): {
   inputTokens: number;
   outputTokens: number;
 } {
-  const n = (v: number | undefined): number => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
+  const n = (v: number | undefined): number =>
+    typeof v === 'number' && isFinite(v) && v > 0 ? v : 0;
   return {
     inputTokens: n(u?.inputTokens) || n(u?.input_tokens),
-    outputTokens: n(u?.outputTokens) || n(u?.output_tokens)
+    outputTokens: n(u?.outputTokens) || n(u?.output_tokens),
   };
 }
 

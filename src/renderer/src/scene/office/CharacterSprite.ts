@@ -76,9 +76,7 @@ export class CharacterSprite {
     this.cropMask.clear();
     // Keep the top (h - cropPx) of the sprite; reveal whatever (the desk) is
     // behind where the legs were.
-    this.cropMask
-      .rect(-w / 2 - 2, -h - 2, w + 4, h - cropPx + 2)
-      .fill(0xffffff);
+    this.cropMask.rect(-w / 2 - 2, -h - 2, w + 4, h - cropPx + 2).fill(0xffffff);
     this.cropMask.visible = true;
     this.sprite.mask = this.cropMask;
   }

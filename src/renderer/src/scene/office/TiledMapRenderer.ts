@@ -44,8 +44,16 @@ export interface TiledTilesetRef {
   tilecount?: number;
 }
 
-export interface ZoneRect { x: number; y: number; width: number; height: number; }
-export interface Point { x: number; y: number; }
+export interface ZoneRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+export interface Point {
+  x: number;
+  y: number;
+}
 
 const TILE_LAYERS = ['floor', 'walls', 'furniture-below', 'furniture-above'] as const;
 const COLLISION_LAYER = 'collision';
@@ -65,7 +73,10 @@ export class TiledMapRenderer {
 
   private static readonly WALKABLE_SPAWN_PREFIXES = ['desk-', 'pc-', 'warroom-', 'entrance'];
 
-  constructor(private mapData: TiledMap, private tilesetTextures: Texture[]) {
+  constructor(
+    private mapData: TiledMap,
+    private tilesetTextures: Texture[],
+  ) {
     this.width = mapData.width;
     this.height = mapData.height;
     this.tileSize = mapData.tilewidth;
@@ -80,8 +91,12 @@ export class TiledMapRenderer {
     this.buildTileLayers();
   }
 
-  getContainer(): Container { return this.rootContainer; }
-  getCharacterContainer(): Container { return this.characterContainer; }
+  getContainer(): Container {
+    return this.rootContainer;
+  }
+  getCharacterContainer(): Container {
+    return this.characterContainer;
+  }
 
   isWalkable(tx: number, ty: number): boolean {
     if (tx < 0 || ty < 0 || tx >= this.width || ty >= this.height) return false;
@@ -96,10 +111,18 @@ export class TiledMapRenderer {
     return { x: Math.floor(px / this.tileSize), y: Math.floor(py / this.tileSize) };
   }
 
-  getSpawnPoint(name: string): Point | undefined { return this.spawnPoints.get(name); }
-  getAllSpawnPoints(): Map<string, Point> { return this.spawnPoints; }
-  getZone(name: string): ZoneRect | undefined { return this.zones.get(name); }
-  getAllZones(): Map<string, ZoneRect> { return this.zones; }
+  getSpawnPoint(name: string): Point | undefined {
+    return this.spawnPoints.get(name);
+  }
+  getAllSpawnPoints(): Map<string, Point> {
+    return this.spawnPoints;
+  }
+  getZone(name: string): ZoneRect | undefined {
+    return this.zones.get(name);
+  }
+  getAllZones(): Map<string, ZoneRect> {
+    return this.zones;
+  }
 
   /** The (flip-stripped) gid painted at a tile of a layer, 0 when empty.
    *  Lets the scene locate furniture by art — e.g. each desk's monitor block. */
@@ -176,7 +199,9 @@ export class TiledMapRenderer {
     }
   }
 
-  private resolveTileset(tileId: number): { tileset: TiledTilesetRef; texture: Texture } | undefined {
+  private resolveTileset(
+    tileId: number,
+  ): { tileset: TiledTilesetRef; texture: Texture } | undefined {
     for (let i = this.mapData.tilesets.length - 1; i >= 0; i--) {
       if (tileId >= this.mapData.tilesets[i].firstgid) {
         return { tileset: this.mapData.tilesets[i], texture: this.tilesetTextures[i] };

@@ -27,9 +27,9 @@ export type IntegrationKind = 'github' | 'custom-rest';
  *  This is the ONLY auth-injection vocabulary; the secret is supplied by the broker
  *  at forward-time, never stored here. */
 export type IntegrationAuthType =
-  | 'none'    // public API — inject nothing
-  | 'bearer'  // Authorization: Bearer <secret>
-  | 'header'  // <authHeader>: <secret>   (authHeader required)
+  | 'none' // public API — inject nothing
+  | 'bearer' // Authorization: Bearer <secret>
+  | 'header' // <authHeader>: <secret>   (authHeader required)
   | 'github'; // Authorization: Bearer <secret> + GitHub API headers
 
 /** A registered integration. METADATA ONLY — carries NO secret value, only a
@@ -84,7 +84,12 @@ export interface IntegrationTemplate {
 export const INTEGRATION_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 /** A header name the broker may inject under (authType 'header'). */
 export const HEADER_NAME_RE = /^[A-Za-z0-9-]{1,64}$/;
-export const ALL_AUTH_TYPES: readonly IntegrationAuthType[] = ['none', 'bearer', 'header', 'github'];
+export const ALL_AUTH_TYPES: readonly IntegrationAuthType[] = [
+  'none',
+  'bearer',
+  'header',
+  'github',
+];
 export const ALL_KINDS: readonly IntegrationKind[] = ['github', 'custom-rest'];
 
 /** The secretRef handle for an integration id (1:1). */
@@ -104,20 +109,27 @@ export function authTypeNeedsSecret(t: IntegrationAuthType): boolean {
  * registry, so they are not required on input.
  */
 export function validateIntegrationRecord(
-  rec: unknown
-): { ok: true; value: Omit<IntegrationRecord, 'createdAt' | 'updatedAt'> } | { ok: false; error: string } {
+  rec: unknown,
+):
+  | { ok: true; value: Omit<IntegrationRecord, 'createdAt' | 'updatedAt'> }
+  | { ok: false; error: string } {
   if (!rec || typeof rec !== 'object') return { ok: false, error: 'record must be an object' };
   const r = rec as Record<string, unknown>;
 
   const id = typeof r.id === 'string' ? r.id.trim() : '';
   if (!INTEGRATION_SLUG_RE.test(id)) {
-    return { ok: false, error: 'id must be a lowercase slug (2–40 chars, a–z 0–9 -, no leading/trailing hyphen)' };
+    return {
+      ok: false,
+      error: 'id must be a lowercase slug (2–40 chars, a–z 0–9 -, no leading/trailing hyphen)',
+    };
   }
   const label = typeof r.label === 'string' ? r.label.trim() : '';
-  if (!label || label.length > 60) return { ok: false, error: 'label is required and must be <= 60 chars' };
+  if (!label || label.length > 60)
+    return { ok: false, error: 'label is required and must be <= 60 chars' };
 
   const kind = r.kind as IntegrationKind;
-  if (!ALL_KINDS.includes(kind)) return { ok: false, error: `kind must be one of ${ALL_KINDS.join(', ')}` };
+  if (!ALL_KINDS.includes(kind))
+    return { ok: false, error: `kind must be one of ${ALL_KINDS.join(', ')}` };
 
   const authType = r.authType as IntegrationAuthType;
   if (!ALL_AUTH_TYPES.includes(authType)) {
@@ -132,7 +144,10 @@ export function validateIntegrationRecord(
   if (authType === 'header') {
     authHeader = typeof r.authHeader === 'string' ? r.authHeader.trim() : '';
     if (!authHeader || !HEADER_NAME_RE.test(authHeader)) {
-      return { ok: false, error: "authType 'header' requires authHeader matching [A-Za-z0-9-]{1,64}" };
+      return {
+        ok: false,
+        error: "authType 'header' requires authHeader matching [A-Za-z0-9-]{1,64}",
+      };
     }
   } else if (r.authHeader != null && String(r.authHeader).trim() !== '') {
     return { ok: false, error: "authHeader is only valid when authType === 'header'" };
@@ -142,13 +157,18 @@ export function validateIntegrationRecord(
   const secretRef = needsSecret ? secretRefFor(id) : undefined;
   const enabled = r.enabled === true;
 
-  return { ok: true, value: { id, label, kind, baseUrl, authType, authHeader, secretRef, enabled } };
+  return {
+    ok: true,
+    value: { id, label, kind, baseUrl, authType, authHeader, secretRef, enabled },
+  };
 }
 
 /** Validate a baseUrl: https origin (+ optional path), no userinfo, no traversal.
  *  A loopback http origin (127.0.0.1 / [::1] / localhost) is permitted for explicit
  *  local custom-rest targets the user registers. */
-export function validateBaseUrl(baseUrl: string): { ok: true; url: URL } | { ok: false; error: string } {
+export function validateBaseUrl(
+  baseUrl: string,
+): { ok: true; url: URL } | { ok: false; error: string } {
   if (!baseUrl) return { ok: false, error: 'baseUrl is required' };
   let u: URL;
   try {
@@ -157,10 +177,14 @@ export function validateBaseUrl(baseUrl: string): { ok: true; url: URL } | { ok:
     return { ok: false, error: 'baseUrl must be a valid URL' };
   }
   if (u.username || u.password) return { ok: false, error: 'baseUrl must not contain userinfo' };
-  if (u.search || u.hash) return { ok: false, error: 'baseUrl must not contain a query or fragment' };
+  if (u.search || u.hash)
+    return { ok: false, error: 'baseUrl must not contain a query or fragment' };
   if (baseUrl.includes('..')) return { ok: false, error: 'baseUrl must not contain ".."' };
   const isLoopbackHost =
-    u.hostname === '127.0.0.1' || u.hostname === '::1' || u.hostname === '[::1]' || u.hostname === 'localhost';
+    u.hostname === '127.0.0.1' ||
+    u.hostname === '::1' ||
+    u.hostname === '[::1]' ||
+    u.hostname === 'localhost';
   if (u.protocol === 'https:') return { ok: true, url: u };
   if (u.protocol === 'http:' && isLoopbackHost) return { ok: true, url: u };
   return { ok: false, error: 'baseUrl must be https (http allowed only for 127.0.0.1/localhost)' };
@@ -175,7 +199,7 @@ export function validateBaseUrl(baseUrl: string): { ok: true; url: URL } | { ok:
 export function buildAuthHeaders(
   authType: IntegrationAuthType,
   authHeader: string | undefined,
-  secret: string | undefined
+  secret: string | undefined,
 ): Record<string, string> {
   switch (authType) {
     case 'none':
@@ -188,7 +212,7 @@ export function buildAuthHeaders(
       return {
         ...(secret ? { authorization: `Bearer ${secret}` } : {}),
         accept: 'application/vnd.github+json',
-        'x-github-api-version': '2022-11-28'
+        'x-github-api-version': '2022-11-28',
       };
     default:
       return {};
@@ -214,7 +238,11 @@ export function resolveUpstreamUrl(baseUrl: string, pathAndQuery: string): URL |
   // Decode the path before the traversal check so an encoded `%2e%2e` is caught too.
   const pathOnly = pathAndQuery.split(/[?#]/)[0];
   let decodedPath: string;
-  try { decodedPath = decodeURIComponent(pathOnly); } catch { return null; }
+  try {
+    decodedPath = decodeURIComponent(pathOnly);
+  } catch {
+    return null;
+  }
   if (decodedPath.split('/').some((seg) => seg === '..')) return null;
 
   // Normalize the base path to a directory prefix, then append the worker path.
@@ -229,7 +257,11 @@ export function resolveUpstreamUrl(baseUrl: string, pathAndQuery: string): URL |
   // Confine: same origin AND the resolved path stays under the base path prefix.
   if (resolved.origin !== base.origin) return null;
   const confinePrefix = base.pathname.endsWith('/') ? base.pathname : base.pathname + '/';
-  if (confinePrefix !== '/' && !(resolved.pathname + '/').startsWith(confinePrefix) && resolved.pathname !== base.pathname) {
+  if (
+    confinePrefix !== '/' &&
+    !(resolved.pathname + '/').startsWith(confinePrefix) &&
+    resolved.pathname !== base.pathname
+  ) {
     return null;
   }
   return resolved;
@@ -243,9 +275,10 @@ export const INTEGRATION_TEMPLATES: IntegrationTemplate[] = [
     baseUrl: 'https://api.github.com',
     authType: 'github',
     secretLabel: 'GitHub personal access token',
-    secretHelp: 'Create a fine-grained or classic PAT at github.com/settings/tokens with the scopes your workers need.',
+    secretHelp:
+      'Create a fine-grained or classic PAT at github.com/settings/tokens with the scopes your workers need.',
     docsUrl: 'https://docs.github.com/rest',
-    idSuggestion: 'github'
+    idSuggestion: 'github',
   },
   {
     kind: 'custom-rest',
@@ -253,8 +286,9 @@ export const INTEGRATION_TEMPLATES: IntegrationTemplate[] = [
     baseUrl: '',
     authType: 'bearer',
     secretLabel: 'API key / token',
-    secretHelp: 'Point baseUrl at any REST API. Choose how its credential is sent: Bearer token, a custom header, or none.',
-    idSuggestion: 'my-api'
+    secretHelp:
+      'Point baseUrl at any REST API. Choose how its credential is sent: Bearer token, a custom header, or none.',
+    idSuggestion: 'my-api',
   },
 
   // ─── First-wave YC tools (Dwight, P2) ───────────────────────────────────────
@@ -269,9 +303,10 @@ export const INTEGRATION_TEMPLATES: IntegrationTemplate[] = [
     authType: 'header',
     authHeader: 'Authorization',
     secretLabel: 'Linear API key',
-    secretHelp: 'Linear → Settings → Security & access → Personal API keys. Sent verbatim in Authorization (no "Bearer"). Every call POSTs to /graphql.',
+    secretHelp:
+      'Linear → Settings → Security & access → Personal API keys. Sent verbatim in Authorization (no "Bearer"). Every call POSTs to /graphql.',
     docsUrl: 'https://developers.linear.app/docs/graphql/working-with-the-graphql-api',
-    idSuggestion: 'linear'
+    idSuggestion: 'linear',
   },
   {
     kind: 'custom-rest',
@@ -280,9 +315,10 @@ export const INTEGRATION_TEMPLATES: IntegrationTemplate[] = [
     authType: 'header',
     authHeader: 'Authorization',
     secretLabel: 'Authorization header (Basic …)',
-    secretHelp: 'Basic auth: paste "Basic " + base64("<email>:<api-token>"). Token at id.atlassian.com → Security → API tokens. Replace your-domain with your Atlassian site.',
+    secretHelp:
+      'Basic auth: paste "Basic " + base64("<email>:<api-token>"). Token at id.atlassian.com → Security → API tokens. Replace your-domain with your Atlassian site.',
     docsUrl: 'https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/',
-    idSuggestion: 'jira'
+    idSuggestion: 'jira',
   },
   {
     kind: 'custom-rest',
@@ -290,9 +326,10 @@ export const INTEGRATION_TEMPLATES: IntegrationTemplate[] = [
     baseUrl: 'https://api.notion.com/v1',
     authType: 'bearer',
     secretLabel: 'Notion internal integration token',
-    secretHelp: 'notion.so/my-integrations → Internal Integration Secret; share target pages/DBs with it. Every request also needs header "Notion-Version: 2022-06-28" (worker sends it per request).',
+    secretHelp:
+      'notion.so/my-integrations → Internal Integration Secret; share target pages/DBs with it. Every request also needs header "Notion-Version: 2022-06-28" (worker sends it per request).',
     docsUrl: 'https://developers.notion.com/reference/intro',
-    idSuggestion: 'notion'
+    idSuggestion: 'notion',
   },
   {
     kind: 'custom-rest',
@@ -300,9 +337,10 @@ export const INTEGRATION_TEMPLATES: IntegrationTemplate[] = [
     baseUrl: 'https://api.stripe.com/v1',
     authType: 'bearer',
     secretLabel: 'Stripe secret key',
-    secretHelp: 'dashboard.stripe.com → Developers → API keys → Secret key (sk_live_/sk_test_). Restricted keys recommended. Bodies are form-encoded, not JSON.',
+    secretHelp:
+      'dashboard.stripe.com → Developers → API keys → Secret key (sk_live_/sk_test_). Restricted keys recommended. Bodies are form-encoded, not JSON.',
     docsUrl: 'https://stripe.com/docs/api',
-    idSuggestion: 'stripe'
+    idSuggestion: 'stripe',
   },
   {
     kind: 'custom-rest',
@@ -311,9 +349,10 @@ export const INTEGRATION_TEMPLATES: IntegrationTemplate[] = [
     authType: 'header',
     authHeader: 'Authorization',
     secretLabel: 'Authorization header (Basic …)',
-    secretHelp: 'Basic auth: paste "Basic " + base64("<email>:<api-token>") (same Atlassian token as Jira). Replace your-domain with your site.',
+    secretHelp:
+      'Basic auth: paste "Basic " + base64("<email>:<api-token>") (same Atlassian token as Jira). Replace your-domain with your site.',
     docsUrl: 'https://developer.atlassian.com/cloud/confluence/rest/v2/intro/',
-    idSuggestion: 'confluence'
+    idSuggestion: 'confluence',
   },
   {
     kind: 'custom-rest',
@@ -321,9 +360,10 @@ export const INTEGRATION_TEMPLATES: IntegrationTemplate[] = [
     baseUrl: 'https://sentry.io/api/0',
     authType: 'bearer',
     secretLabel: 'Sentry auth token',
-    secretHelp: 'sentry.io → Settings → Auth Tokens. Org-scoped routes carry your org slug in the path, e.g. /organizations/<org>/issues/.',
+    secretHelp:
+      'sentry.io → Settings → Auth Tokens. Org-scoped routes carry your org slug in the path, e.g. /organizations/<org>/issues/.',
     docsUrl: 'https://docs.sentry.io/api/',
-    idSuggestion: 'sentry'
+    idSuggestion: 'sentry',
   },
   {
     kind: 'custom-rest',
@@ -331,8 +371,9 @@ export const INTEGRATION_TEMPLATES: IntegrationTemplate[] = [
     baseUrl: 'https://api.hubapi.com',
     authType: 'bearer',
     secretLabel: 'HubSpot private app token',
-    secretHelp: 'HubSpot → Settings → Integrations → Private Apps → create app → Access token (scopes crm.objects.*).',
+    secretHelp:
+      'HubSpot → Settings → Integrations → Private Apps → create app → Access token (scopes crm.objects.*).',
     docsUrl: 'https://developers.hubspot.com/docs/api/crm/understanding-the-crm',
-    idSuggestion: 'hubspot'
-  }
+    idSuggestion: 'hubspot',
+  },
 ];

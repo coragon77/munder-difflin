@@ -30,7 +30,7 @@ import {
   providerPreset,
   tokenizeCommand,
   AGENT_PROVIDER_PRESETS,
-  type AgentProvider
+  type AgentProvider,
 } from '@/store/config';
 import { canReceiveInbox } from '@shared/agentProvider';
 
@@ -42,8 +42,19 @@ import { canReceiveInbox } from '@shared/agentProvider';
 // Both the AskMe (#human) tab and the Triggers tab live here. Triggers replaced
 // the old Schedules tab: schedules are now one of four trigger types, and the
 // whole surface lives in ./triggers (see src/shared/triggers.ts for the contract).
-type CCTab = 'terminal' | 'floor' | 'tasks' | 'board' | 'human' | 'triggers' | 'trigger-history'
-  | 'memory' | 'graph' | 'activity' | 'handbook' | 'workers';
+type CCTab =
+  | 'terminal'
+  | 'floor'
+  | 'tasks'
+  | 'board'
+  | 'human'
+  | 'triggers'
+  | 'trigger-history'
+  | 'memory'
+  | 'graph'
+  | 'activity'
+  | 'handbook'
+  | 'workers';
 
 /** Fallback denominator for the per-agent token meter when no floor token budget
  *  is configured — so the bar reads as a budget estimate (filled + remaining)
@@ -73,14 +84,20 @@ const TABS: { key: CCTab; label: string; icon: Parameters<typeof Icon>[0]['name'
   { key: 'graph', label: 'graph', icon: 'web' },
   { key: 'activity', label: 'activity', icon: 'bell' },
   { key: 'handbook', label: 'commands', icon: 'code' },
-  { key: 'workers', label: 'workers', icon: 'gear' }
+  { key: 'workers', label: 'workers', icon: 'gear' },
 ];
 
 /** @param fullscreen this instance IS the fullscreen overlay, so it owns the pty
  *  and renders the real terminal. The docked instance renders the "open in
  *  fullscreen" placeholder instead — two live xterms on one pty fight over its
  *  cols/rows and corrupt the display. */
-export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent; fullscreen?: boolean }) {
+export function CommandCenterPanel({
+  agent,
+  fullscreen = false,
+}: {
+  agent: Agent;
+  fullscreen?: boolean;
+}) {
   const [tab, setTab] = useState<CCTab>('terminal');
   // The trigger-history ledger has nothing to say until an outside party can
   // reach us, so its tab appears only once an org key or a webhook exists. This
@@ -111,7 +128,10 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
   // A task-detail "assign" pre-fills the Floor dispatch box and jumps to it.
   // Seeded via the store one-shot (the detail overlay lives app-wide now);
   // { seq } makes every assign distinct so identical text re-seeds.
-  const [dispatchSeed, setDispatchSeed] = useState<{ text: string; seq: number }>({ text: '', seq: 0 });
+  const [dispatchSeed, setDispatchSeed] = useState<{ text: string; seq: number }>({
+    text: '',
+    seq: 0,
+  });
   const dispatchSeedRequest = useStore((s) => s.dispatchSeedRequest);
   useEffect(() => {
     if (!dispatchSeedRequest) return;
@@ -132,10 +152,17 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
   const [floorDeliveryPaused, setFloorDeliveryPaused] = useState(false);
   useEffect(() => {
     let alive = true;
-    window.cth.controlSnapshot(agent.id)
-      .then((s) => { if (alive && s) setFloorDeliveryPaused(s.autoDeliveryPaused); })
-      .catch(() => { /* none */ });
-    return () => { alive = false; };
+    window.cth
+      .controlSnapshot(agent.id)
+      .then((s) => {
+        if (alive && s) setFloorDeliveryPaused(s.autoDeliveryPaused);
+      })
+      .catch(() => {
+        /* none */
+      });
+    return () => {
+      alive = false;
+    };
   }, [agent.id]);
   const toggleFloorDelivery = async () => {
     const next = !floorDeliveryPaused;
@@ -148,19 +175,39 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
     <PixelPanel
       variant="default"
       noPadding
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: 0, overflow: 'hidden' }}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        padding: 0,
+        overflow: 'hidden',
+      }}
     >
       {/* Header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '6px 8px', background: 'var(--cth-cream-100)',
-        borderBottom: '1px solid var(--cth-ink-700)', flexShrink: 0
-      }}>
-        <div style={{
-          width: 32, height: 32, background: `var(--cth-${agent.accent}-light)`,
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden', flexShrink: 0
-        }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 8px',
+          background: 'var(--cth-cream-100)',
+          borderBottom: '1px solid var(--cth-ink-700)',
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            background: `var(--cth-${agent.accent}-light)`,
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            flexShrink: 0,
+          }}
+        >
           <SpritePortrait character={agent.character} scale={1} />
         </div>
         {/* Title + subtitle truncate; the control cluster never shrinks. At
@@ -168,16 +215,32 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
             onto three lines and "runs the floor" word-per-line under the two
             wide buttons — everything here is single-line by construction. */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{
-            fontFamily: 'var(--cth-font-display)', fontSize: 10, lineHeight: '14px', color: 'var(--cth-ink-900)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-          }}>COMMAND CENTER</div>
+          <div
+            style={{
+              fontFamily: 'var(--cth-font-display)',
+              fontSize: 10,
+              lineHeight: '14px',
+              color: 'var(--cth-ink-900)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            COMMAND CENTER
+          </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 1, minWidth: 0 }}>
             <PixelBadge status={agent.status} />
-            <span style={{
-              fontSize: 12, color: 'var(--cth-ink-500)',
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-            }}>Michael runs the floor</span>
+            <span
+              style={{
+                fontSize: 12,
+                color: 'var(--cth-ink-500)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              Michael runs the floor
+            </span>
           </div>
         </div>
         {/* v0.3.4: floor-wide auto-delivery lives HERE (one switch for every
@@ -187,20 +250,31 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
           <PixelButton
             variant={floorDeliveryPaused ? 'primary' : 'secondary'}
             size="sm"
-            onClick={() => { void toggleFloorDelivery(); }}
+            onClick={() => {
+              void toggleFloorDelivery();
+            }}
           >
             <span
-              title={floorDeliveryPaused
-                ? 'Automatic queue delivery is PAUSED for every agent — messages stay queued until resumed'
-                : 'Automatic queue delivery is ON for every agent — click to pause the whole floor'}
+              title={
+                floorDeliveryPaused
+                  ? 'Automatic queue delivery is PAUSED for every agent — messages stay queued until resumed'
+                  : 'Automatic queue delivery is ON for every agent — click to pause the whole floor'
+              }
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
               <Icon name={floorDeliveryPaused ? 'pause' : 'play'} />
               {floorDeliveryPaused ? 'paused' : 'auto'}
             </span>
           </PixelButton>
-          <PixelButton variant="secondary" size="sm" onClick={() => useStore.getState().setIdeOpen(true)}>
-            <span title="Open the IDE — file editor + git diff" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <PixelButton
+            variant="secondary"
+            size="sm"
+            onClick={() => useStore.getState().setIdeOpen(true)}
+          >
+            <span
+              title="Open the IDE — file editor + git diff"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
               <Icon name="code" /> IDE
             </span>
           </PixelButton>
@@ -215,25 +289,39 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
           column is the same width so the rows line up cleanly. The old flex-wrap
           left ragged rows of mismatched-width tabs (e.g. a short 4-tab second row
           under a 5-tab first row) that read as misaligned. */}
-      <div className="cth-tabbar" style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(94px, 1fr))', gap: 4,
-        padding: '6px 8px', background: 'var(--cth-cream-100)',
-        borderBottom: '1px solid var(--cth-ink-700)', flexShrink: 0
-      }}>
+      <div
+        className="cth-tabbar"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(94px, 1fr))',
+          gap: 4,
+          padding: '6px 8px',
+          background: 'var(--cth-cream-100)',
+          borderBottom: '1px solid var(--cth-ink-700)',
+          flexShrink: 0,
+        }}
+      >
         {visibleTabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             style={{
               whiteSpace: 'nowrap',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-              padding: '4px 8px 3px', border: 'none', cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              padding: '4px 8px 3px',
+              border: 'none',
+              cursor: 'pointer',
               background: tab === t.key ? `var(--cth-${agent.accent})` : 'var(--cth-cream-200)',
               color: 'var(--cth-ink-900)',
-              boxShadow: tab === t.key
-                ? 'inset 0 0 0 1px var(--cth-ink-300)'
-                : 'inset 0 0 0 1px var(--cth-ink-100)',
-              fontFamily: 'var(--cth-font-ui)', fontSize: 13
+              boxShadow:
+                tab === t.key
+                  ? 'inset 0 0 0 1px var(--cth-ink-300)'
+                  : 'inset 0 0 0 1px var(--cth-ink-100)',
+              fontFamily: 'var(--cth-font-ui)',
+              fontSize: 13,
             }}
           >
             <Icon name={t.icon} /> {t.label}
@@ -243,8 +331,8 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
 
       {/* Body */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {tab === 'terminal' && (
-          isFullscreenedHere ? (
+        {tab === 'terminal' &&
+          (isFullscreenedHere ? (
             <Centered>Terminal is open in fullscreen. Press Esc to bring it back.</Centered>
           ) : agent.ptyId ? (
             <>
@@ -256,7 +344,11 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
                   onUserPrompt={(t) => {
                     updateAgent(agent.id, { lastPrompt: t });
                     if (t.trim().toLowerCase() === '/clear') {
-                      updateAgent(agent.id, { contextTokens: 0, contextLimit: undefined, progress: 0 });
+                      updateAgent(agent.id, {
+                        contextTokens: 0,
+                        contextLimit: undefined,
+                        progress: 0,
+                      });
                     }
                     void window.cth.historyAdd({ agentId: agent.id, cwd: agent.cwd, text: t });
                   }}
@@ -269,8 +361,7 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
             </>
           ) : (
             <Centered>Michael has no live terminal.</Centered>
-          )
-        )}
+          ))}
         {tab === 'floor' && <FloorTab seed={dispatchSeed} />}
         {tab === 'tasks' && <TasksKanban />}
         {tab === 'board' && <BoardTab />}
@@ -278,12 +369,19 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
         {tab === 'triggers' && <TriggersTab />}
         {tab === 'trigger-history' && <TriggerHistoryTab />}
         {tab === 'memory' && (
-          <MemoryTab godId={agent.id} who={selectedMemoryAgent ?? undefined} onWho={setSelectedMemoryAgent} />
+          <MemoryTab
+            godId={agent.id}
+            who={selectedMemoryAgent ?? undefined}
+            onWho={setSelectedMemoryAgent}
+          />
         )}
         {tab === 'graph' && (
           <MemoryGraphPanel
             godId={agent.id}
-            onJumpToMemory={(id) => { setSelectedMemoryAgent(id); setTab('memory'); }}
+            onJumpToMemory={(id) => {
+              setSelectedMemoryAgent(id);
+              setTab('memory');
+            }}
           />
         )}
         {tab === 'activity' && <ActivityTab />}
@@ -313,20 +411,45 @@ function BoardTab() {
         if (!alive) return;
         setBoard(text);
         setMissing(!text.trim());
-      } catch { /* keep last good */ }
+      } catch {
+        /* keep last good */
+      }
     };
     void refresh();
     const timer = setInterval(refresh, 5000);
-    return () => { alive = false; clearInterval(timer); };
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, []);
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--cth-paper-200)' }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', flexShrink: 0,
-        borderBottom: '1px solid var(--cth-ink-300)'
-      }}>
-        <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 9, color: 'var(--cth-ink-500)' }}>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--cth-paper-200)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 10px',
+          flexShrink: 0,
+          borderBottom: '1px solid var(--cth-ink-300)',
+        }}
+      >
+        <span
+          style={{
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 9,
+            color: 'var(--cth-ink-500)',
+          }}
+        >
           BOARD.MD
         </span>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--cth-ink-300)' }}>
@@ -334,9 +457,20 @@ function BoardTab() {
         </span>
       </div>
       {missing ? (
-        <Scroll><Muted>No board yet — Michael (the god agent) scribes board.md.</Muted></Scroll>
+        <Scroll>
+          <Muted>No board yet — Michael (the god agent) scribes board.md.</Muted>
+        </Scroll>
       ) : (
-        <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 10 }}>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            padding: 10,
+          }}
+        >
           <MarkdownPreview source={board} />
         </div>
       )}
@@ -378,14 +512,19 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
   const [issuesError, setIssuesError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.cth.getConfig().then((c) => {
-      setRepos(c.registeredRepos ?? []);
-      setTokenCap(c.costCapTokens);
-      setAgentTokenCaps(c.agentTokenCaps ?? {});
-      setEngineProvider(c.godProvider ?? 'claude');
-      setEngineModel(c.godModel);
-      setDefaultModel(c.defaultModel);
-    }).catch(() => { /* noop */ });
+    window.cth
+      .getConfig()
+      .then((c) => {
+        setRepos(c.registeredRepos ?? []);
+        setTokenCap(c.costCapTokens);
+        setAgentTokenCaps(c.agentTokenCaps ?? {});
+        setEngineProvider(c.godProvider ?? 'claude');
+        setEngineModel(c.godModel);
+        setDefaultModel(c.defaultModel);
+      })
+      .catch(() => {
+        /* noop */
+      });
   }, []);
 
   // Seed the dispatch box from a task-card "assign" (keyed on seq so repeat
@@ -413,7 +552,7 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
        *  error. A model change wants the soft one: the user asked to change
        *  model, and an agent with no recorded session still has to get one. */
       resumeOptional?: boolean;
-    } = {}
+    } = {},
   ) => {
     if (!a.ptyId) return;
     setRestarting(a.id);
@@ -443,7 +582,10 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
         resumeSessionId = registry.agents[a.id]?.sessionId;
         if (!resumeSessionId) {
           giveUpOnResume('No recorded session ID; current process was left running.');
-        } else if (provider === 'claude' && !(await window.cth.resolveSessionCwd(resumeSessionId))) {
+        } else if (
+          provider === 'claude' &&
+          !(await window.cth.resolveSessionCwd(resumeSessionId))
+        ) {
           giveUpOnResume('Session transcript not found; current process was left running.');
         }
       }
@@ -457,7 +599,9 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
         oldEntry.fit.fit();
         cols = oldEntry.term.cols;
         rows = oldEntry.term.rows;
-      } catch { /* host not sized yet */ }
+      } catch {
+        /* host not sized yet */
+      }
 
       const killed = await window.cth.killPty(a.ptyId);
       if (!killed.ok) throw new Error(killed.error ?? 'Could not stop the current process.');
@@ -471,7 +615,7 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
         updateAgent(a.id, {
           terminalGeneration: (a.terminalGeneration ?? 0) + 1,
           status: 'idle',
-          action: 'recreating terminal…'
+          action: 'recreating terminal…',
         });
       } else {
         resetTerminal(a.ptyId);
@@ -481,8 +625,15 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
       const hive = a.isGod
         ? { id: a.id, name: a.name, cwd: a.cwd, provider, isGod: true, role: 'orchestrator (god)' }
         : a.isAssistant
-        ? { id: a.id, name: a.name, cwd: a.cwd, provider, isAssistant: true, role: "Michael's prep assistant" }
-        : { id: a.id, name: a.name, cwd: a.cwd, provider };
+          ? {
+              id: a.id,
+              name: a.name,
+              cwd: a.cwd,
+              provider,
+              isAssistant: true,
+              role: "Michael's prep assistant",
+            }
+          : { id: a.id, name: a.name, cwd: a.cwd, provider };
       const res = await window.cth.spawnPty({
         id: a.ptyId,
         cwd: a.cwd,
@@ -497,7 +648,7 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
         requireResume: resume,
         // Restart & Continue keeps the agent's hire-time permission mode (card
         // permission-mode-config-20260816) — only the MODEL changes here.
-        permissionMode: a.permissionMode
+        permissionMode: a.permissionMode,
       });
       if (!res.ok) throw new Error(res.error ?? 'Restart failed.');
       if (resume && res.resumed !== true) {
@@ -517,21 +668,24 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
               provider,
               model,
               status: 'idle' as const,
-              action: 'continuing…'
+              action: 'continuing…',
             }
           : {
               command: command.trim(),
               provider,
               model,
               status: 'idle' as const,
-              action: provider === previousProvider ? 'restarting…' : `switching to ${providerPreset(provider).label}…`
+              action:
+                provider === previousProvider
+                  ? 'restarting…'
+                  : `switching to ${providerPreset(provider).label}…`,
             };
         updateAgent(a.id, patch);
       }
     } catch (error) {
       setRestartErrors((errors) => ({
         ...errors,
-        [a.id]: error instanceof Error ? error.message : String(error)
+        [a.id]: error instanceof Error ? error.message : String(error),
       }));
     } finally {
       setRestarting(null);
@@ -552,18 +706,23 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
       : body;
     const res = await window.cth.hiveSend(
       { to: 'god', act: 'request', subject: 'Task from the human', body: full },
-      'human'
+      'human',
     );
     setDispatchText('');
-    setDispatchMsg(res.ok
-      ? `sent to Michael${suggested ? ` (suggesting ${suggested.name})` : ''}`
-      : `failed: ${res.error ?? '?'}`);
+    setDispatchMsg(
+      res.ok
+        ? `sent to Michael${suggested ? ` (suggesting ${suggested.name})` : ''}`
+        : `failed: ${res.error ?? '?'}`,
+    );
     setTimeout(() => setDispatchMsg(null), 4000);
   };
 
   const fetchIssues = async () => {
     const repo = issueRepo || repos[0];
-    if (!repo) { setIssuesError('No repo selected.'); return; }
+    if (!repo) {
+      setIssuesError('No repo selected.');
+      return;
+    }
     setIssuesLoading(true);
     setIssuesError(null);
     try {
@@ -584,7 +743,9 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
 
   const assignIssue = (issue: GHIssue) => {
     const body = (issue.body ?? '').slice(0, 200);
-    setDispatchText(`GitHub Issue #${issue.number}: ${issue.title}\n\n${body}\n\nURL: ${issue.url}`);
+    setDispatchText(
+      `GitHub Issue #${issue.number}: ${issue.title}\n\n${body}\n\nURL: ${issue.url}`,
+    );
     setDispatchTo(''); // Michael decomposes and assigns — no more broadcast blasts
   };
 
@@ -593,9 +754,12 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
   // and the breaker's per-agent trip.
   const setAgentCap = (id: string, tokens: number | undefined) => {
     const next = { ...agentTokenCaps };
-    if (tokens && tokens > 0) next[id] = tokens; else delete next[id];
+    if (tokens && tokens > 0) next[id] = tokens;
+    else delete next[id];
     setAgentTokenCaps(next);
-    void window.cth.updateConfig({ agentTokenCaps: next }).catch(() => { /* noop */ });
+    void window.cth.updateConfig({ agentTokenCaps: next }).catch(() => {
+      /* noop */
+    });
   };
 
   // The token meter is scaled to the agent's own limit when set, else the floor
@@ -603,7 +767,10 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
   // headroom visible, never pinned to a useless 100%.
   const floorCap = tokenCap && tokenCap > 0 ? tokenCap : DEFAULT_TOKEN_CAP;
   // Fleet totals across the roster (for the AGENTS summary band).
-  let sumTokens = 0, sumInput = 0, sumCacheRead = 0, sumRate = 0;
+  let sumTokens = 0,
+    sumInput = 0,
+    sumCacheRead = 0,
+    sumRate = 0;
   for (const a of agents) {
     const s = samples[a.id];
     if (s) {
@@ -619,14 +786,25 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
     <Scroll>
       <Section title="DISPATCH — VIA MICHAEL">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 8, color: 'var(--cth-ink-500)', flexShrink: 0 }}>
+          <span
+            style={{
+              fontFamily: 'var(--cth-font-display)',
+              fontSize: 8,
+              color: 'var(--cth-ink-500)',
+              flexShrink: 0,
+            }}
+          >
             SUGGESTED OWNER
           </span>
           <Select value={dispatchTo} onChange={setDispatchTo}>
             <option value="">Michael decides</option>
-            {agents.filter((a) => !a.isGod).map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
+            {agents
+              .filter((a) => !a.isGod)
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
           </Select>
         </div>
         <textarea
@@ -637,10 +815,17 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
           style={textareaStyle}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-          <PixelButton variant="primary" size="sm" onClick={dispatch} disabled={!dispatchText.trim()}>
+          <PixelButton
+            variant="primary"
+            size="sm"
+            onClick={dispatch}
+            disabled={!dispatchText.trim()}
+          >
             dispatch
           </PixelButton>
-          {dispatchMsg && <span style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>{dispatchMsg}</span>}
+          {dispatchMsg && (
+            <span style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>{dispatchMsg}</span>
+          )}
         </div>
       </Section>
 
@@ -650,258 +835,441 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
           const agentPreset = providerPreset(agentProvider);
           const sample = samples[a.id];
           const breaker = breakers[a.id];
-          const armed = !!breaker && (breaker.level === 'constrained' || breaker.level === 'stopped');
-          const tokens = sample ? sample.input + sample.output + sample.cacheRead + sample.cacheCreation : 0;
+          const armed =
+            !!breaker && (breaker.level === 'constrained' || breaker.level === 'stopped');
+          const tokens = sample
+            ? sample.input + sample.output + sample.cacheRead + sample.cacheCreation
+            : 0;
           const agentCap = agentTokenCaps[a.id]; // per-agent limit, if set
           const denom = agentCap && agentCap > 0 ? agentCap : floorCap;
           const pct = Math.min(100, Math.round((tokens / denom) * 100));
-          const meterColor = armed || pct >= 90 ? 'var(--cth-coral)' : pct >= 60 ? 'var(--cth-lemon)' : 'var(--cth-mint)';
+          const meterColor =
+            armed || pct >= 90
+              ? 'var(--cth-coral)'
+              : pct >= 60
+                ? 'var(--cth-lemon)'
+                : 'var(--cth-mint)';
           // Sparkline only when the agent is actually burning tokens; otherwise the
           // flat baseline is just a mystery line. Label it with the live rate.
           const sparkSeries = spark[a.id] ?? [];
           const hasSpark = sparkSeries.some((v) => v > 0);
           const rateVal = Math.round(rate[a.id] ?? 0);
           const rateLabel = rateVal > 0 ? `${fmtTokens(rateVal)}/m` : 'rate';
-          const currentModelKnown = modelsForProvider(agentProvider)
-            .some((model) => model.id === a.model);
+          const currentModelKnown = modelsForProvider(agentProvider).some(
+            (model) => model.id === a.model,
+          );
           return (
-          <div key={a.id} style={{
-            display: 'flex', flexDirection: 'column', gap: 4,
-            padding: 6, marginBottom: 6,
-            background: armed ? 'var(--cth-coral-light)' : 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{
-                width: 24, height: 24, background: `var(--cth-${a.accent}-light)`,
+            <div
+              key={a.id}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                padding: 6,
+                marginBottom: 6,
+                background: armed ? 'var(--cth-coral-light)' : 'var(--cth-paper-100)',
                 boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden', flexShrink: 0
-              }}>
-                <SpritePortrait character={a.character} scale={1} />
-              </div>
-              <button
-                onClick={() => select(a.id)}
-                style={{
-                  border: 'none', background: 'transparent', cursor: 'pointer', padding: 0,
-                  fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)'
-                }}
-              >{a.name}{a.isGod ? ' (god)' : ''}</button>
-              <PixelBadge status={armed ? 'looping' : a.status} />
-              {armed && <span title={breaker?.reason} style={{ color: 'var(--cth-coral)', fontSize: 12 }}>⚠</span>}
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--cth-ink-500)' }}>
-                {(toolCounts[a.id] ?? 0)} tool calls
-              </span>
-              <TokenLimitEditor value={agentCap} onSet={(t) => setAgentCap(a.id, t)} />
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-all' }}>{a.cwd}</div>
-            {/* Live telemetry (folded in from the old Fleet tab) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {hasSpark ? (
-                <span style={{ flex: 1, minWidth: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ fontFamily: 'var(--cth-font-mono)', fontSize: 10, color: 'var(--cth-ink-500)', flexShrink: 0 }}>{rateLabel}</span>
-                  <Sparkline series={sparkSeries} />
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div
+                  style={{
+                    width: 24,
+                    height: 24,
+                    background: `var(--cth-${a.accent}-light)`,
+                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
+                  <SpritePortrait character={a.character} scale={1} />
+                </div>
+                <button
+                  onClick={() => select(a.id)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    padding: 0,
+                    fontFamily: 'var(--cth-font-ui)',
+                    fontSize: 12,
+                    color: 'var(--cth-ink-900)',
+                  }}
+                >
+                  {a.name}
+                  {a.isGod ? ' (god)' : ''}
+                </button>
+                <PixelBadge status={armed ? 'looping' : a.status} />
+                {armed && (
+                  <span title={breaker?.reason} style={{ color: 'var(--cth-coral)', fontSize: 12 }}>
+                    ⚠
+                  </span>
+                )}
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--cth-ink-500)' }}>
+                  {toolCounts[a.id] ?? 0} tool calls
                 </span>
-              ) : (
-                <span style={{ flex: 1 }} />
-              )}
-              {lastTool[a.id] && (
-                <span style={{
-                  fontSize: 10, lineHeight: '14px', padding: '0 5px', flexShrink: 0,
-                  background: 'var(--cth-paper-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)', color: 'var(--cth-ink-700)'
-                }}>{lastTool[a.id]}</span>
-              )}
-              <span style={{ fontFamily: 'var(--cth-font-mono)', fontSize: 10, color: 'var(--cth-ink-300)', flexShrink: 0 }}>budget</span>
-              <span style={{ fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-900)', width: 56, textAlign: 'right' }}>{fmtTokens(tokens)}</span>
-              <div
-                title={`CUMULATIVE session usage: ${tokens.toLocaleString()} of ${denom.toLocaleString()} tokens${agentCap ? ' (agent limit)' : ' (floor budget)'} — not the context window`}
-                style={{ width: 96, height: 8, background: 'var(--cth-cream-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)', flexShrink: 0 }}
-              >
-                <div style={{ width: `${pct}%`, height: '100%', background: meterColor }} />
+                <TokenLimitEditor value={agentCap} onSet={(t) => setAgentCap(a.id, t)} />
               </div>
-              <span style={{ fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-500)', width: 30, textAlign: 'right' }}>{pct}%</span>
-            </div>
-            {/* Context window — the SAME exact statusLine-fed numbers as the
+              <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-all' }}>
+                {a.cwd}
+              </div>
+              {/* Live telemetry (folded in from the old Fleet tab) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {hasSpark ? (
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: 'var(--cth-font-mono)',
+                        fontSize: 10,
+                        color: 'var(--cth-ink-500)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {rateLabel}
+                    </span>
+                    <Sparkline series={sparkSeries} />
+                  </span>
+                ) : (
+                  <span style={{ flex: 1 }} />
+                )}
+                {lastTool[a.id] && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      lineHeight: '14px',
+                      padding: '0 5px',
+                      flexShrink: 0,
+                      background: 'var(--cth-paper-200)',
+                      boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                      color: 'var(--cth-ink-700)',
+                    }}
+                  >
+                    {lastTool[a.id]}
+                  </span>
+                )}
+                <span
+                  style={{
+                    fontFamily: 'var(--cth-font-mono)',
+                    fontSize: 10,
+                    color: 'var(--cth-ink-300)',
+                    flexShrink: 0,
+                  }}
+                >
+                  budget
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--cth-font-mono)',
+                    fontSize: 11,
+                    color: 'var(--cth-ink-900)',
+                    width: 56,
+                    textAlign: 'right',
+                  }}
+                >
+                  {fmtTokens(tokens)}
+                </span>
+                <div
+                  title={`CUMULATIVE session usage: ${tokens.toLocaleString()} of ${denom.toLocaleString()} tokens${agentCap ? ' (agent limit)' : ' (floor budget)'} — not the context window`}
+                  style={{
+                    width: 96,
+                    height: 8,
+                    background: 'var(--cth-cream-200)',
+                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                    flexShrink: 0,
+                  }}
+                >
+                  <div style={{ width: `${pct}%`, height: '100%', background: meterColor }} />
+                </div>
+                <span
+                  style={{
+                    fontFamily: 'var(--cth-font-mono)',
+                    fontSize: 11,
+                    color: 'var(--cth-ink-500)',
+                    width: 30,
+                    textAlign: 'right',
+                  }}
+                >
+                  {pct}%
+                </span>
+              </div>
+              {/* Context window — the SAME exact statusLine-fed numbers as the
                 avatar-card gauge (tokens currently in the window vs the real
                 200k/1M size). Distinct from the cumulative budget meter above,
                 which keeps growing forever and pins at 100% — that one is
                 spend, this one is headroom before compaction. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ flex: 1 }} />
-              <span style={{ fontFamily: 'var(--cth-font-mono)', fontSize: 10, color: 'var(--cth-ink-300)', flexShrink: 0 }}>ctx</span>
-              {a.contextTokens !== undefined && a.contextLimit ? (() => {
-                const cpct = Math.min(100, Math.round((a.contextTokens! / a.contextLimit!) * 100));
-                const ccolor = cpct >= 88 ? 'var(--cth-coral)' : cpct >= 75 ? 'var(--cth-lemon)' : `var(--cth-${a.accent})`;
-                return (
-                  <>
-                    <span style={{ fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-900)', width: 56, textAlign: 'right' }}>
-                      {fmtTokens(a.contextTokens!)}
-                    </span>
-                    <div
-                      title={`Context window: ${a.contextTokens!.toLocaleString()} of ${a.contextLimit!.toLocaleString()} tokens (${cpct}%)`}
-                      style={{ width: 96, height: 8, background: 'var(--cth-cream-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)', flexShrink: 0 }}
-                    >
-                      <div style={{ width: `${cpct}%`, height: '100%', background: ccolor }} />
-                    </div>
-                    <span style={{ fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-500)', width: 30, textAlign: 'right' }}>{cpct}%</span>
-                  </>
-                );
-              })() : (
-                <span style={{ fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-300)' }}>
-                  no status tick yet
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ flex: 1 }} />
+                <span
+                  style={{
+                    fontFamily: 'var(--cth-font-mono)',
+                    fontSize: 10,
+                    color: 'var(--cth-ink-300)',
+                    flexShrink: 0,
+                  }}
+                >
+                  ctx
                 </span>
-              )}
-            </div>
-            {/* Non-god agents get the cross-provider model picker + restart controls
+                {a.contextTokens !== undefined && a.contextLimit ? (
+                  (() => {
+                    const cpct = Math.min(
+                      100,
+                      Math.round((a.contextTokens! / a.contextLimit!) * 100),
+                    );
+                    const ccolor =
+                      cpct >= 88
+                        ? 'var(--cth-coral)'
+                        : cpct >= 75
+                          ? 'var(--cth-lemon)'
+                          : `var(--cth-${a.accent})`;
+                    return (
+                      <>
+                        <span
+                          style={{
+                            fontFamily: 'var(--cth-font-mono)',
+                            fontSize: 11,
+                            color: 'var(--cth-ink-900)',
+                            width: 56,
+                            textAlign: 'right',
+                          }}
+                        >
+                          {fmtTokens(a.contextTokens!)}
+                        </span>
+                        <div
+                          title={`Context window: ${a.contextTokens!.toLocaleString()} of ${a.contextLimit!.toLocaleString()} tokens (${cpct}%)`}
+                          style={{
+                            width: 96,
+                            height: 8,
+                            background: 'var(--cth-cream-200)',
+                            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <div style={{ width: `${cpct}%`, height: '100%', background: ccolor }} />
+                        </div>
+                        <span
+                          style={{
+                            fontFamily: 'var(--cth-font-mono)',
+                            fontSize: 11,
+                            color: 'var(--cth-ink-500)',
+                            width: 30,
+                            textAlign: 'right',
+                          }}
+                        >
+                          {cpct}%
+                        </span>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <span
+                    style={{
+                      fontFamily: 'var(--cth-font-mono)',
+                      fontSize: 11,
+                      color: 'var(--cth-ink-300)',
+                    }}
+                  >
+                    no status tick yet
+                  </span>
+                )}
+              </div>
+              {/* Non-god agents get the cross-provider model picker + restart controls
                 here. The GOD agent's model lives in the engine row below
                 (provider+model+apply), so we DON'T render this second selector for
                 it — one model picker, not two. */}
-            {!a.isGod && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              <Select
-                value={encodeProviderModel(agentProvider, a.model)}
-                disabled={restarting === a.id}
-                onChange={(value) => {
-                  const choice = decodeProviderModel(value);
-                  if (!choice) return;
-                  // Switching model within the SAME provider continues the
-                  // conversation — that's the whole point of switching mid-task
-                  // ("this got hard, go up a tier"), and starting fresh threw
-                  // away the context that made the switch necessary.
-                  // `resume` is best-effort: restartWithModel already refuses it
-                  // across providers, and falls back to a fresh session when no
-                  // session id or transcript is recorded.
-                  void restartWithModel(a, choice.model, {
-                    provider: choice.provider,
-                    resume: choice.provider === agentProvider,
-                    resumeOptional: true
-                  });
-                }}
-              >
-                {(!agentPreset.supportsModel || !currentModelKnown) && (
-                  <option value={encodeProviderModel(agentProvider, a.model)}>
-                    {agentPreset.label} · {a.model ?? 'current'}
-                  </option>
-                )}
-                {modelProvidersForAgent(a.isGod).map((preset) => (
-                  <optgroup key={preset.id} label={preset.label}>
-                    {modelsForProvider(preset.id).map((model) => {
-                      // `defaultModel` is a Claude model id, so it can only mark
-                      // an entry in the Claude group.
-                      const isHarnessDefault = preset.id === 'claude'
-                        && !!defaultModel && model.id === defaultModel;
-                      return (
-                        <option
-                          key={`${preset.id}:${model.id ?? 'cli-default'}`}
-                          value={encodeProviderModel(preset.id, model.id)}
-                        >
-                          {model.label}{isHarnessDefault ? ' · default' : ''}
-                        </option>
-                      );
-                    })}
-                  </optgroup>
-                ))}
-              </Select>
-              <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
-                {restarting === a.id
-                  ? 'restarting…'
-                  : `${agentPreset.label} model (restarts agent)`}
-              </span>
-              {/* Restart & Continue — kill + respawn keeping the SAME model and
+              {!a.isGod && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Select
+                    value={encodeProviderModel(agentProvider, a.model)}
+                    disabled={restarting === a.id}
+                    onChange={(value) => {
+                      const choice = decodeProviderModel(value);
+                      if (!choice) return;
+                      // Switching model within the SAME provider continues the
+                      // conversation — that's the whole point of switching mid-task
+                      // ("this got hard, go up a tier"), and starting fresh threw
+                      // away the context that made the switch necessary.
+                      // `resume` is best-effort: restartWithModel already refuses it
+                      // across providers, and falls back to a fresh session when no
+                      // session id or transcript is recorded.
+                      void restartWithModel(a, choice.model, {
+                        provider: choice.provider,
+                        resume: choice.provider === agentProvider,
+                        resumeOptional: true,
+                      });
+                    }}
+                  >
+                    {(!agentPreset.supportsModel || !currentModelKnown) && (
+                      <option value={encodeProviderModel(agentProvider, a.model)}>
+                        {agentPreset.label} · {a.model ?? 'current'}
+                      </option>
+                    )}
+                    {modelProvidersForAgent(a.isGod).map((preset) => (
+                      <optgroup key={preset.id} label={preset.label}>
+                        {modelsForProvider(preset.id).map((model) => {
+                          // `defaultModel` is a Claude model id, so it can only mark
+                          // an entry in the Claude group.
+                          const isHarnessDefault =
+                            preset.id === 'claude' && !!defaultModel && model.id === defaultModel;
+                          return (
+                            <option
+                              key={`${preset.id}:${model.id ?? 'cli-default'}`}
+                              value={encodeProviderModel(preset.id, model.id)}
+                            >
+                              {model.label}
+                              {isHarnessDefault ? ' · default' : ''}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    ))}
+                  </Select>
+                  <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
+                    {restarting === a.id
+                      ? 'restarting…'
+                      : `${agentPreset.label} model (restarts agent)`}
+                  </span>
+                  {/* Restart & Continue — kill + respawn keeping the SAME model and
                   resuming the prior conversation (--resume). Use this to redraw a
                   garbled TUI (e.g. after dragging the window across displays)
                   without losing the thread. */}
-              {(agentProvider === 'claude' || agentPreset.resumeFlag || agentPreset.resumeSubcommand) && <>
-                <span style={{ flex: 1 }} />
-                <PixelButton
-                  variant="secondary"
-                  size="sm"
-                  disabled={restarting === a.id}
-                  onClick={() => restartWithModel(a, a.model, { resume: true })}
-                >
-                  <span title="Kill and respawn this agent, resuming its current conversation — fixes a corrupted/garbled terminal without losing context">
-                    restart &amp; continue
+                  {(agentProvider === 'claude' ||
+                    agentPreset.resumeFlag ||
+                    agentPreset.resumeSubcommand) && (
+                    <>
+                      <span style={{ flex: 1 }} />
+                      <PixelButton
+                        variant="secondary"
+                        size="sm"
+                        disabled={restarting === a.id}
+                        onClick={() => restartWithModel(a, a.model, { resume: true })}
+                      >
+                        <span title="Kill and respawn this agent, resuming its current conversation — fixes a corrupted/garbled terminal without losing context">
+                          restart &amp; continue
+                        </span>
+                      </PixelButton>
+                    </>
+                  )}
+                </div>
+              )}
+              {restartErrors[a.id] && (
+                <div style={{ fontSize: 11, color: 'var(--cth-coral)' }}>{restartErrors[a.id]}</div>
+              )}
+              {a.isGod && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, color: 'var(--cth-ink-500)', flexShrink: 0 }}>
+                    engine:
                   </span>
-                </PixelButton>
-              </>}
-            </div>
-            )}
-            {restartErrors[a.id] && (
-              <div style={{ fontSize: 11, color: 'var(--cth-coral)' }}>
-                {restartErrors[a.id]}
-              </div>
-            )}
-            {a.isGod && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, color: 'var(--cth-ink-500)', flexShrink: 0 }}>engine:</span>
-                <Select
-                  value={engineProvider}
-                  disabled={restarting === a.id}
-                  onChange={(v) => {
-                    const p = v as AgentProvider;
-                    setEngineProvider(p);
-                    const preset = AGENT_PROVIDER_PRESETS.find((x) => x.id === p);
-                    setEngineModel(preset?.recommendedOrchestratorModel);
-                  }}
-                >
-                  {AGENT_PROVIDER_PRESETS.filter((p) => canReceiveInbox(p.id)).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}{p.id === 'claude' ? ' ★' : ''}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  value={engineModel ?? ''}
-                  disabled={restarting === a.id}
-                  onChange={(v) => setEngineModel(v || undefined)}
-                >
-                  {modelsForProvider(engineProvider).map((m) => (
-                    <option key={m.label} value={m.id ?? ''}>{m.label}</option>
-                  ))}
-                </Select>
-                <PixelButton
-                  variant="secondary"
-                  size="sm"
-                  disabled={restarting === a.id}
-                  onClick={async () => {
-                    const currentProvider = inferAgentProvider(a.command, a.provider);
-                    if (engineProvider !== currentProvider) {
-                      if (!window.confirm("This restarts Michael; a conversation on a different engine can't be resumed.")) return;
-                    }
-                    await window.cth.updateConfig({ godProvider: engineProvider, godModel: engineModel });
-                    await restartWithModel(a, engineModel, { provider: engineProvider, resume: false });
-                  }}
-                >
-                  {restarting === a.id ? 'restarting…' : 'apply'}
-                </PixelButton>
-                {/* Redraw a garbled terminal without losing the thread (resume the
+                  <Select
+                    value={engineProvider}
+                    disabled={restarting === a.id}
+                    onChange={(v) => {
+                      const p = v as AgentProvider;
+                      setEngineProvider(p);
+                      const preset = AGENT_PROVIDER_PRESETS.find((x) => x.id === p);
+                      setEngineModel(preset?.recommendedOrchestratorModel);
+                    }}
+                  >
+                    {AGENT_PROVIDER_PRESETS.filter((p) => canReceiveInbox(p.id)).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                        {p.id === 'claude' ? ' ★' : ''}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select
+                    value={engineModel ?? ''}
+                    disabled={restarting === a.id}
+                    onChange={(v) => setEngineModel(v || undefined)}
+                  >
+                    {modelsForProvider(engineProvider).map((m) => (
+                      <option key={m.label} value={m.id ?? ''}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <PixelButton
+                    variant="secondary"
+                    size="sm"
+                    disabled={restarting === a.id}
+                    onClick={async () => {
+                      const currentProvider = inferAgentProvider(a.command, a.provider);
+                      if (engineProvider !== currentProvider) {
+                        if (
+                          !window.confirm(
+                            "This restarts Michael; a conversation on a different engine can't be resumed.",
+                          )
+                        )
+                          return;
+                      }
+                      await window.cth.updateConfig({
+                        godProvider: engineProvider,
+                        godModel: engineModel,
+                      });
+                      await restartWithModel(a, engineModel, {
+                        provider: engineProvider,
+                        resume: false,
+                      });
+                    }}
+                  >
+                    {restarting === a.id ? 'restarting…' : 'apply'}
+                  </PixelButton>
+                  {/* Redraw a garbled terminal without losing the thread (resume the
                     SAME engine+model). Kept here since the god has no per-agent row above. */}
-                <PixelButton
-                  variant="secondary"
-                  size="sm"
-                  disabled={restarting === a.id}
-                  onClick={() => restartWithModel(a, a.model, { resume: true })}
-                >
-                  <span title="Kill and respawn Michael, resuming the current conversation — fixes a corrupted/garbled terminal without losing context">
-                    restart &amp; continue
-                  </span>
-                </PixelButton>
-              </div>
-            )}
-          </div>
+                  <PixelButton
+                    variant="secondary"
+                    size="sm"
+                    disabled={restarting === a.id}
+                    onClick={() => restartWithModel(a, a.model, { resume: true })}
+                  >
+                    <span title="Kill and respawn Michael, resuming the current conversation — fixes a corrupted/garbled terminal without losing context">
+                      restart &amp; continue
+                    </span>
+                  </PixelButton>
+                </div>
+              )}
+            </div>
           );
         })}
         {/* Fleet summary band */}
-        <div style={{
-          display: 'flex', gap: 14, marginTop: 2, padding: '6px 8px',
-          background: 'var(--cth-cream-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-          fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-900)', flexWrap: 'wrap'
-        }}>
-          <span>Σ <strong>{fmtTokens(sumTokens)}</strong> tok</span>
-          <span style={{ color: 'var(--cth-ink-700)' }}>inputs {fmtTokens(sumInput)} (cache {fleetCachePct}%)</span>
-          <span style={{ color: 'var(--cth-ink-700)' }}>{Math.round(sumRate).toLocaleString()} tok/min</span>
+        <div
+          style={{
+            display: 'flex',
+            gap: 14,
+            marginTop: 2,
+            padding: '6px 8px',
+            background: 'var(--cth-cream-200)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+            fontFamily: 'var(--cth-font-mono)',
+            fontSize: 11,
+            color: 'var(--cth-ink-900)',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span>
+            Σ <strong>{fmtTokens(sumTokens)}</strong> tok
+          </span>
+          <span style={{ color: 'var(--cth-ink-700)' }}>
+            inputs {fmtTokens(sumInput)} (cache {fleetCachePct}%)
+          </span>
+          <span style={{ color: 'var(--cth-ink-700)' }}>
+            {Math.round(sumRate).toLocaleString()} tok/min
+          </span>
         </div>
         <div style={{ marginTop: 6 }}>
           <Muted>
-            live from each agent&apos;s OpenTelemetry · bars show tokens used vs each agent&apos;s limit, else the {fmtTokens(floorCap)} floor budget
+            live from each agent&apos;s OpenTelemetry · bars show tokens used vs each agent&apos;s
+            limit, else the {fmtTokens(floorCap)} floor budget
             {tokenCap && tokenCap > 0 ? '' : ' (default — set a floor token budget in Settings)'}
           </Muted>
         </div>
@@ -914,12 +1282,23 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
         {repos.length === 0 && <Muted>No registered repos.</Muted>}
         {repos.map((r) => (
           <div key={r} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <span style={{ flex: 1, fontSize: 12, color: 'var(--cth-ink-700)', wordBreak: 'break-all' }}>{r}</span>
+            <span
+              style={{ flex: 1, fontSize: 12, color: 'var(--cth-ink-700)', wordBreak: 'break-all' }}
+            >
+              {r}
+            </span>
             <button
               onClick={() => window.cth.openTerminalAt(r)}
               title="Open in Terminal.app"
-              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--cth-ink-500)' }}
-            ><Icon name="terminal" /></button>
+              style={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: 'var(--cth-ink-500)',
+              }}
+            >
+              <Icon name="terminal" />
+            </button>
           </div>
         ))}
       </Section>
@@ -931,29 +1310,60 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
             <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
               <Select value={issueRepo || repos[0]} onChange={setIssueRepo}>
                 {repos.map((r) => (
-                  <option key={r} value={r}>{r}</option>
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
                 ))}
               </Select>
-              <PixelButton variant="primary" size="sm" onClick={fetchIssues} disabled={issuesLoading}>
+              <PixelButton
+                variant="primary"
+                size="sm"
+                onClick={fetchIssues}
+                disabled={issuesLoading}
+              >
                 {issuesLoading ? 'fetching…' : 'Fetch issues'}
               </PixelButton>
             </div>
             {issuesError && (
-              <div style={{
-                fontSize: 12, color: 'var(--cth-ink-700)', marginBottom: 6,
-                padding: 6, background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                wordBreak: 'break-word'
-              }}>{issuesError}</div>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--cth-ink-700)',
+                  marginBottom: 6,
+                  padding: 6,
+                  background: 'var(--cth-paper-100)',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {issuesError}
+              </div>
             )}
-            {!issuesError && !issuesLoading && issues.length === 0 && <Muted>No issues fetched yet.</Muted>}
+            {!issuesError && !issuesLoading && issues.length === 0 && (
+              <Muted>No issues fetched yet.</Muted>
+            )}
             {issues.map((issue) => (
-              <div key={issue.number} style={{
-                display: 'flex', flexDirection: 'column', gap: 4,
-                padding: 6, marginBottom: 6,
-                background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-              }}>
+              <div
+                key={issue.number}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                  padding: 6,
+                  marginBottom: 6,
+                  background: 'var(--cth-paper-100)',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                  <span style={{ fontSize: 12, color: 'var(--cth-ink-900)', flex: 1, wordBreak: 'break-word' }}>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--cth-ink-900)',
+                      flex: 1,
+                      wordBreak: 'break-word',
+                    }}
+                  >
                     <strong>#{issue.number}</strong> {issue.title}
                   </span>
                   <PixelButton variant="secondary" size="sm" onClick={() => assignIssue(issue)}>
@@ -963,11 +1373,19 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
                 {issue.labels.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {issue.labels.map((label) => (
-                      <span key={label} style={{
-                        fontSize: 10, lineHeight: '14px', padding: '0 5px',
-                        background: 'var(--cth-cream-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                        color: 'var(--cth-ink-700)'
-                      }}>{label}</span>
+                      <span
+                        key={label}
+                        style={{
+                          fontSize: 10,
+                          lineHeight: '14px',
+                          padding: '0 5px',
+                          background: 'var(--cth-cream-200)',
+                          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                          color: 'var(--cth-ink-700)',
+                        }}
+                      >
+                        {label}
+                      </span>
                     ))}
                   </div>
                 )}
@@ -988,12 +1406,24 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
 function GodKittyButton() {
   const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
-    void window.cth.isKittyAvailable().then(setAvailable).catch(() => setAvailable(false));
+    void window.cth
+      .isKittyAvailable()
+      .then(setAvailable)
+      .catch(() => setAvailable(false));
   }, []);
   if (available !== true) return null;
   return (
-    <PixelButton variant="secondary" size="sm" onClick={() => { void window.cth.openInKitty(''); }}>
-      <span title="open the satellite (Michael's terminal)" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <PixelButton
+      variant="secondary"
+      size="sm"
+      onClick={() => {
+        void window.cth.openInKitty('');
+      }}
+    >
+      <span
+        title="open the satellite (Michael's terminal)"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+      >
         🐱 kitty
       </span>
     </PixelButton>
@@ -1030,39 +1460,77 @@ function VacationSection() {
     try {
       const res = await window.cth.hiveRecall(id);
       if (!res.ok) setError(res.error ?? 'could not recall this agent');
-    } finally { setBusy(null); }
+    } finally {
+      setBusy(null);
+    }
   };
   return (
     <Section title={`VACATION (${vacationers.length})`}>
       {error && (
-        <div style={{
-          fontSize: 12, color: 'var(--cth-coral)',
-          padding: '2px 8px', marginBottom: 6,
-          background: 'var(--cth-coral-light)',
-          wordBreak: 'break-word'
-        }}>{error}</div>
+        <div
+          style={{
+            fontSize: 12,
+            color: 'var(--cth-coral)',
+            padding: '2px 8px',
+            marginBottom: 6,
+            background: 'var(--cth-coral-light)',
+            wordBreak: 'break-word',
+          }}
+        >
+          {error}
+        </div>
       )}
       {vacationers.map((a) => (
-        <div key={a.id} style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: 6, marginBottom: 6,
-          background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-        }}>
-          <div style={{
-            width: 24, height: 24, background: `var(--cth-${a.accent}-light)`,
+        <div
+          key={a.id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: 6,
+            marginBottom: 6,
+            background: 'var(--cth-paper-100)',
             boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden', flexShrink: 0
-          }}>
+          }}
+        >
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              background: `var(--cth-${a.accent}-light)`,
+              boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              flexShrink: 0,
+            }}
+          >
             <SpritePortrait character={a.character} scale={1} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)' }}>{a.name}</div>
-            <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-word' }}>{a.description}</div>
+            <div
+              style={{
+                fontFamily: 'var(--cth-font-ui)',
+                fontSize: 12,
+                color: 'var(--cth-ink-900)',
+              }}
+            >
+              {a.name}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-word' }}>
+              {a.description}
+            </div>
             <div style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
               parked {relAge(Math.max(0, Date.now() - (a.vacationSince ?? Date.now())))} ago
             </div>
           </div>
-          <PixelButton variant="secondary" size="sm" disabled={busy === a.id} onClick={() => recall(a.id)}>
+          <PixelButton
+            variant="secondary"
+            size="sm"
+            disabled={busy === a.id}
+            onClick={() => recall(a.id)}
+          >
             {busy === a.id ? '…' : 'Recall'}
           </PixelButton>
         </div>
@@ -1082,43 +1550,95 @@ function ArchivedSection() {
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
-          display: 'inline-flex', alignItems: 'center', gap: 4,
-          padding: '2px 8px 1px', border: 'none', cursor: 'pointer',
-          background: 'var(--cth-cream-200)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-          fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)',
-          marginBottom: open ? 6 : 0
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '2px 8px 1px',
+          border: 'none',
+          cursor: 'pointer',
+          background: 'var(--cth-cream-200)',
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+          fontFamily: 'var(--cth-font-ui)',
+          fontSize: 12,
+          color: 'var(--cth-ink-900)',
+          marginBottom: open ? 6 : 0,
         }}
-      >{open ? '▾' : '▸'} {open ? 'hide' : 'show'} closed agents</button>
-      {open && archivedAgents.map((a) => (
-        <div key={a.id} style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: 6, marginBottom: 6, opacity: 0.7,
-          background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-        }}>
-          <div style={{
-            width: 24, height: 24, background: `var(--cth-${a.accent}-light)`,
-            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden', flexShrink: 0
-          }}>
-            <SpritePortrait character={a.character} scale={1} />
+      >
+        {open ? '▾' : '▸'} {open ? 'hide' : 'show'} closed agents
+      </button>
+      {open &&
+        archivedAgents.map((a) => (
+          <div
+            key={a.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: 6,
+              marginBottom: 6,
+              opacity: 0.7,
+              background: 'var(--cth-paper-100)',
+              boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+            }}
+          >
+            <div
+              style={{
+                width: 24,
+                height: 24,
+                background: `var(--cth-${a.accent}-light)`,
+                boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}
+            >
+              <SpritePortrait character={a.character} scale={1} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontFamily: 'var(--cth-font-ui)',
+                  fontSize: 12,
+                  color: 'var(--cth-ink-700)',
+                }}
+              >
+                {a.name}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-all' }}>
+                {a.cwd}
+              </div>
+            </div>
+            <button
+              onClick={() => removeArchivedAgent(a.id)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: 'var(--cth-ink-500)',
+                flexShrink: 0,
+              }}
+            >
+              <Icon name="x" />
+            </button>
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-700)' }}>{a.name}</div>
-            <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-all' }}>{a.cwd}</div>
-          </div>
-          <button
-            onClick={() => removeArchivedAgent(a.id)}
-            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--cth-ink-500)', flexShrink: 0 }}
-          ><Icon name="x" /></button>
-        </div>
-      ))}
+        ))}
     </Section>
   );
 }
 
 // ─── Memory tab ──────────────────────────────────────────────────────────────
 
-function MemoryTab({ godId, who: controlledWho, onWho }: { godId: string; who?: string; onWho?: (id: string) => void }) {
+function MemoryTab({
+  godId,
+  who: controlledWho,
+  onWho,
+}: {
+  godId: string;
+  who?: string;
+  onWho?: (id: string) => void;
+}) {
   const agents = useStore((s) => s.agents);
   // Selection is controllable from the graph tab; falls back to local state.
   const [internalWho, setInternalWho] = useState<string>(godId);
@@ -1135,7 +1655,10 @@ function MemoryTab({ godId, who: controlledWho, onWho }: { godId: string; who?: 
   const [textBusy, setTextBusy] = useState(false);
 
   useEffect(() => {
-    window.cth.hiveMemory(who).then(setMem).catch(() => setMem(''));
+    window.cth
+      .hiveMemory(who)
+      .then(setMem)
+      .catch(() => setMem(''));
   }, [who]);
 
   const search = async () => {
@@ -1143,8 +1666,10 @@ function MemoryTab({ godId, who: controlledWho, onWho }: { godId: string; who?: 
     setBusy(true);
     try {
       const res = await window.cth.searchMemory(query.trim());
-      setSearchOut(res.ok ? (res.output || 'Nothing matched yet.') : `Couldn't search: ${res.error}`);
-    } finally { setBusy(false); }
+      setSearchOut(res.ok ? res.output || 'Nothing matched yet.' : `Couldn't search: ${res.error}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const textSearch = async () => {
@@ -1153,8 +1678,12 @@ function MemoryTab({ godId, who: controlledWho, onWho }: { godId: string; who?: 
     try {
       const res = await window.cth.textSearch(textQuery.trim());
       setTextResults(res.ok ? res.results.slice(0, 10) : []);
-    } catch { setTextResults([]); }
-    finally { setTextBusy(false); setTextSearched(true); }
+    } catch {
+      setTextResults([]);
+    } finally {
+      setTextBusy(false);
+      setTextSearched(true);
+    }
   };
 
   return (
@@ -1164,11 +1693,18 @@ function MemoryTab({ godId, who: controlledWho, onWho }: { godId: string; who?: 
           <input
             value={textQuery}
             onChange={(e) => setTextQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') textSearch(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') textSearch();
+            }}
             placeholder="Find exact text across hive files…"
             style={{ ...textareaStyle, height: 30 }}
           />
-          <PixelButton variant="primary" size="sm" onClick={textSearch} disabled={textBusy || !textQuery.trim()}>
+          <PixelButton
+            variant="primary"
+            size="sm"
+            onClick={textSearch}
+            disabled={textBusy || !textQuery.trim()}
+          >
             {textBusy ? '…' : 'search'}
           </PixelButton>
         </div>
@@ -1176,7 +1712,15 @@ function MemoryTab({ godId, who: controlledWho, onWho }: { godId: string; who?: 
           <div style={{ marginTop: 6 }}>
             {textResults.map((r, i) => (
               <div key={i} style={{ marginBottom: 4 }}>
-                <div style={{ fontFamily: 'var(--cth-font-mono)', fontSize: 11, color: 'var(--cth-ink-500)' }}>{r.source}</div>
+                <div
+                  style={{
+                    fontFamily: 'var(--cth-font-mono)',
+                    fontSize: 11,
+                    color: 'var(--cth-ink-500)',
+                  }}
+                >
+                  {r.source}
+                </div>
                 <Pre>{r.excerpt}</Pre>
               </div>
             ))}
@@ -1190,11 +1734,18 @@ function MemoryTab({ godId, who: controlledWho, onWho }: { godId: string; who?: 
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') search(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') search();
+            }}
             placeholder="What does the hive know about…"
             style={{ ...textareaStyle, height: 30 }}
           />
-          <PixelButton variant="primary" size="sm" onClick={search} disabled={busy || !query.trim()}>
+          <PixelButton
+            variant="primary"
+            size="sm"
+            onClick={search}
+            disabled={busy || !query.trim()}
+          >
             {busy ? '…' : 'search'}
           </PixelButton>
         </div>
@@ -1203,7 +1754,11 @@ function MemoryTab({ godId, who: controlledWho, onWho }: { godId: string; who?: 
 
       <Section title="MEMORY FILE">
         <Select value={who} onChange={setWho}>
-          {agents.map((a) => (<option key={a.id} value={a.id}>{a.name}</option>))}
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
         </Select>
         <Pre>{mem || 'No memory recorded yet.'}</Pre>
       </Section>
@@ -1218,10 +1773,25 @@ function Sparkline({ series }: { series: number[] }) {
   const blocks = '▁▂▃▄▅▆▇█';
   const max = Math.max(1, ...series);
   const text = series.length
-    ? series.map((v) => blocks[Math.min(blocks.length - 1, Math.round((v / max) * (blocks.length - 1)))]).join('')
+    ? series
+        .map(
+          (v) => blocks[Math.min(blocks.length - 1, Math.round((v / max) * (blocks.length - 1)))],
+        )
+        .join('')
     : '▁▁▁▁▁▁';
   return (
-    <span style={{ flex: 1, fontFamily: 'var(--cth-font-mono)', fontSize: 12, lineHeight: '12px', color: 'var(--cth-sky)', whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 }}>
+    <span
+      style={{
+        flex: 1,
+        fontFamily: 'var(--cth-font-mono)',
+        fontSize: 12,
+        lineHeight: '12px',
+        color: 'var(--cth-sky)',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        minWidth: 0,
+      }}
+    >
       {text}
     </span>
   );
@@ -1238,7 +1808,13 @@ function fmtTokens(n: number): string {
 /** Per-agent token-limit control (top-right of each agent card). Shows the
  *  current limit as a lemon chip, or "set limit"; click to edit a token number.
  *  Enter / ✓ / blur commit; Escape cancels. */
-function TokenLimitEditor({ value, onSet }: { value?: number; onSet: (tokens: number | undefined) => void }) {
+function TokenLimitEditor({
+  value,
+  onSet,
+}: {
+  value?: number;
+  onSet: (tokens: number | undefined) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(value != null ? String(value) : '');
   const skipBlur = useRef(false);
@@ -1251,47 +1827,97 @@ function TokenLimitEditor({ value, onSet }: { value?: number; onSet: (tokens: nu
   if (!editing) {
     return (
       <button
-        onClick={() => { setText(value != null ? String(value) : ''); setEditing(true); }}
+        onClick={() => {
+          setText(value != null ? String(value) : '');
+          setEditing(true);
+        }}
         title="Set this agent's total token limit"
         style={{
-          flexShrink: 0, padding: '1px 6px', border: 'none', cursor: 'pointer',
+          flexShrink: 0,
+          padding: '1px 6px',
+          border: 'none',
+          cursor: 'pointer',
           background: value && value > 0 ? 'var(--cth-lemon)' : 'var(--cth-cream-200)',
           boxShadow: `inset 0 0 0 1px ${value && value > 0 ? 'var(--cth-ink-900)' : 'var(--cth-ink-700)'}`,
-          fontFamily: 'var(--cth-font-ui)', fontSize: 11, color: 'var(--cth-ink-900)'
+          fontFamily: 'var(--cth-font-ui)',
+          fontSize: 11,
+          color: 'var(--cth-ink-900)',
         }}
-      >{value && value > 0
-        ? <>limit <span style={{ fontFamily: 'var(--cth-font-mono)' }}>{fmtTokens(value)}</span></>
-        : 'set limit'}</button>
+      >
+        {value && value > 0 ? (
+          <>
+            limit <span style={{ fontFamily: 'var(--cth-font-mono)' }}>{fmtTokens(value)}</span>
+          </>
+        ) : (
+          'set limit'
+        )}
+      </button>
     );
   }
   return (
     <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
       <input
-        type="number" min="0" step="100000" value={text} autoFocus
+        type="number"
+        min="0"
+        step="100000"
+        value={text}
+        autoFocus
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit();
-          else if (e.key === 'Escape') { skipBlur.current = true; setEditing(false); }
+          else if (e.key === 'Escape') {
+            skipBlur.current = true;
+            setEditing(false);
+          }
         }}
-        onBlur={() => { if (skipBlur.current) { skipBlur.current = false; return; } commit(); }}
+        onBlur={() => {
+          if (skipBlur.current) {
+            skipBlur.current = false;
+            return;
+          }
+          commit();
+        }}
         placeholder="tokens"
         style={{
-          width: 84, padding: '2px 4px', background: 'var(--cth-paper-100)', border: 'none',
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)', fontFamily: 'var(--cth-font-mono)',
-          fontSize: 11, color: 'var(--cth-ink-900)', outline: 'none'
+          width: 84,
+          padding: '2px 4px',
+          background: 'var(--cth-paper-100)',
+          border: 'none',
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+          fontFamily: 'var(--cth-font-mono)',
+          fontSize: 11,
+          color: 'var(--cth-ink-900)',
+          outline: 'none',
         }}
       />
       <button
-        onMouseDown={(e) => e.preventDefault()} onClick={commit} title="Save limit"
-        style={{ flexShrink: 0, padding: '1px 5px', border: 'none', cursor: 'pointer', background: 'var(--cth-mint)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)', fontSize: 11, color: 'var(--cth-ink-900)' }}
-      >✓</button>
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={commit}
+        title="Save limit"
+        style={{
+          flexShrink: 0,
+          padding: '1px 5px',
+          border: 'none',
+          cursor: 'pointer',
+          background: 'var(--cth-mint)',
+          boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+          fontSize: 11,
+          color: 'var(--cth-ink-900)',
+        }}
+      >
+        ✓
+      </button>
     </span>
   );
 }
 
 // ─── Activity tab — hive event log + board ───────────────────────────────────
 
-interface LogEntry { ts?: number; kind?: string; [k: string]: unknown }
+interface LogEntry {
+  ts?: number;
+  kind?: string;
+  [k: string]: unknown;
+}
 
 function ActivityTab() {
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -1300,22 +1926,38 @@ function ActivityTab() {
 
   useEffect(() => {
     const refresh = async () => {
-      try { setLog((await window.cth.hiveLog(60)) as LogEntry[]); } catch { /* noop */ }
-      try { setBoard(await window.cth.hiveBoard()); } catch { /* noop */ }
+      try {
+        setLog((await window.cth.hiveLog(60)) as LogEntry[]);
+      } catch {
+        /* noop */
+      }
+      try {
+        setBoard(await window.cth.hiveBoard());
+      } catch {
+        /* noop */
+      }
     };
     refresh();
     timer.current = setInterval(refresh, 3000);
-    return () => { if (timer.current) clearInterval(timer.current); };
+    return () => {
+      if (timer.current) clearInterval(timer.current);
+    };
   }, []);
 
   const fmt = (e: LogEntry): string => {
     switch (e.kind) {
-      case 'spawn': return `spawned ${e.name ?? e.agentId}`;
-      case 'message': return `${e.from} → ${e.to}: ${e.subject || e.act}`;
-      case 'drain': return `${e.agentId} drained ${e.count} msg(s)`;
-      case 'escalate': return `escalated to human: ${e.subject ?? ''}`;
-      case 'approval': return `approval ${e.approve ? 'granted' : 'denied'}`;
-      default: return JSON.stringify(e);
+      case 'spawn':
+        return `spawned ${e.name ?? e.agentId}`;
+      case 'message':
+        return `${e.from} → ${e.to}: ${e.subject || e.act}`;
+      case 'drain':
+        return `${e.agentId} drained ${e.count} msg(s)`;
+      case 'escalate':
+        return `escalated to human: ${e.subject ?? ''}`;
+      case 'approval':
+        return `approval ${e.approve ? 'granted' : 'denied'}`;
+      default:
+        return JSON.stringify(e);
     }
   };
 
@@ -1324,9 +1966,27 @@ function ActivityTab() {
       <Section title="ACTIVITY">
         {log.length === 0 && <Muted>Nothing yet.</Muted>}
         {[...log].reverse().map((e, i) => (
-          <div key={i} style={{ fontSize: 12, color: 'var(--cth-ink-700)', padding: '2px 0', display: 'flex', gap: 6 }}>
+          <div
+            key={i}
+            style={{
+              fontSize: 12,
+              color: 'var(--cth-ink-700)',
+              padding: '2px 0',
+              display: 'flex',
+              gap: 6,
+            }}
+          >
             <span style={{ color: 'var(--cth-ink-300)', flexShrink: 0 }}>{e.kind ?? '·'}</span>
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmt(e)}</span>
+            <span
+              style={{
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {fmt(e)}
+            </span>
           </div>
         ))}
       </Section>
@@ -1343,51 +2003,106 @@ function ActivityTab() {
 function HandbookTab() {
   const [copied, setCopied] = useState<string | null>(null);
   const copy = async (cmd: string) => {
-    try { await window.cth.copyToClipboard(cmd); setCopied(cmd); setTimeout(() => setCopied((c) => (c === cmd ? null : c)), 1300); }
-    catch { /* noop */ }
+    try {
+      await window.cth.copyToClipboard(cmd);
+      setCopied(cmd);
+      setTimeout(() => setCopied((c) => (c === cmd ? null : c)), 1300);
+    } catch {
+      /* noop */
+    }
   };
   return (
     <Scroll>
-      <Muted>Click any command to copy it. Slash commands run inside Claude Code; CLI commands run in a shell.</Muted>
+      <Muted>
+        Click any command to copy it. Slash commands run inside Claude Code; CLI commands run in a
+        shell.
+      </Muted>
       <div style={{ height: 8 }} />
       {COMMAND_GROUPS.map((g) => (
         <Section key={g.title} title={g.title}>
           {g.items.map((it) => (
-            <div key={it.cmd} style={{
-              padding: 6, marginBottom: 6,
-              background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
-            }}>
+            <div
+              key={it.cmd}
+              style={{
+                padding: 6,
+                marginBottom: 6,
+                background: 'var(--cth-paper-100)',
+                boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{
-                  fontFamily: 'var(--cth-font-display)', fontSize: 7, lineHeight: '12px',
-                  padding: '1px 4px 0', flexShrink: 0,
-                  background: it.kind === 'slash' ? 'var(--cth-sky-light)' : 'var(--cth-mint-light)',
-                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)', color: 'var(--cth-ink-900)'
-                }}>{it.kind === 'slash' ? 'SLASH' : 'CLI'}</span>
-                <code style={{
-                  flex: 1, minWidth: 0, fontFamily: 'var(--cth-font-mono)', fontSize: 12,
-                  color: 'var(--cth-ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                }}>{it.cmd.trim() || '#'}</code>
+                <span
+                  style={{
+                    fontFamily: 'var(--cth-font-display)',
+                    fontSize: 7,
+                    lineHeight: '12px',
+                    padding: '1px 4px 0',
+                    flexShrink: 0,
+                    background:
+                      it.kind === 'slash' ? 'var(--cth-sky-light)' : 'var(--cth-mint-light)',
+                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                    color: 'var(--cth-ink-900)',
+                  }}
+                >
+                  {it.kind === 'slash' ? 'SLASH' : 'CLI'}
+                </span>
+                <code
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontFamily: 'var(--cth-font-mono)',
+                    fontSize: 12,
+                    color: 'var(--cth-ink-900)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {it.cmd.trim() || '#'}
+                </code>
                 <button
                   onClick={() => copy(it.cmd)}
                   title="Copy command"
                   style={{
-                    flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4,
-                    padding: '2px 7px 1px', border: 'none', cursor: 'pointer',
+                    flexShrink: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '2px 7px 1px',
+                    border: 'none',
+                    cursor: 'pointer',
                     background: copied === it.cmd ? 'var(--cth-mint)' : 'var(--cth-cream-200)',
                     boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                    fontFamily: 'var(--cth-font-ui)', fontSize: 11, color: 'var(--cth-ink-900)'
+                    fontFamily: 'var(--cth-font-ui)',
+                    fontSize: 11,
+                    color: 'var(--cth-ink-900)',
                   }}
                 >
-                  <Icon name={copied === it.cmd ? 'check' : 'code'} /> {copied === it.cmd ? 'copied' : 'copy'}
+                  <Icon name={copied === it.cmd ? 'check' : 'code'} />{' '}
+                  {copied === it.cmd ? 'copied' : 'copy'}
                 </button>
               </div>
-              <div style={{ fontSize: 12, lineHeight: '16px', color: 'var(--cth-ink-700)', marginTop: 4 }}>{it.desc}</div>
+              <div
+                style={{
+                  fontSize: 12,
+                  lineHeight: '16px',
+                  color: 'var(--cth-ink-700)',
+                  marginTop: 4,
+                }}
+              >
+                {it.desc}
+              </div>
               {it.usage && (
-                <div style={{
-                  marginTop: 3, fontFamily: 'var(--cth-font-mono)', fontSize: 11,
-                  color: 'var(--cth-ink-500)'
-                }}>e.g. {it.usage}</div>
+                <div
+                  style={{
+                    marginTop: 3,
+                    fontFamily: 'var(--cth-font-mono)',
+                    fontSize: 11,
+                    color: 'var(--cth-ink-500)',
+                  }}
+                >
+                  e.g. {it.usage}
+                </div>
               )}
             </div>
           ))}
@@ -1403,13 +2118,37 @@ function Scroll({ children }: { children: React.ReactNode }) {
   // minWidth:0 + overflowX:hidden keep wide children (native selects, long paths,
   // budget rows) from forcing a horizontal scrollbar in the narrow sidebar — they
   // wrap/shrink instead. Vertical scroll stays.
-  return <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 10, background: 'var(--cth-paper-200)' }}>{children}</div>;
+  return (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        padding: 10,
+        background: 'var(--cth-paper-200)',
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontFamily: 'var(--cth-font-display)', fontSize: 9, lineHeight: '12px', color: 'var(--cth-ink-500)', marginBottom: 6 }}>{title}</div>
+      <div
+        style={{
+          fontFamily: 'var(--cth-font-display)',
+          fontSize: 9,
+          lineHeight: '12px',
+          color: 'var(--cth-ink-500)',
+          marginBottom: 6,
+        }}
+      >
+        {title}
+      </div>
       {children}
     </div>
   );
@@ -1417,7 +2156,19 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, textAlign: 'center', color: 'var(--cth-ink-700)', fontSize: 13, background: 'var(--cth-paper-200)' }}>
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        textAlign: 'center',
+        color: 'var(--cth-ink-700)',
+        fontSize: 13,
+        background: 'var(--cth-paper-200)',
+      }}
+    >
       {children}
     </div>
   );
@@ -1429,25 +2180,53 @@ function Muted({ children }: { children: React.ReactNode }) {
 
 function Pre({ children }: { children: React.ReactNode }) {
   return (
-    <pre style={{
-      margin: '6px 0 0', padding: 8, maxHeight: 200, overflow: 'auto',
-      background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-      fontFamily: 'var(--cth-font-mono)', fontSize: 12, lineHeight: '16px',
-      color: 'var(--cth-ink-900)', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
-    }}>{children}</pre>
+    <pre
+      style={{
+        margin: '6px 0 0',
+        padding: 8,
+        maxHeight: 200,
+        overflow: 'auto',
+        background: 'var(--cth-paper-100)',
+        boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+        fontFamily: 'var(--cth-font-mono)',
+        fontSize: 12,
+        lineHeight: '16px',
+        color: 'var(--cth-ink-900)',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+      }}
+    >
+      {children}
+    </pre>
   );
 }
 
 const textareaStyle: React.CSSProperties = {
-  flex: 1, width: '100%', resize: 'none', padding: '6px 8px',
-  background: 'var(--cth-paper-100)', border: 'none',
+  flex: 1,
+  width: '100%',
+  resize: 'none',
+  padding: '6px 8px',
+  background: 'var(--cth-paper-100)',
+  border: 'none',
   boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-  fontFamily: 'var(--cth-font-mono)', fontSize: 12, lineHeight: '17px',
-  color: 'var(--cth-ink-900)', outline: 'none', boxSizing: 'border-box'
+  fontFamily: 'var(--cth-font-mono)',
+  fontSize: 12,
+  lineHeight: '17px',
+  color: 'var(--cth-ink-900)',
+  outline: 'none',
+  boxSizing: 'border-box',
 };
 
-function Select({ value, onChange, disabled, children }: {
-  value: string; onChange: (v: string) => void; disabled?: boolean; children: React.ReactNode;
+function Select({
+  value,
+  onChange,
+  disabled,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  children: React.ReactNode;
 }) {
   return (
     <select
@@ -1455,12 +2234,20 @@ function Select({ value, onChange, disabled, children }: {
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
       style={{
-        padding: '3px 6px', background: 'var(--cth-paper-100)',
-        border: 'none', boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-        fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)', cursor: 'pointer',
+        padding: '3px 6px',
+        background: 'var(--cth-paper-100)',
+        border: 'none',
+        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+        fontFamily: 'var(--cth-font-ui)',
+        fontSize: 12,
+        color: 'var(--cth-ink-900)',
+        cursor: 'pointer',
         // Never let a long option name push the sidebar wider than it is.
-        minWidth: 0, maxWidth: '100%'
+        minWidth: 0,
+        maxWidth: '100%',
       }}
-    >{children}</select>
+    >
+      {children}
+    </select>
   );
 }

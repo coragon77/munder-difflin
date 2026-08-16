@@ -24,7 +24,14 @@ require.cache[electron] = {
   id: electron,
   filename: electron,
   loaded: true,
-  exports: { Notification: class { show() {} static isSupported() { return false; } } }
+  exports: {
+    Notification: class {
+      show() {}
+      static isSupported() {
+        return false;
+      }
+    },
+  },
 };
 
 const { HiveManager } = loadTs('src/main/hive.ts');
@@ -40,14 +47,31 @@ async function floor(t, { steer } = {}) {
   const home = tmpHome();
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const hive = new HiveManager(() => home);
-  await hive.ensureAgent({ id: 'god-1', name: 'Michael', provider: 'claude', cwd: home, isGod: true });
+  await hive.ensureAgent({
+    id: 'god-1',
+    name: 'Michael',
+    provider: 'claude',
+    cwd: home,
+    isGod: true,
+  });
   await hive.ensureAgent({ id: 'jim-1', name: 'Jim', provider: 'claude', cwd: home });
 
   const control = steer
-    ? { takeSteer: (id) => (id === 'god-1' ? steer : null), shouldHalt: () => false, toolDecision: () => ({ deny: false }) }
+    ? {
+        takeSteer: (id) => (id === 'god-1' ? steer : null),
+        shouldHalt: () => false,
+        toolDecision: () => ({ deny: false }),
+      }
     : undefined;
-  const server = new HookServer(hive, () => null, () => CONFIG, control, undefined);
-  const fire = (agent_id, hook_event_name) => server.handle({ agent_id, hook_event_name, session_id: 's1' });
+  const server = new HookServer(
+    hive,
+    () => null,
+    () => CONFIG,
+    control,
+    undefined,
+  );
+  const fire = (agent_id, hook_event_name) =>
+    server.handle({ agent_id, hook_event_name, session_id: 's1' });
   return { home, hive, server, fire };
 }
 
@@ -55,10 +79,38 @@ function snapshot(hive) {
   hive.writeFleetSnapshot({
     ts: Date.now() - 4000,
     agents: [
-      { id: 'god-1', name: 'Michael', role: 'orchestrator', isGod: true, breaker: 'ok', tokens: 812_400, usd: 4.2199, lastActiveSecAgo: 6, inboxBacklog: 2 },
-      { id: 'jim-1', name: 'Jim', role: 'agent', breaker: 'warn', tokens: 120_401, usd: 1.0231, lastActiveSecAgo: 240, inboxBacklog: 0 },
-      { id: 'pam-1', name: 'Pam', role: 'agent', breaker: 'ok', tokens: 0, usd: 0, lastActiveSecAgo: null, inboxBacklog: 0 }
-    ]
+      {
+        id: 'god-1',
+        name: 'Michael',
+        role: 'orchestrator',
+        isGod: true,
+        breaker: 'ok',
+        tokens: 812_400,
+        usd: 4.2199,
+        lastActiveSecAgo: 6,
+        inboxBacklog: 2,
+      },
+      {
+        id: 'jim-1',
+        name: 'Jim',
+        role: 'agent',
+        breaker: 'warn',
+        tokens: 120_401,
+        usd: 1.0231,
+        lastActiveSecAgo: 240,
+        inboxBacklog: 0,
+      },
+      {
+        id: 'pam-1',
+        name: 'Pam',
+        role: 'agent',
+        breaker: 'ok',
+        tokens: 0,
+        usd: 0,
+        lastActiveSecAgo: null,
+        inboxBacklog: 0,
+      },
+    ],
   });
 }
 
@@ -94,8 +146,11 @@ test('god gets the roster on SessionStart and on every prompt — nobody else do
 
   assert.doesNotMatch(context(await fire('jim-1', 'SessionStart')), /LIVE ROSTER/);
   assert.doesNotMatch(context(await fire('jim-1', 'UserPromptSubmit')), /LIVE ROSTER/);
-  assert.doesNotMatch(context(await fire('god-1', 'PostToolUse')), /LIVE ROSTER/,
-    'prompt boundaries only — not once per tool call');
+  assert.doesNotMatch(
+    context(await fire('god-1', 'PostToolUse')),
+    /LIVE ROSTER/,
+    'prompt boundaries only — not once per tool call',
+  );
 });
 
 test('a queued operator steer is not swallowed by the roster', async (t) => {
@@ -105,7 +160,10 @@ test('a queued operator steer is not swallowed by the roster', async (t) => {
 
   const ctx = context(await fire('god-1', 'UserPromptSubmit'));
   assert.match(ctx, /LIVE ROSTER/);
-  assert.ok(ctx.includes(steer), 'only one additionalContext exists — the two must merge, not race');
+  assert.ok(
+    ctx.includes(steer),
+    'only one additionalContext exists — the two must merge, not race',
+  );
 });
 
 test('a corrupt fleet.json degrades to no injection instead of throwing into a hook', async (t) => {

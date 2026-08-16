@@ -20,8 +20,8 @@ import type { AgentProvider } from '../shared/agentProvider';
 /** A session request god drops into HIVE_ROOT/session-requests/<id>.json. */
 export interface SessionRequest {
   agentId?: string;
-  verb?: string;          // 'clear' | 'resume'
-  sessionId?: string;     // resume only
+  verb?: string; // 'clear' | 'resume'
+  sessionId?: string; // resume only
 }
 
 /** Everything the watcher needs from the host process (see index.ts wiring). */
@@ -29,7 +29,9 @@ export interface SessionRequestDeps {
   /** Hive root, or null when the hive is disabled. */
   root(): string | null;
   /** Live registry snapshot (structural subset of hive.Registry). */
-  registry(): { agents: Record<string, { provider?: AgentProvider; archived?: boolean; retired?: boolean }> };
+  registry(): {
+    agents: Record<string, { provider?: AgentProvider; archived?: boolean; retired?: boolean }>;
+  };
   /** PTY id of the agent's live pane, or undefined when none is open. */
   ptyForAgent(agentId: string): string | undefined;
   /** Broadcast the command to the renderer's queue gate. false = no listener
@@ -51,20 +53,27 @@ export function sessionRequestsDir(root: string): string {
  *  verify-after-integrate item on the card). */
 export function composeSessionCommand(
   raw: SessionRequest,
-  provider: AgentProvider | undefined
+  provider: AgentProvider | undefined,
 ): { ok: true; command: string } | { ok: false; reason: string } {
   const verb = typeof raw.verb === 'string' ? raw.verb.trim().toLowerCase() : '';
   if (verb !== 'clear' && verb !== 'resume') {
-    return { ok: false, reason: `"verb" must be 'clear' or 'resume' (got ${JSON.stringify(raw.verb ?? '')})` };
+    return {
+      ok: false,
+      reason: `"verb" must be 'clear' or 'resume' (got ${JSON.stringify(raw.verb ?? '')})`,
+    };
   }
   const sessionId = typeof raw.sessionId === 'string' ? raw.sessionId.trim() : '';
-  if (verb === 'resume' && !sessionId) return { ok: false, reason: '"resume" requires a "sessionId"' };
-  if (verb === 'clear' && sessionId) return { ok: false, reason: '"clear" takes no "sessionId" (resume-only field)' };
+  if (verb === 'resume' && !sessionId)
+    return { ok: false, reason: '"resume" requires a "sessionId"' };
+  if (verb === 'clear' && sessionId)
+    return { ok: false, reason: '"clear" takes no "sessionId" (resume-only field)' };
   if (verb === 'resume') return { ok: true, command: `/resume ${sessionId}` };
   // Undefined provider = the app's default engine (claude), matching
   // readConfig().defaultCommand's fallback.
   const cmd = contextCommandsForProvider(provider ?? 'claude').clear;
-  return cmd ? { ok: true, command: cmd } : { ok: false, reason: `provider "${provider ?? 'claude'}" has no clear command` };
+  return cmd
+    ? { ok: true, command: cmd }
+    : { ok: false, reason: `provider "${provider ?? 'claude'}" has no clear command` };
 }
 
 /** Move a processed request out of the queue so it's never reprocessed
@@ -76,7 +85,11 @@ function archiveRequest(root: string, filePath: string, sub: '.done' | '.failed'
     mkdirSync(dir, { recursive: true });
     renameSync(filePath, join(dir, basename(filePath)));
   } catch (e) {
-    try { unlinkSync(filePath); } catch { /* noop */ }
+    try {
+      unlinkSync(filePath);
+    } catch {
+      /* noop */
+    }
     console.error('[session] archiving request failed (deleted):', filePath, e);
   }
 }
@@ -88,8 +101,15 @@ export function processSessionRequest(filePath: string, deps: SessionRequestDeps
   const root = deps.root();
   const name = basename(filePath);
   if (!root) {
-    deps.informGod('[session rejected] hive disabled', `Session-request ${name} arrived with no hive root.`);
-    try { unlinkSync(filePath); } catch { /* already gone */ }
+    deps.informGod(
+      '[session rejected] hive disabled',
+      `Session-request ${name} arrived with no hive root.`,
+    );
+    try {
+      unlinkSync(filePath);
+    } catch {
+      /* already gone */
+    }
     return;
   }
   let raw: SessionRequest;
@@ -97,7 +117,10 @@ export function processSessionRequest(filePath: string, deps: SessionRequestDeps
     raw = JSON.parse(readFileSync(filePath, 'utf8')) as SessionRequest;
   } catch (e) {
     console.error('[session] unparseable request:', filePath, e);
-    deps.informGod('[session rejected] unparseable request', `Could not parse session-request ${name} — ${String(e)}`);
+    deps.informGod(
+      '[session rejected] unparseable request',
+      `Could not parse session-request ${name} — ${String(e)}`,
+    );
     archiveRequest(root, filePath, '.failed');
     return;
   }
@@ -107,16 +130,34 @@ export function processSessionRequest(filePath: string, deps: SessionRequestDeps
   };
 
   const agentId = typeof raw.agentId === 'string' ? raw.agentId.trim() : '';
-  if (!agentId) { fail('missing "agentId"'); return; }
+  if (!agentId) {
+    fail('missing "agentId"');
+    return;
+  }
 
   const entry = deps.registry().agents[agentId];
-  if (!entry) { fail(`no agent "${agentId}" in the registry`); return; }
-  if (entry.archived) { fail(`"${agentId}" is archived — unarchive (or restore) it before steering its pane`); return; }
-  if (entry.retired) { fail(`"${agentId}" is retired`); return; }
-  if (!deps.ptyForAgent(agentId)) { fail(`"${agentId}" has no live pane — open (or restore) its terminal first`); return; }
+  if (!entry) {
+    fail(`no agent "${agentId}" in the registry`);
+    return;
+  }
+  if (entry.archived) {
+    fail(`"${agentId}" is archived — unarchive (or restore) it before steering its pane`);
+    return;
+  }
+  if (entry.retired) {
+    fail(`"${agentId}" is retired`);
+    return;
+  }
+  if (!deps.ptyForAgent(agentId)) {
+    fail(`"${agentId}" has no live pane — open (or restore) its terminal first`);
+    return;
+  }
 
   const cmd = composeSessionCommand(raw, entry.provider);
-  if (!cmd.ok) { fail(cmd.reason); return; }
+  if (!cmd.ok) {
+    fail(cmd.reason);
+    return;
+  }
 
   if (!deps.emit(agentId, cmd.command)) {
     fail('no live floor window to receive the command — retry once the app window is up');
@@ -134,7 +175,13 @@ export function sessionRequestTick(deps: SessionRequestDeps): void {
   const dir = sessionRequestsDir(root);
   if (!existsSync(dir)) return;
   let files: string[] = [];
-  try { files = readdirSync(dir).filter((f) => f.endsWith('.json')).sort(); } catch { /* dir vanished */ }
+  try {
+    files = readdirSync(dir)
+      .filter((f) => f.endsWith('.json'))
+      .sort();
+  } catch {
+    /* dir vanished */
+  }
   for (const f of files) processSessionRequest(join(dir, f), deps);
 }
 
@@ -147,10 +194,19 @@ let sessionWatchTimer: ReturnType<typeof setInterval> | null = null;
  *  the new hive without a stop/start cycle (a stray tick is a no-op readdir). */
 export function startSessionRequestWatcher(deps: SessionRequestDeps): void {
   if (sessionWatchTimer || !deps.root()) return;
-  try { mkdirSync(sessionRequestsDir(deps.root()!), { recursive: true }); } catch { /* noop */ }
-  sessionWatchTimer = setInterval(() => { sessionRequestTick(deps); }, SESSION_TICK_MS);
+  try {
+    mkdirSync(sessionRequestsDir(deps.root()!), { recursive: true });
+  } catch {
+    /* noop */
+  }
+  sessionWatchTimer = setInterval(() => {
+    sessionRequestTick(deps);
+  }, SESSION_TICK_MS);
 }
 
 export function stopSessionRequestWatcher(): void {
-  if (sessionWatchTimer) { clearInterval(sessionWatchTimer); sessionWatchTimer = null; }
+  if (sessionWatchTimer) {
+    clearInterval(sessionWatchTimer);
+    sessionWatchTimer = null;
+  }
 }
