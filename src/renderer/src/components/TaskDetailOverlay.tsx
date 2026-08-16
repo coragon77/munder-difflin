@@ -58,6 +58,13 @@ export function TaskDetailOverlay() {
     closeTaskDetail();
   };
 
+  // Delete a human-origin card (offered only while still 'todo'; the main
+  // process re-checks both conditions before touching tasks.json).
+  const del = async () => {
+    try { await window.cth.hiveDeleteHumanTask(task.id); } catch { /* stay open on failure */ }
+    closeTaskDetail();
+  };
+
   return (
     <TaskDetail
       task={task}
@@ -66,6 +73,7 @@ export function TaskDetailOverlay() {
       onMove={(s) => void move(s)}
       onAssign={assign}
       onClose={closeTaskDetail}
+      onDelete={() => void del()}
     />
   );
 }

@@ -32,6 +32,9 @@ export interface HiveTask {
   /** First-class human feedback: the god appends {q} when a card needs the
    *  human; the ASK ME view fills in {a}. Full history stays on the card. */
   humanQA?: HumanQA[];
+  /** Set when the HUMAN created this card from the tasks tab. Gates the UI's
+   *  delete control (only human-origin cards, only while still 'todo'). */
+  origin?: 'human';
 }
 
 /** The card's currently open question for the human, if any. An entry the human
@@ -105,19 +108,26 @@ export function parseTasks(raw: unknown): HiveTask[] {
             // resurface on the next poll (openQuestion would see it as open).
             dismissedAt: typeof e.dismissedAt === 'string' ? e.dismissedAt : undefined
           }))
-        : undefined
+        : undefined,
+      origin: t.origin === 'human' ? 'human' : undefined
     }));
 }
 
 /**
- * Task kanban over hive/tasks.json — a READ surface. Polls every 5s; cards
- * carry just the title and open the app-wide detail overlay on click. The god
- * is the ledger's writer: new work enters via the dispatch box (mailed to the
- * god), never by the human inserting cards the orchestrator never heard about.
+ * Task kanban over hive/tasks.json. Polls every 5s. The god remains the
+ * ledger's writer of record — but the human can ADD cards from here (routed
+ * through the main process, which read-modify-writes the file at action time
+ * and mails the god an inform so nothing enters the board unheard) and delete
+ * their OWN cards while those are still untouched 'todo'.
  */
 export function TasksKanban() {
   const agents = useStore((s) => s.agents);
   const [tasks, setTasks] = useState<HiveTask[]>([]);
+  // Human add-form (toolbar): title + optional notes.
+  const [adding, setAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newNotes, setNewNotes] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
   // Detail view: cards show just the title — clicking one opens the full
   // breakdown as an APP-WIDE overlay over the office floor (see
   // TaskDetailOverlay) — the content grows (contracts, deps, human Q&A), so it
@@ -129,19 +139,21 @@ export function TasksKanban() {
     try { setTasks(parseTasks(await window.cth.hiveTasks())); } catch { /* keep last good */ }
   }, []);
 
-  // Dismiss a card off the board (human-initiated). The kanban is otherwise the
-  // god's to write, but a person can clear a card they no longer want tracked.
-  // Operates on the RAW ledger (not the display-parsed state, which drops fields
-  // like notes/conversation) so dismissing one card never strips the others.
-  const dismissTask = useCallback(async (id: string) => {
-    setTasks((prev) => prev.filter((t) => t.id !== id)); // optimistic
+  // Human-created card: main process does the read-modify-write on tasks.json
+  // (never a renderer-side whole-file overwrite — the god edits that file too).
+  // No wake-up message: god triages human cards at heartbeat standups.
+  const addTask = useCallback(async () => {
+    const title = newTitle.trim();
+    if (!title) return;
     try {
-      const raw = (await window.cth.hiveTasks()) as { tasks?: unknown[] };
-      const arr = Array.isArray(raw?.tasks) ? raw.tasks : [];
-      const next = arr.filter((t) => !(t && typeof t === 'object' && (t as { id?: unknown }).id === id));
-      await window.cth.hiveWriteTasks(next as HiveTask[]);
-    } catch { /* keep last good; the next poll re-syncs from disk */ }
-  }, []);
+      const res = await window.cth.hiveAddHumanTask(title, newNotes.trim() || undefined);
+      if (!res.ok) throw new Error(res.error ?? 'failed');
+      setNewTitle(''); setNewNotes(''); setAdding(false); setAddError(null);
+      await refresh();
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : String(e));
+    }
+  }, [newTitle, newNotes, refresh]);
 
   useEffect(() => {
     refresh();
@@ -162,9 +174,9 @@ export function TasksKanban() {
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--cth-paper-200)', position: 'relative' }}>
-      {/* Toolbar — read-only: the god is the ledger's writer. New work enters
-          through the dispatch box (which mails the god), not by the human
-          inserting cards the orchestrator never heard about. */}
+      {/* Toolbar — the god writes the ledger, but the human can ADD cards
+          (origin 'human'; triaged by the god at heartbeats) and delete their
+          own while still untouched todo (detail view). */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', flexShrink: 0,
         borderBottom: '1px solid var(--cth-ink-300)'
@@ -172,10 +184,42 @@ export function TasksKanban() {
         <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 9, color: 'var(--cth-ink-500)' }}>
           {tasks.length} task{tasks.length === 1 ? '' : 's'}
         </span>
+        <PixelButton variant="secondary" size="sm" onClick={() => { setAdding((a) => !a); setAddError(null); }}>
+          + task
+        </PixelButton>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--cth-ink-300)' }}>
-          new work? dispatch it to Michael (monitor tab)
+          urgent? dispatch it to Michael (monitor tab)
         </span>
       </div>
+      {adding && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', flexShrink: 0,
+          borderBottom: '1px solid var(--cth-ink-300)', background: 'var(--cth-cream-100)'
+        }}>
+          <input
+            autoFocus
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void addTask(); if (e.key === 'Escape') setAdding(false); }}
+            placeholder="task title — becomes a todo card for Michael to triage"
+            style={inputStyle}
+          />
+          <input
+            value={newNotes}
+            onChange={(e) => setNewNotes(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void addTask(); if (e.key === 'Escape') setAdding(false); }}
+            placeholder="notes (optional)"
+            style={inputStyle}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <PixelButton variant="primary" size="sm" disabled={!newTitle.trim()} onClick={() => void addTask()}>
+              add
+            </PixelButton>
+            <PixelButton variant="ghost" size="sm" onClick={() => setAdding(false)}>cancel</PixelButton>
+            {addError && <span style={{ fontSize: 11, color: 'var(--cth-coral)' }}>{addError}</span>}
+          </div>
+        </div>
+      )}
 
       {/* Columns */}
       <div style={{
@@ -207,7 +251,6 @@ export function TasksKanban() {
                     accent={col.accent}
                     assigneeName={nameFor(t.assignee)}
                     onOpen={() => openTaskDetail(t.id)}
-                    onDismiss={() => dismissTask(t.id)}
                   />
                 ))}
               </div>
@@ -224,12 +267,11 @@ export function TasksKanban() {
 // assignee. Everything else (the full contract, deps, controls) lives in the
 // detail view a click away: a kanban card can carry a title at most.
 
-function TaskCard({ task, accent, assigneeName, onOpen, onDismiss }: {
+function TaskCard({ task, accent, assigneeName, onOpen }: {
   task: HiveTask;
   accent: string;
   assigneeName?: string;
   onOpen: () => void;
-  onDismiss: () => void;
 }) {
   return (
     <div style={{ position: 'relative', display: 'flex' }}>
@@ -245,7 +287,7 @@ function TaskCard({ task, accent, assigneeName, onOpen, onDismiss }: {
         }}
       >
         <span style={{ width: 4, flexShrink: 0, background: accent, boxShadow: 'inset -1px 0 0 var(--cth-ink-700)' }} />
-        <span style={{ flex: 1, minWidth: 0, padding: '6px 18px 6px 7px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ flex: 1, minWidth: 0, padding: '6px 7px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{
             fontFamily: 'var(--cth-font-ui)', fontSize: 12, lineHeight: '16px',
             color: 'var(--cth-ink-900)',
@@ -259,27 +301,13 @@ function TaskCard({ task, accent, assigneeName, onOpen, onDismiss }: {
         </span>
         {waitsOnHuman(task) && (
           <span title="waiting on YOUR answer — see the ASK ME tab" style={{
-            alignSelf: 'center', marginRight: 18, flexShrink: 0,
+            alignSelf: 'center', marginRight: 6, flexShrink: 0,
             fontFamily: 'var(--cth-font-display)', fontSize: 10, padding: '2px 5px 1px',
             background: 'var(--cth-lilac)', color: 'var(--cth-ink-900)',
             boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
           }}>?</span>
         )}
       </button>
-      {/* Dismiss — sibling button (not nested) so it never triggers onOpen. */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onDismiss(); }}
-        title="dismiss this task (removes it from the board)"
-        aria-label="dismiss task"
-        style={{
-          position: 'absolute', top: 0, right: 0, width: 16, height: 16, padding: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
-          border: 'none', cursor: 'pointer', background: 'transparent',
-          color: 'var(--cth-ink-500)', fontFamily: 'var(--cth-font-ui)', fontSize: 12
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--cth-coral)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--cth-ink-500)'; }}
-      >✕</button>
     </div>
   );
 }
@@ -293,13 +321,16 @@ function TaskCard({ task, accent, assigneeName, onOpen, onDismiss }: {
 // the big stage instead of the narrow side panel. Exported for App's
 // TaskDetailOverlay; opened via the store's openTaskDetail from anywhere.
 
-export function TaskDetail({ task, all, assigneeName, onMove, onAssign, onClose }: {
+export function TaskDetail({ task, all, assigneeName, onMove, onAssign, onClose, onDelete }: {
   task: HiveTask;
   all: HiveTask[];
   assigneeName?: string;
   onMove: (s: Status) => void;
   onAssign: () => void;
   onClose: () => void;
+  /** Delete this card — only offered for human-origin todo cards (enforced
+   *  again in the main process; god-created and picked-up cards survive). */
+  onDelete?: () => void;
 }) {
   const col = COLUMNS.find((c) => c.key === task.status) ?? COLUMNS[0];
   // Belt + suspenders: parseTasks normalizes these, but the ledger is a
@@ -429,6 +460,13 @@ export function TaskDetail({ task, all, assigneeName, onMove, onAssign, onClose 
               </PixelButton>
               <PixelButton variant="ghost" size="sm" onClick={onClose}>close</PixelButton>
             </div>
+            {/* Delete — human-origin todo cards only. Everything else (god's
+                cards, anything the hive picked up) is not the UI's to remove. */}
+            {onDelete && task.origin === 'human' && task.status === 'todo' && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <PixelButton variant="destructive" size="sm" onClick={onDelete}>delete card</PixelButton>
+              </div>
+            )}
           </div>
         </PixelPanel>
       </div>

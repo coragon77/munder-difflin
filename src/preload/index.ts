@@ -976,6 +976,13 @@ const api = {
   /** Overwrite the hive task ledger with the full task list and commit it. */
   hiveWriteTasks: (tasks: HiveTask[]): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:writeTasks', tasks),
+  /** The human adds a todo card (origin 'human'). Main-process read-modify-write
+   *  on tasks.json at action time. No wake-up — god triages at heartbeats. */
+  hiveAddHumanTask: (title: string, notes?: string): Promise<{ ok: boolean; task?: HiveTask; error?: string }> =>
+    ipcRenderer.invoke('hive:addHumanTask', title, notes),
+  /** Delete a human-origin card — only while it is still 'todo'. */
+  hiveDeleteHumanTask: (id: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('hive:deleteHumanTask', id),
 
   // ─── Scheduled missions (recurring auto-dispatch) ──────────────────────────
   listMissions: (): Promise<ScheduledMission[]> => ipcRenderer.invoke('missions:list'),

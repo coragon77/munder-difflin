@@ -121,6 +121,10 @@ export interface HiveTask {
    *  once and never persisted), so a GET status lookup can match by hashing the
    *  presented token. Read-only capability: it never widens routing or exposure. */
   webhook?: { tokenHash: string };
+  /** Set when the HUMAN created this card from the tasks tab (addHumanTask).
+   *  Persistent origin marker: the UI's delete rule (only human-origin cards,
+   *  only while still 'todo') and the god's triage rely on it. */
+  origin?: 'human';
 }
 
 export interface AgentMeta {
@@ -1182,7 +1186,7 @@ export class HiveManager {
       : '';
     const godLine = meta.isGod
       ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST: BEFORE minting an intern (spawn-requests/), check the roster for an EXISTING fitting agent that is not currently busy and route the task there; interns are the fallback, not the default — mint one only when (a) the human explicitly ordered an intern/observable worker, or (b) parallelism: every fitting agent is mid-task. Say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, branch integration, and final QA — and remain the sole scribe of board.md. You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short.'
-        + ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.`
+        + ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.`
         + ' INTERNS — you OWN their lifecycle: mint them via spawn-requests/ ("persistent": true; template in COMMANDS.md) for delegated standing work, and FIRE them via fire-requests/ IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate.'
       : meta.isAssistant
       ? 'You are Michael\'s PREP ASSISTANT. You will be handed short, possibly vague instructions (each begins with "ENRICH TASK:"). For each one: (1) figure out which project it concerns and cd into the most relevant repo — you start in Michael\'s home directory; (2) gather concrete context READ-ONLY (exact file paths, current state, relevant code, conventions, active branch, gotchas) — NEVER modify, create, or delete files; (3) rewrite the instruction into ONE clear, self-contained prompt that Michael can execute autonomously, preserving the user\'s original intent without inventing scope. Then deliver it: write ONE message JSON into your outbox with "to":"god", "act":"request", a short subject, and the finished prompt as the body. Do NOT perform the task yourself — your only output is the improved prompt sent to Michael.'
@@ -1441,6 +1445,52 @@ export class HiveManager {
     this.writeJson(join(root, 'tasks.json'), { tasks });
     this.appendLog({ kind: 'tasks', count: tasks.length });
     this.commit(`hive: tasks (${tasks.length})`);
+  }
+
+  /** Slug for a human card id: lowercase, runs of non-alnum → '-'. */
+  private humanTaskSlug(title: string): string {
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+    return slug || 'task';
+  }
+
+  /** The human adds a card from the tasks tab. Read-modify-write on
+   *  tasks.json AT ACTION TIME (the god edits the file directly from its
+   *  shell — never overwrite from stale renderer state). No wake-up message
+   *  (amendment 1): human cards wait for the god's heartbeat triage — cards
+   *  are the backlog channel, direct messages the act-now channel (the
+   *  godLine standup clause says so). */
+  addHumanTask(title: string, notes?: string): HiveTask | null {
+    const clean = title.trim();
+    if (!clean) return null;
+    const data = this.tasks() as { tasks: HiveTask[] };
+    const base = `human-${this.humanTaskSlug(clean)}-${new Date().toISOString().slice(0, 10)}`;
+    // Same title twice on the same day must not collide (React keys, god's
+    // lookups): append -2, -3, … until free.
+    let id = base;
+    for (let n = 2; data.tasks.some((t) => t?.id === id); n++) id = `${base}-${n}`;
+    const task: HiveTask = {
+      id,
+      title: clean,
+      ...(notes && notes.trim() ? { description: notes.trim() } : {}),
+      status: 'todo',
+      dependsOn: [],
+      priority: 3,
+      createdAt: new Date().toISOString(),
+      origin: 'human'
+    };
+    this.writeTasks([...data.tasks, task]);
+    return task;
+  }
+
+  /** The human deletes their OWN card — only while it is an untouched todo
+   *  (origin 'human' AND status 'todo'). God-created cards and anything the
+   *  hive already picked up survive. Read-modify-write at action time. */
+  deleteHumanTask(id: string): boolean {
+    const data = this.tasks() as { tasks: HiveTask[] };
+    const card = data.tasks.find((t) => t?.id === id);
+    if (!card || card.origin !== 'human' || card.status !== 'todo') return false;
+    this.writeTasks(data.tasks.filter((t) => t?.id !== id));
+    return true;
   }
   memory(id: string): string {
     const p = join(this.agentDir(id), 'memory.md');
@@ -2270,6 +2320,9 @@ EXISTING agent that fits the work and is not currently busy — route the task
 there instead. Interns are the fallback, not the default: mint only when
 (a) the human explicitly ordered an intern/observable worker, or
 (b) parallelism — every fitting agent is mid-task.
+
+Human-created cards (origin 'human', from the tasks tab) arrive without a
+message — triage them at heartbeat standups, roster-first.
 
 ## Superpowers
 

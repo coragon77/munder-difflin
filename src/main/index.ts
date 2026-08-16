@@ -3295,6 +3295,23 @@ ipcMain.handle('hive:writeTasks', (_evt, tasks: unknown) => {
   hive.writeTasks(tasks as HiveTask[]);
   return { ok: true };
 });
+// Human-created todo cards (tasks tab): both paths read-modify-write on
+// tasks.json in the MAIN process at action time — the god edits that file
+// directly from its shell, so a stale renderer-side whole-file overwrite is
+// never acceptable here.
+ipcMain.handle('hive:addHumanTask', (_evt, title: unknown, notes: unknown) => {
+  if (typeof title !== 'string' || !title.trim()) return { ok: false, error: 'invalid title' };
+  if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
+  const task = hive.addHumanTask(title, typeof notes === 'string' ? notes : undefined);
+  return task ? { ok: true, task } : { ok: false, error: 'empty title' };
+});
+ipcMain.handle('hive:deleteHumanTask', (_evt, id: unknown) => {
+  if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
+  if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
+  return hive.deleteHumanTask(id)
+    ? { ok: true }
+    : { ok: false, error: "not a human-origin 'todo' card" };
+});
 ipcMain.handle('hive:setArchived', (_evt, id: unknown, archived: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
   if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
