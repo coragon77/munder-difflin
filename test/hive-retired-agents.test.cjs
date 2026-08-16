@@ -105,6 +105,17 @@ test('a fired agent\'s swept folder stays swept', async (t) => {
   assert.equal(hive.registry().agents['intern-doomed'].retired, true);
 });
 
+test('a fresh spawn refreshes the roster too, not just an archive', async (t) => {
+  const { hive } = floor(t);
+  const seen = [];
+  hive.onRosterChange = () => { seen.push(activeIds(hive).join(',')); };
+
+  await hive.ensureAgent({ id: 'pam-1', name: 'Pam', provider: 'claude' });
+
+  assert.equal(seen.length, 1, 'a new hire must hit the roster without waiting for the beat');
+  assert.equal(seen[0], 'pam-1', 'and the snapshot is taken AFTER the registry write');
+});
+
 test('retiring refreshes the roster snapshot and survives a broken writer', async (t) => {
   const { hive } = floor(t);
   await hive.ensureAgent({ id: 'jim-1', name: 'Jim', provider: 'claude' });

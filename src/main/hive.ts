@@ -662,6 +662,10 @@ export class HiveManager {
       this.appendLog({ kind: 'cwd_invalid', agentId: meta.id, cwd: meta.cwd, issue: cwd.issue });
     }
     this.commit(`hive: register ${meta.id}`);
+    // Symmetric with setArchived: a spawn changes the ACTIVE set too, so refresh
+    // the roster snapshot now instead of leaving god blind to a new hire until the
+    // next 8s beat (longer across a suspend, where the interval is frozen).
+    try { this.onRosterChange?.(); } catch { /* snapshot is best-effort */ }
 
     const env: Record<string, string> = {
       AGENT_ID: meta.id,
