@@ -6,6 +6,7 @@ import { SpritePortrait } from './SpritePortrait';
 import { PtyTerminalView } from './PtyTerminalView';
 import { MessageQueueComposer } from './MessageQueueComposer';
 import { TasksKanban } from './TasksKanban';
+import { MarkdownPreview } from '@/markdown/MarkdownPreview';
 import { AskMeTab } from './AskMeTab';
 import { TriggersTab } from './triggers/TriggersTab';
 import { TriggerHistoryTab } from './triggers/TriggerHistoryTab';
@@ -41,7 +42,7 @@ import { canReceiveInbox } from '@shared/agentProvider';
 // Both the AskMe (#human) tab and the Triggers tab live here. Triggers replaced
 // the old Schedules tab: schedules are now one of four trigger types, and the
 // whole surface lives in ./triggers (see src/shared/triggers.ts for the contract).
-type CCTab = 'terminal' | 'floor' | 'tasks' | 'human' | 'triggers' | 'trigger-history'
+type CCTab = 'terminal' | 'floor' | 'tasks' | 'board' | 'human' | 'triggers' | 'trigger-history'
   | 'memory' | 'graph' | 'activity' | 'handbook' | 'workers';
 
 /** Fallback denominator for the per-agent token meter when no floor token budget
@@ -64,6 +65,7 @@ const TABS: { key: CCTab; label: string; icon: Parameters<typeof Icon>[0]['name'
   { key: 'terminal', label: 'terminal', icon: 'terminal' },
   { key: 'floor', label: 'monitor', icon: 'mcp' },
   { key: 'tasks', label: 'tasks', icon: 'check' },
+  { key: 'board', label: 'board', icon: 'ledger' },
   { key: 'human', label: 'ask me', icon: 'bell' },
   { key: 'triggers', label: 'triggers', icon: 'clock' },
   { key: 'trigger-history', label: 'history', icon: 'ledger' },
@@ -271,6 +273,7 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
         )}
         {tab === 'floor' && <FloorTab seed={dispatchSeed} />}
         {tab === 'tasks' && <TasksKanban />}
+        {tab === 'board' && <BoardTab />}
         {tab === 'human' && <AskMeTab />}
         {tab === 'triggers' && <TriggersTab />}
         {tab === 'trigger-history' && <TriggerHistoryTab />}
@@ -288,6 +291,56 @@ export function CommandCenterPanel({ agent, fullscreen = false }: { agent: Agent
         {tab === 'workers' && <WorkersTab />}
       </div>
     </PixelPanel>
+  );
+}
+
+// ─── Board tab — the god's board.md, read-only ──────────────────────────────
+
+/** hive/board.md as a read-only markdown view — the freeform planning surface
+ *  next to the structured tasks.json kanban. The god agent is the sole scribe
+ *  (see HIVE.md); new work enters via the dispatch box, never here. Polls the
+ *  same 5s cadence as TasksKanban — the cheapest refresh the other hive-file
+ *  view already uses. */
+function BoardTab() {
+  const [board, setBoard] = useState('');
+  const [missing, setMissing] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const text = await window.cth.hiveBoard();
+        if (!alive) return;
+        setBoard(text);
+        setMissing(!text.trim());
+      } catch { /* keep last good */ }
+    };
+    void refresh();
+    const timer = setInterval(refresh, 5000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--cth-paper-200)' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', flexShrink: 0,
+        borderBottom: '1px solid var(--cth-ink-300)'
+      }}>
+        <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 9, color: 'var(--cth-ink-500)' }}>
+          BOARD.MD
+        </span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--cth-ink-300)' }}>
+          read-only — Michael is the scribe
+        </span>
+      </div>
+      {missing ? (
+        <Scroll><Muted>No board yet — Michael (the god agent) scribes board.md.</Muted></Scroll>
+      ) : (
+        <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: 10 }}>
+          <MarkdownPreview source={board} />
+        </div>
+      )}
+    </div>
   );
 }
 
