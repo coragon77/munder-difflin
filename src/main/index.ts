@@ -4806,6 +4806,11 @@ function startEphemeralWorkerWatcher(): void {
   if (workerWatchTimer || !hive.enabled()) return;
   const dir = spawnRequestsDir();
   if (dir) { try { mkdirSync(dir, { recursive: true }); } catch { /* noop */ } }
+  // fire-requests/ needs the same bootstrap (card fire-requests-dir-not-created):
+  // the tick polls it with existsSync, and god's very first `cat >` into a
+  // fresh install's missing dir would fail before the watcher ever ran.
+  const fdir = fireRequestsDir();
+  if (fdir) { try { mkdirSync(fdir, { recursive: true }); } catch { /* noop */ } }
   workerWatchTimer = setInterval(() => { void ephemeralWorkerTick(); }, WORKER_TICK_MS);
 }
 
