@@ -68,6 +68,31 @@ test('archiving a live agent moves it off the floor into the archive', () => {
   assert.deepEqual(s.archivedAgents.map((a) => a.id), ['pam-1'], 'and is retained as archived');
 });
 
+// Fire-card leak, live repro 2026-08-16 (intern-erin): the fire-request path
+// killed her PTY and set registry `archived:true`, but nothing told the floor —
+// so her card stayed in persisted `cth.agents` and Ctrl+R respawned her from it
+// (archive @1786893363362, spawn @1786893581579), flipping `archived` back.
+// Main now broadcasts hive:agentArchived on every fire; this pins the renderer
+// half — that the broadcast actually removes the intern's card AND the persisted
+// copy a reload would respawn from, despite the intern branch below it.
+test('archiving an intern clears the persisted floor card a reload respawns from', () => {
+  memoryStorage.data = {};
+  useStore.setState({
+    agents: [agent('intern-erin', { ptyId: 'intern-erin' }), agent('pam-1')],
+    archivedAgents: [], restorableAgents: []
+  });
+
+  useStore.getState().archiveAgent('intern-erin');
+
+  const s = useStore.getState();
+  assert.deepEqual(s.agents.map((a) => a.id), ['pam-1'], 'card leaves the floor');
+  assert.deepEqual(s.archivedAgents, [], 'interns leave no archived entry (d56bc65)');
+  assert.deepEqual(
+    JSON.parse(memoryStorage.getItem('cth.agents')).map((a) => a.id),
+    ['pam-1'],
+    'and the removal is persisted — a surviving card is what the reload respawns');
+});
+
 test('archiving an unknown id changes nothing', () => {
   useStore.setState({ agents: [], archivedAgents: [], restorableAgents: [agent('keep')] });
   const before = useStore.getState().restorableAgents;
