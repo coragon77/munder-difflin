@@ -594,6 +594,32 @@ function clearMissionTimers(): void {
   missionTimers.clear();
 }
 
+/** Quiet-floor guard for `skipWhenFloorQuiet` missions (ops-standup). Quiet
+ *  means BOTH: (a) no agent other than god has activity newer than `since` —
+ *  the same telemetry usage timestamps `writeFleetSnapshot` turns into
+ *  fleet.json's `lastActiveSecAgo` (registry decides who counts: archived and
+ *  god are excluded) — and (b) tasks.json parses with no card in 'doing' or
+ *  'blocked'. NOT the heartbeat's isFloorQuiet: that one watches coordination
+ *  file mtimes for a threshold; this one asks "did anything move since the last
+ *  fire". Any read/parse failure (or no hive root) = NOT quiet — fail toward
+ *  firing rather than silently dropping a due dispatch. */
+function floorQuietSince(since: number): boolean {
+  const reg = hive.registry();
+  const usageById = new Map(telemetry.snapshot().usage.map((u) => [u.agentId, u]));
+  const busy = Object.entries(reg.agents).some(
+    ([id, a]) => !a.archived && !a.isGod && (usageById.get(id)?.ts ?? 0) > since
+  );
+  if (busy) return false;
+  const root = hive.root();
+  if (!root) return false;
+  try {
+    const t = JSON.parse(readFileSync(join(root, 'tasks.json'), 'utf8')) as { tasks?: HiveTask[] };
+    return !(t.tasks ?? []).some((x) => x?.status === 'doing' || x?.status === 'blocked');
+  } catch {
+    return false; // missing/corrupt tasks.json → fire, don't skip on a guess
+  }
+}
+
 /** Rebuild the scheduler from persisted config: clear every existing timer,
  *  then arm each enabled mission honoring its lastFiredAt — a setTimeout for the
  *  time remaining until its next due fire, which then settles into a steady
@@ -611,12 +637,19 @@ function syncMissions(): void {
     if (m.kind === 'heartbeat') { armHeartbeat(m); continue; }
     const fire = (): void => {
       try {
+        // skipWhenFloorQuiet (ops-standup): while the floor is quiet a due fire
+        // is dropped instead of waking god for a full turn nobody needed. The
+        // skip still stamps lastFiredAt below, so it counts as a completed cycle
+        // and reboot catch-up stays sane. Only the hive.send is suppressed —
+        // autoCompact / compact handling below is NOT skipped.
+        const quietSkip = !!m.skipWhenFloorQuiet && floorQuietSince(m.lastFiredAt ?? 0);
+        if (quietSkip) console.log('[scheduler] mission', m.id, 'skipped — floor quiet');
         // A 'compact' maintenance mission (maint-1) is compaction-ONLY: it carries
         // no dispatch body/target, so skip the hive.send and just fire auto-compact.
         // Gate on `kind!=='compact'` ALONE — that already excludes the compact mission;
         // we deliberately do NOT add `&& m.body`, so other (dispatch) missions keep
         // their prior behaviour, including the historical empty-body send (Pam N1).
-        if (m.kind !== 'compact' && hive.enabled()) {
+        if (m.kind !== 'compact' && hive.enabled() && !quietSkip) {
           hive.send({ to: m.to, act: 'request', subject: m.label, body: m.body }, 'scheduler');
         }
         // Auto-compact: do NOT jam /compact into busy terminals. Hand it to the
@@ -890,6 +923,20 @@ function ensureDefaultMissions(): void {
     });
     console.log('[triggers] dropped the legacy per-mission autoCompact flag —',
       'contextTrigger.compact is now the only schedule that compacts');
+  }
+  const cfg5 = readConfig();
+  const missions5 = cfg5.missions ?? [];
+  // Backfill `skipWhenFloorQuiet` onto a standup that was seeded before the
+  // flag existed (fresh seeds carry it straight from OPS_STANDUP_MISSION).
+  // Patch by id ONLY where the key is absent, so a hand-set `false` survives;
+  // idempotent, so after the first patch there is nothing left to write.
+  if (missions5.some((m) => m.id === OPS_STANDUP_MISSION.id && m.skipWhenFloorQuiet === undefined)) {
+    writeConfig({
+      missions: missions5.map((m) =>
+        m.id === OPS_STANDUP_MISSION.id && m.skipWhenFloorQuiet === undefined
+          ? { ...m, skipWhenFloorQuiet: OPS_STANDUP_MISSION.skipWhenFloorQuiet }
+          : m)
+    });
   }
 }
 

@@ -41,6 +41,10 @@ export interface ScheduledMission {
    *  the numbers anywhere else — they will drift. */
   autoCompact?: boolean;
   lastFiredAt?: number;
+  /** When true, a due fire is silently skipped while the floor is quiet
+   *  (no non-god agent active since the last fire AND no tasks.json card
+   *  in 'doing' or 'blocked'). */
+  skipWhenFloorQuiet?: boolean;
   /** Mission flavor. Absent ⇒ 'dispatch' (the classic interval-dispatch mission,
    *  e.g. the ops standup). 'heartbeat' (Lane A #1) is a context-aware beat: it
    *  observes live floor state, re-engages a quiet god, and ticks the circuit
@@ -69,7 +73,8 @@ export const OPS_STANDUP_MISSION: ScheduledMission = {
     'next step, then compact and resume from the same point — so terminal ' +
     'contexts stay bounded without losing work. The compaction is queued and ' +
     'runs when an agent is idle, so it never interrupts work mid-step.)',
-  enabled: true
+  enabled: true,
+  skipWhenFloorQuiet: true
   // NO autoCompact. Compaction belongs to contextTrigger.compact and nothing else.
   // This flag used to live here as well, which meant a default install asked for
   // compaction on TWO cadences — hourly from this standup and 2-hourly from the
