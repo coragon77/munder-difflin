@@ -53,7 +53,8 @@
       },
       "style": {
         "noNonNullAssertion": "off",
-        "useTemplate": "off"
+        "useTemplate": "off",
+        "useNodejsImportProtocol": "warn"
       },
       "complexity": {
         "useOptionalChain": "off",
@@ -61,7 +62,10 @@
       },
       "correctness": {
         "useExhaustiveDependencies": "warn",
-        "noVoidTypeReturn": "off"
+        "noVoidTypeReturn": "off",
+        "noUnusedVariables": "warn",
+        "noUnusedPrivateClassMembers": "warn",
+        "noUnusedImports": "warn"
       },
       "suspicious": {
         "noExplicitAny": "warn",
