@@ -226,6 +226,8 @@ export interface ScheduledMission {
   enabled: boolean;
   autoCompact?: boolean;
   lastFiredAt?: number;
+  /** Dispatch only: skip a due fire while the floor is quiet. */
+  skipWhenFloorQuiet?: boolean;
   /** Mission flavor; 'heartbeat' (Lane A #1) is a context-aware adaptive beat. */
   kind?: 'dispatch' | 'heartbeat' | 'compact';
   /** Heartbeat only: floor-quiet threshold in ms. */

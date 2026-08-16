@@ -27,6 +27,7 @@ interface ScheduledMission {
   enabled: boolean;
   autoCompact?: boolean;
   lastFiredAt?: number;
+  skipWhenFloorQuiet?: boolean;
   kind?: 'dispatch' | 'heartbeat' | 'compact';
   quietThresholdMs?: number;
 }
@@ -170,6 +171,7 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
   const [to, setTo] = useState(mission.to);
   const [intervalMs, setIntervalMs] = useState(mission.intervalMs);
   const [body, setBody] = useState(mission.body);
+  const [skipQuiet, setSkipQuiet] = useState(!!mission.skipWhenFloorQuiet);
   const [saved, setSaved] = useState(false);
 
   // Seed the draft when the row opens — never on every render, or the scheduler
@@ -180,13 +182,18 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
     setTo(mission.to);
     setIntervalMs(mission.intervalMs);
     setBody(mission.body);
+    setSkipQuiet(!!mission.skipWhenFloorQuiet);
     setSaved(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const heartbeat = mission.kind === 'heartbeat';
+  // The quiet-skip is dispatch-only: heartbeat and compact fire on their own
+  // logic and never reach the guard in the scheduler.
+  const dispatch = mission.kind !== 'heartbeat' && mission.kind !== 'compact';
   const dirty = label !== mission.label || to !== mission.to
-    || intervalMs !== mission.intervalMs || body !== mission.body;
+    || intervalMs !== mission.intervalMs || body !== mission.body
+    || (dispatch && skipQuiet !== !!mission.skipWhenFloorQuiet);
 
   const fired = mission.lastFiredAt ? `fired ${relTime(Date.now() - mission.lastFiredAt)}` : 'not yet fired';
   const next = mission.enabled && mission.lastFiredAt
@@ -199,7 +206,7 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
     // Fold the trim back into the draft too, or the row would read as still
     // dirty against a label that was only ever going to be stored trimmed.
     setLabel(trimmed);
-    onPatch({ label: trimmed, to, intervalMs, body });
+    onPatch({ label: trimmed, to, intervalMs, body, ...(dispatch ? { skipWhenFloorQuiet: skipQuiet } : {}) });
     setSaved(true);
     setTimeout(() => setSaved(false), 1300);
   };
@@ -250,6 +257,17 @@ function MissionRow({ mission, targetName, agents, onPatch, onDelete }: {
             <IntervalPicker value={intervalMs} onChange={setIntervalMs} />
             {heartbeat && <Hint>The beat adapts to how quiet the floor is, so this is the ceiling, not the exact gap.</Hint>}
           </Field>
+          {dispatch && (
+            <Field label="QUIET FLOOR">
+              <Toggle
+                on={skipQuiet}
+                onClick={() => setSkipQuiet((q) => !q)}
+                onLabel="skip"
+                offLabel="fire anyway"
+              />
+              <Hint>Skips a due fire when no agent was active since the last one and no task is in doing/blocked.</Hint>
+            </Field>
+          )}
           <Field label="PROMPT">
             <textarea
               value={body}

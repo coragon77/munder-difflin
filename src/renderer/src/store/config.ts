@@ -31,6 +31,8 @@ export interface ScheduledMission {
   enabled: boolean;
   autoCompact?: boolean;
   lastFiredAt?: number;
+  /** Dispatch only: skip a due fire while the floor is quiet. */
+  skipWhenFloorQuiet?: boolean;
   kind?: 'dispatch' | 'heartbeat' | 'compact';
   quietThresholdMs?: number;
 }
