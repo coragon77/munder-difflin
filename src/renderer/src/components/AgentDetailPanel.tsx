@@ -14,7 +14,7 @@ import { ToolWaterfall } from './ToolWaterfall';
 import { AgentControlStrip } from './AgentControlStrip';
 import { GitTab } from './GitTab';
 import { Icon } from './Icon';
-import { useStore, type Agent } from '@/store/store';
+import { useStore, type Agent, agentClassTag, displayAgentName } from '@/store/store';
 import { usePtyParser } from '@/hooks/usePtyParser';
 
 export interface AgentDetailPanelProps {
@@ -131,7 +131,7 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
             fontSize: 10, lineHeight: '14px',
             color: 'var(--cth-ink-900)',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-          }}>{agent.name.toUpperCase()}</div>
+          }}>{agentClassTag(agent)}{displayAgentName(agent).toUpperCase()}</div>
           <div style={{
             display: 'flex', gap: 6, alignItems: 'center', marginTop: 1
           }}>

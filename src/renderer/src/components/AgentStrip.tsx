@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AgentCard } from './AgentCard';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import { useStore, type Agent } from '@/store/store';
+import { useStore, type Agent, agentClassTag, displayAgentName } from '@/store/store';
 import { type HarnessConfig } from '@/store/config';
 import { useRestoreTeam } from '@/hooks/useRestoreTeam';
 
@@ -128,7 +128,7 @@ export function AgentStrip({ config }: AgentStripProps) {
         >
           <AgentCard
             draggable
-            name={a.name}
+            name={agentClassTag(a) + displayAgentName(a)}
             character={a.character}
             accent={a.accent}
             status={a.status}
@@ -181,7 +181,7 @@ export function AgentStrip({ config }: AgentStripProps) {
                     <span style={{
                       fontFamily: 'var(--cth-font-display)', fontSize: 8, lineHeight: '12px',
                       color: 'var(--cth-ink-500)'
-                    }}>PRIVATE NOTE · {a.name.toUpperCase()}</span>
+                    }}>PRIVATE NOTE · {displayAgentName(a).toUpperCase()}</span>
                     <button
                       onClick={() => setNoteEditId(null)}
                       title="Done"
