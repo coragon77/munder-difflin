@@ -31,13 +31,9 @@ import {
 } from '@/components/terminalPool';
 import { deliverWithAcknowledgement } from './queueDelivery';
 import { cardSessionActionStillValid, type CardSnapshotLike } from '../../../shared/cardSessions';
-import { OFFICE_CAST, DEFAULT_CHARACTER } from '@/scene/office/cast';
+import { spawnIdentity } from '@/scene/office/spawnIdentity';
 
 const GOD_ID = 'god';
-/** Accent palette for MAIN-spawned (voice-hired) agents — picked deterministically
- *  from the agent id so the same agent always gets the same colour. Mirrors the
- *  AddAgentModal palette. */
-const SPAWN_ACCENTS = ['coral', 'mint', 'sky', 'lemon', 'lilac', 'peach'] as const;
 const GOD_PTY = `pty-${GOD_ID}`;
 
 const REMOTE_CONTROL_SETTLE_MS = 1500;
@@ -1062,20 +1058,22 @@ export function useHive(config: HarnessConfig | null): void {
     if (!config?.onboardingComplete) return;
     const offSpawn = window.cth.onHiveAgentSpawned?.((rec) => {
       if (!rec?.id) return;
+      const s = useStore.getState();
       // addAgent is idempotent, but bail early if the renderer already carded it.
-      if (useStore.getState().agents.some((a) => a.id === rec.id)) return;
-      const key = (rec.name || rec.id).toLowerCase();
-      const character =
-        OFFICE_CAST.find((m) => m.name === key || m.displayName.toLowerCase() === key)?.name ??
-        DEFAULT_CHARACTER;
-      let h = 0;
-      for (const ch of rec.id) h = (h + ch.charCodeAt(0)) % SPAWN_ACCENTS.length;
+      if (s.agents.some((a) => a.id === rec.id)) return;
+      // A re-spawn of a known id (vacation recall, unarchive) is the SAME agent,
+      // not a new hire: prefer the prior row's office identity — the persisted
+      // hire-time sprite pick on the archived/restorable shelf that addAgent is
+      // about to consume — over re-deriving it. Re-deriving is how a recalled
+      // vacationer came back with the default sprite (ada: angela → jim).
+      const prior = [...s.archivedAgents, ...s.restorableAgents].find((a) => a.id === rec.id);
+      const { character, accent } = spawnIdentity(rec.id, rec.name, prior);
       const project = (rec.cwd || '').split(/[\\/]/).filter(Boolean).pop() || 'hive';
       const agent: Agent = {
         id: rec.id,
         name: rec.name || rec.id,
         character,
-        accent: SPAWN_ACCENTS[h],
+        accent,
         description: rec.role || 'a fresh harness',
         project,
         tmuxTarget: '',
