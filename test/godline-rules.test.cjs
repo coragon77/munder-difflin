@@ -14,6 +14,11 @@
  *    IMMEDIATELY before acting, so the typed-nudge fallback stands down
  *    inside its grace window; the card/board carry work state, not the
  *    inbox file.
+ *  - ATOMIC JSON WRITES — every direct god write to tasks.json (or any
+ *    shared hive JSON) goes through a tempfile in the same directory plus
+ *    os.replace() onto the target, so a crash mid-write cannot corrupt the
+ *    kanban and a stale read-modify-write cannot clobber a landing stamp
+ *    (card godline-atomic-taskfile-writes-20260816).
  *
  * Same pattern as the SKILL-DRIVEN WORK amendment (session-naming card).
  */
@@ -46,4 +51,12 @@ test('godLine carries the ARCHIVE-ON-READ rule', () => {
   assert.ok(/to inbox\/\.done\/ IMMEDIATELY, before acting/.test(p));
   assert.ok(/stands down inside its grace window/.test(p));
   assert.ok(/card\/board carry the work state, not the inbox file/.test(p));
+});
+
+test('godLine carries the ATOMIC JSON WRITES rule', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/ATOMIC JSON WRITES:/.test(p), 'god briefing must carry the ATOMIC JSON WRITES rule');
+  assert.ok(/direct writes to tasks\.json \(or any other shared hive JSON/.test(p));
+  assert.ok(/tempfile in the SAME directory/.test(p));
+  assert.ok(/os\.replace\(\)/.test(p));
 });
