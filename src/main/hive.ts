@@ -1987,7 +1987,8 @@ EOF
 - **Optional:** \`id\` (defaults to filename), \`name\` (default \`Worker <id>\`), \`command\`
   (engine CLI; default = config \`defaultCommand\`), \`provider\`, \`model\` (Claude
   \`--model\`), \`isolate\` (default \`true\` = fresh git worktree on \`agent/<id>\`),
-  \`tokenCap\`, \`slack\` \`{channel, thread_ts}\` (reply target + failure surfacing).
+  \`tokenCap\`, \`slack\` \`{channel, thread_ts}\` (reply target + failure surfacing),
+  \`persistent\` (default \`false\` — see Path 3).
 - **What happens** (main process, poll every 1.5s, cap = config \`maxConcurrentWorkers\`
   default 4): validates → spawns \`worker-<id>\` via the shared core (\`ensureAgent\` →
   \`registry.json\` entry + \`agents/worker-<id>/\` + \`hive: register\` commit → PTY boots
@@ -2012,10 +2013,32 @@ Andy/Dwayne-style agents (\`andy-msudcy80\`, id = name-slug + base36 timestamp,
 Respawning an existing registry agent after restart = the UI "restore team" flow
 (same \`ensureAgent\`, resumes the recorded session id).
 
-**Smallest possible extension (proposed, NOT built):** accept \`"persistent": true\`
-in a spawn-request and skip the \`liveWorkers\` registration + done/idle reaping in
-\`processSpawnRequest\` (~10 lines in \`src/main/index.ts\`) — god's Bash path would
-then mint persistent named agents directly.`;
+### Path 3 — Persistent hire (god-runnable, standing floor agent) ✅
+
+A spawn-request with \`"persistent": true\` mints a STANDING agent instead of an
+ephemeral worker: it gets a floor card + terminal pane (like any hire), is NEVER
+reaped (no done/idle/token-cap release), works directly in \`cwd\` (\`isolate\`
+defaults to \`false\` for persistent — worktrees are the ephemeral pattern), and
+survives restarts via the registry like any named agent (restore-team respawns
+it, resuming its recorded session).
+
+\`\`\`bash
+cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/spawn-requests/new-hire.json" <<'EOF'
+{
+  "id": "docs-writer",
+  "name": "Erin",
+  "objective": "Read the repo and draft a CONTRIBUTING.md; report to god when done, then standby for follow-ups.",
+  "cwd": "/opt/myproject",
+  "command": "claude",
+  "persistent": true
+}
+EOF
+\`\`\`
+
+After the objective completes the agent stays hired — further work arrives via its
+inbox (god dispatches with the standard request protocol). Closing its terminal
+tab or quitting the app archives it; it re-hires through restore-team. Killing it
+for good = the UI archive/remove, same as a human-made hire.`;
 
 function renderCommandsMd(): string {
   const lines: string[] = [

@@ -4117,6 +4117,7 @@ interface SpawnRequest {
   slack?: { channel: string; thread_ts: string };     // reply target + where failures surface
   isolate?: boolean;                                   // default true (fresh worktree)
   tokenCap?: number;                                   // optional per-worker token cap (advisory P1)
+  persistent?: boolean;                                // NOT reaped — a standing floor agent (docs: HIRING_AGENTS_MD)
 }
 
 /** Polling cadence — matches the hive router. */
@@ -4224,7 +4225,13 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   // so we never run the cc49e1e install banner here — we reject and tell god.
   if (!ptyManager.isCommandAvailable(bin)) { fail(`engine CLI "${bin}" is not installed`); return; }
 
-  const isolate = raw.isolate !== false; // default true
+  const isolate = raw.persistent === true ? raw.isolate === true : raw.isolate !== false;
+  // persistent: a STANDING floor agent, not an ephemeral worker — no done/idle
+  // reap (all three live in the liveWorkers map, so skipping registration skips
+  // them all), a floor card (the hive:agentSpawned broadcast below), and the
+  // modal-hire isolation default (work directly in cwd; worktrees are the
+  // ephemeral-worker pattern, force-removed at teardown).
+  const persistent = raw.persistent === true;
   // Base branch the worktree will be cut from (for the ahead-of-base safety check).
   let baseBranch = 'main';
   try { const br = await getBranch(cwd); if ('current' in br && br.current) baseBranch = br.current; } catch { /* keep default */ }
@@ -4253,7 +4260,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     hive: meta, isolate, provider: raw.provider, env: brokerEnv
   };
 
-  let res: { ok: boolean; error?: string };
+  let res: { ok: boolean; error?: string; worktreePath?: string };
   try {
     // Output routes to the primary window (no renderer evt here). Workers are
     // headless-by-design — they reply to Slack + report to god, not a watching human.
@@ -4265,9 +4272,13 @@ async function processSpawnRequest(filePath: string): Promise<void> {
 
   // Register for done-scan / idle-reap / token-cap / safe teardown (pty id == workerId).
   // tokenCap is optional plumbing (default unlimited) — only a positive finite cap is kept.
+  // A PERSISTENT hire skips registration entirely: no done/idle/token reap, no
+  // ephemeral-worktree teardown — it stands on the floor like a modal hire.
   const tokenCap = typeof raw.tokenCap === 'number' && Number.isFinite(raw.tokenCap) && raw.tokenCap > 0
     ? raw.tokenCap : undefined;
-  liveWorkers.set(workerId, { workerId, reqId, name: meta.name, slack, baseBranch, spawnedAt: Date.now(), tokenCap });
+  if (!persistent) {
+    liveWorkers.set(workerId, { workerId, reqId, name: meta.name, slack, baseBranch, spawnedAt: Date.now(), tokenCap });
+  }
 
   // Dispatch the objective via the standard inbox path (zero new transport),
   // reusing the autonomous-request preamble so the worker gets the exact Slack
@@ -4277,13 +4288,30 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     const prefix = slack
       ? buildAutonomousRequestProtocol(slack.channel, slack.thread_ts, slackReplyScriptPath())
       : '[AUTONOMOUS WORKER TASK — no interactive human is watching. Work autonomously; do not ask interactive questions.] The task starts now: ';
-    const suffix = `\n\n[CAPABILITIES] Before you start, consult your capability catalog — run the \`/capabilities\` skill (or read \`$AGENT_DIR/.claude/skills/capabilities/SKILL.md\`). It lists your temporal date-range skills (\`/today\`, \`/last30Days\`, \`/lastQuarter\`, …) and the integrations available to you (reached via the loopback broker) and how to call each. For any time-scoped work, resolve the dates with those skills instead of computing them by hand.\n\n[WORKER COMPLETION] When finished, signal done by sending ONE outbox message to god with "act":"done" and a short result summary — that releases this ephemeral worker (terminal closed; your branch is handed to god). Do NOT push to any remote; god is the sole integrator.`;
+    const suffix = persistent
+      ? `\n\n[CAPABILITIES] Before you start, consult your capability catalog — run the \`/capabilities\` skill (or read \`$AGENT_DIR/.claude/skills/capabilities/SKILL.md\`). It lists your temporal date-range skills (\`/today\`, \`/last30Days\`, \`/lastQuarter\`, …) and the integrations available to you (reached via the loopback broker) and how to call each. For any time-scoped work, resolve the dates with those skills instead of computing them by hand.\n\n[PERSISTENT HIRE] You are a standing member of the floor — you are NOT released when this task completes. When finished, send ONE outbox message to god with "act":"done" and a short result summary, then await further instructions in your inbox. Do NOT push to any remote; god is the sole integrator.`
+      : `\n\n[CAPABILITIES] Before you start, consult your capability catalog — run the \`/capabilities\` skill (or read \`$AGENT_DIR/.claude/skills/capabilities/SKILL.md\`). It lists your temporal date-range skills (\`/today\`, \`/last30Days\`, \`/lastQuarter\`, …) and the integrations available to you (reached via the loopback broker) and how to call each. For any time-scoped work, resolve the dates with those skills instead of computing them by hand.\n\n[WORKER COMPLETION] When finished, signal done by sending ONE outbox message to god with "act":"done" and a short result summary — that releases this ephemeral worker (terminal closed; your branch is handed to god). Do NOT push to any remote; god is the sole integrator.`;
     hive.send({ to: workerId, conversation: `worker-${reqId}`, act: 'request', subject: meta.name, body: `${prefix}${objective}${suffix}` }, 'god');
   } catch (e) {
     console.error('[worker] dispatch send failed:', e);
   }
 
-  console.log(`[worker] spawned ${workerId} (cwd=${cwd}, base=${baseBranch}${slack ? ', slack' : ''})`);
+  console.log(`[worker] spawned ${persistent ? 'PERSISTENT ' : ''}${workerId} (cwd=${cwd}, base=${baseBranch}${slack ? ', slack' : ''})`);
+  if (persistent) {
+    // The renderer roster is only mutated by renderer-initiated hires, so without
+    // this broadcast a MAIN-spawned persistent hire is headless-invisible. Effect
+    // 5b (useHive) builds the card — pane + queue included; ptyId == workerId.
+    try {
+      liveWebContents()?.send('hive:agentSpawned', {
+        id: workerId,
+        name: meta.name,
+        provider: raw.provider ?? 'claude',
+        cwd: res.worktreePath ?? cwd,
+        command,
+        role: 'worker'
+      });
+    } catch { /* window torn down */ }
+  }
   archiveRequest(filePath, '.done');
 }
 
