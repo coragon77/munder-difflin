@@ -92,6 +92,10 @@ export interface HiveRegistry {
     status: string;
     lastSeen: number;
     archived?: boolean;
+    /** parked: off the floor, zero cost, recallable, NOT deletable */
+    vacation?: boolean;
+    vacationSince?: number;
+    retired?: boolean;
     sessionId?: string;
   }>;
 }
@@ -714,6 +718,15 @@ const api = {
   hiveRegistry: (): Promise<HiveRegistry> => ipcRenderer.invoke('hive:registry'),
   hiveBoard: (): Promise<string> => ipcRenderer.invoke('hive:board'),
   hiveTasks: (): Promise<unknown> => ipcRenderer.invoke('hive:tasks'),
+  /** Park a human-created agent (the same main path god's vacation-requests use). */
+  hivePark: (id: string, reason?: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('hive:park', id, reason),
+  /** Fetch a vacationer back onto the floor — the respawn IS the recall. */
+  hiveRecall: (id: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('hive:recall', id),
+  /** Demote a vacationer to plain ARCHIVED (step one of the two-step delete). */
+  hiveEndVacation: (id: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('hive:endVacation', id),
   hiveLog: (n?: number): Promise<unknown[]> => ipcRenderer.invoke('hive:log', n ?? 200),
   hiveMemory: (id: string): Promise<string> => ipcRenderer.invoke('hive:memory', id),
   hiveInbox: (id: string): Promise<HiveMessage[]> => ipcRenderer.invoke('hive:inbox', id),
@@ -836,6 +849,13 @@ const api = {
     const listener = (_e: IpcRendererEvent, payload: { id: string }) => cb(payload);
     ipcRenderer.on('hive:agentArchived', listener);
     return () => ipcRenderer.removeListener('hive:agentArchived', listener);
+  },
+  /** A MAIN-initiated park — the renderer moves the card into VACATION, since it
+   *  did not initiate the park itself. Sibling of onHiveAgentArchived. */
+  onHiveAgentVacationed: (cb: (e: { id: string; vacationSince: number }) => void): (() => void) => {
+    const listener = (_e: IpcRendererEvent, payload: { id: string; vacationSince: number }) => cb(payload);
+    ipcRenderer.on('hive:agentVacationed', listener);
+    return () => ipcRenderer.removeListener('hive:agentVacationed', listener);
   },
   /** Register a listener for terminal work-order handoffs (#53) — hive mail to a
    *  hookless provider that can't drain an inbox; the renderer types it into the

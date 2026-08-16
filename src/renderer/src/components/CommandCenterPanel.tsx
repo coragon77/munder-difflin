@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PixelPanel } from './PixelPanel';
 import { PixelBadge } from './PixelBadge';
 import { PixelButton } from './PixelButton';
@@ -904,6 +904,7 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
         </div>
       </Section>
 
+      <VacationSection />
       <ArchivedSection />
 
       <Section title="DIRECTORIES">
@@ -996,8 +997,97 @@ function GodKittyButton() {
   );
 }
 
+/** Compact "2h ago" for a vacationer's park timestamp. Local to this file —
+ *  mirrors `fmtTokens` above rather than importing WorkersTab's private `relAge`. */
+function relAge(ms: number): string {
+  if (ms < 1000) return '0s';
+  const s = Math.round(ms / 1000);
+  if (s < 90) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 90) return `${m}m`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
+}
+
+/** Parked human agents: off the floor, keeping state, recallable — and
+ *  undeletable (the store's `removeArchivedAgent` refuses while `vacation` is
+ *  set). Own shelf above ARCHIVED so a vacationer never reads as gone for good. */
+function VacationSection() {
+  const archived = useStore((s) => s.archivedAgents);
+  const vacationers = useMemo(() => archived.filter((a) => a.vacation), [archived]);
+  const endVacationAgent = useStore((s) => s.endVacationAgent);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | undefined>();
+  if (vacationers.length === 0) return null;
+  // Recall's success path needs no local mutation — main broadcasts
+  // hive:agentSpawned and effect 5b in useHive builds the floor card from
+  // that. This is purely about surfacing an IPC failure (e.g. hive disabled).
+  const recall = async (id: string) => {
+    setBusy(id);
+    setError(undefined);
+    try {
+      const res = await window.cth.hiveRecall(id);
+      if (!res.ok) setError(res.error ?? 'could not recall this agent');
+    } finally { setBusy(null); }
+  };
+  // Only clear the local flag when main confirms the vacation actually ended —
+  // mutating unconditionally would desync the renderer from the registry (the
+  // authority) the moment hiveEndVacation fails, with the card silently
+  // claiming a state main never granted.
+  const end = async (id: string) => {
+    setBusy(id);
+    setError(undefined);
+    try {
+      const res = await window.cth.hiveEndVacation(id);
+      if (res.ok) endVacationAgent(id);
+      else setError(res.error ?? 'could not end this vacation');
+    } finally { setBusy(null); }
+  };
+  return (
+    <Section title={`VACATION (${vacationers.length})`}>
+      {error && (
+        <div style={{
+          fontSize: 12, color: 'var(--cth-coral)',
+          padding: '2px 8px', marginBottom: 6,
+          background: 'var(--cth-coral-light)',
+          wordBreak: 'break-word'
+        }}>{error}</div>
+      )}
+      {vacationers.map((a) => (
+        <div key={a.id} style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: 6, marginBottom: 6,
+          background: 'var(--cth-paper-100)', boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)'
+        }}>
+          <div style={{
+            width: 24, height: 24, background: `var(--cth-${a.accent}-light)`,
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden', flexShrink: 0
+          }}>
+            <SpritePortrait character={a.character} scale={1} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--cth-font-ui)', fontSize: 12, color: 'var(--cth-ink-900)' }}>{a.name}</div>
+            <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-word' }}>{a.description}</div>
+            <div style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
+              parked {relAge(Math.max(0, Date.now() - (a.vacationSince ?? Date.now())))} ago
+            </div>
+          </div>
+          <PixelButton variant="secondary" size="sm" disabled={busy === a.id} onClick={() => recall(a.id)}>
+            {busy === a.id ? '…' : 'Recall'}
+          </PixelButton>
+          <PixelButton variant="secondary" size="sm" disabled={busy === a.id} onClick={() => end(a.id)}>
+            {busy === a.id ? '…' : 'End vacation'}
+          </PixelButton>
+        </div>
+      ))}
+    </Section>
+  );
+}
+
 function ArchivedSection() {
-  const archivedAgents = useStore((s) => s.archivedAgents);
+  const archived = useStore((s) => s.archivedAgents);
+  const archivedAgents = useMemo(() => archived.filter((a) => !a.vacation), [archived]);
   const removeArchivedAgent = useStore((s) => s.removeArchivedAgent);
   const [open, setOpen] = useState(false);
   if (archivedAgents.length === 0) return null;

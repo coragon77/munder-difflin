@@ -181,6 +181,16 @@ export interface RegistryAgent extends AgentMeta {
    *  brought fired agents back from the dead. It is persisted here so the refusal
    *  outlives the renderer. Cleared only by a DELIBERATE unarchive/reinstate. */
   retired?: boolean;
+  /** True while the agent is ON VACATION — parked by god (or the button), off the
+   *  floor at zero cost, individually recallable and PROTECTED FROM DELETION.
+   *  Layered on `archived` (liveness) exactly like `retired`, and mutually
+   *  exclusive with it: a vacationer is resting, a retiree is gone. Ending the
+   *  vacation clears this and leaves `archived` — that is the demotion to plain
+   *  ARCHIVED which deletion requires. */
+  vacation?: boolean;
+  /** Epoch ms the agent was parked — the "parked 2h ago" the VACATION section and
+   *  god's fetchable pool read. Cleared when the vacation ends. */
+  vacationSince?: number;
   /** Most recent Claude Code session_id seen for this agent (Lane A #6.6a),
    *  captured from hook payloads. Doubles as the `--resume` key (idempotent
    *  resume after a crash/restart) AND the cost accounting/dedup key on every
@@ -689,6 +699,10 @@ export class HiveManager {
       // refuses retired agents outright; this is the registry-level backstop for
       // any other caller, so re-registration can never re-activate.
       archived: !!prev?.retired,
+      // A (re)spawn of a vacationer IS the recall — it is the only way back onto
+      // the floor, so the flag clears here rather than in each caller.
+      vacation: false,
+      vacationSince: undefined,
       lastSeen: Date.now()
     };
     if (meta.isGod) reg.godId = meta.id;
@@ -944,6 +958,51 @@ export class HiveManager {
    *  or listed. The spawn door and the fleet builder both gate on this. */
   isRetired(id: string): boolean {
     return !!this.registry().agents[id]?.retired;
+  }
+
+  /**
+   * Send an agent ON VACATION, or end one. Vacation is a flag on top of
+   * `archived` (liveness), the same shape as `retired` (445d135) — a vacationer
+   * genuinely has no PTY, so the boot sweep, broadcast fan-out, heartbeat roster
+   * and nudge poller all skip it with no new exemptions.
+   *
+   * Parking also archives. ENDING a vacation deliberately does NOT unarchive: it
+   * demotes the agent to plain ARCHIVED, which is the first half of the two-step
+   * deletion the feature promises. The way back onto the floor is a respawn
+   * (ensureAgent clears the flag).
+   *
+   * Refused for the retired (`vacation` and `retired` are mutually exclusive —
+   * a fired agent is gone, not resting) and for god. The intern check lives at
+   * the park path in main, which knows the caller; here we guard what the
+   * registry itself can see. Best-effort + idempotent like setArchived/setRetired.
+   */
+  setVacation(id: string, vacation: boolean): void {
+    const root = this.root();
+    if (!root) return;
+    try {
+      const reg = this.registry();
+      const agent = reg.agents[id];
+      if (!agent || !!agent.vacation === vacation) return;
+      if (vacation && (agent.retired || agent.isGod || reg.godId === id)) return;
+      agent.vacation = vacation;
+      if (vacation) {
+        agent.archived = true;
+        agent.vacationSince = Date.now();
+      } else {
+        delete agent.vacationSince;
+      }
+      agent.lastSeen = Date.now();
+      this.writeJson(join(root, 'registry.json'), reg);
+      this.appendLog({ kind: 'vacation', agentId: id, vacation });
+      this.commit(`hive: ${vacation ? 'park' : 'unpark'} ${id}`);
+      try { this.onRosterChange?.(); } catch { /* snapshot is best-effort */ }
+    } catch { /* best-effort — never crash a lifecycle handler */ }
+  }
+
+  /** True while the agent is parked. The fleet builder, the park path and the
+   *  delete guards all read this. */
+  isOnVacation(id: string): boolean {
+    return !!this.registry().agents[id]?.vacation;
   }
 
   /**
@@ -1236,6 +1295,7 @@ export class HiveManager {
       ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST: BEFORE minting an intern (spawn-requests/), check the roster for an EXISTING fitting agent that is not currently busy and route the task there; interns are the fallback, not the default — mint one only when (a) the human explicitly ordered an intern/observable worker, or (b) parallelism: every fitting agent is mid-task. Say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, branch integration, and final QA — and remain the sole scribe of board.md. You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill\'s execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans.'
         + ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.`
         + ' INTERNS — you OWN their lifecycle: mint them via spawn-requests/ ("persistent": true; template in COMMANDS.md) for delegated standing work, and FIRE them via fire-requests/ IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate.'
+        + ' VACATION — before spawning anything, check fleet.json\'s vacation pool for a fitting parked agent and fetch it back via vacation-requests/ ("action":"recall") instead of minting new; park an idle human-created agent the same way ({"agentId":..., "reason":...}) once it is idle ≥ 30 min, has no doing/blocked card, and its inbox is drained — your judgment can hold one back if the floor will need it again soon. Interns are FIRED, never parked.'
       : meta.isAssistant
       ? 'You are Michael\'s PREP ASSISTANT. You will be handed short, possibly vague instructions (each begins with "ENRICH TASK:"). For each one: (1) figure out which project it concerns and cd into the most relevant repo — you start in Michael\'s home directory; (2) gather concrete context READ-ONLY (exact file paths, current state, relevant code, conventions, active branch, gotchas) — NEVER modify, create, or delete files; (3) rewrite the instruction into ONE clear, self-contained prompt that Michael can execute autonomously, preserving the user\'s original intent without inventing scope. Then deliver it: write ONE message JSON into your outbox with "to":"god", "act":"request", a short subject, and the finished prompt as the body. Do NOT perform the task yourself — your only output is the improved prompt sent to Michael.'
       : 'For anything ambiguous, cross-cutting, or needing sign-off, address a message to "god".';
@@ -2038,9 +2098,17 @@ export class HiveManager {
           breaker?: string; tokens?: number; usd?: number;
           lastTool?: string | null; lastActiveSecAgo?: number | null; inboxBacklog?: number;
         }>;
+        vacation?: unknown[];
       };
       const agents = Array.isArray(snap.agents) ? snap.agents : [];
       if (!agents.length) return null;
+
+      const pool = Array.isArray((snap as { vacation?: unknown[] }).vacation)
+        ? (snap as { vacation: Array<{ id: string; name?: string; role?: string }> }).vacation : [];
+      const vacationLine = pool.length
+        ? ` ON VACATION (parked, zero cost, FETCHABLE — prefer fetching a fitting one back over spawning anyone new): `
+          + `${pool.map((v) => `${v.id}${v.name ? ` "${v.name}"` : ''} (${v.role ?? 'agent'})`).join('; ')}.`
+        : '';
 
       const ago = (s: number | null | undefined): string =>
         typeof s !== 'number' ? 'unknown'
@@ -2069,7 +2137,8 @@ export class HiveManager {
         + `${agents.length} ACTIVE agent(s): ${rows.join('; ')}.${more} `
         + 'This is the CURRENT floor and it SUPERSEDES any roster earlier in this conversation — '
         + 'agents you remember that are absent here have been archived or killed, so do not message them. '
-        + 'Route work to someone on this list before spawning anyone new.';
+        + 'Route work to someone on this list before spawning anyone new.'
+        + vacationLine;
     } catch { return null; }
   }
   logTail(n = 200): unknown[] {
@@ -2300,7 +2369,31 @@ During the engagement further work arrives via its inbox (god dispatches
 with the standard request protocol). Once the engagement is VERIFIABLY
 complete, god FIRES it (see above) — fresh work gets a fresh intern, never a
 parked standby. If it dies with the app instead of being fired, it re-hires
-through restore-team.`;
+through restore-team.
+
+**Parking a human-created agent** (god-runnable, human-created agents only —
+never interns, never god; park an idle one instead of leaving it burning a
+pane, fetch a fitting one back before minting anyone new):
+
+\`\`\`bash
+cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/vacation-requests/park-pam.json" <<'EOF'
+{ "agentId": "pam-1", "reason": "idle 30min, no open card" }
+EOF
+\`\`\`
+
+…and to fetch them back:
+
+\`\`\`bash
+cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/vacation-requests/recall-pam.json" <<'EOF'
+{ "agentId": "pam-1", "action": "recall" }
+EOF
+\`\`\`
+
+Parking closes the terminal and archives the agent (zero cost, off the
+floor, listed in fleet.json's \`vacation\` pool) but it is NOT deletable while
+parked. Parking is rejected (with a notice) for god, interns, the retired,
+or anyone already on vacation. Recall respawns it in place, resuming its own
+session, exactly like any other respawn.`;
 
 /** The '## KITTY SATELLITE' section appended to COMMANDS.md — the god-facing
  *  remote-control surface for the satellite kitty. Every claim here is
@@ -2390,9 +2483,11 @@ Delegate-first says don't do it yourself; roster-first says check who's
 already on the floor before hiring. BEFORE minting an intern
 (spawn-requests/), check the live roster (fleet.json + registry.json) for an
 EXISTING agent that fits the work and is not currently busy — route the task
-there instead. Interns are the fallback, not the default: mint only when
-(a) the human explicitly ordered an intern/observable worker, or
-(b) parallelism — every fitting agent is mid-task.
+there. If none fit, check fleet.json's \`vacation\` pool for a matching parked
+agent and fetch it back (vacation-requests/, see Vacation below) before
+minting anything new. Interns are the fallback, not the default: mint only
+when (a) the human explicitly ordered an intern/observable worker, or
+(b) parallelism — every fitting agent is mid-task or on vacation.
 
 Human-created cards (origin 'human', from the tasks tab) arrive without a
 message — triage them at heartbeat standups, roster-first.
@@ -2412,7 +2507,24 @@ for features, **verification-before-completion** before claiming done.
   not a promise of tenure.
 - Interns are disposable by design: the orchestrator FIRES an intern
   (fire-requests/) as soon as its engagement is verifiably complete. Fresh
-  work gets a fresh intern — never park a finished intern on standby.`;
+  work gets a fresh intern — never park a finished intern on standby.
+
+## Vacation (orchestrator/god)
+
+Assignment order for new work: an idle agent already on the floor first, then
+a FITTING vacationer fetched back (fleet.json's \`vacation\` pool — see
+Roster first above), and only as a last resort an intern or a brand-new hire.
+
+Auto-park a human-created agent once it is idle ≥ 30 min AND has no
+doing/blocked card AND its inbox is drained — drop a park request into
+\`vacation-requests/\` (COMMANDS.md § HIRING AGENTS has the template). Use
+judgment: it is fine to hold one back from parking if the floor is about to
+need it again. Interns are never parked — they are FIRED
+(fire-requests/) once their engagement is verifiably complete.
+
+A vacationer is protected from deletion: it stays in the registry, off the
+floor, zero cost, until an \`"action":"recall"\` request (or a fresh respawn)
+clears the flag.`;
 
 /** The operator-authorization section appended to the hive-root AGENTS.md when
  *  `sddSubagentsAuthorized` is ON (card sdd-authorization-switch-20260816). The

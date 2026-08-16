@@ -87,6 +87,12 @@ export interface Agent {
    *  (in the store's `archivedAgents` list + the hive registry) but flagged and
    *  kept off the floor; only live-PTY agents are 'active'. */
   archived?: boolean;
+  /** True while this agent is ON VACATION — archived AND parked: shown in the
+   *  Command Center's VACATION section instead of ARCHIVED, recallable with one
+   *  click, and refused by the delete control until the vacation is ended. */
+  vacation?: boolean;
+  /** Epoch ms this agent was parked — drives the "parked 2h ago" line. */
+  vacationSince?: number;
   /** Hive protocol to TYPE into this agent's TUI as its first turn, set at spawn
    *  for `seedDelivery:'type-into-tui'` providers (Crush) whose bare TUI rejects a
    *  positional seed. useHive types it once after boot-grace then clears it.
@@ -202,8 +208,13 @@ interface State {
   addAgent: (agent: Agent) => void;
   removeAgent: (id: string) => void;
   /** Archive an agent (its terminal was closed): move it from the active roster
-   *  into `archivedAgents` with its PTY cleared. Retained + flagged, NOT deleted. */
-  archiveAgent: (id: string) => void;
+   *  into `archivedAgents` with its PTY cleared. Retained + flagged, NOT deleted.
+   *  Pass `opts.vacation` to park instead of plain-archive — same teardown, but
+   *  the entry lands on the VACATION shelf and is delete-protected. */
+  archiveAgent: (id: string, opts?: { vacation?: boolean; vacationSince?: number }) => void;
+  /** End a vacation locally: the entry stays archived but loses the flag, which
+   *  is what re-enables deletion. Main owns the registry half (hiveEndVacation). */
+  endVacationAgent: (id: string) => void;
   /** Permanently forget an archived agent (drops the renderer entry only; the
    *  hive registry keeps its record). */
   removeArchivedAgent: (id: string) => void;
@@ -666,7 +677,7 @@ export const useStore = create<State>((set) => ({
       if (_queueGone) persistQueues(messageQueues);
       return { agents, feeds, selectedId, messageQueues };
     }),
-  archiveAgent: (id) =>
+  archiveAgent: (id, opts) =>
     set((s) => {
       // Archiving is RETIREMENT — it must also end restorability, and it must do
       // so even when there is no floor card to remove. A fire-request for an
@@ -679,7 +690,19 @@ export const useStore = create<State>((set) => ({
       const wasRestorable = restorableAgents.length !== s.restorableAgents.length;
       if (wasRestorable) persistRestorable(restorableAgents);
       const target = s.agents.find((a) => a.id === id);
-      if (!target) return wasRestorable ? { restorableAgents } : s;
+      if (!target) {
+        // No floor card: main parked an agent whose terminal was already gone.
+        // Flag the existing archived entry in place so it still lands in VACATION.
+        if (opts?.vacation && s.archivedAgents.some((a) => a.id === id)) {
+          const archivedAgents = s.archivedAgents.map((a) =>
+            a.id === id
+              ? { ...a, vacation: true, vacationSince: opts.vacationSince ?? Date.now(), action: 'on vacation' }
+              : a);
+          persistArchived(archivedAgents);
+          return wasRestorable ? { archivedAgents, restorableAgents } : { archivedAgents };
+        }
+        return wasRestorable ? { restorableAgents } : s;
+      }
       const agents = s.agents.filter((a) => a.id !== id);
       // Interns are disposable by design: no archived copy, no re-hire surface,
       // no clutter — they drop off entirely. The registry entry + hive git log
@@ -689,9 +712,11 @@ export const useStore = create<State>((set) => ({
       const archivedEntry: Agent = {
         ...target,
         archived: true,
+        // A park is an archive PLUS the flag — same teardown, different shelf.
+        ...(opts?.vacation ? { vacation: true, vacationSince: opts.vacationSince ?? Date.now() } : {}),
         ptyId: undefined,
         status: 'idle',
-        action: 'archived',
+        action: opts?.vacation ? 'on vacation' : 'archived',
         carrying: undefined,
         currentStation: undefined
       };
@@ -706,9 +731,22 @@ export const useStore = create<State>((set) => ({
       if (_queueGone) persistQueues(messageQueues);
       return { agents, archivedAgents, feeds, selectedId, messageQueues, restorableAgents };
     }),
+  endVacationAgent: (id) =>
+    set((s) => {
+      if (!s.archivedAgents.some((a) => a.id === id && a.vacation)) return s;
+      const archivedAgents = s.archivedAgents.map((a) =>
+        a.id === id ? { ...a, vacation: undefined, vacationSince: undefined, action: 'archived' } : a);
+      persistArchived(archivedAgents);
+      return { archivedAgents };
+    }),
   removeArchivedAgent: (id) =>
     set((s) => {
-      if (!s.archivedAgents.some((a) => a.id === id)) return s;
+      const target = s.archivedAgents.find((a) => a.id === id);
+      if (!target) return s;
+      // BELT: a vacationer is protected from deletion — end the vacation first
+      // (that demotes it to plain ARCHIVED). Main holds the braces: the registry
+      // flag only clears through hive:endVacation.
+      if (target.vacation) return s;
       const archivedAgents = s.archivedAgents.filter((a) => a.id !== id);
       persistArchived(archivedAgents);
       return { archivedAgents };
@@ -867,6 +905,17 @@ export const useStore = create<State>((set) => ({
 
 export function selectedAgent(s: State): Agent | undefined {
   return s.agents.find(a => a.id === s.selectedId);
+}
+
+/** Parked agents — shown in the Command Center's VACATION section. Derived from
+ *  `archivedAgents` rather than stored beside it, so the two lists cannot fall
+ *  out of step. Wrap the call in useMemo: it returns a fresh array. */
+export function vacationAgents(s: State): Agent[] {
+  return s.archivedAgents.filter((a) => a.vacation);
+}
+/** Genuinely archived agents — vacationers live on their own shelf. */
+export function archivedOnlyAgents(s: State): Agent[] {
+  return s.archivedAgents.filter((a) => !a.vacation);
 }
 
 /** Whether the Command Center's Trigger History tab has anything to be about

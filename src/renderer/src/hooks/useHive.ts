@@ -981,7 +981,13 @@ export function useHive(config: HarnessConfig | null): void {
     const offArchive = window.cth.onHiveAgentArchived?.((e) => {
       if (e?.id) useStore.getState().archiveAgent(e.id);
     });
-    return () => { offSpawn?.(); offArchive?.(); };
+    // A MAIN-initiated PARK. Same shape as the archive broadcast, different
+    // shelf: the card lands in VACATION, keeps its record, and is undeletable
+    // until the vacation ends.
+    const offVacation = window.cth.onHiveAgentVacationed?.((e) => {
+      if (e?.id) useStore.getState().archiveAgent(e.id, { vacation: true, vacationSince: e.vacationSince });
+    });
+    return () => { offSpawn?.(); offArchive?.(); offVacation?.(); };
   }, [config?.onboardingComplete]);
 
   // 5c) v0.3.4 voice bridge: main stages queue insertions (clear_context) and

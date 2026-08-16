@@ -46,6 +46,12 @@ const getRestoring = (): boolean => restoring;
 const getNote = (): string | null => note;
 const getAutoRestoring = (): boolean => autoRestoring;
 
+/** Ids currently on vacation, per the registry. Pulled out of restoreTeam so it
+ *  can be unit-tested without mounting the hook (see vacation-restore-skip.test.cjs). */
+export function parkedAgentIds(reg: { agents: Record<string, { vacation?: boolean }> }): Set<string> {
+  return new Set(Object.entries(reg.agents).filter(([, a]) => a.vacation).map(([id]) => id));
+}
+
 export interface RestoreTeamState {
   restoring: boolean;
   /** True when the run in flight was started automatically at boot, not by a
@@ -74,7 +80,29 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
     note = null;
     emit();
     const prevSel = useStore.getState().selectedId;
-    const restorableAgents = useStore.getState().restorableAgents;
+    // A VACATIONER MUST NOT COME BACK ON ITS OWN. Restore-team also runs
+    // automatically at boot, so without this a restart would walk the whole
+    // parked pool back onto the floor — the resurrection class of bug `retired`
+    // was given its own flag to stop (445d135). The registry is the authority;
+    // the renderer's own copy can be stale after a crash mid-park.
+    //
+    // This is the SOLE defense — spawnAgentCore refuses `retired` ids but has
+    // no vacation check of its own — so a registry read failure must fail
+    // SAFE, not open. Spawning everyone when we can't tell who's parked would
+    // silently resurrect the parked pool, and that risk peaks right here:
+    // restore-team also runs unattended at boot, exactly when a startup IPC
+    // race is most likely. A visible no-op beats an invisible revival.
+    let parked: Set<string>;
+    try {
+      const reg = await window.cth.hiveRegistry();
+      parked = parkedAgentIds(reg);
+    } catch {
+      restoring = false;
+      note = "couldn't verify vacation status — restore skipped, try again";
+      emit();
+      return;
+    }
+    const restorableAgents = useStore.getState().restorableAgents.filter((a) => !parked.has(a.id));
     // Tally every agent's outcome so the run ALWAYS leaves a visible trace — the
     // original bug was that every failure path was console-only, so a click that
     // couldn't spawn anything looked like a dead button.
