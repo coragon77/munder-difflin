@@ -243,6 +243,12 @@ export type VacationRequestPlan =
   | { ok: false; error: string };
 
 export function vacationRequestTarget(raw: unknown): VacationRequestPlan {
+  // JSON.parse('null') (or a bare primitive) parses fine but has no fields to
+  // resolve — dereferencing it below threw past every guard in
+  // processVacationRequest, so the file was retried forever. Reject instead;
+  // the caller's fail() path archives it to .failed like unparseable JSON.
+  if (typeof raw !== 'object' || raw === null)
+    return { ok: false, error: 'request body is not a JSON object' };
   const r = raw as { agentId?: unknown; id?: unknown; action?: unknown; reason?: string };
   const agentId = (
     typeof r.agentId === 'string' ? r.agentId : typeof r.id === 'string' ? r.id : ''

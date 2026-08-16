@@ -196,11 +196,19 @@ test('request: reason passes through verbatim for the park log line', () => {
   assert.equal(plan.reason, 'quiet sprint');
 });
 
-test('request (pinned edge): a null JSON body throws — the inline code dereferenced raw.agentId', () => {
-  // JSON.parse('null') parses fine; the inline resolution then dereferenced
-  // null and the throw escaped processVacationRequest's parse try/catch.
-  // Pinned as-is per the zero-behavior-change boundary of this card.
-  assert.throws(() => vacationRequestTarget(null), TypeError);
+test('request: a null or non-object JSON body is rejected like unparseable JSON', () => {
+  // JSON.parse('null') parses fine — the resolution used to dereference null
+  // and that TypeError escaped processVacationRequest's parse try/catch, so
+  // the malformed file was retried forever instead of archiving to .failed.
+  // A rejected plan rides the caller's fail() path: .failed + god informed.
+  assert.deepEqual(vacationRequestTarget(null), {
+    ok: false,
+    error: 'request body is not a JSON object',
+  });
+  assert.deepEqual(vacationRequestTarget(5), {
+    ok: false,
+    error: 'request body is not a JSON object',
+  });
 });
 
 // ─── parkAgentCore: the refusal ladder ──────────────────────────────────────
