@@ -96,6 +96,16 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
     archiveAgent(agent.id);
   };
 
+  // Only human-created hires go on vacation — god runs the floor and interns get
+  // fired, never parked. `isReal` keeps the button off a card with no terminal.
+  const canPark = isReal && agentClassOf(agent) === 'human';
+  const onPark = async () => {
+    const res = await window.cth.hivePark(agent.id, 'parked from the agent pane');
+    if (!res.ok) { setOpenTerminalError(res.error ?? 'could not park this agent'); return; }
+    if (agent.ptyId) disposeTerminal(agent.ptyId);
+    archiveAgent(agent.id, { vacation: true });
+  };
+
   return (
     <PixelPanel
       variant="default"
@@ -174,6 +184,11 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
               🐱
               {openTerminalState === 'opening' ? '...' : 'kitty'}
             </span>
+          </PixelButton>
+        )}
+        {canPark && (
+          <PixelButton variant="secondary" size="sm" onClick={onPark}>
+            <span title="Send on vacation — off the floor, keeps state, recallable">vacation</span>
           </PixelButton>
         )}
         {isReal && (

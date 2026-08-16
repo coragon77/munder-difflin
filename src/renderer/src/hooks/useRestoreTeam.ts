@@ -74,7 +74,17 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
     note = null;
     emit();
     const prevSel = useStore.getState().selectedId;
-    const restorableAgents = useStore.getState().restorableAgents;
+    // A VACATIONER MUST NOT COME BACK ON ITS OWN. Restore-team also runs
+    // automatically at boot, so without this a restart would walk the whole
+    // parked pool back onto the floor — the resurrection class of bug `retired`
+    // was given its own flag to stop (445d135). The registry is the authority;
+    // the renderer's own copy can be stale after a crash mid-park.
+    let parked = new Set<string>();
+    try {
+      const reg = await window.cth.hiveRegistry();
+      parked = new Set(Object.entries(reg.agents).filter(([, a]) => a.vacation).map(([id]) => id));
+    } catch { /* registry unreadable — fall through, the spawn door still refuses nothing */ }
+    const restorableAgents = useStore.getState().restorableAgents.filter((a) => !parked.has(a.id));
     // Tally every agent's outcome so the run ALWAYS leaves a visible trace — the
     // original bug was that every failure path was console-only, so a click that
     // couldn't spawn anything looked like a dead button.

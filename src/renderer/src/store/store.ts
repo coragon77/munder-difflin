@@ -690,7 +690,9 @@ export const useStore = create<State>((set) => ({
         // Flag the existing archived entry in place so it still lands in VACATION.
         if (opts?.vacation && s.archivedAgents.some((a) => a.id === id)) {
           const archivedAgents = s.archivedAgents.map((a) =>
-            a.id === id ? { ...a, vacation: true, vacationSince: opts.vacationSince ?? Date.now() } : a);
+            a.id === id
+              ? { ...a, vacation: true, vacationSince: opts.vacationSince ?? Date.now(), action: 'on vacation' }
+              : a);
           persistArchived(archivedAgents);
           return wasRestorable ? { archivedAgents, restorableAgents } : { archivedAgents };
         }
