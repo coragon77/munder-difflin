@@ -2485,11 +2485,17 @@ function post(payload: Record<string, unknown>): void {
 }
 // Pi extension shape (pi 0.84): ESM default export, structural ExtensionAPI.
 export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => any) => void }) {
+  // The breaker's loop detector keys on tool_name + tool_input. pi's tool_result
+  // event carries no input, so a PostToolUse without one made every call of the
+  // same tool look identical (10 distinct Bash calls → "8× identical tool call").
+  // tool_call DOES carry it, so stash it there and attach it on the way out.
+  let lastInput: unknown = undefined;
   pi.on('tool_call', (event) => {
+    lastInput = event?.input;
     post({ hook_event_name: 'PreToolUse', tool_name: event?.toolName, tool_input: event?.input });
   });
   pi.on('tool_result', (event) => {
-    post({ hook_event_name: 'PostToolUse', tool_name: event?.toolName });
+    post({ hook_event_name: 'PostToolUse', tool_name: event?.toolName, tool_input: event?.input ?? lastInput });
   });
   // agent_settled, not agent_end: agent_end fires per low-level run (retries,
   // auto-compact) — settled means pi will not continue on its own. That is the

@@ -169,11 +169,12 @@ export class CircuitBreaker {
   /** A tool call ran. A NEW (name+input) key counts as forward progress (resets
    *  the repeat + error counters and stamps the distinct-tool clock the
    *  no-progress arm reads); the SAME key in a row is the loop signal.
-   */
+   *  A `null` key means the payload carried NO input, i.e. no identity evidence —
+   *  never a repeat (see toolKey). */
   recordToolUse(agentId: string, toolName: string | undefined, toolInput: unknown, now = Date.now()): void {
     const s = this.get(agentId);
     const key = this.toolKey(toolName, toolInput);
-    if (key === s.repeatKey) {
+    if (key !== null && key === s.repeatKey) {
       s.repeatCount += 1;
     } else {
       s.repeatKey = key;
@@ -205,20 +206,30 @@ export class CircuitBreaker {
     if (s.compactingUntil > now) s.compactingUntil = now + POST_COMPACT_GRACE_MS;
   }
 
-  private toolKey(toolName: string | undefined, toolInput: unknown): string {
+  private toolKey(toolName: string | undefined, toolInput: unknown): string | null {
+    // NO INPUT = NO IDENTITY. Not every provider bridge puts `tool_input` on its
+    // PostToolUse payload (pi's `tool_result` and opencode's `tool.execute.after`
+    // shipped without it), and a name-only key makes EVERY call of the same tool
+    // identical — 10 distinct `Bash` calls read as "8× identical tool call" and
+    // steered a working agent. A key we cannot distinguish is not evidence of a
+    // loop, so return null and let recordToolUse count it as a distinct call. The
+    // velocity + error-storm arms still backstop a real runaway on those bridges.
+    if (toolInput === undefined || toolInput === null) return null;
     // Truncating replacer: a Write/Edit tool_input carries the whole file body
     // (up to MBs), and this runs synchronously inside the hook reply path on
     // EVERY PostToolUse — serializing it all only to keep a short key was a
-    // multi-MB transient allocation per large write. Capping each string field
-    // bounds the work; identity is then hashed over the WHOLE capped
-    // serialization (hashKey below), never a prefix. The old 200-char prefix
-    // keep collapsed DISTINCT probe commands sharing a long `cd <dir> && …`
-    // prefix into one "identical" key and tripped the loop arm on
-    // file-probe-heavy agents (observed live, 8×/10× "identical bash").
+    // multi-MB transient allocation per large write. A long string field is
+    // therefore replaced by its length + FNV digest rather than TRUNCATED: the
+    // cap bounds allocation just the same (hashKey walks the chars but allocates
+    // nothing), while two commands that share a 250-char `cd <dir> && …` prefix
+    // and differ only after it still hash apart. Plain truncation collapsed them
+    // into one "identical" key and tripped the loop arm on file-probe-heavy
+    // agents (observed live, 8×/10× "identical bash").
     let inp = '';
     try {
       inp = JSON.stringify(toolInput, (_k, v) =>
-        typeof v === 'string' && v.length > 250 ? v.slice(0, 250) : v) ?? '';
+        typeof v === 'string' && v.length > 250
+          ? `${v.slice(0, 250)}#${v.length}#${CircuitBreaker.hashKey(v)}` : v) ?? '';
     } catch { inp = String(toolInput); }
     return `${toolName ?? '?'}:${CircuitBreaker.hashKey(inp)}`;
   }
