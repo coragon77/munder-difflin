@@ -50,7 +50,7 @@ agents live as files under `<harnessHome>/hive/` — `registry.json`, `board.md`
 | `src/shared/` | Types shared across processes |
 | `tools/mapgen/` | Python helpers for the Tiled office map |
 | `test/` | `node --test` suites (`npm run test:focused`) |
-| `hive/` (repo root) | Static hive assets incl. `PROTOCOL.md` — the agent-facing contract |
+| `hive/` (repo root) | Static hive assets (`docs/integration-templates.md`) — `PROTOCOL.md` and `COMMANDS.md` are generated into the *runtime* hive from constants in `src/main/hive.ts` |
 
 ## UI rules (non-negotiable, `DESIGN.md`)
 

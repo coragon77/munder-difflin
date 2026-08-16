@@ -49,7 +49,8 @@ stream, retrieval, reflection, and planning.
    scope changes, unresolvable conflicts) route to the god, who surfaces them to
    the human natively in his own Claude Code session — there is no separate
    approval queue. Tool-permission prompts are the HITL gate, and they're
-   approvable remotely from a phone via `/remote-control`.
+   approvable remotely from a phone via `/remote-control` (link gated by the
+   `godRemoteControl` config flag, on by default).
 4. **Memory: markdown first.** Per-agent `memory.md` + shared blackboard, with a
    SQLite FTS index when keyword recall isn't enough. A heavyweight vector layer
    (Letta/Mem0/Zep) is *not* needed at 5–15 agents and is architecturally wrong
@@ -73,6 +74,8 @@ hive/
   board.md               # shared blackboard / co-authored plans
   tasks.json             # task ledger (id, assignee, spec, status, result ref)
   log.jsonl              # append-only event feed (drives the UI activity stream)
+  spawn-requests/         # drop a JSON here to hire: ephemeral workers, standing interns
+  fire-requests/          # god fires an intern (intern-scoped; human hires stay human surfaces)
   agents/<agentId>/
     identity.md          # who am I, my role, my capabilities  (read at start)
     memory.md            # my long-term memory  (I read at start, append as I learn)
@@ -159,6 +162,9 @@ michael`, flagged `isGod`. It is an ordinary `claude` process — the *intellige
 - **Blackboard scribe**: the single writer of `board.md`, so shared plans never
   conflict.
 - **Task ledger** (`tasks.json`): assign, track, retry, checkpoint.
+- **Hiring & firing**: mints ephemeral workers and standing interns via
+  `spawn-requests/` (honoring autoMode) and fires interns via `fire-requests/`;
+  human-made hires stay human surfaces.
 
 Its escalation policy (what counts as "critical") lives in its system prompt and
 is the primary control surface — tune the prompt, not the code.
@@ -177,7 +183,8 @@ is the primary control surface — tune the prompt, not the code.
   the renderer to drive avatars.
 - **Phase 2 — God mode** ✅: the god agent auto-spawns into Michael's room
   (`desk-ceo` reserved) and, on a fresh spawn, is started with `/remote-control`
-  (best-effort) plus an orientation prompt so it begins running the floor on its
+  (best-effort; gated by the `godRemoteControl` config flag) plus an
+  orientation prompt so it begins running the floor on its
   own. The router routes `to:"human"` traffic to the god (the human's proxy);
   there is no separate approval queue — human-in-the-loop is native to each
   agent's Claude Code session (permission prompts, approvable remotely from a

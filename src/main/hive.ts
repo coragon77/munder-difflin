@@ -2040,7 +2040,8 @@ EOF
 → agent id \`intern-docs-writer\`, floor name **Dwayne (Intern)**. Give the request
 a \`"name"\` so it reads as a person; without one it shows as \`Intern <id>\`.
 
-**Permissions:** interns inherit the floor's autoMode like human hires — when
+**Permissions:** EVERY spawn-request — ephemeral workers AND interns — inherits
+the floor's autoMode like human hires — when
 auto mode is on, the harness appends the engine's bypass flag itself. You do NOT
 need to write \`--permission-mode bypassPermissions\` into \`command\`.
 
@@ -2062,6 +2063,48 @@ inbox (god dispatches with the standard request protocol). Closing its terminal
 tab or quitting the app archives it; it re-hires through restore-team. Killing it
 for good = the UI archive/remove, same as a human-made hire.`;
 
+/** The '## KITTY SATELLITE' section appended to COMMANDS.md — the god-facing
+ *  remote-control surface for the satellite kitty. Every claim here is
+ *  verified against src/main/kittySatellite.ts + the openInKitty IPC. */
+const KITTY_SATELLITE_MD = `## KITTY SATELLITE — your second terminal (remote-controllable kitty)
+
+The harness keeps a "satellite" kitty window alive as your co-terminal: it
+starts lazily with the FIRST agent spawn (or an in-app kitty button) and runs
+with remote control restricted to its socket only (allow_remote_control
+socket-only — no network exposure). Its first window carries the "Michael" tab
+(you: the configured default engine, auto-mode like the floor), and every agent
+PTY is spawned with KITTY_LISTEN_ON + KITTY_WINDOW_ID pointing at it, so agent
+handoff skills split their panes where you can watch.
+
+**Socket** (one per user, deterministic): \`\${TMPDIR:-/tmp}/md-kitty-<uid>.sock\`
+(node os.tmpdir(): /tmp on Linux, the per-user temp dir on macOS).
+Discovery: \`ls "\${TMPDIR:-/tmp}"/md-kitty-*.sock\`. A live socket means the
+satellite is up. If you closed it, the next agent spawn or in-app kitty click
+re-establishes it — launching kitty yourself on that socket works too: the
+harness reuses any existing socket instead of spawning its own.
+
+**Drive it from Bash** (kitty @ talks to the socket; kitty binary probed at
+\`~/.local/bin/kitty\`, \`/usr/local/bin/kitty\`, \`/usr/bin/kitty\`):
+
+\`\`\`bash
+SOCK="$(ls "\${TMPDIR:-/tmp}"/md-kitty-*.sock | head -1)"
+
+kitty @ --to "unix:\$SOCK" ls   # windows/tabs: ids + titles for --match
+
+# Open a tab — ALWAYS pass --env PATH: the satellite was started by the app,
+# and its env usually lacks nvm/node, so bash/claude would not be found.
+kitty @ --to "unix:\$SOCK" launch --type=tab --env PATH="\$PATH" --cwd="\$PWD" bash
+
+# Send text (as if typed) or keys into a pane — match by id or title
+kitty @ --to "unix:\$SOCK" send-text --match title:Michael 'git status'
+kitty @ --to "unix:\$SOCK" send-key  --match title:Michael ctrl+c
+\`\`\`
+
+The renderer covers the common case with buttons: the kitty button in an
+agent's detail panel opens a tab at its cwd; the 🐱 kitty button in the Command
+Center opens one for you. Opt out of the satellite entirely with
+\`MD_DISABLE_KITTY_SATELLITE=1\` (or a headless session).`;
+
 function renderCommandsMd(): string {
   const lines: string[] = [
     '# Claude Code commands',
@@ -2080,7 +2123,7 @@ function renderCommandsMd(): string {
     }
     lines.push('');
   }
-  lines.push(HIRING_AGENTS_MD);
+  lines.push(HIRING_AGENTS_MD, KITTY_SATELLITE_MD);
   return lines.join('\n');
 }
 const COMMANDS_MD = renderCommandsMd();

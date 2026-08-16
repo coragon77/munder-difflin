@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Interns — persistent spawn-request hires.** A spawn-request with `"persistent": true`
+  mints a standing floor agent (`intern-` id prefix, `role: "intern"`, "(Intern)" floor name):
+  floor card + terminal, never reaped, survives restarts via the registry.
+- **Fire-requests.** `HIVE_ROOT/fire-requests/<id>.json` lets the god agent fire an intern
+  (kills the PTY, archives the agent, confirms in god's inbox). Strictly intern-scoped —
+  human hires, god, and ephemeral workers are rejected with a notice.
+- **`godRemoteControl` config flag** (Settings, default on) — gates the god's `/remote-control`
+  link for shops that don't want remote permission approvals.
+- **Kitty satellite.** A remote-controllable kitty window (socket-only) starts lazily with the
+  first agent spawn; god can drive it over its Unix socket (`kitty @ --to unix:… launch/send-text`),
+  and agent PTYs get `KITTY_LISTEN_ON`/`KITTY_WINDOW_ID` so handoff skills split into it.
+  Documented in the generated hive `COMMANDS.md`.
+
+### Changed
+- **Spawn-requests honor autoMode.** God-hired workers and interns now get the engine's
+  bypass-permissions flag appended (same shared preset table as the renderer's spawn builder,
+  idempotent) instead of spawning without it.
+
 ## [0.4.3] — 2026-08-13
 
 **A new brand mark: Michael's portrait replaces the "MD" tile.**

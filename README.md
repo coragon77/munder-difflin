@@ -138,7 +138,7 @@ terminal/event plane, and [`DESIGN.md`](./DESIGN.md) for the visual system.
 - **Built-in Monaco IDE** — file tree, editor tabs, save, plus CHANGES · HISTORY · COMPARE git rails with commit graph, diffs, branch compare, and guarded checkout. All fs/git access brokered through main.
 
 **Getting work in and out**
-- **Slack & webhooks** — message a channel or POST a webhook; Michael can spawn an ephemeral worker, reply in-thread, and tear it down.
+- **Slack & webhooks** — message a channel or POST a webhook; Michael can spawn an ephemeral worker, hire (and fire) a standing intern, and reply in-thread.
 - **Shareable hires + Agent Gallery** — import a role from a `munderdifflin://hire` link; import only pre-fills the form, a human still spawns it. Browse roles at the [Agent Gallery](https://munderdiffl.in/hires/).
 - **BYOK keys + local LLMs** — per-provider keys in a write-only secret broker, plus Ollama / LM Studio / vLLM base URLs. Guides: [open models](https://munderdiffl.in/blog/run-munder-difflin-on-open-models/) · [Mac Mini](https://munderdiffl.in/blog/run-munder-difflin-on-a-mac-mini/).
 - **Auto-update** — new releases download in the background; you click restart.
@@ -284,7 +284,7 @@ chrome. The 15 avatars are the cast of *The Office*, differentiated by hair/skin
 
 Shipped through **v0.4.3** — ten agent engines with BYOK keys and local LLMs, voice orchestration,
 the hive (memory · mailboxes · blackboard · event log), Command Center with kanban and schedules,
-a built-in Monaco IDE with git rails, integrations registry + secret broker, Slack-spawned workers,
+a built-in Monaco IDE with git rails, integrations registry + secret broker, Slack-spawned workers and god-hired interns,
 shareable hires and the Agent Gallery, observability and the circuit breaker, durable persistence,
 session resume, multi-window floors, and working auto-update.
 Full history in [`CHANGELOG.md`](./CHANGELOG.md).
