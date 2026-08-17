@@ -295,6 +295,9 @@ export interface HarnessConfig {
    *  execution (superpowers SDD). Default ON; mirrors main + renderer config
    *  (card sdd-authorization-switch-20260816). */
   sddSubagentsAuthorized?: boolean;
+  /** Who owns integration (merge + push): 'god' (default) or 'workers'.
+   *  Mirrors main's config field (card integration-mode-toggle-20260817). */
+  integrationMode?: 'god' | 'workers';
   defaultCommand: string;
   defaultModel?: string;
   /** Which provider+model powers the GOD orchestrator ("Michael"). Default

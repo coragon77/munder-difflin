@@ -68,6 +68,9 @@ export interface HarnessConfig {
    *  execution (superpowers SDD). Default ON; mirrors main's config field
    *  (card sdd-authorization-switch-20260816). */
   sddSubagentsAuthorized?: boolean;
+  /** Who owns integration (merge + push): 'god' (default) or 'workers'.
+   *  Mirrors main's config field (card integration-mode-toggle-20260817). */
+  integrationMode?: 'god' | 'workers';
   /** When true, fresh god spawns run /remote-control Michael (Claude mobile
    *  link). Mirrors main's config field — default ON. */
   godRemoteControl?: boolean;

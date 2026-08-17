@@ -351,6 +351,10 @@ const hive = new HiveManager(
   // Settings flip takes effect at the next rewrite (forced immediately below
   // in config:update).
   () => readConfig().sddSubagentsAuthorized,
+  // Integration mode (card integration-mode-toggle-20260817): who owns
+  // merge + push — gates the mode-dependent prose in the generated COMMANDS.md
+  // + hive-root AGENTS.md. Read lazily; config:update forces a regen on flip.
+  () => readConfig().integrationMode ?? 'god',
 );
 // #7C — operator control state (pause/gate/steer/halt), read by the HookServer
 // when deciding hook returns.
@@ -3337,6 +3341,7 @@ async function spawnAgentCore(
           mcpDefaults: readConfig().mcpDefaults,
           skillsDir: skillsResourceDir(),
           sddAuthorized: readConfig().sddSubagentsAuthorized !== false,
+          integrationMode: readConfig().integrationMode ?? 'god',
         },
       );
       opts.args = [...(opts.args ?? []), ...inj.args];
@@ -3815,9 +3820,15 @@ ipcMain.handle('config:update', (_evt, patch: Partial<HarnessConfig>) => {
   const next = writeConfig(patch);
   // Live opt-in/out from Settings → Privacy (TELEMETRY.md).
   if (typeof patch?.telemetryEnabled === 'boolean') analytics.setEnabled(patch.telemetryEnabled);
-  // SDD switch flip → regenerate <harnessHome>/AGENTS.md immediately (it
-  // otherwise refreshes on the next spawn/bootstrap via ensureHive).
-  if (typeof patch?.sddSubagentsAuthorized === 'boolean') {
+  // SDD switch flip or integration-mode flip → regenerate the generated prose
+  // files immediately (<harnessHome>/AGENTS.md + hive COMMANDS.md — they
+  // otherwise refresh on the next spawn/bootstrap via ensureHive). Briefings
+  // pick the new mode up on the next spawn, same as the sdd line.
+  if (
+    typeof patch?.sddSubagentsAuthorized === 'boolean' ||
+    patch?.integrationMode === 'workers' ||
+    patch?.integrationMode === 'god'
+  ) {
     try {
       hive.ensureHive();
     } catch (e) {

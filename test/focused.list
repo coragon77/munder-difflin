@@ -58,3 +58,4 @@ test/vacation-flow.test.cjs
 test/realtime-roster-words.test.cjs
 test/vacation-renderer-reconcile.test.cjs
 test/hire-flag-tail.test.cjs
+test/integration-mode-toggle.test.cjs

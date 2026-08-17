@@ -197,6 +197,16 @@ export interface HarnessConfig {
    *  stock prompt's own escape clause. OFF = the line is omitted and the
    *  engine's stock subagent rules apply unchanged. NOT blanket subagent use. */
   sddSubagentsAuthorized?: boolean;
+  /** Who owns integration (merge + push) of finished work: 'god' (default —
+   *  today's flow: workers hand branches to god, god integrates) or 'workers'
+   *  (each worker merges + pushes its OWN branch after its gates are green and
+   *  reports the pushed hash; god records it, no re-QA). Rationale: god runs on
+   *  a tight token budget — mechanical integration shouldn't burn it. The
+   *  renderer/preload restart-window merge mechanism stays god-owned in every
+   *  mode; a skill or dispatch boundary that forbids push always overrides
+   *  (card integration-mode-toggle-20260817). Threads into the generated
+   *  prose (godLine, worker briefing, AGENTS.md, COMMANDS.md, identity.md). */
+  integrationMode?: 'god' | 'workers';
   /** When true, the god agent's fresh spawns run `/remote-control Michael`,
    *  linking his session to the Claude mobile app (phone-side supervision of a
    *  bypassPermissions orchestrator — the only remote view into what he DOES,
@@ -432,6 +442,7 @@ const DEFAULTS: HarnessConfig = {
   registeredRepos: [],
   workerBypass: false,
   sddSubagentsAuthorized: true,
+  integrationMode: 'god',
   godRemoteControl: true,
   defaultCommand: 'claude',
   godProvider: 'claude',

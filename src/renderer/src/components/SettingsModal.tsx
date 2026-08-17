@@ -257,6 +257,25 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       setSddAuthz(!next);
     }
   };
+  // Integration mode (card integration-mode-toggle-20260817): 'workers' moves
+  // merge + push of finished work from god to the workers (they merge their OWN
+  // branch after their gates pass and report the pushed hash; god records, no
+  // re-QA). Default 'god' = today's flow. The generated AGENTS.md + COMMANDS.md
+  // regenerate immediately on flip; briefings pick the mode up on next spawn.
+  const [integrationWorkers, setIntegrationWorkers] = useState<boolean>(
+    cfgX.integrationMode === 'workers',
+  );
+  const toggleIntegrationMode = async () => {
+    const next = !integrationWorkers;
+    setIntegrationWorkers(next);
+    try {
+      await window.cth.updateConfig({
+        integrationMode: next ? 'workers' : 'god',
+      } as Partial<HarnessConfig>);
+    } catch {
+      setIntegrationWorkers(!next);
+    }
+  };
   const [godRemote, setGodRemote] = useState<boolean>(cfgX.godRemoteControl !== false);
   const toggleGodRemote = async () => {
     const next = !godRemote;
@@ -590,6 +609,7 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
         setSlackProactivePosting(cc.slackProactivePosting ?? false);
         setTgEnabled((cc as HarnessConfig).telegramEnabled ?? true);
         setSddAuthz((cc as HarnessConfig).sddSubagentsAuthorized !== false);
+        setIntegrationWorkers((cc as HarnessConfig).integrationMode === 'workers');
         const kgOn =
           (cc as { knowledgeGraph?: { enabled?: boolean } }).knowledgeGraph?.enabled === true;
         setKgEnabled(kgOn);
@@ -1772,6 +1792,50 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                           onClick={toggleSddAuthz}
                         >
                           {sddAuthz ? 'authorized' : 'stock'}
+                        </PixelButton>
+                      </div>
+
+                      {/* Integration mode — who owns merge + push of finished
+                           work (card integration-mode-toggle-20260817). */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              lineHeight: '20px',
+                              color: 'var(--cth-ink-900)',
+                            }}
+                          >
+                            {integrationWorkers
+                              ? 'Workers integrate their own branches'
+                              : 'God integrates finished work'}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--cth-ink-500)',
+                            }}
+                          >
+                            Workers merge + push their OWN branch once their gates are green and
+                            report the pushed hash; god records it, no re-QA. Renderer/preload
+                            restart-window merges stay god-owned. Applies to new briefings;
+                            AGENTS.md + COMMANDS.md regenerate immediately.
+                          </span>
+                        </div>
+                        <PixelButton
+                          variant={integrationWorkers ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={toggleIntegrationMode}
+                        >
+                          {integrationWorkers ? 'workers' : 'god'}
                         </PixelButton>
                       </div>
 

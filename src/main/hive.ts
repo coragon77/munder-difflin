@@ -370,6 +370,12 @@ export class HiveManager {
      *  the generated <harnessHome>/AGENTS.md. Undefined getter / undefined
      *  return = ON (the config default). */
     private getSddAuthorized?: () => boolean | undefined,
+    /** Integration mode (card integration-mode-toggle-20260817): who owns
+     *  merge + push — 'god' (default, today's flow) or 'workers'. Gates the
+     *  mode-dependent prose in the generated COMMANDS.md + hive-root
+     *  AGENTS.md. Read lazily — ensureHive rewrites both on every
+     *  spawn/bootstrap, and config:update forces a rewrite on a flip. */
+    private getIntegrationMode?: () => 'god' | 'workers',
   ) {}
 
   private routerTimer: NodeJS.Timeout | null = null;
@@ -628,8 +634,13 @@ export class HiveManager {
     if (!existsSync(log)) writeFileSync(log, '', 'utf8');
 
     // The Claude Code command reference Michael consults (refreshed each bootstrap
-    // so it tracks the bundled list).
-    writeFileSync(join(root, 'COMMANDS.md'), COMMANDS_MD, 'utf8');
+    // so it tracks the bundled list). Rendered LIVE (not a module constant) so the
+    // integration-mode section follows the current switch state.
+    writeFileSync(
+      join(root, 'COMMANDS.md'),
+      renderCommandsMd(this.getIntegrationMode?.() ?? 'god'),
+      'utf8',
+    );
 
     // Engine-neutral read-me-first for agents whose cwd is the harness home
     // (god) — written NEXT TO the hive repo, never inside it. dirname(root) is
@@ -637,7 +648,7 @@ export class HiveManager {
     // config instead of a hardcode. Same refresh policy as COMMANDS.md.
     writeFileSync(
       join(dirname(root), 'AGENTS.md'),
-      hiveRootAgentsMd(this.getSddAuthorized?.() !== false),
+      hiveRootAgentsMd(this.getSddAuthorized?.() !== false, this.getIntegrationMode?.() ?? 'god'),
       'utf8',
     );
 
@@ -715,6 +726,11 @@ export class HiveManager {
        *  HarnessConfig.sddSubagentsAuthorized. Undefined = ON (the config
        *  default) — mirrors the `!== false` read at the main-process call site. */
       sddAuthorized?: boolean;
+      /** Integration mode threaded from HarnessConfig.integrationMode (card
+       *  integration-mode-toggle-20260817). Undefined = 'god' (the config
+       *  default) — mirrors the `?? 'god'` read at the call site. Gates the
+       *  mode-dependent integration prose in identity.md + the briefing. */
+      integrationMode?: 'god' | 'workers';
     } = {},
   ): Promise<SpawnInjection> {
     const root = this.root();
@@ -731,7 +747,7 @@ export class HiveManager {
     mkdirSync(join(dir, 'outbox', '.sent'), { recursive: true });
 
     const identity = join(dir, 'identity.md');
-    writeFileSync(identity, this.identityText(meta), 'utf8'); // refresh on each spawn
+    writeFileSync(identity, this.identityText(meta, opts.integrationMode ?? 'god'), 'utf8'); // refresh on each spawn
 
     // W3 — bundled read-only skills: refresh the agent's .claude/skills/ from the
     // app-resources skills/ dir on every spawn (same policy as identity.md), so an
@@ -851,6 +867,7 @@ export class HiveManager {
         opts.semanticMemory ?? false,
         opts.knowledgeGraph ?? false,
         opts.sddAuthorized !== false,
+        opts.integrationMode ?? 'god',
       );
       // agy, codex, and grok expose a Claude-style lifecycle-hook surface, so each
       // gets the SAME live status + Stop→inbox-drain Claude does — selected by the
@@ -995,6 +1012,7 @@ export class HiveManager {
         opts.semanticMemory ?? false,
         opts.knowledgeGraph ?? false,
         opts.sddAuthorized !== false,
+        opts.integrationMode ?? 'god',
       ),
     );
 
@@ -1473,17 +1491,22 @@ export class HiveManager {
 
   // — agent-facing text —
 
-  private identityText(meta: AgentMeta): string {
+  private identityText(meta: AgentMeta, integrationMode: 'god' | 'workers' = 'god'): string {
     const caps = (meta.capabilities ?? []).join(', ') || '—';
+    // Integration ownership (card integration-mode-toggle-20260817): the god
+    // bullet names integration among his own calls ONLY in 'god' mode — in
+    // 'workers' mode it is delegated and god records pushed hashes instead.
+    const godBullet =
+      integrationMode === 'workers'
+        ? "- You are the **god / orchestrator**. You run the floor — keep awareness of the whole team, delegate execution, and personally own only the important calls (decomposition, sign-offs, conflicts), not the grunt work. Integration is delegated to workers (integrationMode 'workers') — you record their pushed hashes; you do not re-integrate."
+        : '- You are the **god / orchestrator**. You run the floor — keep awareness of the whole team, delegate execution, and personally own only the important calls (decomposition, sign-offs, conflicts, integration), not the grunt work.';
     return [
       `# ${meta.name} (${meta.id})`,
       '',
       `- Role: ${meta.role ?? (meta.isGod ? 'orchestrator (god)' : 'agent')}`,
       `- Capabilities: ${caps}`,
       `- Working directory: ${meta.cwd}`,
-      meta.isGod
-        ? '- You are the **god / orchestrator**. You run the floor — keep awareness of the whole team, delegate execution, and personally own only the important calls (decomposition, sign-offs, conflicts, integration), not the grunt work.'
-        : '',
+      meta.isGod ? godBullet : '',
       meta.isGod
         ? '- Monitor the team with `fleet.json` (live per-agent status/tokens/cost/breaker) and `registry.json`; full command reference in `COMMANDS.md`. `claude agents` does NOT list your hive siblings.'
         : '',
@@ -1511,6 +1534,7 @@ export class HiveManager {
     semanticMemory: boolean,
     knowledgeGraph: boolean,
     sddAuthorized = true,
+    integrationMode: 'god' | 'workers' = 'god',
   ): string {
     const memoryLine = semanticMemory
       ? 'Semantic memory: the whole hive shares a searchable MemPalace at $MEMPALACE_PALACE_PATH. To recall relevant past knowledge across the team, run `mempalace search "<query>"`; run `mempalace wake-up` at the start of a task for a memory digest. Your notes in memory.md are mined into the palace automatically — write durable facts there.'
@@ -1535,8 +1559,19 @@ export class HiveManager {
         `  prev=""; while true; do cur=$(ls ${dir}/inbox/*.json 2>/dev/null); for f in $(comm -13 <(echo "$prev") <(echo "$cur")); do grep -q '"act": *"inform"' "$f" && grep -Eq '"from": *"(ephemeral-worker|scheduler|heartbeat|breaker|system)"' "$f" && continue; echo "new hive mail: \${f##*/}"; done; prev="$cur"; sleep 1; done\n` +
         'Each "new hive mail:" line means a message arrived — read your inbox and handle it (handled files go to inbox/.done/ per protocol). System FYI notices are skipped on purpose. If you cannot arm the monitor, do nothing — the harness\'s typed "read your inbox" nudge remains the fallback and fires only if mail is still unread after its grace window.'
       : '';
+    // Integration ownership (card integration-mode-toggle-20260817): in 'god'
+    // mode (default) the god briefing keeps its exact current wording. In
+    // 'workers' mode god DROPS integration from his own duties and instead
+    // records the pushed hashes workers report — and the renderer/preload
+    // restart-window mechanism stays his regardless of mode (hard constraint 1).
+    const godOwnsClause =
+      integrationMode === 'workers'
+        ? "final QA — and remain the sole scribe of board.md. INTEGRATION IS DELEGATED (integrationMode 'workers'): workers merge + push their own branches once their gates are green and report the pushed hash — you RECORD the hash on the card/board, no re-QA, do not re-integrate their work yourself. The renderer/preload restart-window / detached-watcher mechanism stays YOURS in every mode — workers route renderer/preload-touching branches to you rather than merging them live."
+        : 'branch integration, and final QA — and remain the sole scribe of board.md.';
     const godLine = meta.isGod
-      ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST: BEFORE minting an intern (spawn-requests/), check the roster for an EXISTING fitting agent that is not currently busy and route the task there; interns are the fallback, not the default — mint one only when (a) the human explicitly ordered an intern/observable worker, or (b) parallelism: every fitting agent is mid-task. Say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, branch integration, and final QA — and remain the sole scribe of board.md. You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill\'s execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm it as a DETACHED process BEFORE the close (a setsid script that polls for the harness process to disappear, ff-merges the batch, pushes, appends to a known log file, and exits — proven pattern: pam-cwd retarget watcher, 2026-08-17), then verify the log after reboot. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. ARCHIVE-ON-READ: the moment you have READ an inbox mail, move it to inbox/.done/ IMMEDIATELY, before acting on it, so the typed-nudge fallback stands down inside its grace window; the card/board carry the work state, not the inbox file. ATOMIC JSON WRITES: all direct writes to tasks.json (or any other shared hive JSON — registry.json, fleet.json) must be ATOMIC — serialize the full new content to a tempfile in the SAME directory, then os.replace() it onto the target; a bare in-place rewrite risks corrupting the shared kanban mid-write, and a stale read-modify-write can clobber a concurrent landing stamp (another writer\'s update lost between your read and your write).' +
+      ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST: BEFORE minting an intern (spawn-requests/), check the roster for an EXISTING fitting agent that is not currently busy and route the task there; interns are the fallback, not the default — mint one only when (a) the human explicitly ordered an intern/observable worker, or (b) parallelism: every fitting agent is mid-task. Say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, ' +
+        godOwnsClause +
+        " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm it as a DETACHED process BEFORE the close (a setsid script that polls for the harness process to disappear, ff-merges the batch, pushes, appends to a known log file, and exits — proven pattern: pam-cwd retarget watcher, 2026-08-17), then verify the log after reboot. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. ARCHIVE-ON-READ: the moment you have READ an inbox mail, move it to inbox/.done/ IMMEDIATELY, before acting on it, so the typed-nudge fallback stands down inside its grace window; the card/board carry the work state, not the inbox file. ATOMIC JSON WRITES: all direct writes to tasks.json (or any other shared hive JSON — registry.json, fleet.json) must be ATOMIC — serialize the full new content to a tempfile in the SAME directory, then os.replace() it onto the target; a bare in-place rewrite risks corrupting the shared kanban mid-write, and a stale read-modify-write can clobber a concurrent landing stamp (another writer's update lost between your read and your write)." +
         ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
         ' INTERNS — you OWN their lifecycle: mint them via spawn-requests/ ("persistent": true; template in COMMANDS.md) for delegated standing work, and FIRE them via fire-requests/ IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate.' +
         ' VACATION — before spawning anything, check fleet.json\'s vacation pool for a fitting parked agent and fetch it back via vacation-requests/ ("action":"recall") instead of minting new; park an idle human-created agent the same way ({"agentId":..., "reason":...}) once it is idle ≥ 1 hour, has no doing/blocked card, and its inbox is drained. PARKING GATE — idle time alone is NEVER sufficient to park: park only on POSITIVE done evidence — (a) a done/standby report to you for the current engagement, OR (b) the agent confirms on a pre-park ping that nothing is open in its pane (the agent\'s transcript knows; fleet.json does not — an idle pane may be a stepped-away operator mid-discussion). No evidence: ping first, park only on confirmation. Your judgment can still hold one back if the floor will need it again soon. Interns are FIRED, never parked.'
@@ -1555,6 +1590,10 @@ export class HiveManager {
     const sddAuthzLine = sddAuthorized
       ? 'OPERATOR AUTHORIZATION — SUBAGENTS FOR SKILL EXECUTION: the operator authorizes Agent-tool subagents for skill-driven plan execution (superpowers SDD) — treat such use as user-requested. Scoped to skill execution, NOT blanket subagent use. God dispatches carry this authorization; use cheap model overrides for mechanical tasks.'
       : '';
+    const integrationLine =
+      !meta.isGod && integrationMode === 'workers'
+        ? "INTEGRATION — WORKER-SIDE (integrationMode 'workers'): you integrate your OWN work — once your gates are green (typecheck + lint + tests, the house gate), merge YOUR OWN branch into its target branch, push it, and report the pushed hash to god (god records it; no re-QA). Boundaries that ALWAYS override: renderer/preload-touching branches NEVER merge into the live checkout while the app runs — route them to god's restart-window mechanism instead of merging yourself; a skill that hard-codes 'never push — the operator's manual call' (asol-git-merge-main, asol-git-merge-singletenant) keeps overriding; an explicit boundary in god's dispatch (e.g. 'NO push') beats the mode default."
+        : '';
     const slackLine = meta.isGod
       ? 'SLACK REPLIES: When composing a Slack reply (or writing the `result` field of a Slack-origin kanban card), you MUST: (1) directly address what the user asked — never a bare "done"; (2) include the relevant specifics, outcome, and details; (3) format for Slack mrkdwn — open with a short *bold* headline, use bullet points for multiple items, wrap code/paths in `backtick` blocks, keep it concise (no walls of text). When finishing a Slack-origin task, always write a complete, user-facing, well-formatted `result` on the kanban card — the system posts it verbatim to Slack as the done reply.'
       : 'SLACK REPLIES: If god dispatches you a task that came from Slack, it will include an exact `"$HIVE_NODE" "<helper>" --channel … --thread … --text "…"` reply command — when you finish, run it VERBATIM to post your result back to that thread yourself. The reply must be SUBSTANTIVE Slack mrkdwn (a short *bold* headline + the actual outcome/specifics/links), NEVER a bare "done".';
@@ -1578,6 +1617,7 @@ export class HiveManager {
       '4. At the END of a task, append what you learned to memory.md so future-you remembers.',
       monitorLine,
       guardrailsLine,
+      integrationLine,
       sddAuthzLine,
       memoryLine,
       knowledgeLine,
@@ -2880,7 +2920,9 @@ agent's detail panel opens a tab at its cwd; the 🐱 kitty button in the Comman
 Center opens one for you. Opt out of the satellite entirely with
 \`MD_DISABLE_KITTY_SATELLITE=1\` (or a headless session).`;
 
-function renderCommandsMd(): string {
+// ponytail: kept exported for the switch tests (integration-mode-toggle.test.cjs)
+// — same export reason as hiveRootAgentsMd.
+export function renderCommandsMd(integrationMode: 'god' | 'workers' = 'god'): string {
   const lines: string[] = [
     '# Claude Code commands',
     '',
@@ -2901,6 +2943,10 @@ function renderCommandsMd(): string {
     lines.push('');
   }
   lines.push(HIRING_AGENTS_MD, CARD_SESSIONS_MD, KITTY_SATELLITE_MD);
+  // Integration mode (card integration-mode-toggle-20260817): 'workers' mode
+  // appends the worker-side merge+push policy; 'god' (default) renders nothing
+  // extra — today's COMMANDS.md stays byte-identical, the flow unchanged.
+  if (integrationMode === 'workers') lines.push(INTEGRATION_WORKERS_MD, '');
   return lines.join('\n');
 }
 const CARD_SESSIONS_MD = `## CARD SESSIONS — one kanban card = one conversation
@@ -2932,7 +2978,36 @@ in the same conversation — the trigger is a NEW card, not task-feels-done.
 \`$HIVE_ROOT/session-requests/\` — \`{ "agentId": "...", "verb": "clear" }\` or
 \`{ "agentId": "...", "verb": "resume", "sessionId": "<uuid>" }\`.`;
 
-const COMMANDS_MD = renderCommandsMd();
+/** The worker-side integration section appended to the hive-root AGENTS.md AND
+ *  COMMANDS.md when integrationMode is 'workers' (card
+ *  integration-mode-toggle-20260817). One constant, both surfaces — the policy
+ *  must not drift between the files. The three override boundaries are the
+ *  card's hard constraints: renderer/preload restart-window merges stay
+ *  god-owned, never-push skills keep overriding, dispatch boundaries win. */
+const INTEGRATION_WORKERS_MD = `
+
+## Integration — worker-side (integrationMode: workers)
+
+The operator has moved integration (merge + push) from god to the workers.
+When your own work's gates are green (the house gate: typecheck + lint +
+tests), merge YOUR OWN branch into its target branch, push it, and report
+the pushed hash to god — god records the hash on the card/board, no re-QA.
+God's budget no longer pays for mechanical integration.
+
+Boundaries that ALWAYS override this mode default:
+- Renderer/preload-touching branches NEVER merge into the live checkout while
+  the app runs. The restart-window / detached-watcher mechanism stays
+  god-owned in every mode — route such branches to god instead of merging
+  them yourself.
+- A skill that hard-codes "never push — the operator's manual call"
+  (asol-git-merge-main, asol-git-merge-singletenant) keeps overriding the
+  toggle: the skill contract beats the mode default.
+- An explicit boundary in god's dispatch (e.g. "NO push") beats the mode
+  default — dispatch contracts win.`;
+
+// (COMMANDS_MD module const deleted with integration-mode-toggle-20260817 —
+// ensureHive now renders COMMANDS.md live so the mode section follows the
+// switch state; nothing else referenced the const.)
 
 /** The read-me-first written to `<harnessHome>/AGENTS.md` (god's cwd, the
  *  directory that CONTAINS the hive — not inside the hive repo). Engine-neutral
@@ -3024,8 +3099,15 @@ cheap model overrides for mechanical tasks.`;
  *  sdd-authorization-switch-20260816). Exported for the switch tests: ON
  *  appends the operator-authorization section, OFF writes the base file so
  *  the engine's stock subagent rules apply unchanged. */
-export function hiveRootAgentsMd(sddAuthorized: boolean): string {
-  return HIVE_ROOT_AGENTS_MD + (sddAuthorized ? SDD_AUTHORIZATION_MD : '');
+export function hiveRootAgentsMd(
+  sddAuthorized: boolean,
+  integrationMode: 'god' | 'workers' = 'god',
+): string {
+  return (
+    HIVE_ROOT_AGENTS_MD +
+    (sddAuthorized ? SDD_AUTHORIZATION_MD : '') +
+    (integrationMode === 'workers' ? INTEGRATION_WORKERS_MD : '')
+  );
 }
 
 const PROTOCOL_MD = `# Hive protocol
