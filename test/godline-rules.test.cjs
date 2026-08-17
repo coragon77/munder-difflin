@@ -99,6 +99,50 @@ test('godLine carries the HUMAN-CARD REFERENCE rule (no duplicate cards)', () =>
   assert.ok(/hive-card update/.test(p), 'must name the enrichment tool (hive-card update)');
 });
 
+test('godLine carries the ENGAGEMENT-AWARE CARD FLIPS rule', () => {
+  // Card agent-harness-engagement-aware-2026-08-17: --adopt for connected/
+  // running engagements, fresh default, idle-gated clears, every card carries
+  // a session. Root incident: a connected card's fresh flip wiped a working
+  // pane (Kevin, 17:36).
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/ENGAGEMENT-AWARE CARD FLIPS:/.test(p), 'the rule must be named');
+  assert.ok(
+    /pass THROUGH doing/.test(p),
+    'flips pass through doing so every card carries a session',
+  );
+  assert.ok(/todo->done|todo→done/.test(p), 'todo->done stays legal for externally-resolved cards');
+  assert.ok(/--fresh/.test(p), 'names the fresh default');
+  assert.ok(/--adopt/.test(p), 'names the adopt flag');
+  assert.ok(
+    /connected to the agent's CURRENT/.test(p) || /CONNECTED/.test(p),
+    'defines when to adopt: a connected/running engagement',
+  );
+  assert.ok(/hive-card status <id> doing --adopt/.test(p), 'gives the exact command');
+  assert.ok(
+    /never fires the clear at a busy pane|never fire .{0,30}busy pane/.test(p),
+    'states the idle-gated clear',
+  );
+  assert.ok(/NO clear|no clear/.test(p), "adopt keeps the pane's conversation");
+});
+
+test('godLine carries the ROUTING-MISMATCH CHALLENGE rule', () => {
+  // Card agent-harness-godline-rule-cha-2026-08-17: before executing a
+  // routing/assignment order, check the named agent against the target's
+  // project/customer (registry cwd, card content); on mismatch ASK in plain
+  // prose instead of silently complying. Root incident: the cover-abort
+  // discussion was routed to Creed (HPT) though the finding was Stanley's
+  // (Kampa). Operator directive: 'Please correct me next time if I mix up
+  // the names.'
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/ROUTING-MISMATCH CHALLENGE:/.test(p), 'the rule must be named');
+  assert.ok(/routing or assignment order/.test(p), 'covers routing and assignment orders');
+  assert.ok(/registry\.json cwd/.test(p), 'names the evidence source (registry cwd)');
+  assert.ok(/project\/customer/.test(p), "checks against the target's project/customer");
+  assert.ok(/ASK in plain prose/.test(p), 'the mismatch response is a plain question');
+  assert.ok(/instead of silently complying|rather than silently complying/.test(p));
+  assert.ok(/Stanley/.test(p) || /instead\?/.test(p), 'shows the ask shape (name the right agent)');
+});
+
 test('godLine carries the PARALLEL-DISPATCH + FLOOR-CAP policy', () => {
   // Cards agent-harness-parallel-dispatc-2026-08-17 +
   // agent-harness-floormaxagents-s-2026-08-17: god's briefing must fan

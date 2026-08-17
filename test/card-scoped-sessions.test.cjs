@@ -249,6 +249,126 @@ test('adopt: unknown session age (pre-upgrade registry) behaves like the old cle
   assert.equal(actions[0].kind, 'clear');
 });
 
+// ——— explicit --adopt (engagement-aware flips, 2026-08-17) —————————————
+// `hive-card status <id> doing --adopt` stamps sessionMode:'adopt' on the
+// card: the assignee's CURRENT conversation IS this card's engagement (a
+// connected second card, a mid-work handoff) — lead only + stamp, NO clear,
+// and NO age limit (the 2min heuristic is for implicit adoption only; god's
+// explicit word beats any heuristic — root incident: Kevin's pane wiped at
+// 17:36 because a connected card's flip defaulted to fresh).
+
+test('explicit --adopt: lead only + stamp, regardless of conversation age', () => {
+  const now = 1_000_000;
+  const actions = cardSessionDecisions(
+    [CARD({ sessionMode: 'adopt' })],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 'old-standing-conversation' },
+    { dwight: 'claude' },
+    { dwight: now - 30 * 60_000 }, // 30min old — the young-session heuristic would clear
+    now,
+  );
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].kind, 'adopt');
+  assert.equal(actions[0].command, '', 'nothing typed as the command — the lead only');
+  assert.equal(actions[0].session, 'old-standing-conversation');
+});
+
+test('explicit --adopt wins over the already-live no-op (re-adopt still leads)', () => {
+  // blocked→doing re-flip with --adopt on a card already stamped to the live
+  // conversation: without the marker this reads "already in session, nothing
+  // to steer" — with it the card-title lead still goes out (an info line for
+  // the second card of the engagement).
+  const actions = cardSessionDecisions(
+    [CARD({ sessionMode: 'adopt', sessionId: 'live-now' })],
+    { 'card-1': { status: 'blocked' } },
+    { dwight: 'live-now' },
+    { dwight: 'claude' },
+  );
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].kind, 'adopt');
+  assert.equal(actions[0].command, '');
+  assert.equal(actions[0].session, 'live-now');
+});
+
+test('explicit --adopt without a live conversation falls through to fresh (nothing to adopt)', () => {
+  const actions = cardSessionDecisions(
+    [CARD({ sessionMode: 'adopt' })],
+    { 'card-1': { status: 'todo' } },
+    { dwight: undefined }, // pane never reported a session
+    { dwight: 'claude' },
+  );
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].kind, 'clear');
+});
+
+// ——— idle-gated fresh clears (engagement-aware flips, 2026-08-17) ————————
+// A pane-restarting command (/clear, /resume) must never fire at a BUSY pane
+// (the assignee did real work inside vacationBusy's window — the house busy
+// rule, same definition the vacation gate uses). The decision comes back
+// DEFERRED: the command it WILL fire, but the tick must not emit yet — the
+// transition stays pending and retries each tick until the pane goes quiet.
+
+test('busy pane defers the fresh clear — action marked deferred, command kept', () => {
+  const actions = cardSessionDecisions(
+    [CARD()],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 'old' },
+    { dwight: 'claude' },
+    {},
+    1_000_000,
+    { dwight: true },
+  );
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].kind, 'clear');
+  assert.equal(actions[0].command, '/clear', 'the command that WILL fire once idle');
+  assert.equal(actions[0].deferred, true);
+});
+
+test('busy pane defers a resume too — same wipe hazard, same gate', () => {
+  const actions = cardSessionDecisions(
+    [CARD({ sessionId: 'card-session-uuid' })],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 'a-different-live-session' },
+    { dwight: 'claude' },
+    {},
+    1_000_000,
+    { dwight: true },
+  );
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].deferred, true);
+  assert.equal(actions[0].command, '/resume card-session-uuid');
+});
+
+test('busy pane does NOT defer an adopt lead (no pane-restart command, just an info line)', () => {
+  const now = 1_000_000;
+  const actions = cardSessionDecisions(
+    [CARD({ sessionMode: 'adopt' })],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 'live' },
+    { dwight: 'claude' },
+    { dwight: now - 10_000 },
+    now,
+    { dwight: true },
+  );
+  assert.equal(actions.length, 1);
+  assert.notEqual(actions[0].deferred, true);
+  assert.equal(actions[0].command, '');
+});
+
+test('idle pane (not in the busy map) behaves exactly as before — no deferral', () => {
+  const actions = cardSessionDecisions(
+    [CARD()],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 'old' },
+    { dwight: 'claude' },
+    {},
+    1_000_000,
+    { kevin: true }, // someone ELSE is busy
+  );
+  assert.equal(actions.length, 1);
+  assert.notEqual(actions[0].deferred, true);
+});
+
 // ——— the tick: ordering, retries, snapshot updates ————————————————————
 
 function tmpHive() {
@@ -261,6 +381,7 @@ function fakeDeps(tmp, agents = {}, emitResult = true) {
   const emitted = [];
   const informs = [];
   const stamped = [];
+  let busy = false;
   return {
     deps: {
       root: () => tmp,
@@ -271,10 +392,14 @@ function fakeDeps(tmp, agents = {}, emitResult = true) {
       },
       informGod: (s, b) => informs.push({ subject: s, body: b }),
       stampCard: (cardId, sessionId) => stamped.push({ cardId, sessionId }),
+      busy: () => busy,
     },
     emitted,
     informs,
     stamped,
+    setBusy: (v) => {
+      busy = v;
+    },
   };
 }
 
@@ -329,6 +454,81 @@ test('tick: adopt stamps the card through deps and emits ONLY the lead, with the
   assert.equal(emitted[0].marker.session, 'fresh');
   assert.deepEqual(stamped, [{ cardId: 'card-1', sessionId: 'fresh' }]);
   assert.ok(informs.some((i) => /adopt queued for dwight/.test(i.subject)));
+});
+
+// ——— tick: explicit --adopt + idle-gated deferral (engagement-aware) ——————
+
+test('tick: explicit --adopt on an OLD conversation leads + stamps, no clear, mail states adopt', () => {
+  const tmp = tmpHive();
+  setCards(tmp, [CARD({ status: 'todo' })]);
+  const { deps, emitted, informs, stamped } = fakeDeps(tmp, {
+    dwight: {
+      sessionId: 'old-engagement',
+      sessionStartedAt: Date.now() - 30 * 60_000,
+      provider: 'claude',
+    },
+  });
+  const seen = {};
+  cardSessionTick(deps, seen); // snapshot
+  setCards(tmp, [CARD({ sessionMode: 'adopt' })]); // god: status <id> doing --adopt
+  cardSessionTick(deps, seen);
+  assert.equal(emitted.length, 1, 'the lead only — the pane keeps its conversation');
+  assert.ok(emitted[0].text.startsWith('Card "Vacation state implementation"'));
+  assert.equal(emitted[0].marker.kind, 'adopt');
+  assert.deepEqual(stamped, [{ cardId: 'card-1', sessionId: 'old-engagement' }]);
+  const mail = informs.find((i) => /adopt queued for dwight/.test(i.subject));
+  assert.ok(mail, 'god is informed');
+  assert.match(mail.body, /mode: adopt/, 'the notice mail states the mode');
+  cardSessionTick(deps, seen); // steady state
+  assert.equal(emitted.length, 1);
+});
+
+test('tick: busy pane defers the fresh clear; fires with a fresh-deferred (fired at HH:MM) notice once quiet', () => {
+  const tmp = tmpHive();
+  setCards(tmp, [CARD({ status: 'todo' })]);
+  const { deps, emitted, informs, setBusy } = fakeDeps(tmp, {
+    dwight: { sessionId: 'old', provider: 'claude' },
+  });
+  const seen = {};
+  cardSessionTick(deps, seen); // snapshot
+  setBusy(true); // dwight is mid-work (vacationBusy's rule)
+  setCards(tmp, [CARD()]); // god flips to doing (default --fresh)
+  cardSessionTick(deps, seen);
+  assert.equal(emitted.length, 0, 'nothing typed into a busy pane');
+  assert.ok(
+    !informs.some((i) => /queued for dwight/.test(i.subject)),
+    'no fire notice while deferred (the mode is stated when it fires)',
+  );
+  // The pane goes quiet → the deferred clear fires with the deferred notice.
+  setBusy(false);
+  cardSessionTick(deps, seen);
+  assert.deepEqual(emitted.map((e) => e.text).slice(0, 1), ['/clear']);
+  const fire = informs.find((i) => /clear queued for dwight/.test(i.subject));
+  assert.ok(fire, 'god is informed at fire time');
+  assert.match(
+    fire.body,
+    /fresh-deferred \(fired at \d{2}:\d{2}\)/,
+    'the notice states the deferred mode and the fire time',
+  );
+  cardSessionTick(deps, seen); // steady state — no second fire
+  assert.equal(emitted.length, 2);
+});
+
+test('tick: an idle pane at flip time fires fresh immediately (mode: fresh, no deferral noise)', () => {
+  const tmp = tmpHive();
+  setCards(tmp, [CARD({ status: 'todo' })]);
+  const { deps, emitted, informs } = fakeDeps(tmp, {
+    dwight: { sessionId: 'old', provider: 'claude' },
+  });
+  const seen = {};
+  cardSessionTick(deps, seen); // snapshot
+  setCards(tmp, [CARD()]);
+  cardSessionTick(deps, seen);
+  assert.equal(emitted.length, 2);
+  const mail = informs.find((i) => /clear queued for dwight/.test(i.subject));
+  assert.ok(mail);
+  assert.match(mail.body, /mode: fresh/);
+  assert.doesNotMatch(mail.body, /deferred/);
 });
 
 test('tick: failed emit leaves the card unseen → retries next tick; others still advance', () => {

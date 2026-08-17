@@ -40,6 +40,11 @@ export interface CardLike {
   assignee?: string;
   status?: string;
   sessionId?: string;
+  /** Written by `hive-card status <id> doing --adopt`: the assignee's CURRENT
+   *  conversation IS this card's engagement — lead only + stamp, NO clear,
+   *  no age limit (god's explicit word beats the young-session heuristic).
+   *  Absent = fresh (the default). Consumed on the →doing transition. */
+  sessionMode?: 'adopt';
 }
 
 /** One queued pane action derived from a card transition. */
@@ -62,10 +67,19 @@ export interface CardSessionAction {
    *  adopted conversation; undefined for a clear) — delivery-time staleness
    *  check (see shared/cardSessions.ts). */
   session?: string;
+  /** True when the pane was BUSY at decision time (vacationBusy's rule): the
+   *  tick must NOT emit yet — the transition stays pending and the decision
+   *  re-runs each tick until the pane goes quiet (idle-gated clears,
+   *  engagement-aware flips 2026-08-17). Only pane-restarting commands defer;
+   *  an adopt lead (command '') never does. */
+  deferred?: boolean;
 }
 
-/** What the watcher remembers per card between ticks (the transition memory). */
-export type CardSeen = Record<string, { status?: string }>;
+/** What the watcher remembers per card between ticks (the transition memory).
+ *  `deferred` records that a pane-restart command was held back for a busy
+ *  pane — the eventual fire states "fresh-deferred (fired at HH:MM)" in god's
+ *  notice mail. */
+export type CardSeen = Record<string, { status?: string; deferred?: boolean }>;
 
 /** A live conversation younger than this at a →doing flip is presumed to BE
  *  the card's fresh conversation (god's manual clear / a just-finished spawn)
@@ -82,7 +96,10 @@ const ADOPT_SESSION_MS = 120_000;
  * boot must not fire actions). Returns the actions to queue, in card order.
  * `sessionStarted` maps assignee → epoch ms their CURRENT conversation began
  * (RegistryAgent.sessionStartedAt); `now` defaults to Date.now() (injectable
- * for tests).
+ * for tests); `busy` maps assignee → pane is mid-work (vacationBusy's house
+ * rule) — pane-restarting commands (clear/resume) come back `deferred` for a
+ * busy pane instead of firing (engagement-aware flips 2026-08-17: never wipe
+ * a working pane; re-decide each tick until it goes quiet).
  */
 export function cardSessionDecisions(
   cards: CardLike[],
@@ -91,6 +108,7 @@ export function cardSessionDecisions(
   providers: Record<string, AgentProvider | undefined>,
   sessionStarted: Record<string, number | undefined> = {},
   now: number = Date.now(),
+  busy: Record<string, boolean> = {},
 ): CardSessionAction[] {
   const actions: CardSessionAction[] = [];
   for (const card of cards) {
@@ -100,7 +118,16 @@ export function cardSessionDecisions(
     const live = registrySessions[card.assignee];
     let command: string | null = null;
     let session: string | undefined;
-    if (
+    let kind: CardSessionAction['kind'];
+    if (card.sessionMode === 'adopt' && live) {
+      // EXPLICIT adopt (hive-card status <id> doing --adopt): the assignee's
+      // current conversation IS this card's engagement (connected card, mid-work
+      // handoff) — lead only + stamp, regardless of conversation age. Checked
+      // BEFORE the already-live no-op so a re-adopt (blocked→doing) still leads.
+      session = live;
+      command = '';
+      kind = 'adopt';
+    } else if (
       !card.sessionId &&
       live &&
       sessionStarted[card.assignee] !== undefined &&
@@ -110,21 +137,26 @@ export function cardSessionDecisions(
       // god's manual clear race): adopt it, don't wipe it. Lead only.
       session = live;
       command = ''; // no command — the marker kind 'adopt' says lead-only
+      kind = 'adopt';
     } else if (!card.sessionId) {
       // Never ran → fresh conversation for the new card.
       const c = composeSessionCommand({ verb: 'clear' }, providers[card.assignee]);
       command = c.ok ? c.command : null;
+      kind = 'clear';
     } else if (card.sessionId !== live) {
       // Paused earlier, different conversation live now → resume the card's own.
       session = card.sessionId;
       command = `/resume ${card.sessionId}`;
+      kind = 'resume';
     } else {
       continue; // already in this card's conversation — nothing to steer
     }
     if (command === null) continue;
     const title = (card.title ?? card.id).trim() || card.id;
-    const kind: CardSessionAction['kind'] =
-      session && !card.sessionId ? 'adopt' : card.sessionId ? 'resume' : 'clear';
+    // A pane-restart command at a BUSY pane is deferred, not fired: the command
+    // rides along (what WILL fire), the tick holds the transition pending and
+    // re-decides next tick. An adopt lead types no command — safe to queue.
+    const deferred = command !== '' && busy[card.assignee] === true;
     actions.push({
       kind,
       agentId: card.assignee,
@@ -133,6 +165,7 @@ export function cardSessionDecisions(
       command,
       label: `Card "${title}" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.`,
       session,
+      ...(deferred ? { deferred: true } : {}),
     });
   }
   return actions;
@@ -156,6 +189,12 @@ export interface CardSessionDeps {
       }
     >;
   };
+  /** Is this agent mid-work? THE house busy rule (vacationBusy: real work
+   *  inside its window, telemetry-primary, PTY fallback) — the same
+   *  definition the vacation gate uses, wired identically in index.ts. A
+   *  pane-restarting command (clear/resume) is deferred while busy
+   *  (engagement-aware flips 2026-08-17: never fire /new at a busy pane). */
+  busy(agentId: string): boolean;
   /** Broadcast to the renderer's queue gate (same channel as session-requests).
    *  The marker rides along so the queue-drain can stale-drop at delivery. */
   emit(agentId: string, text: string, marker?: CardSessionMarker): boolean;
@@ -182,7 +221,10 @@ function readCards(root: string): CardLike[] {
  *  `seen` is owned by the caller (the watcher loop) so the function stays pure
  *  apart from the deps side effects — and testable with a hand-fed snapshot.
  *  A card whose emit failed (window down) stays UNSEEN so the next tick
- *  re-detects the transition and retries; every other card advances. */
+ *  re-detects the transition and retries; a card whose pane-restart command
+ *  was DEFERRED (busy pane) stays pending the same way, carrying a `deferred`
+ *  memory so the eventual fire's notice states the mode; every other card
+ *  advances. */
 export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
   const root = deps.root();
   if (!root) return;
@@ -191,20 +233,38 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
   const registrySessions: Record<string, string | undefined> = {};
   const providers: Record<string, AgentProvider | undefined> = {};
   const sessionStarted: Record<string, number | undefined> = {};
+  const busy: Record<string, boolean> = {};
   for (const card of cards) {
     if (card.assignee) {
       registrySessions[card.assignee] = reg[card.assignee]?.sessionId;
       providers[card.assignee] = reg[card.assignee]?.provider;
       sessionStarted[card.assignee] = reg[card.assignee]?.sessionStartedAt;
+      if (busy[card.assignee] === undefined) busy[card.assignee] = deps.busy(card.assignee);
     }
   }
   // Pre-tick snapshot: on a failed emit a card's PRE-transition status is
   // RESTORED, so the next tick re-detects todo→doing and retries. (Deleting the
   // entry instead would read as a first sight — snapshot-only — and never retry.)
   const prevSeen: CardSeen = { ...seen };
-  const actions = cardSessionDecisions(cards, seen, registrySessions, providers, sessionStarted);
+  const actions = cardSessionDecisions(
+    cards,
+    seen,
+    registrySessions,
+    providers,
+    sessionStarted,
+    Date.now(),
+    busy,
+  );
   const failed = new Set<string>();
+  const deferredIds = new Set<string>();
   for (const a of actions) {
+    if (a.deferred) {
+      // Busy pane: hold the transition pending (no emit, no mail — the mode is
+      // stated when it FIRES). Next tick re-decides against the live pane.
+      deferredIds.add(a.cardId);
+      continue;
+    }
+    const wasDeferred = prevSeen[a.cardId]?.deferred === true;
     const marker: CardSessionMarker = {
       cardId: a.cardId,
       agentId: a.agentId,
@@ -232,19 +292,30 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
     deps.informGod(
       `[card-session] ${a.kind} queued for ${a.agentId}`,
       a.kind === 'adopt'
-        ? `Card "${a.cardTitle}" (${a.cardId}) is now doing and ${a.agentId}'s conversation just started (god steering or fresh spawn) — adopted it as this card's conversation (stamped ${a.session!.slice(0, 8)}) and queued the card-title lead. No clear: the pane keeps its fresh conversation.`
-        : `Card "${a.cardTitle}" (${a.cardId}) is now doing: queued "${a.command}" into ${a.agentId}'s pane${a.kind === 'clear' ? ' for a fresh card-scoped conversation' : ' to resume the card\u2019s recorded conversation'}, followed by the card-title lead (the conversation is named after the card). The card\u2019s sessionId stamp updates automatically once the new conversation reports in.`,
+        ? `Card "${a.cardTitle}" (${a.cardId}) is now doing in ${a.agentId}'s CURRENT conversation (mode: adopt — the engagement is connected; no clear). Stamped ${a.session!.slice(0, 8)} and queued the card-title lead as an info line; the pane keeps its conversation.`
+        : `Card "${a.cardTitle}" (${a.cardId}) is now doing: queued "${a.command}" into ${a.agentId}'s pane for a ${a.kind === 'clear' ? `fresh card-scoped conversation (mode: ${wasDeferred ? `fresh-deferred (fired at ${firedAt()}) — the pane was busy at the flip, the clear fired once it went idle` : 'fresh'})` : `resume of the card's recorded conversation${wasDeferred ? ` (deferred while the pane was busy; fired at ${firedAt()})` : ''}`}, followed by the card-title lead (the conversation is named after the card). The card's sessionId stamp updates automatically once the new conversation reports in.`,
     );
   }
   for (const card of cards) {
-    if (failed.has(card.id)) {
+    if (failed.has(card.id) || deferredIds.has(card.id)) {
       // Restore the pre-transition memory so the retry re-detects the
       // transition (a failed card always had one; restore-else-skip is a no-op).
-      if (prevSeen[card.id]) seen[card.id] = prevSeen[card.id];
+      // A deferral additionally sets the deferred memory — the eventual fire
+      // states "fresh-deferred (fired at HH:MM)" in god's notice.
+      if (prevSeen[card.id])
+        seen[card.id] = {
+          ...prevSeen[card.id],
+          ...(deferredIds.has(card.id) ? { deferred: true } : {}),
+        };
     } else {
       seen[card.id] = { status: card.status };
     }
   }
+}
+
+/** HH:MM (UTC, the hive log timezone) for the fired-at notice line. */
+function firedAt(): string {
+  return new Date().toISOString().slice(11, 16);
 }
 
 /** Polling cadence — matches the hive router / spawn / session watchers. */

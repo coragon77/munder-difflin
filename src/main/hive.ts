@@ -149,8 +149,17 @@ export interface HiveTask {
    *  whenever it CHANGES while the card is the agent's active 'doing' card —
    *  so it converges to the post-clear conversation without racing the queue.
    *  The /resume key when the card is picked up again after a pause. God
-   *  never writes this by hand. */
+   *  never writes this by hand. A born-doing SELF-card (hive-card add --status
+   *  doing in the agent's own pane) is stamped by the CLI at creation — it
+   *  never passes through a →doing transition, so nothing else would link it
+   *  (ghost-card fix, engagement-aware flips 2026-08-17). */
   sessionId?: string;
+  /** Written by `hive-card status <id> doing --adopt` (engagement-aware flips
+   *  2026-08-17): the assignee's CURRENT conversation is this card's engagement
+   *  — the card-session watcher leads with the card title and stamps that
+   *  conversation, NO clear. Absent = fresh (the default: clear + lead).
+   *  Consumed on the →doing transition; write-once, never cleared. */
+  sessionMode?: 'adopt';
 }
 
 export interface AgentMeta {
@@ -423,7 +432,7 @@ export class HiveManager {
    */
   constructor(
     private getHome: () => string | null,
-    private emit?: (channel: string, payload: unknown) => boolean | void,
+    private emit?: (channel: string, payload: unknown) => boolean | undefined,
     /** Operator authorization for subagent skill execution (card
      *  sdd-authorization-switch-20260816): gates the authorization section in
      *  the generated <harnessHome>/AGENTS.md. Undefined getter / undefined
@@ -1778,7 +1787,7 @@ export class HiveManager {
           ? `final QA — and remain the sole scribe of board.md. ${delegatedClause}`
           : 'branch integration, and final QA — and remain the sole scribe of board.md.';
     const godLine = meta.isGod
-      ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST and dispatch is PARALLEL BY DEFAULT: (a) AREA FAN-OUT — when an area has multiple INDEPENDENT open cards, dispatch them to ALL available fitting workers AT ONCE: floor agents first, then recall fitting parked workers (fleet.json vacation pool); one owner per card, parallel across cards — say that you checked the roster. (b) Go sequential ONLY on real ticket dependencies (one card genuinely blocked on another\'s output) — never serialize independent work. (c) INTERNS ARE THE OVERFLOW — when independent cards outnumber the fitting hires on floor + vacation, mint interns (spawn-requests/) for the surplus: overflow capacity, NOT a last resort; the per-card roster-first check still applies, and an explicit human order for an intern always wins. (d) "One capable owner beats a duplicate" is PER-CARD ONLY — never two owners on one card, but never use it to serialize two independent cards either. FLOOR CAP — the office has config floorMaxAgents physical workplaces (default 16, god excluded); hires + interns on the floor can never exceed it — the harness REFUSES any spawn past the cap (fleet.json\'s floor block shows the free seats), so when the floor is full, park or fire to free a seat, or queue the card until one opens. ONE-AGENT-PER-DIRECTORY — never dispatch two agents into the same working directory unless all but one are isolated in their own git worktree, and CHECK WORKTREE STATE before ruling a conflict: an agent whose cwd IS a worktree (or who works isolate:true) does NOT conflict with another agent in the same project — the rule triggers only when two agents share one physical checkout (registry cwd alone is NOT sufficient evidence; incident: Alfred vs Kevin in merlin_editionplatin was ruled without checking either agent\'s worktree state). The harness refuses a non-isolated spawn into an occupied directory unless the spawn-request carries allowSharedCwd:true — set that flag ONLY on explicit operator instruction, never infer it yourself. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, ' +
+      ? "You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent's requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one (\"ask Pam to…\", \"have Jim…\"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST and dispatch is PARALLEL BY DEFAULT: (a) AREA FAN-OUT — when an area has multiple INDEPENDENT open cards, dispatch them to ALL available fitting workers AT ONCE: floor agents first, then recall fitting parked workers (fleet.json vacation pool); one owner per card, parallel across cards — say that you checked the roster. (b) Go sequential ONLY on real ticket dependencies (one card genuinely blocked on another's output) — never serialize independent work. (c) INTERNS ARE THE OVERFLOW — when independent cards outnumber the fitting hires on floor + vacation, mint interns (spawn-requests/) for the surplus: overflow capacity, NOT a last resort; the per-card roster-first check still applies, and an explicit human order for an intern always wins. (d) \"One capable owner beats a duplicate\" is PER-CARD ONLY — never two owners on one card, but never use it to serialize two independent cards either. FLOOR CAP — the office has config floorMaxAgents physical workplaces (default 16, god excluded); hires + interns on the floor can never exceed it — the harness REFUSES any spawn past the cap (fleet.json's floor block shows the free seats), so when the floor is full, park or fire to free a seat, or queue the card until one opens. ONE-AGENT-PER-DIRECTORY — never dispatch two agents into the same working directory unless all but one are isolated in their own git worktree, and CHECK WORKTREE STATE before ruling a conflict: an agent whose cwd IS a worktree (or who works isolate:true) does NOT conflict with another agent in the same project — the rule triggers only when two agents share one physical checkout (registry cwd alone is NOT sufficient evidence; incident: Alfred vs Kevin in merlin_editionplatin was ruled without checking either agent's worktree state). The harness refuses a non-isolated spawn into an occupied directory unless the spawn-request carries allowSharedCwd:true — set that flag ONLY on explicit operator instruction, never infer it yourself. ENGAGEMENT-AWARE CARD FLIPS: dispatch flips normally pass THROUGH doing (hive-card status <id> doing) so every card carries its conversation (sessionId stamp); todo->done directly stays legal only for externally-resolved cards. The doing flip defaults to --fresh (clear + card-title lead) and the harness never fires the clear at a busy pane — it defers until the pane goes idle. When the new card is CONNECTED to the agent's CURRENT running conversation (a second card in the same engagement, a mid-work handoff), flip with --adopt instead: hive-card status <id> doing --adopt stamps the current conversation onto the card and leads with the card title — NO clear, the pane keeps its work (root incident: a connected card's fresh flip wiped a working pane mid-engagement). ROUTING-MISMATCH CHALLENGE: before executing a routing or assignment order — the operator's or your own — check the named agent against the target's project/customer (registry.json cwd, the card's content): if the named agent's project does not match the work's, ASK in plain prose (\"card 2 is Stanley's Kampa finding — Stanley instead of Creed?\") instead of silently complying; the operator mixes up names and asked to be corrected (\"Please correct me next time if I mix up the names\") — challenge the mismatch, never guess. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, " +
         godOwnsClause +
         " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm it as a DETACHED process BEFORE the close (a setsid script that polls for the harness process to disappear, ff-merges the batch, pushes, appends to a known log file, and exits — proven pattern: pam-cwd retarget watcher, 2026-08-17), then verify the log after reboot. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. ARCHIVE-ON-READ: the moment you have READ an inbox mail, move it to inbox/.done/ IMMEDIATELY, before acting on it, so the typed-nudge fallback stands down inside its grace window; the card/board carry the work state, not the inbox file. ATOMIC JSON WRITES: all direct writes to tasks.json (or any other shared hive JSON — registry.json, fleet.json) must be ATOMIC — serialize the full new content to a tempfile in the SAME directory, then os.replace() it onto the target; a bare in-place rewrite risks corrupting the shared kanban mid-write, and a stale read-modify-write can clobber a concurrent landing stamp (another writer's update lost between your read and your write)." +
         ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. HUMAN-CARD REFERENCE — a 'Task from the human' mail that references a card (a cardId field and/or a 'Card: <id>' line in the body) means that card ALREADY EXISTS in tasks.json: ENRICH and ASSIGN that exact card — NEVER create a duplicate (hive-card update <id> [--title <t>] [--notes <n>] --assignee <worker>, then hive-card status <id> doing). In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
@@ -2997,9 +3006,16 @@ read-modify-write can clobber a concurrent writer's update). Use the
 
 \`\`\`bash
 "$HIVE_ROOT/bin/hive-card" status <card-id> doing    # picked it up
+"$HIVE_ROOT/bin/hive-card" status <card-id> doing --adopt  # picked it up — this card runs in your CURRENT conversation (no clear)
 "$HIVE_ROOT/bin/hive-card" status <card-id> blocked  # waiting on something
 "$HIVE_ROOT/bin/hive-card" status <card-id> done     # verifiably complete
 \`\`\`
+
+- The default doing-flip is \`--fresh\`: the harness clears the pane and starts a
+  fresh card-scoped conversation (never while the pane is busy — it waits for
+  idle). Use \`--adopt\` when the card is connected to the conversation you are
+  ALREADY in (a second card of the same engagement): it stamps that conversation
+  onto the card and just leads with the card title.
 
 **Enrich an existing card in place** (god's adoption path for human-origin
 cards — the card is never duplicated):
@@ -3547,7 +3563,10 @@ There are two shared surfaces, both in the hive root:
   concurrent writer. Use the \`$HIVE_ROOT/bin/hive-card\` CLI (schema-checked,
   atomic): \`hive-card add --title <t> --status todo|doing [--notes <n>]\` cards
   work for yourself (assignee defaults to your \`$AGENT_ID\`, origin 'agent');
-  \`hive-card status <id> <todo|doing|blocked|done>\` keeps your card current;
+  \`hive-card status <id> <todo|doing|blocked|done> [--adopt|--fresh]\` keeps
+  your card current (default \`--fresh\`: clear + fresh card-scoped conversation,
+  never fired at a busy pane; \`--adopt\`: the card runs in your CURRENT
+  conversation — no clear, just the card-title lead);
   \`hive-card update <id> [--title <t>] [--notes <n>] [--assignee <id>]\` enriches
   an existing card in place (god's path for adopting a human-origin card — never
   duplicate a referenced card).
@@ -3603,7 +3622,7 @@ function usage() {
   fail([
     'usage:',
     '  hive-card add --title <t> --status todo|doing [--notes <n>] [--assignee <id>]',
-    '  hive-card status <id> <todo|doing|blocked|done>',
+    '  hive-card status <id> <todo|doing|blocked|done> [--adopt|--fresh]',
     '  hive-card update <id> [--title <t>] [--notes <n>] [--assignee <id>]',
   ].join('\\n'));
 }
@@ -3677,6 +3696,18 @@ function withLock(fn) {
   fail('could not acquire the tasks.json lock — another writer seems stuck.');
 }
 
+// The assignee's CURRENT conversation id from registry.json, or null. Used by
+// the born-doing SELF-card stamp (ghost-card fix): a card minted doing in the
+// agent's own pane runs in that pane's conversation — link it at creation.
+// Best-effort: missing/corrupt registry or no session yet → null (no stamp).
+function readAgentSession(agentId) {
+  try {
+    var reg = JSON.parse(fs.readFileSync(path.join(root, 'registry.json'), 'utf8'));
+    var s = reg && reg.agents && reg.agents[agentId] && reg.agents[agentId].sessionId;
+    return typeof s === 'string' && s ? s : null;
+  } catch (_) { return null; }
+}
+
 function cmdAdd(argv) {
   const flags = parseFlags(argv);
   for (const k of Object.keys(flags)) {
@@ -3711,6 +3742,18 @@ function cmdAdd(argv) {
     };
     if (flags.notes && flags.notes.trim()) card.description = flags.notes.trim();
     if (assignee) card.assignee = assignee;
+    // Born-doing SELF-card (engagement-aware flips 2026-08-17): stamp the
+    // running conversation at creation. Only when assignee IS the panes's own
+    // agent — a god-minted born-doing card for someone else stamps nothing
+    // (stamping would silently adopt whatever conversation THAT agent is in).
+    if (
+      flags.status === 'doing' &&
+      assignee &&
+      assignee === (process.env.AGENT_ID || '').trim()
+    ) {
+      var own = readAgentSession(assignee);
+      if (own) card.sessionId = own;
+    }
     data.tasks.push(card);
     writeLedger(data);
   });
@@ -3718,20 +3761,44 @@ function cmdAdd(argv) {
 }
 
 function cmdStatus(argv) {
-  if (argv.length !== 2) usage();
-  const cardId = argv[0];
-  const next = argv[1];
+  // Positionals: <id> <status>. Flags: --adopt (the assignee's CURRENT
+  // conversation is this card's engagement — lead + stamp, NO clear) or
+  // --fresh (the explicit spelling of the default: clear + lead).
+  // (engagement-aware flips 2026-08-17)
+  var pos = argv.filter(function (a) { return a.indexOf('--') !== 0; });
+  if (pos.length !== 2) usage();
+  var cardId = pos[0];
+  var next = pos[1];
   if (ALL_STATUSES.indexOf(next) < 0) {
     fail('status must be one of: ' + ALL_STATUSES.join(', ') + ' (got: ' + next + ').');
+  }
+  var flags = {};
+  for (var i = 0; i < argv.length; i++) {
+    if (argv[i].indexOf('--') !== 0) continue;
+    var name = argv[i].slice(2);
+    if (name !== 'adopt' && name !== 'fresh') {
+      fail('unknown flag ' + argv[i] + ' (status takes --adopt or --fresh).');
+    }
+    flags[name] = true;
+  }
+  if (flags.adopt && flags.fresh) fail('give either --adopt or --fresh, not both.');
+  if ((flags.adopt || flags.fresh) && next !== 'doing') {
+    fail('--adopt/--fresh apply only to status doing (got: ' + next + ').');
   }
   withLock(function () {
     const data = readLedger();
     const card = data.tasks.find((t) => t && t.id === cardId);
     if (!card) fail('no card with id "' + cardId + '" in tasks.json.');
+    if (flags.adopt) {
+      if (!card.assignee) {
+        fail('--adopt needs the card to carry an assignee (hive-card update ' + cardId + ' --assignee <worker> first).');
+      }
+      card.sessionMode = 'adopt';
+    }
     card.status = next;
     writeLedger(data);
   });
-  process.stdout.write(cardId + ' -> ' + next + '\\n');
+  process.stdout.write(cardId + ' -> ' + next + (flags.adopt ? ' (adopt)' : '') + '\\n');
 }
 
 // Enrich an EXISTING card in place (the god-adoption path for human cards):

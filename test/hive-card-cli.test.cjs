@@ -154,6 +154,106 @@ test('status: moves an existing card and validates inputs', { skip: !POSIX }, as
   assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched after rejections');
 });
 
+// ——— engagement-aware flips (2026-08-17): status doing --adopt / --fresh ————
+// --adopt marks the card sessionMode:'adopt' (the watcher leads + stamps the
+// assignee's CURRENT conversation, NO clear); --fresh is the explicit spelling
+// of the default. Born-doing SELF-cards stamp their own sessionId at creation
+// (ghost-card fix: a card born doing never passes through a transition, so
+// nothing else would ever link it to the conversation it runs in).
+
+test('status doing --adopt marks sessionMode and prints the mode', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  const id = s
+    .run('add', '--title', 'Connected card', '--status', 'todo', '--assignee', 'kevin-1')
+    .trim();
+  const out = s.run('status', id, 'doing', '--adopt');
+  assert.match(out.trim(), new RegExp('^' + id + ' -> doing \\(adopt\\)$'));
+  const card = s.tasks().find((c) => c.id === id);
+  assert.equal(card.status, 'doing');
+  assert.equal(card.sessionMode, 'adopt', 'the marker the watcher consumes');
+});
+
+test('status doing --fresh is the explicit default — no marker', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  const id = s
+    .run('add', '--title', 'Plain flip', '--status', 'todo', '--assignee', 'kevin-1')
+    .trim();
+  s.run('status', id, 'doing', '--fresh');
+  const card = s.tasks().find((c) => c.id === id);
+  assert.equal(card.status, 'doing');
+  assert.equal(card.sessionMode, undefined, 'absent marker = fresh (the default)');
+});
+
+test('status --adopt/--fresh validate: only doing, not both, needs assignee, unknown flags rejected', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const id = s.run('add', '--title', 'Checks', '--status', 'todo', '--assignee', 'kevin-1').trim();
+  const bare = s.hive.addHumanTask('No assignee yet').id;
+
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+  let r = s.runFail('status', id, 'done', '--adopt');
+  assert.notEqual(r.code, 0, '--adopt outside doing rejected');
+  assert.match(r.stderr, /doing/);
+  r = s.runFail('status', id, 'doing', '--adopt', '--fresh');
+  assert.notEqual(r.code, 0, 'both flags rejected');
+  r = s.runFail('status', bare, 'doing', '--adopt');
+  assert.notEqual(r.code, 0, '--adopt without an assignee rejected');
+  assert.match(r.stderr, /assignee/);
+  r = s.runFail('status', id, 'doing', '--nonsense');
+  assert.notEqual(r.code, 0, 'unknown flag rejected');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched after rejections');
+});
+
+test('add --status doing (self-card) stamps the current sessionId — born-doing ghost fix', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  // The running pane's conversation, as registry.json knows it.
+  const regPath = path.join(path.dirname(s.tasksPath), 'registry.json');
+  const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+  reg.agents['test-worker-1'] = {
+    ...(reg.agents['test-worker-1'] ?? { id: 'test-worker-1' }),
+    sessionId: 'live-conversation-42',
+  };
+  fs.writeFileSync(regPath, JSON.stringify(reg));
+
+  const id = s.run('add', '--title', 'Self carded mid-work', '--status', 'doing').trim();
+  const card = s.tasks().find((c) => c.id === id);
+  assert.equal(card.status, 'doing');
+  assert.equal(card.assignee, 'test-worker-1');
+  assert.equal(card.sessionId, 'live-conversation-42', 'born linked to its conversation');
+});
+
+test("add --status doing for ANOTHER assignee stamps nothing (god's fresh intent stands)", {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const regPath = path.join(path.dirname(s.tasksPath), 'registry.json');
+  const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+  reg.agents['kevin-1'] = { id: 'kevin-1', sessionId: 'kevins-conversation' };
+  fs.writeFileSync(regPath, JSON.stringify(reg));
+
+  // God mints a born-doing card FOR kevin from god's own pane: stamping
+  // kevin's current conversation would silently adopt whatever kevin is in —
+  // no stamp, no false linkage.
+  const id = s
+    .run('add', '--title', 'Dispatched card', '--status', 'doing', '--assignee', 'kevin-1')
+    .trim();
+  const card = s.tasks().find((c) => c.id === id);
+  assert.equal(card.sessionId, undefined);
+});
+
+test('add --status todo stamps nothing even for a self-card', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  const regPath = path.join(path.dirname(s.tasksPath), 'registry.json');
+  const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+  reg.agents['test-worker-1'] = { id: 'test-worker-1', sessionId: 'live-conversation-42' };
+  fs.writeFileSync(regPath, JSON.stringify(reg));
+  const id = s.run('add', '--title', 'Queued work', '--status', 'todo').trim();
+  assert.equal(s.tasks().find((c) => c.id === id).sessionId, undefined);
+});
+
 test('concurrent adds all survive and the file never parses half-written', {
   skip: !POSIX,
 }, async (t) => {
@@ -251,7 +351,7 @@ test('update: partial fields only touch what was given; rejects bad input', {
   const card = s.hive.addHumanTask('Only assign me');
 
   s.run('update', card.id, '--assignee', 'jessica-1');
-  let c = s.tasks().find((x) => x.id === card.id);
+  const c = s.tasks().find((x) => x.id === card.id);
   assert.equal(c.assignee, 'jessica-1');
   assert.equal(c.title, 'Only assign me', 'title untouched');
   assert.equal(c.description, undefined, 'notes untouched');
