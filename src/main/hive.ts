@@ -1732,7 +1732,7 @@ export class HiveManager {
       ' — you RECORD them on the card/board, no re-QA, do not re-integrate their work yourself. The renderer/preload restart-window / detached-watcher mechanism stays YOURS in every mode — workers route renderer/preload-touching branches to you rather than merging them live.';
     const godOwnsClause =
       integrationMode === 'lean'
-        ? `conflict resolution, and translating worker reports into operator-readable form — and remain the sole scribe of board.md. LEAN-GOD POSTURE (integrationMode 'lean'): DEFAULT-DELEGATE mechanical-but-judgment work to the workers — they are Opus/pi-level and fork to lesser models themselves; do not pull such work into your own session. Do NOT re-verify worker-verified evidence — RECORD the reported hashes and gate results instead of re-running them. Your core role is the operator dialogue (talking/planning with the operator), task decomposition + dispatch contracts, conflict resolution, and translating worker reports into operator-readable form. ${delegatedClause}`
+        ? `conflict resolution, and translating worker reports into operator-readable form — and remain the sole scribe of board.md. LEAN-GOD POSTURE (integrationMode 'lean'): DEFAULT-DELEGATE mechanical-but-judgment work to the workers — they are Opus/pi-level and fork to lesser models themselves; do not pull such work into your own session. Do NOT re-verify worker-verified evidence — RECORD the reported hashes and gate results instead of re-running them. Your core role is the operator dialogue (talking/planning with the operator), task decomposition + dispatch contracts, conflict resolution, and translating worker reports into operator-readable form. VERIFIED-CLAIM RELAY: done-reports label each claim VERIFIED (check named) or INFERRED — transfer VERIFIED claims to the operator without scrutiny, but NEVER relay an INFERRED or unlabeled scale/infra claim to the operator without flagging it unverified (root incident #3216). ${delegatedClause}`
         : integrationMode === 'workers'
           ? `final QA — and remain the sole scribe of board.md. ${delegatedClause}`
           : 'branch integration, and final QA — and remain the sole scribe of board.md.';
@@ -1763,6 +1763,15 @@ export class HiveManager {
     const sddAuthzLine = sddAuthorized
       ? 'OPERATOR AUTHORIZATION — SUBAGENTS FOR SKILL EXECUTION: the operator authorizes Agent-tool subagents for skill-driven plan execution (superpowers SDD) — treat such use as user-requested. Scoped to skill execution, NOT blanket subagent use. God dispatches carry this authorization; use cheap model overrides for mechanical tasks.'
       : '';
+    // DONE-REPORT EVIDENCE LABELS (card agent-harness-verified-vs-infe-2026-08-17):
+    // root incident #3216 — an unverified inference shipped as a finding in a
+    // done-report and lean-god relayed it to the operator. Worker-side half of
+    // the fix: every done-report claim carries its evidence label, headline
+    // numbers a how-counted. Mode-independent (done-reports happen in every
+    // mode); god's receiving rule lives in the lean godLine. Volatile-free.
+    const reportContractLine = !meta.isGod
+      ? 'DONE-REPORT EVIDENCE LABELS: every claim in a done/standby report to god is labeled VERIFIED (name the check you ran — the command and what it printed, or the file/line you read) or INFERRED (concluded without a direct check — say what would verify it); quantitative headline numbers carry a one-line how-counted (the exact command/filter behind the number). Never present an inference as a finding.'
+      : '';
     const integrationLine =
       !meta.isGod && integrationMode !== 'god'
         ? `INTEGRATION — WORKER-SIDE (integrationMode '${integrationMode}'): you integrate your OWN work — once your gates are green (typecheck + lint + tests, the house gate), merge YOUR OWN branch into its target branch, push it, and report the pushed hash${integrationMode === 'lean' ? ' AND your gate results (lean posture: god records them without re-verifying — your evidence is the record)' : ''} to god (god records it; no re-QA). Boundaries that ALWAYS override: renderer/preload-touching branches NEVER merge into the live checkout while the app runs — route them to god's restart-window mechanism instead of merging yourself; a skill that hard-codes 'never push — the operator's manual call' (asol-git-merge-main, asol-git-merge-singletenant) keeps overriding; an explicit boundary in god's dispatch (e.g. 'NO push') beats the mode default.`
@@ -1791,6 +1800,7 @@ export class HiveManager {
       monitorLine,
       guardrailsLine,
       questionRoutingLine,
+      reportContractLine,
       integrationLine,
       sddAuthzLine,
       memoryLine,
@@ -3251,7 +3261,12 @@ task decomposition + dispatch contracts, conflict resolution, and
 translating worker reports into operator-readable form. Workers integrate
 their own branches (see the Integration section above). The same overrides
 apply: the renderer/preload restart-window mechanism stays god-owned, and
-never-push skills or explicit dispatch boundaries beat the posture.`;
+never-push skills or explicit dispatch boundaries beat the posture.
+
+Relay discipline (incident #3216): worker done-reports label every claim
+VERIFIED (check named) or INFERRED. Transfer VERIFIED claims to the operator
+without scrutiny; NEVER relay an INFERRED or unlabeled scale or infra claim
+to the operator without flagging it as unverified.`;
 
 // (COMMANDS_MD module const deleted with integration-mode-toggle-20260817 —
 // ensureHive now renders COMMANDS.md live so the mode section follows the
@@ -3362,7 +3377,7 @@ export function hiveRootAgentsMd(
   );
 }
 
-const PROTOCOL_MD = `# Hive protocol
+export const PROTOCOL_MD = `# Hive protocol
 
 You are one of several Claude agents sharing this hive. Coordination is entirely
 file-based; the harness (main process) is the only thing that runs git and the
@@ -3393,6 +3408,16 @@ Write one JSON file into \`outbox/\` (any filename ending in \`.json\`):
 \`\`\`
 
 The harness fills in \`id\`, \`from\`, \`hops\`, and timestamps.
+
+## Done-reports: label your evidence
+Every claim in a done-report (or standby report) to god carries its evidence label:
+- **VERIFIED** — you ran the check. Name it: the command and what it printed, or the file/line you read.
+- **INFERRED** — you concluded it without a direct check. Say what would verify it.
+
+Quantitative headline numbers ("3,837 of 4,061 groups") carry a one-line **how counted** —
+the exact command or filter that produced the number. An unlabeled scale or infrastructure
+claim reads as a finding; under the lean posture god relays VERIFIED claims as facts and
+flags INFERRED ones as unverified (root incident #3216, 2026-08-17).
 
 ## Rules of the road
 - Only \`request\`, \`query\`, and \`propose\` expect a reply. \`inform\` and \`done\` are terminal —
