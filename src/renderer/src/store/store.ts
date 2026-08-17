@@ -203,6 +203,10 @@ interface State {
   selectedId: string | null;
   feeds: Record<string, string[]>;
   addAgentOpen: boolean;
+  /** The agent whose SETUP the Add-Agent modal reopens in EDIT mode
+   *  (agent-edit-dialog-20260817) — the tasks view's agent chips set it.
+   *  null = no edit dialog open. */
+  editAgentId: string | null;
   fullscreenAgentId: string | null;
   fullscreenFilePath: string | null;
   /** How the fullscreen file overlay renders (v0.3.4): raw editor or rendered
@@ -327,6 +331,7 @@ interface State {
   /** Clear an agent's entire pending queue. */
   clearQueue: (agentId: string) => void;
   setAddAgentOpen: (open: boolean) => void;
+  setEditAgent: (id: string | null) => void;
   /** A validated hire manifest waiting to pre-fill the Add-Agent modal. */
   pendingHire: HireManifest | null;
   setPendingHire: (m: HireManifest | null) => void;
@@ -702,6 +707,7 @@ export const useStore = create<State>((set) => ({
   selectedId: initialSelectedId,
   feeds: {},
   addAgentOpen: false,
+  editAgentId: null,
   ccTabRequest: null,
   requestCommandCenterTab: (tab) =>
     set((s) => ({ ccTabRequest: { tab, seq: (s.ccTabRequest?.seq ?? 0) + 1 } })),
@@ -1010,6 +1016,7 @@ export const useStore = create<State>((set) => ({
       return { agents, feeds, selectedId, restorableAgents };
     }),
   setAddAgentOpen: (open) => set({ addAgentOpen: open }),
+  setEditAgent: (id) => set({ editAgentId: id }),
   pendingHire: null,
   setPendingHire: (m) => set({ pendingHire: m }),
   setFullscreen: (id) => set({ fullscreenAgentId: id }),

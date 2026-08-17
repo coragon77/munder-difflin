@@ -1198,6 +1198,48 @@ export class HiveManager {
     }
   }
 
+  /** Edit the registry's IDENTITY fields (agent-edit-dialog-20260817):
+   *  `name` (display identity — cards, god's roster reads) and `role` (the
+   *  routing hint god's fetchable-pool picks by; the dialog seeds it from the
+   *  description). Read-modify-write on the FRESH registry like every other
+   *  setter, so concurrent stamps (recordSession, hooks) are never clobbered.
+   *  The agent id is immutable — memory, inbox and cost ledger key on it.
+   *  Semantics mirror setPinned: true = the registry holds the request (or
+   *  nothing needed changing), false = unknown agent / failed write. */
+  setAgentMeta(id: string, meta: { name?: string; role?: string }): boolean {
+    const root = this.root();
+    if (!root) return false;
+    try {
+      const reg = this.registry();
+      const agent = reg.agents[id];
+      if (!agent) return false;
+      const next = { ...meta };
+      if (typeof next.name !== 'string' || !next.name.trim()) delete next.name;
+      if (typeof next.role !== 'string' || !next.role.trim()) delete next.role;
+      if (next.name === undefined && next.role === undefined) return true;
+      if (next.name !== undefined) agent.name = next.name.trim();
+      if (next.role !== undefined) agent.role = next.role.trim();
+      agent.lastSeen = Date.now();
+      this.writeJson(join(root, 'registry.json'), reg);
+      this.appendLog({
+        kind: 'agent_meta',
+        agentId: id,
+        name: next.name ?? null,
+        role: next.role ?? null,
+      });
+      this.commit(`hive: edit meta ${id}`);
+      try {
+        this.onRosterChange?.();
+      } catch {
+        /* snapshot is best-effort */
+      }
+      return true;
+    } catch {
+      /* best-effort — never crash a lifecycle handler */
+      return false;
+    }
+  }
+
   /** True while the agent is parked. The fleet builder, the park path and the
    *  delete guards all read this. */
   isOnVacation(id: string): boolean {

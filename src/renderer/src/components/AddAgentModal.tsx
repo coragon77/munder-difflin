@@ -147,10 +147,17 @@ export interface AddAgentModalProps {
   /** Lift config changes (e.g. a project registered from this modal) back up to
    *  App so the rest of the UI — and the next time this modal opens — sees them. */
   onConfigChange?: (config: HarnessConfig) => void;
+  /** EDIT MODE (agent-edit-dialog-20260817): reopen an existing agent's setup.
+   *  Seeds every field; submit UPDATES the agent (store + registry name/role)
+   * instead of spawning. Spawn-only fields (folder, git isolation, resume
+   * session, hire import) are hidden — they are fixed at hire; engine fields
+   * are editable but take effect on the agent's NEXT respawn, with a hint. */
+  editOf?: Agent;
 }
 
-export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModalProps) {
+export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAgentModalProps) {
   const addAgent = useStore((s) => s.addAgent);
+  const updateAgent = useStore((s) => s.updateAgent);
   // A validated hire manifest (deep link / file import) seeds the form. Manifests
   // NEVER auto-spawn — the human reviews every field (esp. the command) first.
   const pendingHire = useStore((s) => s.pendingHire);
@@ -173,26 +180,33 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
   const initialProvider = inferAgentProvider(config.defaultCommand);
   const initialModel = isClaudeProvider(initialProvider) ? config.defaultModel : undefined;
 
-  const [name, setName] = useState(pendingHire?.name ?? 'Jim');
+  const [name, setName] = useState(editOf?.name ?? pendingHire?.name ?? 'Jim');
   const [character, setCharacter] = useState<OfficeCharacterName>(
-    knownCharacter(pendingHire?.character),
+    knownCharacter(editOf?.character ?? pendingHire?.character),
   );
-  const [accent, setAccent] = useState<AccentColorName>(knownAccent(pendingHire?.accent));
-  const [cwd, setCwd] = useState<string>(config.registeredRepos[0] ?? '');
+  const [accent, setAccent] = useState<AccentColorName>(
+    knownAccent(editOf?.accent ?? pendingHire?.accent),
+  );
+  const [cwd, setCwd] = useState<string>(editOf?.cwd ?? config.registeredRepos[0] ?? '');
   // Local mirror of the registered projects so one added from here shows as a
   // quick-pick immediately (the `config` prop is a snapshot taken at open time).
   const [repos, setRepos] = useState<string[]>(config.registeredRepos);
-  const [provider, setProvider] = useState<AgentProvider>(pendingHire?.provider ?? initialProvider);
+  const [provider, setProvider] = useState<AgentProvider>(
+    editOf?.provider ?? pendingHire?.provider ?? initialProvider,
+  );
   const [model, setModel] = useState<string | undefined>(
-    pendingHire ? pendingHire.model : initialModel,
+    editOf ? editOf.model : pendingHire ? pendingHire.model : initialModel,
   );
   const [command, setCommand] = useState(
-    pendingHire
-      ? hireCommand(pendingHire)
-      : buildSpawnCommand(config, initialModel, initialProvider),
+    editOf?.command ??
+      (pendingHire
+        ? hireCommand(pendingHire)
+        : buildSpawnCommand(config, initialModel, initialProvider)),
   );
-  const [description, setDescription] = useState(pendingHire?.description ?? 'a fresh harness');
-  const [hireMeta, setHireMeta] = useState<HireManifest | null>(pendingHire);
+  const [description, setDescription] = useState(
+    editOf?.description ?? pendingHire?.description ?? 'a fresh harness',
+  );
+  const [hireMeta, setHireMeta] = useState<HireManifest | null>(editOf ? null : pendingHire);
 
   // Picking a model rebuilds the command; the command field stays editable for
   // power users (it's the source of truth for the actual spawn).
@@ -225,14 +239,14 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
     setCommand(buildSpawnCommand(config, nextModel, id));
   };
   const preset = providerPreset(provider);
-  const [goal, setGoal] = useState(pendingHire?.goal ?? '');
+  const [goal, setGoal] = useState(editOf?.goal ?? pendingHire?.goal ?? '');
   const [isolate, setIsolate] = useState(pendingHire?.isolate ?? false);
   // Card permission-mode-config-20260816 — the hire-time permission mode.
   // Claude Auto is the shipped default; Bypass is the operator's explicit
   // per-hire opt-in (never install-wide default). Rides the spawn opts and is
   // persisted on the agent so restarts/revives keep the choice.
   const [permissionMode, setPermissionMode] = useState<HirePermissionMode>(
-    DEFAULT_HIRE_PERMISSION_MODE,
+    editOf?.permissionMode ?? DEFAULT_HIRE_PERMISSION_MODE,
   );
   // #2 — optional Claude session id to continue. When set, the spawn seeds that
   // session's transcript into the cwd's project dir and launches `--resume`.
@@ -356,7 +370,7 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
       setSection('identity');
       return;
     }
-    if (!cwd) {
+    if (!editOf && !cwd) {
       setError('Pick a folder first');
       setSection('workspace');
       return;
@@ -364,6 +378,34 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
     if (!command.trim()) {
       setError('Command is required');
       setSection('engine');
+      return;
+    }
+
+    // EDIT MODE — update the existing agent, never spawn a second one. Store
+    // fields first (cards + roster mirror update live; every respawn reads
+    // them), then the registry identity (name/role) so god's roster.json view
+    // doesn't wait for a respawn. Engine fields ride the NEXT respawn — the
+    // running terminal is untouched (hint shown in the Engine section).
+    if (editOf) {
+      setBusy(true);
+      updateAgent(editOf.id, {
+        name: name.trim(),
+        character,
+        accent,
+        description: description.trim() || 'a fresh harness',
+        goal: goal.trim() || undefined,
+        provider,
+        model,
+        command: command.trim(),
+        permissionMode,
+      });
+      await window.cth
+        .hiveSetAgentMeta(editOf.id, { name: name.trim(), role: description.trim() || undefined })
+        .catch(() => {
+          /* registry best-effort — the store copy is already updated */
+        });
+      setBusy(false);
+      onClose();
       return;
     }
 
@@ -491,7 +533,12 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
       }}
     >
       <div onClick={(e) => e.stopPropagation()} style={{ width: 940, maxWidth: '95vw' }}>
-        <PixelPanel variant="dialog" title="ADD AGENT" style={{ padding: 16 }} noPadding>
+        <PixelPanel
+          variant="dialog"
+          title={editOf ? `EDIT AGENT — ${editOf.name.toUpperCase()}` : 'ADD AGENT'}
+          style={{ padding: 16 }}
+          noPadding
+        >
           {/* Sectioned config with a left sidebar index. The form has 11+ fields,
               so they're grouped into 4 sections (Identity / Workspace / Engine /
               Briefing) shown one at a time; the sidebar jumps between them. The
@@ -757,7 +804,10 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
                             key={c.name}
                             onClick={() => {
                               setCharacter(c.name);
-                              setName(c.displayName);
+                              // Create mode: picking a character also names the
+                              // agent. Edit mode: NEVER — renaming someone's
+                              // agent because they swapped the sprite is a trap.
+                              if (!editOf) setName(c.displayName);
                             }}
                             title={c.blurb}
                             style={{
@@ -824,183 +874,224 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
                   </>
                 )}
 
-                {section === 'workspace' && (
-                  <>
-                    <Row label="Project">
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'baseline',
-                          justifyContent: 'space-between',
-                          gap: 8,
-                          marginBottom: 6,
-                        }}
-                      >
-                        <span style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>
-                          {repos.length > 0
-                            ? 'Pick a project, or add a new one:'
-                            : 'No projects yet — add one to get started:'}
-                        </span>
-                        <button
-                          onClick={addProject}
-                          title="Pick a folder and register it as a project"
+                {section === 'workspace' &&
+                  (editOf ? (
+                    // EDIT MODE: the folder is fixed at hire — the live PTY
+                    // runs in it, the worktree (if any) was provisioned from
+                    // it, and the registry cwd keys recall. Show it read-only
+                    // instead of offering an edit that would silently drift
+                    // the card's tools away from the running terminal.
+                    <Row label="Folder (fixed at hire)">
+                      <input
+                        value={cwd}
+                        readOnly
+                        style={{ ...inputStyle, fontFamily: 'var(--cth-font-mono)', fontSize: 13 }}
+                      />
+                      <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
+                        To run this agent somewhere else, archive it and re-hire in the new folder.
+                      </span>
+                    </Row>
+                  ) : (
+                    <>
+                      <Row label="Project">
+                        <div
                           style={{
-                            flexShrink: 0,
-                            padding: '2px 8px 1px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            background: 'var(--cth-cream-200)',
-                            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                            fontFamily: 'var(--cth-font-ui)',
-                            fontSize: 12,
-                            color: 'var(--cth-ink-900)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
+                            display: 'flex',
+                            alignItems: 'baseline',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            marginBottom: 6,
                           }}
                         >
-                          <Icon name="plus" /> add project
-                        </button>
-                      </div>
-                      {repos.length > 0 && (
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-                          {repos.map((r) => (
-                            <button
-                              key={r}
-                              onClick={() => setCwd(r)}
-                              title={r}
-                              style={{
-                                padding: '3px 8px 1px',
-                                background:
-                                  cwd === r ? `var(--cth-${accent}-light)` : 'var(--cth-cream-100)',
-                                boxShadow:
-                                  cwd === r
-                                    ? 'inset 0 0 0 1.5px var(--cth-ink-500)'
-                                    : 'inset 0 0 0 1px var(--cth-ink-100)',
-                                fontFamily: 'var(--cth-font-ui)',
-                                fontSize: 12,
-                                cursor: 'pointer',
-                                border: 'none',
-                              }}
-                            >
-                              {basename(r)}
-                            </button>
-                          ))}
+                          <span style={{ fontSize: 12, color: 'var(--cth-ink-500)' }}>
+                            {repos.length > 0
+                              ? 'Pick a project, or add a new one:'
+                              : 'No projects yet — add one to get started:'}
+                          </span>
+                          <button
+                            onClick={addProject}
+                            title="Pick a folder and register it as a project"
+                            style={{
+                              flexShrink: 0,
+                              padding: '2px 8px 1px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              background: 'var(--cth-cream-200)',
+                              boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                              fontFamily: 'var(--cth-font-ui)',
+                              fontSize: 12,
+                              color: 'var(--cth-ink-900)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                          >
+                            <Icon name="plus" /> add project
+                          </button>
                         </div>
-                      )}
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        {repos.length > 0 && (
+                          <div
+                            style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}
+                          >
+                            {repos.map((r) => (
+                              <button
+                                key={r}
+                                onClick={() => setCwd(r)}
+                                title={r}
+                                style={{
+                                  padding: '3px 8px 1px',
+                                  background:
+                                    cwd === r
+                                      ? `var(--cth-${accent}-light)`
+                                      : 'var(--cth-cream-100)',
+                                  boxShadow:
+                                    cwd === r
+                                      ? 'inset 0 0 0 1.5px var(--cth-ink-500)'
+                                      : 'inset 0 0 0 1px var(--cth-ink-100)',
+                                  fontFamily: 'var(--cth-font-ui)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  border: 'none',
+                                }}
+                              >
+                                {basename(r)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input
+                            value={cwd}
+                            onChange={(e) => setCwd(e.target.value)}
+                            placeholder="/path/to/your/project"
+                            style={{
+                              ...inputStyle,
+                              flex: 1,
+                              fontFamily: 'var(--cth-font-mono)',
+                              fontSize: 13,
+                            }}
+                          />
+                          <PixelButton variant="secondary" size="md" onClick={pickFolder}>
+                            <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                              <Icon name="folder" /> pick
+                            </span>
+                          </PixelButton>
+                        </div>
+                        {cwd.trim() && !repos.includes(cwd.trim()) && (
+                          <button
+                            onClick={() => registerProject(cwd)}
+                            title="Save this folder to your projects so it's a one-click pick next time"
+                            style={{
+                              alignSelf: 'flex-start',
+                              marginTop: 2,
+                              padding: '2px 8px 1px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              background: 'var(--cth-mint-light)',
+                              boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                              fontFamily: 'var(--cth-font-ui)',
+                              fontSize: 12,
+                              color: 'var(--cth-ink-900)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                          >
+                            <Icon name="plus" /> save as project
+                          </button>
+                        )}
+                      </Row>
+
+                      <label
+                        style={{
+                          display: 'flex',
+                          gap: 8,
+                          alignItems: 'center',
+                          cursor: resuming ? 'not-allowed' : 'pointer',
+                          opacity: resuming ? 0.5 : 1,
+                        }}
+                      >
                         <input
-                          value={cwd}
-                          onChange={(e) => setCwd(e.target.value)}
-                          placeholder="/path/to/your/project"
+                          type="checkbox"
+                          checked={resuming ? false : isolate}
+                          disabled={resuming}
+                          onChange={(e) => setIsolate(e.target.checked)}
+                          style={{
+                            width: 16,
+                            height: 16,
+                            cursor: resuming ? 'not-allowed' : 'pointer',
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontFamily: 'var(--cth-font-ui)',
+                            fontSize: 13,
+                            color: 'var(--cth-ink-900)',
+                          }}
+                        >
+                          Git isolation (own worktree)
+                        </span>
+                      </label>
+
+                      <Row label="Resume session ID (optional)">
+                        <input
+                          value={resumeSessionId}
+                          onChange={(e) => {
+                            setResumeSessionId(e.target.value);
+                            setFolderNote(undefined);
+                          }}
+                          onBlur={resolveFolderFromSession}
+                          placeholder="paste a Claude session id to continue its conversation"
                           style={{
                             ...inputStyle,
-                            flex: 1,
                             fontFamily: 'var(--cth-font-mono)',
                             fontSize: 13,
                           }}
                         />
-                        <PixelButton variant="secondary" size="md" onClick={pickFolder}>
-                          <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-                            <Icon name="folder" /> pick
+                        {folderNote && (
+                          <span
+                            style={{
+                              fontFamily: 'var(--cth-font-ui)',
+                              fontSize: 12,
+                              color: 'var(--cth-mint, var(--cth-ink-700))',
+                            }}
+                          >
+                            {folderNote}
                           </span>
-                        </PixelButton>
-                      </div>
-                      {cwd.trim() && !repos.includes(cwd.trim()) && (
-                        <button
-                          onClick={() => registerProject(cwd)}
-                          title="Save this folder to your projects so it's a one-click pick next time"
-                          style={{
-                            alignSelf: 'flex-start',
-                            marginTop: 2,
-                            padding: '2px 8px 1px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            background: 'var(--cth-mint-light)',
-                            boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                            fontFamily: 'var(--cth-font-ui)',
-                            fontSize: 12,
-                            color: 'var(--cth-ink-900)',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
-                        >
-                          <Icon name="plus" /> save as project
-                        </button>
-                      )}
-                    </Row>
-
-                    <label
-                      style={{
-                        display: 'flex',
-                        gap: 8,
-                        alignItems: 'center',
-                        cursor: resuming ? 'not-allowed' : 'pointer',
-                        opacity: resuming ? 0.5 : 1,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={resuming ? false : isolate}
-                        disabled={resuming}
-                        onChange={(e) => setIsolate(e.target.checked)}
-                        style={{
-                          width: 16,
-                          height: 16,
-                          cursor: resuming ? 'not-allowed' : 'pointer',
-                        }}
-                      />
-                      <span
-                        style={{
-                          fontFamily: 'var(--cth-font-ui)',
-                          fontSize: 13,
-                          color: 'var(--cth-ink-900)',
-                        }}
-                      >
-                        Git isolation (own worktree)
-                      </span>
-                    </label>
-
-                    <Row label="Resume session ID (optional)">
-                      <input
-                        value={resumeSessionId}
-                        onChange={(e) => {
-                          setResumeSessionId(e.target.value);
-                          setFolderNote(undefined);
-                        }}
-                        onBlur={resolveFolderFromSession}
-                        placeholder="paste a Claude session id to continue its conversation"
-                        style={{ ...inputStyle, fontFamily: 'var(--cth-font-mono)', fontSize: 13 }}
-                      />
-                      {folderNote && (
-                        <span
-                          style={{
-                            fontFamily: 'var(--cth-font-ui)',
-                            fontSize: 12,
-                            color: 'var(--cth-mint, var(--cth-ink-700))',
-                          }}
-                        >
-                          {folderNote}
-                        </span>
-                      )}
-                      {resuming && (
-                        <span
-                          style={{
-                            fontFamily: 'var(--cth-font-ui)',
-                            fontSize: 12,
-                            color: 'var(--cth-ink-700)',
-                          }}
-                        >
-                          Will resume this session in the chosen folder (git isolation disabled).
-                        </span>
-                      )}
-                    </Row>
-                  </>
-                )}
+                        )}
+                        {resuming && (
+                          <span
+                            style={{
+                              fontFamily: 'var(--cth-font-ui)',
+                              fontSize: 12,
+                              color: 'var(--cth-ink-700)',
+                            }}
+                          >
+                            Will resume this session in the chosen folder (git isolation disabled).
+                          </span>
+                        )}
+                      </Row>
+                    </>
+                  ))}
 
                 {section === 'engine' && (
                   <>
+                    {editOf && (
+                      <div
+                        style={{
+                          padding: '6px 10px',
+                          background: 'var(--cth-lemon-light)',
+                          boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                          fontSize: 12,
+                          lineHeight: '16px',
+                          color: 'var(--cth-ink-900)',
+                        }}
+                      >
+                        ⚙️ Engine changes (provider · model · command · permissions) apply on this
+                        agent's NEXT restart or recall — the running terminal keeps its current
+                        engine until then.
+                      </div>
+                    )}
                     <Row label="Provider">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {AGENT_PROVIDER_PRESETS.map((p) => {
@@ -1301,97 +1392,104 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
               </div>
             )}
 
-            {/* Import-hire explainer + AI prompt generator (item 7) */}
-            <div
-              style={{
-                padding: '8px 10px',
-                background: 'var(--cth-cream-100)',
-                boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-              }}
-            >
+            {/* Import-hire explainer + AI prompt generator (item 7) —
+                create-only: an edit has no manifest to review. */}
+            {!editOf && (
               <div
                 style={{
+                  padding: '8px 10px',
+                  background: 'var(--cth-cream-100)',
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
                   display: 'flex',
-                  alignItems: 'baseline',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  flexWrap: 'wrap',
+                  flexDirection: 'column',
+                  gap: 6,
                 }}
               >
-                <span style={{ fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: '17px' }}>
-                  <strong>Import hire</strong> loads a ready-made agent from a{' '}
-                  <code style={{ fontFamily: 'var(--cth-font-mono)' }}>.json</code> manifest — it
-                  fills in every field below for you to review. Nothing spawns until you hit{' '}
-                  <em>spawn</em>.
-                </span>
-                <button
-                  onClick={() => setShowHirePrompt((v) => !v)}
+                <div
                   style={{
-                    flexShrink: 0,
-                    padding: '2px 8px 1px',
-                    border: 'none',
-                    cursor: 'pointer',
-                    background: showHirePrompt ? 'var(--cth-lemon-light)' : 'var(--cth-cream-200)',
-                    boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                    fontFamily: 'var(--cth-font-ui)',
-                    fontSize: 12,
-                    color: 'var(--cth-ink-900)',
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    flexWrap: 'wrap',
                   }}
                 >
-                  {showHirePrompt ? 'hide AI prompt' : 'generate one with AI…'}
-                </button>
-              </div>
-              {showHirePrompt && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontSize: 12, color: 'var(--cth-ink-500)', lineHeight: '16px' }}>
-                    Copy this into Claude/ChatGPT/Gemini, fill in the details at the bottom, then
-                    save its JSON reply as a{' '}
-                    <code style={{ fontFamily: 'var(--cth-font-mono)' }}>.json</code> file and
-                    import it here.
+                  <span style={{ fontSize: 12, color: 'var(--cth-ink-700)', lineHeight: '17px' }}>
+                    <strong>Import hire</strong> loads a ready-made agent from a{' '}
+                    <code style={{ fontFamily: 'var(--cth-font-mono)' }}>.json</code> manifest — it
+                    fills in every field below for you to review. Nothing spawns until you hit{' '}
+                    <em>spawn</em>.
                   </span>
-                  <textarea
-                    readOnly
-                    value={HIRE_PROMPT}
-                    onFocus={(e) => e.currentTarget.select()}
-                    rows={10}
+                  <button
+                    onClick={() => setShowHirePrompt((v) => !v)}
                     style={{
-                      ...inputStyle,
-                      width: '100%',
-                      fontFamily: 'var(--cth-font-mono)',
+                      flexShrink: 0,
+                      padding: '2px 8px 1px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: showHirePrompt
+                        ? 'var(--cth-lemon-light)'
+                        : 'var(--cth-cream-200)',
+                      boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                      fontFamily: 'var(--cth-font-ui)',
                       fontSize: 12,
-                      lineHeight: '16px',
-                      resize: 'vertical',
-                      background: 'var(--cth-paper-100)',
+                      color: 'var(--cth-ink-900)',
                     }}
-                  />
-                  <div>
-                    <PixelButton variant="secondary" size="sm" onClick={copyHirePrompt}>
-                      {copiedPrompt ? 'copied ✓' : 'copy prompt'}
-                    </PixelButton>
-                  </div>
+                  >
+                    {showHirePrompt ? 'hide AI prompt' : 'generate one with AI…'}
+                  </button>
                 </div>
-              )}
-            </div>
+                {showHirePrompt && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: 12, color: 'var(--cth-ink-500)', lineHeight: '16px' }}>
+                      Copy this into Claude/ChatGPT/Gemini, fill in the details at the bottom, then
+                      save its JSON reply as a{' '}
+                      <code style={{ fontFamily: 'var(--cth-font-mono)' }}>.json</code> file and
+                      import it here.
+                    </span>
+                    <textarea
+                      readOnly
+                      value={HIRE_PROMPT}
+                      onFocus={(e) => e.currentTarget.select()}
+                      rows={10}
+                      style={{
+                        ...inputStyle,
+                        width: '100%',
+                        fontFamily: 'var(--cth-font-mono)',
+                        fontSize: 12,
+                        lineHeight: '16px',
+                        resize: 'vertical',
+                        background: 'var(--cth-paper-100)',
+                      }}
+                    />
+                    <div>
+                      <PixelButton variant="secondary" size="sm" onClick={copyHirePrompt}>
+                        {copiedPrompt ? 'copied ✓' : 'copy prompt'}
+                      </PixelButton>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-              <PixelButton
-                variant="secondary"
-                size="md"
-                onClick={importHire}
-                disabled={busy}
-                title="Import a hire manifest (.json)"
-              >
-                import hire…
-              </PixelButton>
+              {!editOf && (
+                <PixelButton
+                  variant="secondary"
+                  size="md"
+                  onClick={importHire}
+                  disabled={busy}
+                  title="Import a hire manifest (.json)"
+                >
+                  import hire…
+                </PixelButton>
+              )}
               <div style={{ flex: 1 }} />
               <PixelButton variant="ghost" size="md" onClick={onClose} disabled={busy}>
                 cancel
               </PixelButton>
               <PixelButton variant="primary" size="md" onClick={submit} disabled={busy}>
-                {busy ? 'spawning...' : 'spawn'}
+                {busy ? (editOf ? 'saving...' : 'spawning...') : editOf ? 'save' : 'spawn'}
               </PixelButton>
             </div>
           </div>

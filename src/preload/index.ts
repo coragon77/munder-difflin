@@ -803,6 +803,11 @@ const api = {
   /** Pin/unpin a worker — a pinned worker is never parkable. */
   hiveSetPinned: (id: string, pinned: boolean): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:setPinned', id, pinned),
+  /** Edit an agent's registry identity (name, role) — the edit dialog's write-back. */
+  hiveSetAgentMeta: (
+    id: string,
+    meta: { name?: string; role?: string },
+  ): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('hive:setAgentMeta', id, meta),
   hiveLog: (n?: number): Promise<unknown[]> => ipcRenderer.invoke('hive:log', n ?? 200),
   hiveMemory: (id: string): Promise<string> => ipcRenderer.invoke('hive:memory', id),
   hiveInbox: (id: string): Promise<HiveMessage[]> => ipcRenderer.invoke('hive:inbox', id),

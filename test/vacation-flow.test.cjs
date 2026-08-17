@@ -12,7 +12,7 @@
  * pins the remaining guard chains, extracted verbatim into vacationFlow.ts:
  *
  *   • parkAgentCore — the refusal ladder (disabled → unknown → god → intern →
- *     retired → already-parked → busy), the PTY teardown ORDER (drop worktree
+ *     retired → already-parked → pinned → busy), the PTY teardown ORDER (drop worktree
  *     entries → kill → teardown → THEN persist), and the park failure
  *     propagation: a setVacation that reports false must log
  *     vacation_park_failed and answer not-ok — the agent is archived but NOT

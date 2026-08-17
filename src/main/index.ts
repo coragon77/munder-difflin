@@ -4193,6 +4193,22 @@ ipcMain.handle('hive:setPinned', (_e, id: unknown, pinned: unknown) => {
   if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
   return { ok: hive.setPinned(id, pinned === true) };
 });
+// The edit dialog's identity write-back: name/role land on the registry NOW
+// (god's roster reads registry.json — it must not wait for the next respawn).
+// The id is immutable; engine/command/model/permission edits are renderer-side
+// (they ride the next respawn by design — hint shown in the dialog).
+ipcMain.handle('hive:setAgentMeta', (_e, id: unknown, meta: unknown) => {
+  if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
+  if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
+  const m =
+    typeof meta === 'object' && meta !== null ? (meta as { name?: unknown; role?: unknown }) : {};
+  return {
+    ok: hive.setAgentMeta(id, {
+      name: typeof m.name === 'string' ? m.name : undefined,
+      role: typeof m.role === 'string' ? m.role : undefined,
+    }),
+  };
+});
 ipcMain.handle('hive:recall', (_e, id: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
   return recallAgent(id);

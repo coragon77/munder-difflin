@@ -3,7 +3,7 @@ import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { PixelBadge } from './PixelBadge';
 import { Icon } from './Icon';
-import { useStore } from '@/store/store';
+import { useStore, agentClassOf, displayAgentName } from '@/store/store';
 
 /** A card on the task kanban. Mirrors HiveTask in the main/preload process —
  *  re-declared locally so the renderer doesn't reach into the preload package
@@ -132,9 +132,15 @@ export function parseTasks(raw: unknown): HiveTask[] {
  */
 export function TasksKanban() {
   const agents = useStore((s) => s.agents);
+  const setEditAgent = useStore((s) => s.setEditAgent);
   const [tasks, setTasks] = useState<HiveTask[]>([]);
   // Human add-form (toolbar): title + optional notes.
   const [adding, setAdding] = useState(false);
+  // Agent-setup chips (toolbar): the tasks view's edit anchor — one chip per
+  // live human-class worker, click reopens the agent dialog pre-filled
+  // (agent-edit-dialog-20260817). God runs himself (Command Center), interns
+  // are god's fire-and-rehire disposables — neither gets a setup dialog.
+  const [showAgents, setShowAgents] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newNotes, setNewNotes] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
@@ -234,6 +240,11 @@ export function TasksKanban() {
         >
           + task
         </PixelButton>
+        <PixelButton variant="secondary" size="sm" onClick={() => setShowAgents((v) => !v)}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <Icon name="gear" /> agents
+          </span>
+        </PixelButton>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--cth-ink-300)' }}>
           urgent? dispatch it to Michael (monitor tab)
         </span>
@@ -287,6 +298,54 @@ export function TasksKanban() {
               <span style={{ fontSize: 11, color: 'var(--cth-coral)' }}>{addError}</span>
             )}
           </div>
+        </div>
+      )}
+
+      {showAgents && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 10px',
+            flexShrink: 0,
+            borderBottom: '1px solid var(--cth-ink-300)',
+            background: 'var(--cth-cream-100)',
+            flexWrap: 'wrap',
+          }}
+        >
+          {agents.filter((a) => agentClassOf(a) === 'human').length === 0 && (
+            <span style={{ fontSize: 11, color: 'var(--cth-ink-300)' }}>
+              no editable agents on the floor — hire one first (add agent)
+            </span>
+          )}
+          {agents
+            .filter((a) => agentClassOf(a) === 'human')
+            .map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setEditAgent(a.id)}
+                title={`edit ${displayAgentName(a)}'s setup — name, engine, briefing`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 8px 2px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: `var(--cth-${a.accent}-light)`,
+                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                  fontFamily: 'var(--cth-font-ui)',
+                  fontSize: 12,
+                  color: 'var(--cth-ink-900)',
+                }}
+              >
+                <span style={{ fontFamily: 'var(--cth-font-display)', fontSize: 10 }}>
+                  {displayAgentName(a).toUpperCase()}
+                </span>
+                <Icon name="gear" />
+              </button>
+            ))}
         </div>
       )}
 

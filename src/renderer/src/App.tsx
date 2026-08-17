@@ -38,6 +38,9 @@ export function App() {
   const agents = useStore((s) => s.agents);
   const agentCount = agents.length;
   const addAgentOpen = useStore((s) => s.addAgentOpen);
+  const editAgentId = useStore((s) => s.editAgentId);
+  const setEditAgent = useStore((s) => s.setEditAgent);
+  const editOf = editAgentId ? agents.find((a) => a.id === editAgentId) : undefined;
   const setAddAgentOpen = useStore((s) => s.setAddAgentOpen);
   const godStatus = useStore((s) => s.godStatus);
   const fullscreenAgentId = useStore((s) => s.fullscreenAgentId);
@@ -591,6 +594,15 @@ export function App() {
       {addAgentOpen && (
         <AddAgentModal
           onClose={() => setAddAgentOpen(false)}
+          config={config}
+          onConfigChange={setConfig}
+        />
+      )}
+
+      {editOf && (
+        <AddAgentModal
+          editOf={editOf}
+          onClose={() => setEditAgent(null)}
           config={config}
           onConfigChange={setConfig}
         />
