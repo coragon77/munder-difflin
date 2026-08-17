@@ -28,6 +28,7 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
   const [openTerminalError, setOpenTerminalError] = useState<string | undefined>();
   const archiveAgent = useStore((s) => s.archiveAgent);
   const updateAgent = useStore((s) => s.updateAgent);
+  const setEditAgent = useStore((s) => s.setEditAgent);
   const setFullscreen = useStore((s) => s.setFullscreen);
   const fullscreenAgentId = useStore((s) => s.fullscreenAgentId);
   const sidebarTab = useStore((s) => s.sidebarTab);
@@ -285,6 +286,22 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
             >
               🐱{openTerminalState === 'opening' ? '...' : 'kitty'}
             </span>
+          </PixelButton>
+        )}
+        {/* Agent settings gear (agent-harness-agent-settings-b-2026-08-17) —
+            opens the SAME edit dialog the monitor and tasks windows open
+            (setEditAgent → the single dialog App mounts for editOf), no new editing
+            surface. Scoped like every other gear: human-class only — god's pane
+            is the CommandCenter (which offers no god gear today) and interns
+            are fire-and-rehire, never edited. */}
+        {agentClassOf(agent) === 'human' && (
+          <PixelButton
+            variant="secondary"
+            size="sm"
+            title={`edit ${displayAgentName(agent)}'s setup — name, engine, briefing`}
+            onClick={() => setEditAgent(agent.id)}
+          >
+            <Icon name="gear" />
           </PixelButton>
         )}
         {/* Pin/unpin (agent-harness-pin-unpin-button-2026-08-17) — beside the
