@@ -149,7 +149,15 @@ function recallDeps(over = {}) {
 
 test('request: agentId resolves and is trimmed; park is the default verb', () => {
   const plan = vacationRequestTarget({ agentId: '  bob ' });
-  assert.deepEqual(plan, { ok: true, agentId: 'bob', recall: false, reason: undefined });
+  // whenQuiet:false is the card park-when-quiet addition — an absent flag means
+  // the old reject-a-busy-agent-immediately behavior, unchanged.
+  assert.deepEqual(plan, {
+    ok: true,
+    agentId: 'bob',
+    recall: false,
+    reason: undefined,
+    whenQuiet: false,
+  });
 });
 
 test('request: the "id" fallback spelling ships in the docs and must work', () => {
@@ -278,9 +286,13 @@ test('park: ladder precedence — god > intern > retired > already-parked', () =
 
 test('park: a busy agent is refused on the request path — "park it when it goes quiet"', () => {
   const { deps } = parkDeps({ ptyId: 'pty1', busy: true });
+  // busy:true is the card park-when-quiet addition — the discriminator a
+  // whenQuiet request is HELD on (vacation-park-when-quiet.test.cjs). The
+  // refusal itself, and its message to god, are unchanged.
   assert.deepEqual(parkAgentCore(deps, 'bob'), {
     ok: false,
     error: '"bob" is actively working — park it when it goes quiet',
+    busy: true,
   });
 });
 

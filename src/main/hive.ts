@@ -3308,7 +3308,30 @@ parked. Parking is rejected (with a notice) for god, interns, the retired,
 or anyone already on vacation. A PINNED worker (the registry 'pinned' flag,
 set by the office UI's pin toggle) is never parked either — unpin it there
 first. Recall respawns it in place, resuming its own
-session, exactly like any other respawn.`;
+session, exactly like any other respawn.
+
+**\`"whenQuiet": true\` — park it as soon as it goes quiet.** A plain park of
+an agent that is working RIGHT NOW is rejected and you have to retry later.
+Add the flag and the harness HOLDS the request instead: the file stays in
+\`vacation-requests/\` and every watcher tick (1.5s) retries it against the
+same busy gate, parking the agent the moment it goes idle. You get one
+\`[park held]\` notice up front and the usual \`[on vacation]\` one when it
+lands — never retry a held park by hand:
+
+\`\`\`bash
+cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/vacation-requests/park-pam.json" <<'EOF'
+{ "agentId": "pam-1", "reason": "done reported, park at end of turn", "whenQuiet": true }
+EOF
+\`\`\`
+
+Only the busy refusal is held. Every permanent one (god, intern, retired,
+already parked, PINNED, unknown id) is still rejected immediately — waiting
+would never make those parkable. The flag is opt-in and strict \`true\`; a
+request without it behaves exactly as before. A held request survives an app
+restart (the queue file IS the state) and is cancelled by deleting that file.
+It waits indefinitely — a target that never goes quiet holds forever, so
+cancel one you no longer want. The PARKING GATE above still applies: the flag
+buys you the timing, not the evidence.`;
 
 /** The '## KITTY SATELLITE' section appended to COMMANDS.md — the god-facing
  *  remote-control surface for the satellite kitty. Every claim here is

@@ -88,8 +88,10 @@ import { shouldAdoptWorktree } from './worktreeAdopt';
 import {
   parkAgentCore,
   recallAgentCore,
+  shouldHoldPark,
   vacationRequestTarget,
   type ParkOrigin,
+  type ParkResult,
 } from './vacationFlow';
 import { startCardSessionWatcher } from './cardSessions';
 import type { CardSessionMarker } from '../shared/cardSessions';
@@ -6196,11 +6198,7 @@ function processFireRequest(filePath: string): void {
  *  in vacationFlow.parkAgentCore (testable); this adapter is pure wiring.
  *  origin: 'operator' (UI button — skips the busy rung, the human's call) or
  *  'request' (god's automated path — busy gate enforced). */
-function parkAgent(
-  agentId: string,
-  reason?: string,
-  origin: ParkOrigin = 'request',
-): { ok: boolean; error?: string } {
+function parkAgent(agentId: string, reason?: string, origin: ParkOrigin = 'request'): ParkResult {
   return parkAgentCore(
     {
       hiveEnabled: () => hive.enabled(),
@@ -6313,13 +6311,35 @@ function rosterRecipe(id: string): {
   }
 }
 
+/** Held `whenQuiet` parks we have already told god about — path-keyed, so the
+ *  "waiting for it to go quiet" notice and its log line fire ONCE per request
+ *  instead of on every 1.5s tick. This set is NOT the hold's state: the
+ *  unarchived request file in vacation-requests/ is (see processVacationRequest),
+ *  so losing this set to a restart costs one duplicate notice, nothing more. */
+const heldQuietParks = new Set<string>();
+
 /** Vacation-request — god parking an idle human-created agent, or fetching one
  *  back. JSON: `{ "agentId": "...", "reason": "..." }` parks;
  *  `{ "agentId": "...", "action": "recall" }` recalls. Every outcome archives
  *  the request (.done/.failed) and informs god's inbox, exactly like
- *  processFireRequest. */
+ *  processFireRequest.
+ *
+ *  ONE exception (card park-when-quiet): a park carrying `"whenQuiet": true`
+ *  whose target is actively working is HELD, not rejected — the file stays in
+ *  the queue and every later tick retries it against the same busy gate until
+ *  the agent goes quiet, then parks for real. That replaces the reject+retry
+ *  loop god used to run by hand. The hold is restart-safe for free: the queue
+ *  file IS the state and the watcher rescans the dir on boot. Every other
+ *  refusal (pinned, intern, god, retired, unknown id) still answers at once,
+ *  flag or not — those never become parkable by waiting. */
 async function processVacationRequest(filePath: string): Promise<void> {
-  let raw: { agentId?: string; id?: string; action?: string; reason?: string };
+  let raw: {
+    agentId?: string;
+    id?: string;
+    action?: string;
+    reason?: string;
+    whenQuiet?: boolean;
+  };
   try {
     raw = JSON.parse(readFileSync(filePath, 'utf8'));
   } catch (e) {
@@ -6331,6 +6351,7 @@ async function processVacationRequest(filePath: string): Promise<void> {
     return;
   }
   const fail = (reason: string): void => {
+    heldQuietParks.delete(filePath);
     informGod('[vacation rejected]', `Vacation-request ${basename(filePath)} rejected: ${reason}.`);
     archiveRequestIn(vacationRequestsDir(), filePath, '.failed');
   };
@@ -6346,7 +6367,7 @@ async function processVacationRequest(filePath: string): Promise<void> {
   // Belt-and-suspenders on top of recallAgent's own try/catch: neither verb may
   // ever throw past this point, or the request is reprocessed on every tick
   // forever instead of archiving to .failed.
-  let res: { ok: boolean; error?: string };
+  let res: ParkResult;
   try {
     // Request-file recalls are god/system-initiated: the operator did not ask
     // for this agent back, so the pane restores in the background — no
@@ -6357,10 +6378,25 @@ async function processVacationRequest(filePath: string): Promise<void> {
   } catch (e) {
     res = { ok: false, error: String(e) };
   }
+  // HOLD: a whenQuiet park of an agent that is working right now. Leave the file
+  // in the queue — that unarchived file is the entire persisted state, so the
+  // retry resumes after an app restart too — and say so once, not every tick.
+  if (shouldHoldPark(plan, res)) {
+    if (!heldQuietParks.has(filePath)) {
+      heldQuietParks.add(filePath);
+      hive.appendLog({ kind: 'vacation_park_held', agentId, reason: plan.reason ?? null });
+      informGod(
+        `[park held] ${agentId}`,
+        `${agentId} is working right now, so the park is HELD, not rejected: vacation-request ${basename(filePath)} stays queued and parks it automatically as soon as it goes quiet (no tool call or inference from it for 60s). No retry needed from you — you get the "[on vacation]" notice when it lands. Drop the queued file to cancel.`,
+      );
+    }
+    return;
+  }
   if (!res.ok) {
     fail(res.error ?? 'unknown error');
     return;
   }
+  heldQuietParks.delete(filePath); // answered — fail() clears the other paths
   informGod(
     recall ? `[recalled] ${agentId}` : `[on vacation] ${agentId}`,
     recall

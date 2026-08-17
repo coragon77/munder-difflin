@@ -95,6 +95,16 @@ export interface RecallDeps {
  *  button and can see the agent's PTY, so idleness is their call, not ours. */
 export type ParkOrigin = 'operator' | 'request';
 
+/** A park's answer. `busy` marks the ONE refusal that is temporary — the agent
+ *  is working right now — and is what `shouldHoldPark` keys on, so no caller
+ *  has to match on the error prose (card park-when-quiet). Every other refusal
+ *  is permanent and carries no flag. */
+export interface ParkResult {
+  ok: boolean;
+  error?: string;
+  busy?: true;
+}
+
 /** The refusal ladder + teardown/persist flow of parkAgent, verbatim.
  *  Returns { ok: true } only when the vacation flag verifiably landed. */
 export function parkAgentCore(
@@ -102,7 +112,7 @@ export function parkAgentCore(
   agentId: string,
   reason?: string,
   origin: ParkOrigin = 'request',
-): { ok: boolean; error?: string } {
+): ParkResult {
   if (!deps.hiveEnabled()) return { ok: false, error: 'hive disabled' };
   const reg = deps.registry();
   const entry = reg.agents[agentId];
@@ -135,7 +145,13 @@ export function parkAgentCore(
     // pane as "actively working" (card vacation-busy-check-tui-repaint).
     // Operator origin skips ONLY this rung — their button, their judgment.
     if (origin !== 'operator' && deps.busy(ptyId, agentId)) {
-      return { ok: false, error: `"${agentId}" is actively working — park it when it goes quiet` };
+      return {
+        ok: false,
+        error: `"${agentId}" is actively working — park it when it goes quiet`,
+        // TEMPORARY refusal — a whenQuiet request is held on this and retried
+        // until the gate clears, instead of bouncing back to god (shouldHoldPark).
+        busy: true,
+      };
     }
     // A park is not a firing: the worktree IS the agent's state, and the recall
     // re-enters it (the registry cwd is that path for an isolated agent). Drop the
@@ -280,7 +296,7 @@ export async function recallAgentCore(
  *  beside `agentId` — both spellings ship in the docs' sibling request
  *  formats, and a typo here would otherwise read as a silent no-op. */
 export type VacationRequestPlan =
-  | { ok: true; agentId: string; recall: boolean; reason?: string }
+  | { ok: true; agentId: string; recall: boolean; reason?: string; whenQuiet: boolean }
   | { ok: false; error: string };
 
 export function vacationRequestTarget(raw: unknown): VacationRequestPlan {
@@ -290,11 +306,37 @@ export function vacationRequestTarget(raw: unknown): VacationRequestPlan {
   // the caller's fail() path archives it to .failed like unparseable JSON.
   if (typeof raw !== 'object' || raw === null)
     return { ok: false, error: 'request body is not a JSON object' };
-  const r = raw as { agentId?: unknown; id?: unknown; action?: unknown; reason?: string };
+  const r = raw as {
+    agentId?: unknown;
+    id?: unknown;
+    action?: unknown;
+    reason?: string;
+    whenQuiet?: unknown;
+  };
   const agentId = (
     typeof r.agentId === 'string' ? r.agentId : typeof r.id === 'string' ? r.id : ''
   ).trim();
   if (!agentId) return { ok: false, error: 'missing "agentId"' };
   const recall = String(r.action ?? 'park').toLowerCase() === 'recall';
-  return { ok: true, agentId, recall, reason: r.reason };
+  // Strict true only: holding a request means the watcher retries it for as
+  // long as the agent keeps working, so the opt-in must be deliberate — a
+  // stray "true"/1 in hand-written JSON keeps the old reject-now behavior.
+  return { ok: true, agentId, recall, reason: r.reason, whenQuiet: r.whenQuiet === true };
+}
+
+/** Hold this request in the queue instead of answering it? True for exactly one
+ *  case: a `whenQuiet` PARK whose only problem is that the agent is working
+ *  right now (card park-when-quiet — before it, god ate a reject+retry loop per
+ *  park). Every permanent refusal (pinned, intern, god, retired, unknown id…)
+ *  and every recall answers immediately, flag or not — holding those would park
+ *  the request in the queue forever.
+ *
+ *  The HOLD needs no state of its own: not archiving the request file leaves it
+ *  in vacation-requests/, where the watcher's next tick picks it up again — and
+ *  so does the first tick after an app restart. */
+export function shouldHoldPark(
+  plan: { recall: boolean; whenQuiet: boolean },
+  res: ParkResult,
+): boolean {
+  return !plan.recall && plan.whenQuiet && res.busy === true;
 }
