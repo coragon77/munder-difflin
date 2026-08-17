@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { readFile, stat } from 'node:fs/promises';
+import { lstat, readFile, stat, symlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { safeJoin } from './fs';
 
 /** Run git in `cwd` with `args`. Returns stdout text or an error. */
@@ -280,11 +281,57 @@ export async function addWorktree(
 ): Promise<{ ok: boolean; error?: string }> {
   const branch = agentBranchFor(wtPath);
   const fresh = await runGit(cwd, ['worktree', 'add', wtPath, '-b', branch, baseBranch]);
-  if (fresh.ok) return { ok: true };
-  // Branch likely already exists (or the path is taken) — retry without -b.
-  const fallback = await runGit(cwd, ['worktree', 'add', wtPath, baseBranch]);
-  if (fallback.ok) return { ok: true };
-  return { ok: false, error: fallback.error };
+  if (!fresh.ok) {
+    // Branch likely already exists (or the path is taken) — retry without -b.
+    const fallback = await runGit(cwd, ['worktree', 'add', wtPath, baseBranch]);
+    if (!fallback.ok) return { ok: false, error: fallback.error };
+  }
+  // Provision node_modules from the live checkout (card agent-harness-
+  // worktree-creatio-2026-08-17): worktrees ship without it and every worker
+  // hand-symlinked the main checkout's modules in until now. Best-effort —
+  // a failed link logs and the spawn proceeds (pre-fix status quo).
+  const mainRoot = await mainRepoRoot(cwd);
+  if (mainRoot) {
+    const link = await linkNodeModules(wtPath, mainRoot);
+    if (!link.ok) console.error('[worktree] node_modules provisioning failed:', link.error);
+  }
+  return { ok: true };
+}
+
+/** Best-effort node_modules provisioning for a fresh worktree (card
+ *  agent-harness-worktree-creatio-2026-08-17). Symlinks
+ *  `wtPath/node_modules` → `mainRoot/node_modules` when the source exists and
+ *  the worktree has no entry yet: never clobbers a pre-linked worktree or a
+ *  worker's own install, never dangles when the main checkout has no
+ *  node_modules (e.g. non-Node projects). Callers swallow failures — a
+ *  missing link is the pre-fix status quo and must not fail a spawn. */
+export async function linkNodeModules(
+  wtPath: string,
+  mainRoot: string,
+): Promise<{ ok: boolean; linked?: boolean; error?: string }> {
+  const target = join(wtPath, 'node_modules');
+  try {
+    await lstat(target);
+    return { ok: true, linked: false }; // something is already there — keep it
+  } catch {
+    /* not present — provision below */
+  }
+  const source = join(mainRoot, 'node_modules');
+  try {
+    // stat() follows symlinks — a linked main checkout's modules count too.
+    if (!(await stat(source)).isDirectory()) return { ok: true, linked: false };
+  } catch (e) {
+    // A main checkout with no node_modules (non-Node project) is the expected
+    // skip, not an error — anything else (perms, race) reports ok:false.
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, linked: false };
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  try {
+    await symlink(source, target, process.platform === 'win32' ? 'junction' : 'dir');
+    return { ok: true, linked: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Actionable refusal for an isolate:true spawn whose worktree creation FAILED
