@@ -49,14 +49,22 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
 
   const onPtyStream = usePtyParser(agent.id);
 
-  // Kitty button only renders when kitty is installed (probed once, cached).
+  // Kitty button only renders when kitty is installed (probed when the gate
+  // flag flips too — a view mounted while OFF must not hold a stale `false`
+  // after the operator flips the switch ON; card agent-kittyenabled-toggle-
+  // moun-2026-08-17).
   const [kittyAvailable, setKittyAvailable] = useState<boolean | null>(null);
   useEffect(() => {
+    // While off there is nothing to probe — main's gate would refuse anyway;
+    // reading the flag here also re-runs the probe on flip (dep array) so a
+    // view mounted while OFF picks up availability the moment the switch
+    // goes ON (card agent-kittyenabled-toggle-moun-2026-08-17).
+    if (!kittyEnabled) return;
     void window.cth
       .isKittyAvailable()
       .then(setKittyAvailable)
       .catch(() => setKittyAvailable(false));
-  }, []);
+  }, [kittyEnabled]);
   const openKitty = async () => {
     setOpenTerminalState('opening');
     setOpenTerminalError(undefined);

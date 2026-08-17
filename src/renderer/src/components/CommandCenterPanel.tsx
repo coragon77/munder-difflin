@@ -1496,14 +1496,22 @@ function GodKittyButton() {
   const [available, setAvailable] = useState<boolean | null>(null);
   const kittyEnabled = useStore((s) => s.kittyEnabled);
   useEffect(() => {
+    // Reading the flag keeps the dep honest AND re-probes on flip: a view
+    // mounted while OFF picks up real availability the moment the switch
+    // goes ON (agent-kittyenabled-toggle-moun-2026-08-17). While off the
+    // probe is skipped — main's gate would refuse anyway.
+    if (!kittyEnabled) return;
     void window.cth
       .isKittyAvailable()
       .then(setAvailable)
       .catch(() => setAvailable(false));
-  }, []);
+  }, [kittyEnabled]);
   // kittyEnabled gate (agent-harness-kittyenabled-set-2026-08-17): the probe
   // is already main-gated (off → unavailable); the store flag hides the button
   // the moment the switch flips, without waiting for a remount/re-probe.
+  // The probe also re-runs on flip (dep array) so a view mounted while OFF
+  // picks up real availability the moment the switch goes ON
+  // (agent-kittyenabled-toggle-moun-2026-08-17).
   if (available !== true || !kittyEnabled) return null;
   return (
     <PixelButton

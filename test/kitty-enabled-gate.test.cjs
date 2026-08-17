@@ -116,6 +116,25 @@ test('renderer: store mirror synced from config and every kitty affordance gated
   );
 });
 
+test('mounted views re-probe when the switch flips — no remount needed', () => {
+  // Card agent-kittyenabled-toggle-moun-2026-08-17: main gates the probe
+  // per call, but consumers probed ONCE at mount and cached — a view mounted
+  // while OFF held a stale `false` after the operator flipped ON, so buttons
+  // only appeared after switching cards (accidental remount). The probe
+  // effects must re-run when the store flag flips.
+  const pane = read('src/renderer/src/components/AgentDetailPanel.tsx');
+  assert.ok(
+    pane.includes('}, [kittyEnabled]);', pane.indexOf('.isKittyAvailable()')),
+    'pane kitty probe re-runs when kittyEnabled flips (dep array carries the flag)',
+  );
+
+  const cc = read('src/renderer/src/components/CommandCenterPanel.tsx');
+  assert.ok(
+    cc.includes('}, [kittyEnabled]);', cc.indexOf('GodKittyButton')),
+    'GodKittyButton probe re-runs when kittyEnabled flips',
+  );
+});
+
 test('settings: self-contained switch row with the VERBATIM tooltip, persisting immediately', () => {
   const modal = read('src/renderer/src/components/SettingsModal.tsx');
   assert.ok(
