@@ -70,7 +70,7 @@ export interface HarnessConfig {
   sddSubagentsAuthorized?: boolean;
   /** Who owns integration (merge + push): 'god' (default) or 'workers'.
    *  Mirrors main's config field (card integration-mode-toggle-20260817). */
-  integrationMode?: 'god' | 'workers';
+  integrationMode?: 'god' | 'workers' | 'lean';
   /** When true, fresh god spawns run /remote-control Michael (Claude mobile
    *  link). Mirrors main's config field — default ON. */
   godRemoteControl?: boolean;

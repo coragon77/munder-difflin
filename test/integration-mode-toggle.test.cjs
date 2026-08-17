@@ -38,7 +38,10 @@ test("config: DEFAULTS pins integrationMode 'god' (the shipped default)", () => 
     src.indexOf('export interface HarnessConfig'),
     src.indexOf('const DEFAULTS'),
   );
-  assert.ok(iface.includes("integrationMode?: 'god' | 'workers'"), 'interface types the two modes');
+  assert.ok(
+    iface.includes("integrationMode?: 'god' | 'workers' | 'lean'"),
+    'interface types the three modes',
+  );
 });
 
 // ——— hive-root AGENTS.md (hiveRootAgentsMd) ———————————————————————————
@@ -76,7 +79,7 @@ test("workers mode: god's briefing DELEGATES integration and records pushed hash
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false, true, 'workers');
   assert.ok(p.includes('INTEGRATION IS DELEGATED'), 'delegation clause present');
   assert.ok(!p.includes('branch integration, and final QA'), 'god no longer owns it');
-  assert.ok(p.includes('RECORD the hash'), 'god records the pushed hash, no re-QA');
+  assert.ok(p.includes('you RECORD'), 'god records the pushed hash, no re-QA');
   // Constraint 1 survives the mode: the restart-window mechanism stays god's.
   assert.ok(p.includes('stays YOURS in every mode'), 'renderer mechanism stays god-owned');
 });
@@ -144,18 +147,78 @@ test('wiring: main reads the mode lazily, threads it to ensureAgent, and regener
     'ensureAgent spawn path threads the mode',
   );
   assert.ok(
-    idx.includes("patch?.integrationMode === 'workers'"),
-    'config:update regenerates the generated files on a flip',
+    idx.includes('patch?.integrationMode !== undefined'),
+    'config:update regenerates the generated files on any mode flip',
   );
 });
 
 test('wiring: Settings toggle + config mirrors exist on all three surfaces', () => {
   const read = (p) => readFileSync(join(__dirname, '..', p), 'utf8');
   for (const p of ['src/preload/index.ts', 'src/renderer/src/store/config.ts']) {
-    assert.ok(read(p).includes("integrationMode?: 'god' | 'workers'"), `${p} mirrors the key`);
+    assert.ok(
+      /integrationMode\?: 'god' \| 'workers' \| 'lean'/.test(read(p)),
+      `${p} mirrors the key with all three states`,
+    );
   }
   const sm = read('src/renderer/src/components/SettingsModal.tsx');
   assert.ok(sm.includes('integrationMode'), 'SettingsModal reads the key');
-  assert.ok(sm.includes('toggleIntegrationMode'), 'toggle handler');
-  assert.ok(sm.includes("'workers' : 'god'"), 'toggle writes the two-mode value');
+  assert.ok(sm.includes('setIntegrationMode'), 'state setter');
+  assert.ok(sm.includes("'god' | 'workers' | 'lean'"), 'three-state control');
+  assert.ok(sm.includes("'lean'"), 'lean state reachable from the UI');
+});
+
+// ─── lean-god posture (card addendum) ─────────────────────────────────────
+//
+// The addendum folds the LEAN-GOD OPERATING POSTURE into the same switch as a
+// THIRD state: the posture includes worker-side integration (its item 4), so
+// the dimensions are not independent — one monotonic enum ('god' classic →
+// 'workers' integration-only → 'lean' integration + posture) needs no conflict
+// rules where a two-switch matrix would. 'workers' stays exactly as shipped.
+
+const LEAN_SECTION = '## Lean-god operating posture (integrationMode: lean)';
+const LEAN_MARK = 'LEAN-GOD POSTURE';
+const NO_REVERIFY = 'RECORD the reported hashes and gate results';
+const CORE_ROLE = 'operator dialogue';
+
+test('lean: AGENTS.md carries BOTH the integration section and the lean-posture section', () => {
+  const md = hiveRootAgentsMd(true, 'lean');
+  assert.ok(md.includes(SECTION), 'integration section present (posture item 4)');
+  assert.ok(md.includes(LEAN_SECTION), 'posture section present');
+  assert.ok(md.indexOf(SECTION) < md.indexOf(LEAN_SECTION), 'integration leads, posture follows');
+  const w = hiveRootAgentsMd(true, 'workers');
+  assert.ok(w.includes(SECTION) && !w.includes(LEAN_SECTION), 'workers = integration only');
+  const g = hiveRootAgentsMd(true, 'god');
+  assert.ok(!g.includes(SECTION) && !g.includes(LEAN_SECTION), 'god/classic = neither');
+});
+
+test("lean: god's briefing carries the posture — delegation, no re-verify, core role — plus integration", () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false, true, 'lean');
+  assert.ok(p.includes(LEAN_MARK), 'posture clause present');
+  assert.ok(p.includes(NO_REVERIFY), 'records evidence instead of re-running it');
+  assert.ok(p.includes(CORE_ROLE), 'core role named');
+  assert.ok(p.includes('INTEGRATION IS DELEGATED'), 'worker-side integration included');
+  assert.ok(p.includes('stays YOURS in every mode'), 'renderer mechanism stays god-owned');
+  assert.ok(!p.includes('branch integration, and final QA'), 'god owns neither anymore');
+});
+
+test('lean: the worker briefing keeps the integration duty AND reports gate results', () => {
+  const p = injectedPrompt.call(null, WORKER, '/agents/pam', '/hive', false, false, true, 'lean');
+  assert.ok(p.includes('INTEGRATION — WORKER-SIDE'), 'duty line present');
+  assert.ok(p.includes('gate results'), 'god records gate results — workers report them');
+  assert.ok(p.includes(RENDERER_CONSTRAINT));
+  assert.ok(p.includes(SKILL_OVERRIDE));
+  assert.ok(p.includes(DISPATCH_OVERRIDE));
+});
+
+test('lean: COMMANDS.md carries both sections; identity.md names the lean role', () => {
+  const cmd = renderCommandsMd('lean');
+  assert.ok(cmd.includes(SECTION) && cmd.includes(LEAN_SECTION));
+  assert.ok(
+    renderCommandsMd('workers').includes(SECTION) &&
+      !renderCommandsMd('workers').includes(LEAN_SECTION),
+    'workers: integration section only',
+  );
+  const id = identityText.call(null, GOD, 'lean');
+  assert.ok(id.includes('LEAN'), 'identity names the lean posture');
+  assert.ok(id.includes('Integration is delegated to workers'));
 });

@@ -3824,11 +3824,7 @@ ipcMain.handle('config:update', (_evt, patch: Partial<HarnessConfig>) => {
   // files immediately (<harnessHome>/AGENTS.md + hive COMMANDS.md — they
   // otherwise refresh on the next spawn/bootstrap via ensureHive). Briefings
   // pick the new mode up on the next spawn, same as the sdd line.
-  if (
-    typeof patch?.sddSubagentsAuthorized === 'boolean' ||
-    patch?.integrationMode === 'workers' ||
-    patch?.integrationMode === 'god'
-  ) {
+  if (typeof patch?.sddSubagentsAuthorized === 'boolean' || patch?.integrationMode !== undefined) {
     try {
       hive.ensureHive();
     } catch (e) {

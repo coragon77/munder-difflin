@@ -297,7 +297,7 @@ export interface HarnessConfig {
   sddSubagentsAuthorized?: boolean;
   /** Who owns integration (merge + push): 'god' (default) or 'workers'.
    *  Mirrors main's config field (card integration-mode-toggle-20260817). */
-  integrationMode?: 'god' | 'workers';
+  integrationMode?: 'god' | 'workers' | 'lean';
   defaultCommand: string;
   defaultModel?: string;
   /** Which provider+model powers the GOD orchestrator ("Michael"). Default

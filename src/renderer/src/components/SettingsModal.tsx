@@ -257,23 +257,29 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       setSddAuthz(!next);
     }
   };
-  // Integration mode (card integration-mode-toggle-20260817): 'workers' moves
-  // merge + push of finished work from god to the workers (they merge their OWN
-  // branch after their gates pass and report the pushed hash; god records, no
-  // re-QA). Default 'god' = today's flow. The generated AGENTS.md + COMMANDS.md
-  // regenerate immediately on flip; briefings pick the mode up on next spawn.
-  const [integrationWorkers, setIntegrationWorkers] = useState<boolean>(
-    cfgX.integrationMode === 'workers',
+  // Integration mode (card integration-mode-toggle-20260817 + lean addendum):
+  // one monotonic enum — 'god' (default: god integrates + verifies, today's
+  // flow) · 'workers' (workers merge + push their OWN branch after their gates
+  // and report the pushed hash; god records, no re-QA) · 'lean' (worker-side
+  // integration PLUS the lean-god posture: god default-delegates
+  // mechanical-but-judgment work, records worker-reported hashes/gate results
+  // WITHOUT re-verifying, core role = operator dialogue, decomposition,
+  // dispatch contracts, conflict resolution, report translation). The generated
+  // AGENTS.md + COMMANDS.md regenerate immediately on change; briefings pick
+  // the mode up on next spawn.
+  const [integrationMode, setIntegrationMode] = useState<'god' | 'workers' | 'lean'>(
+    cfgX.integrationMode ?? 'god',
   );
-  const toggleIntegrationMode = async () => {
-    const next = !integrationWorkers;
-    setIntegrationWorkers(next);
+  const chooseIntegrationMode = async (next: 'god' | 'workers' | 'lean') => {
+    if (next === integrationMode) return;
+    const prev = integrationMode;
+    setIntegrationMode(next);
     try {
       await window.cth.updateConfig({
-        integrationMode: next ? 'workers' : 'god',
+        integrationMode: next,
       } as Partial<HarnessConfig>);
     } catch {
-      setIntegrationWorkers(!next);
+      setIntegrationMode(prev);
     }
   };
   const [godRemote, setGodRemote] = useState<boolean>(cfgX.godRemoteControl !== false);
@@ -609,7 +615,7 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
         setSlackProactivePosting(cc.slackProactivePosting ?? false);
         setTgEnabled((cc as HarnessConfig).telegramEnabled ?? true);
         setSddAuthz((cc as HarnessConfig).sddSubagentsAuthorized !== false);
-        setIntegrationWorkers((cc as HarnessConfig).integrationMode === 'workers');
+        setIntegrationMode((cc as HarnessConfig).integrationMode ?? 'god');
         const kgOn =
           (cc as { knowledgeGraph?: { enabled?: boolean } }).knowledgeGraph?.enabled === true;
         setKgEnabled(kgOn);
@@ -1796,7 +1802,8 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                       </div>
 
                       {/* Integration mode — who owns merge + push of finished
-                           work (card integration-mode-toggle-20260817). */}
+                           work + god's operating posture (card
+                           integration-mode-toggle-20260817 + lean addendum). */}
                       <div
                         style={{
                           display: 'flex',
@@ -1813,9 +1820,11 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                               color: 'var(--cth-ink-900)',
                             }}
                           >
-                            {integrationWorkers
-                              ? 'Workers integrate their own branches'
-                              : 'God integrates finished work'}
+                            {integrationMode === 'lean'
+                              ? 'Lean god — delegates, records, translates'
+                              : integrationMode === 'workers'
+                                ? 'Workers integrate their own branches'
+                                : 'God integrates finished work'}
                           </span>
                           <span
                             style={{
@@ -1824,19 +1833,28 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                               color: 'var(--cth-ink-500)',
                             }}
                           >
-                            Workers merge + push their OWN branch once their gates are green and
-                            report the pushed hash; god records it, no re-QA. Renderer/preload
-                            restart-window merges stay god-owned. Applies to new briefings;
-                            AGENTS.md + COMMANDS.md regenerate immediately.
+                            {integrationMode === 'lean'
+                              ? 'God default-delegates mechanical-but-judgment work, records worker-reported hashes/gate results without re-verifying, and focuses on operator dialogue, dispatch contracts, and report translation. Workers integrate their own branches.'
+                              : integrationMode === 'workers'
+                                ? 'Workers merge + push their OWN branch once their gates are green and report the pushed hash; god records it, no re-QA. God still verifies everything else.'
+                                : "Today's flow: workers hand branches to god; god integrates and verifies."}{' '}
+                            Renderer/preload restart-window merges stay god-owned in every mode;
+                            never-push skills and dispatch boundaries always override. Applies to
+                            new briefings; AGENTS.md + COMMANDS.md regenerate immediately.
                           </span>
                         </div>
-                        <PixelButton
-                          variant={integrationWorkers ? 'primary' : 'secondary'}
-                          size="sm"
-                          onClick={toggleIntegrationMode}
-                        >
-                          {integrationWorkers ? 'workers' : 'god'}
-                        </PixelButton>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {(['god', 'workers', 'lean'] as const).map((m) => (
+                            <PixelButton
+                              key={m}
+                              variant={integrationMode === m ? 'primary' : 'secondary'}
+                              size="sm"
+                              onClick={() => chooseIntegrationMode(m)}
+                            >
+                              {m}
+                            </PixelButton>
+                          ))}
+                        </div>
                       </div>
 
                       {/* God remote-control link (phone supervision of Michael) */}

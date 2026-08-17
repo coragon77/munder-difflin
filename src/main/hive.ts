@@ -375,7 +375,7 @@ export class HiveManager {
      *  mode-dependent prose in the generated COMMANDS.md + hive-root
      *  AGENTS.md. Read lazily — ensureHive rewrites both on every
      *  spawn/bootstrap, and config:update forces a rewrite on a flip. */
-    private getIntegrationMode?: () => 'god' | 'workers',
+    private getIntegrationMode?: () => IntegrationMode,
   ) {}
 
   private routerTimer: NodeJS.Timeout | null = null;
@@ -730,7 +730,7 @@ export class HiveManager {
        *  integration-mode-toggle-20260817). Undefined = 'god' (the config
        *  default) — mirrors the `?? 'god'` read at the call site. Gates the
        *  mode-dependent integration prose in identity.md + the briefing. */
-      integrationMode?: 'god' | 'workers';
+      integrationMode?: IntegrationMode;
     } = {},
   ): Promise<SpawnInjection> {
     const root = this.root();
@@ -1491,15 +1491,18 @@ export class HiveManager {
 
   // — agent-facing text —
 
-  private identityText(meta: AgentMeta, integrationMode: 'god' | 'workers' = 'god'): string {
+  private identityText(meta: AgentMeta, integrationMode: IntegrationMode = 'god'): string {
     const caps = (meta.capabilities ?? []).join(', ') || '—';
-    // Integration ownership (card integration-mode-toggle-20260817): the god
-    // bullet names integration among his own calls ONLY in 'god' mode — in
-    // 'workers' mode it is delegated and god records pushed hashes instead.
+    // Integration ownership (card integration-mode-toggle-20260817 + lean
+    // addendum): the god bullet names integration among his own calls ONLY in
+    // 'god' mode — 'workers' delegates it (god records pushed hashes), 'lean'
+    // also drops verification (records hashes AND gate results, no re-run).
     const godBullet =
-      integrationMode === 'workers'
-        ? "- You are the **god / orchestrator**. You run the floor — keep awareness of the whole team, delegate execution, and personally own only the important calls (decomposition, sign-offs, conflicts), not the grunt work. Integration is delegated to workers (integrationMode 'workers') — you record their pushed hashes; you do not re-integrate."
-        : '- You are the **god / orchestrator**. You run the floor — keep awareness of the whole team, delegate execution, and personally own only the important calls (decomposition, sign-offs, conflicts, integration), not the grunt work.';
+      integrationMode === 'lean'
+        ? "- You are the **god / orchestrator** running LEAN. You orchestrate: operator dialogue, task decomposition + dispatch contracts, conflict resolution, translating worker reports into operator-readable form — and you RECORD worker-reported hashes and gate results without re-verifying them. Integration is delegated to workers (integrationMode 'lean')."
+        : integrationMode === 'workers'
+          ? "- You are the **god / orchestrator**. You run the floor — keep awareness of the whole team, delegate execution, and personally own only the important calls (decomposition, sign-offs, conflicts), not the grunt work. Integration is delegated to workers (integrationMode 'workers') — you record their pushed hashes; you do not re-integrate."
+          : '- You are the **god / orchestrator**. You run the floor — keep awareness of the whole team, delegate execution, and personally own only the important calls (decomposition, sign-offs, conflicts, integration), not the grunt work.';
     return [
       `# ${meta.name} (${meta.id})`,
       '',
@@ -1534,7 +1537,7 @@ export class HiveManager {
     semanticMemory: boolean,
     knowledgeGraph: boolean,
     sddAuthorized = true,
-    integrationMode: 'god' | 'workers' = 'god',
+    integrationMode: IntegrationMode = 'god',
   ): string {
     const memoryLine = semanticMemory
       ? 'Semantic memory: the whole hive shares a searchable MemPalace at $MEMPALACE_PALACE_PATH. To recall relevant past knowledge across the team, run `mempalace search "<query>"`; run `mempalace wake-up` at the start of a task for a memory digest. Your notes in memory.md are mined into the palace automatically — write durable facts there.'
@@ -1564,10 +1567,23 @@ export class HiveManager {
     // 'workers' mode god DROPS integration from his own duties and instead
     // records the pushed hashes workers report — and the renderer/preload
     // restart-window mechanism stays his regardless of mode (hard constraint 1).
+    // Integration ownership + god posture (card integration-mode-toggle-20260817
+    // + lean addendum): in 'god' mode (default) the god briefing keeps its exact
+    // current wording. 'workers' moves merge+push to workers (god records pushed
+    // hashes). 'lean' additionally moves verification off god: he records
+    // worker-reported hashes AND gate results, delegates mechanical-but-judgment
+    // work by default, and concentrates on the operator-facing core role. The
+    // renderer/preload restart-window mechanism stays his in every mode.
+    const delegatedClause =
+      'INTEGRATION IS DELEGATED: workers merge + push their own branches once their gates are green and report the pushed hash' +
+      (integrationMode === 'lean' ? ' AND their gate results' : '') +
+      ' — you RECORD them on the card/board, no re-QA, do not re-integrate their work yourself. The renderer/preload restart-window / detached-watcher mechanism stays YOURS in every mode — workers route renderer/preload-touching branches to you rather than merging them live.';
     const godOwnsClause =
-      integrationMode === 'workers'
-        ? "final QA — and remain the sole scribe of board.md. INTEGRATION IS DELEGATED (integrationMode 'workers'): workers merge + push their own branches once their gates are green and report the pushed hash — you RECORD the hash on the card/board, no re-QA, do not re-integrate their work yourself. The renderer/preload restart-window / detached-watcher mechanism stays YOURS in every mode — workers route renderer/preload-touching branches to you rather than merging them live."
-        : 'branch integration, and final QA — and remain the sole scribe of board.md.';
+      integrationMode === 'lean'
+        ? `conflict resolution, and translating worker reports into operator-readable form — and remain the sole scribe of board.md. LEAN-GOD POSTURE (integrationMode 'lean'): DEFAULT-DELEGATE mechanical-but-judgment work to the workers — they are Opus/pi-level and fork to lesser models themselves; do not pull such work into your own session. Do NOT re-verify worker-verified evidence — RECORD the reported hashes and gate results instead of re-running them. Your core role is the operator dialogue (talking/planning with the operator), task decomposition + dispatch contracts, conflict resolution, and translating worker reports into operator-readable form. ${delegatedClause}`
+        : integrationMode === 'workers'
+          ? `final QA — and remain the sole scribe of board.md. ${delegatedClause}`
+          : 'branch integration, and final QA — and remain the sole scribe of board.md.';
     const godLine = meta.isGod
       ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST: BEFORE minting an intern (spawn-requests/), check the roster for an EXISTING fitting agent that is not currently busy and route the task there; interns are the fallback, not the default — mint one only when (a) the human explicitly ordered an intern/observable worker, or (b) parallelism: every fitting agent is mid-task. Say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, ' +
         godOwnsClause +
@@ -1591,8 +1607,8 @@ export class HiveManager {
       ? 'OPERATOR AUTHORIZATION — SUBAGENTS FOR SKILL EXECUTION: the operator authorizes Agent-tool subagents for skill-driven plan execution (superpowers SDD) — treat such use as user-requested. Scoped to skill execution, NOT blanket subagent use. God dispatches carry this authorization; use cheap model overrides for mechanical tasks.'
       : '';
     const integrationLine =
-      !meta.isGod && integrationMode === 'workers'
-        ? "INTEGRATION — WORKER-SIDE (integrationMode 'workers'): you integrate your OWN work — once your gates are green (typecheck + lint + tests, the house gate), merge YOUR OWN branch into its target branch, push it, and report the pushed hash to god (god records it; no re-QA). Boundaries that ALWAYS override: renderer/preload-touching branches NEVER merge into the live checkout while the app runs — route them to god's restart-window mechanism instead of merging yourself; a skill that hard-codes 'never push — the operator's manual call' (asol-git-merge-main, asol-git-merge-singletenant) keeps overriding; an explicit boundary in god's dispatch (e.g. 'NO push') beats the mode default."
+      !meta.isGod && integrationMode !== 'god'
+        ? `INTEGRATION — WORKER-SIDE (integrationMode '${integrationMode}'): you integrate your OWN work — once your gates are green (typecheck + lint + tests, the house gate), merge YOUR OWN branch into its target branch, push it, and report the pushed hash${integrationMode === 'lean' ? ' AND your gate results (lean posture: god records them without re-verifying — your evidence is the record)' : ''} to god (god records it; no re-QA). Boundaries that ALWAYS override: renderer/preload-touching branches NEVER merge into the live checkout while the app runs — route them to god's restart-window mechanism instead of merging yourself; a skill that hard-codes 'never push — the operator's manual call' (asol-git-merge-main, asol-git-merge-singletenant) keeps overriding; an explicit boundary in god's dispatch (e.g. 'NO push') beats the mode default.`
         : '';
     const slackLine = meta.isGod
       ? 'SLACK REPLIES: When composing a Slack reply (or writing the `result` field of a Slack-origin kanban card), you MUST: (1) directly address what the user asked — never a bare "done"; (2) include the relevant specifics, outcome, and details; (3) format for Slack mrkdwn — open with a short *bold* headline, use bullet points for multiple items, wrap code/paths in `backtick` blocks, keep it concise (no walls of text). When finishing a Slack-origin task, always write a complete, user-facing, well-formatted `result` on the kanban card — the system posts it verbatim to Slack as the done reply.'
@@ -2922,7 +2938,7 @@ Center opens one for you. Opt out of the satellite entirely with
 
 // ponytail: kept exported for the switch tests (integration-mode-toggle.test.cjs)
 // — same export reason as hiveRootAgentsMd.
-export function renderCommandsMd(integrationMode: 'god' | 'workers' = 'god'): string {
+export function renderCommandsMd(integrationMode: IntegrationMode = 'god'): string {
   const lines: string[] = [
     '# Claude Code commands',
     '',
@@ -2943,10 +2959,12 @@ export function renderCommandsMd(integrationMode: 'god' | 'workers' = 'god'): st
     lines.push('');
   }
   lines.push(HIRING_AGENTS_MD, CARD_SESSIONS_MD, KITTY_SATELLITE_MD);
-  // Integration mode (card integration-mode-toggle-20260817): 'workers' mode
-  // appends the worker-side merge+push policy; 'god' (default) renders nothing
-  // extra — today's COMMANDS.md stays byte-identical, the flow unchanged.
-  if (integrationMode === 'workers') lines.push(INTEGRATION_WORKERS_MD, '');
+  // Integration mode (card integration-mode-toggle-20260817 + lean addendum):
+  // 'workers'/'lean' append the worker-side merge+push policy; 'lean' adds the
+  // lean-god posture section after it; 'god' (default) renders nothing extra —
+  // today's COMMANDS.md stays byte-identical, the flow unchanged.
+  if (integrationMode !== 'god') lines.push(INTEGRATION_WORKERS_MD, '');
+  if (integrationMode === 'lean') lines.push(LEAN_GOD_MD, '');
   return lines.join('\n');
 }
 const CARD_SESSIONS_MD = `## CARD SESSIONS — one kanban card = one conversation
@@ -2978,6 +2996,12 @@ in the same conversation — the trigger is a NEW card, not task-feels-done.
 \`$HIVE_ROOT/session-requests/\` — \`{ "agentId": "...", "verb": "clear" }\` or
 \`{ "agentId": "...", "verb": "resume", "sessionId": "<uuid>" }\`.`;
 
+/** Integration mode union (card integration-mode-toggle-20260817 + lean-god
+ *  addendum): 'god' = classic flow · 'workers' = worker-side merge+push ·
+ *  'lean' = worker-side integration PLUS the lean-god posture. Monotonic —
+ *  the lean posture includes worker integration, so they share one enum. */
+export type IntegrationMode = 'god' | 'workers' | 'lean';
+
 /** The worker-side integration section appended to the hive-root AGENTS.md AND
  *  COMMANDS.md when integrationMode is 'workers' (card
  *  integration-mode-toggle-20260817). One constant, both surfaces — the policy
@@ -3004,6 +3028,25 @@ Boundaries that ALWAYS override this mode default:
   toggle: the skill contract beats the mode default.
 - An explicit boundary in god's dispatch (e.g. "NO push") beats the mode
   default — dispatch contracts win.`;
+
+/** The lean-god posture section appended AFTER the integration section when
+ *  integrationMode is 'lean' (card addendum). The posture INCLUDES worker-side
+ *  integration, which is why the modes share one enum — this section only
+ *  renders when the integration one does. */
+const LEAN_GOD_MD = `
+
+## Lean-god operating posture (integrationMode: lean)
+
+The operator runs god LEAN (tight token budget). God default-delegates
+mechanical-but-judgment work to the workers — they are Opus/pi-level and
+fork to lesser models themselves — and does NOT re-verify worker-verified
+evidence: reported hashes and gate results are RECORDED, not re-run. God's
+core role is the operator dialogue (talking/planning with the operator),
+task decomposition + dispatch contracts, conflict resolution, and
+translating worker reports into operator-readable form. Workers integrate
+their own branches (see the Integration section above). The same overrides
+apply: the renderer/preload restart-window mechanism stays god-owned, and
+never-push skills or explicit dispatch boundaries beat the posture.`;
 
 // (COMMANDS_MD module const deleted with integration-mode-toggle-20260817 —
 // ensureHive now renders COMMANDS.md live so the mode section follows the
@@ -3101,12 +3144,13 @@ cheap model overrides for mechanical tasks.`;
  *  the engine's stock subagent rules apply unchanged. */
 export function hiveRootAgentsMd(
   sddAuthorized: boolean,
-  integrationMode: 'god' | 'workers' = 'god',
+  integrationMode: IntegrationMode = 'god',
 ): string {
   return (
     HIVE_ROOT_AGENTS_MD +
     (sddAuthorized ? SDD_AUTHORIZATION_MD : '') +
-    (integrationMode === 'workers' ? INTEGRATION_WORKERS_MD : '')
+    (integrationMode !== 'god' ? INTEGRATION_WORKERS_MD : '') +
+    (integrationMode === 'lean' ? LEAN_GOD_MD : '')
   );
 }
 

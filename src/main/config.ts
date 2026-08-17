@@ -197,16 +197,24 @@ export interface HarnessConfig {
    *  stock prompt's own escape clause. OFF = the line is omitted and the
    *  engine's stock subagent rules apply unchanged. NOT blanket subagent use. */
   sddSubagentsAuthorized?: boolean;
-  /** Who owns integration (merge + push) of finished work: 'god' (default —
-   *  today's flow: workers hand branches to god, god integrates) or 'workers'
-   *  (each worker merges + pushes its OWN branch after its gates are green and
-   *  reports the pushed hash; god records it, no re-QA). Rationale: god runs on
-   *  a tight token budget — mechanical integration shouldn't burn it. The
-   *  renderer/preload restart-window merge mechanism stays god-owned in every
-   *  mode; a skill or dispatch boundary that forbids push always overrides
-   *  (card integration-mode-toggle-20260817). Threads into the generated
-   *  prose (godLine, worker briefing, AGENTS.md, COMMANDS.md, identity.md). */
-  integrationMode?: 'god' | 'workers';
+  /** Who owns integration (merge + push) of finished work AND how lean god's
+   *  operating posture is: 'god' (default — today's flow: workers hand
+   *  branches to god, god integrates and verifies) · 'workers' (each worker
+   *  merges + pushes its OWN branch after its gates are green and reports the
+   *  pushed hash; god records it, no re-QA) · 'lean' (worker-side integration
+   *  PLUS the lean-god posture: god default-delegates mechanical-but-judgment
+   *  work, records worker-reported hashes/gate results WITHOUT re-verifying,
+   *  and concentrates on operator dialogue, decomposition, dispatch
+   *  contracts, conflict resolution, report translation). One monotonic enum,
+   *  not two switches, because the lean posture INCLUDES worker-side
+   *  integration — a matrix would need a conflict rule for the incoherent
+   *  lean+god-integrates combo. Rationale: god runs on a tight token budget.
+   *  The renderer/preload restart-window merge mechanism stays god-owned in
+   *  every mode; a skill or dispatch boundary that forbids push always
+   *  overrides (card integration-mode-toggle-20260817 + lean addendum).
+   *  Threads into the generated prose (godLine, worker briefing, AGENTS.md,
+   *  COMMANDS.md, identity.md). */
+  integrationMode?: 'god' | 'workers' | 'lean';
   /** When true, the god agent's fresh spawns run `/remote-control Michael`,
    *  linking his session to the Claude mobile app (phone-side supervision of a
    *  bypassPermissions orchestrator — the only remote view into what he DOES,
