@@ -2999,7 +2999,8 @@ read-modify-write can clobber a concurrent writer's update). Use the
 \`\`\`
 
 - \`--title\` (required), \`--status todo|doing\` (required); \`--notes\` optional.
-- \`--assignee\` defaults to your \`$AGENT_ID\`; the card's \`origin\` is 'agent'.
+- \`--assignee\` defaults to your \`$AGENT_ID\` (god EXCEPTED — a card god mints
+  without \`--assignee\` stays UNASSIGNED until dispatch); the card's \`origin\` is 'agent'.
 - Card work for SOMEONE ELSE is god's dispatch job — message god instead.
 
 **Keep your card's status current** (the ledger is how the floor sees you):
@@ -3026,6 +3027,8 @@ cards — the card is never duplicated):
 
 - \`update\` takes any of \`--title\`, \`--notes\` (the card's description),
   \`--assignee\`; at least one is required, untouched fields stay as they are.
+  \`--assignee ''\` (empty string) CLEARS the assignee — un-assign a card without
+  python-patching the ledger.
 - A 'Task from the human' mail that references a card (cardId field or
   \`Card: <id>\` body line) means that card exists — \`update\` it and assign it;
   NEVER add a second card for the same task.
@@ -3726,6 +3729,18 @@ function readAgentSession(agentId) {
   } catch (_) { return null; }
 }
 
+// Is the CALLING pane god? registry.json's godId is the only signal (card
+// agent-harness-hive-card-add-mu-2026-08-17). Self-assignment on add is a
+// WORKER affordance — god mints the backlog, so a god card without an
+// explicit --assignee stays UNASSIGNED until dispatch. Best-effort like
+// readAgentSession: unreadable registry → not god → worker default.
+function callerIsGod() {
+  try {
+    var reg = JSON.parse(fs.readFileSync(path.join(root, 'registry.json'), 'utf8'));
+    return !!(reg && reg.godId && reg.godId === (process.env.AGENT_ID || '').trim());
+  } catch (_) { return false; }
+}
+
 function cmdAdd(argv) {
   const flags = parseFlags(argv);
   for (const k of Object.keys(flags)) {
@@ -3740,9 +3755,9 @@ function cmdAdd(argv) {
   if (flags.assignee !== undefined) {
     assignee = flags.assignee.trim();
     if (!assignee) fail('--assignee must be non-empty when given.');
-  } else {
+  } else if (!callerIsGod()) {
     assignee = (process.env.AGENT_ID || '').trim();
-  }
+  } // god-minted without --assignee: UNASSIGNED (backlog until dispatch)
   let id = '';
   withLock(function () {
     const data = readLedger();
@@ -3820,8 +3835,9 @@ function cmdStatus(argv) {
 }
 
 // Enrich an EXISTING card in place (the god-adoption path for human cards):
-// --title/--notes/--assignee touch only what was given; --notes maps to the
-// card's description (same as add); a card is never duplicated or re-minted.
+// --title/--notes/--assignee touch only what was given (--assignee '' CLEARS);
+// --notes maps to the card's description (same as add); a card is never
+// duplicated or re-minted.
 function cmdUpdate(argv) {
   if (argv.length < 1) usage();
   const cardId = argv[0];
@@ -3838,16 +3854,18 @@ function cmdUpdate(argv) {
   if (flags.notes !== undefined && !flags.notes.trim()) {
     fail('--notes must be non-empty when given.');
   }
-  if (flags.assignee !== undefined && !flags.assignee.trim()) {
-    fail('--assignee must be non-empty when given.');
-  }
+  // NOTE: --assignee '' is the CLEAR spelling — no non-empty guard here.
   withLock(function () {
     const data = readLedger();
     const card = data.tasks.find((t) => t && t.id === cardId);
     if (!card) fail('no card with id "' + cardId + '" in tasks.json.');
     if (flags.title !== undefined) card.title = flags.title.trim();
     if (flags.notes !== undefined) card.description = flags.notes.trim();
-    if (flags.assignee !== undefined) card.assignee = flags.assignee.trim();
+    if (flags.assignee !== undefined) {
+      var a = flags.assignee.trim();
+      if (a) card.assignee = a;
+      else delete card.assignee; // --assignee '' clears (un-assign)
+    }
     writeLedger(data);
   });
   process.stdout.write(cardId + ' updated\\n');

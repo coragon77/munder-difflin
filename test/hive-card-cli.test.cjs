@@ -374,6 +374,63 @@ test('update: partial fields only touch what was given; rejects bad input', {
   assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched after rejections');
 });
 
+// ——— god-mint defaults + assignee clear (card agent-harness-hive-card-add-mu-2026-08-17) —
+// Self-assignment is a WORKER affordance: god mints the backlog, so a card god
+// adds without --assignee carries NO assignee (registry.json's godId is the
+// only god signal). update --assignee '' clears (god had to python-patch the
+// ledger by hand before).
+
+test('add: god-minted card without --assignee stays UNASSIGNED', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const regPath = path.join(path.dirname(s.tasksPath), 'registry.json');
+  const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+  reg.godId = 'test-god-1';
+  fs.writeFileSync(regPath, JSON.stringify(reg));
+  const godEnv = { ...s.env, AGENT_ID: 'test-god-1' };
+
+  const id = execFileSync(
+    process.execPath,
+    [s.cli, 'add', '--title', 'Backlog from god', '--status', 'todo'],
+    { env: godEnv, encoding: 'utf8' },
+  ).trim();
+  const card = s.tasks().find((c) => c.id === id);
+  assert.equal(card.assignee, undefined, 'no caller default for the god mint');
+});
+
+test('add: god with explicit --assignee still assigns (dispatch path unchanged)', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const regPath = path.join(path.dirname(s.tasksPath), 'registry.json');
+  const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+  reg.godId = 'test-god-1';
+  fs.writeFileSync(regPath, JSON.stringify(reg));
+  const godEnv = { ...s.env, AGENT_ID: 'test-god-1' };
+
+  const id = execFileSync(
+    process.execPath,
+    [s.cli, 'add', '--title', 'Dispatched by god', '--status', 'todo', '--assignee', 'kevin-1'],
+    { env: godEnv, encoding: 'utf8' },
+  ).trim();
+  assert.equal(s.tasks().find((c) => c.id === id).assignee, 'kevin-1');
+});
+
+test("update: --assignee '' clears the assignee, untouched fields stay", {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const card = s.hive.addHumanTask('Wrongly mine');
+  s.run('update', card.id, '--title', 'Renamed meanwhile', '--assignee', 'stanley-1');
+
+  s.run('update', card.id, '--assignee', '');
+  const c = s.tasks().find((x) => x.id === card.id);
+  assert.equal(c.assignee, undefined, 'empty --assignee clears');
+  assert.equal(c.title, 'Renamed meanwhile', 'untouched fields stay');
+  assert.ok(!('assignee' in c), 'the key is gone, not an empty string');
+});
+
 test('corrupt tasks.json: refuses to write, errors cleanly', { skip: !POSIX }, async (t) => {
   const s = setup(t);
   fs.writeFileSync(s.tasksPath, 'this is not json', 'utf8');

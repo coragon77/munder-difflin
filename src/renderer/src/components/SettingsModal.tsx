@@ -2457,7 +2457,9 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                           gap: 8,
                         }}
                       >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                        <div
+                          style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}
+                        >
                           <span
                             title="Kitty integration, if on assumes kitty is installed."
                             style={{
