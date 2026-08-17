@@ -86,6 +86,16 @@ export class CharacterSprite {
     return ANIM_FRAMES[anim].map((col) => this.frames[row][col]);
   }
 
+  /** Swap the character art in place (harness-icon-edit-persist-20260817):
+   *  keep position/anim/direction/crop — only the textures change, so a live
+   *  icon edit repaints the avatar without a re-seat or a walk from the door. */
+  setFrames(frames: Texture[][]): void {
+    if (!frames?.length) return;
+    this.frames = frames;
+    this.sprite.textures = this.getFrames(this.currentDirection, this.currentAnim);
+    this.sprite.play();
+  }
+
   setAnimation(anim: AnimState, direction: Direction): void {
     if (anim === this.currentAnim && direction === this.currentDirection) return;
 

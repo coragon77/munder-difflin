@@ -4201,11 +4201,22 @@ ipcMain.handle('hive:setAgentMeta', (_e, id: unknown, meta: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
   if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
   const m =
-    typeof meta === 'object' && meta !== null ? (meta as { name?: unknown; role?: unknown }) : {};
+    typeof meta === 'object' && meta !== null
+      ? (meta as {
+          name?: unknown;
+          role?: unknown;
+          officeCharacter?: unknown;
+          officeAccent?: unknown;
+        })
+      : {};
   return {
     ok: hive.setAgentMeta(id, {
       name: typeof m.name === 'string' ? m.name : undefined,
       role: typeof m.role === 'string' ? m.role : undefined,
+      // Explicit dialog icon edit — overwrite semantics in the setter (the
+      // first-write-wins guard is saveOfficeIdentity's, backfill only).
+      officeCharacter: typeof m.officeCharacter === 'string' ? m.officeCharacter : undefined,
+      officeAccent: typeof m.officeAccent === 'string' ? m.officeAccent : undefined,
     }),
   };
 });

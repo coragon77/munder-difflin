@@ -73,6 +73,7 @@ interface Runtime {
   charName: string;
   prevStatus?: string;
   prevAction?: string;
+  prevCharacter?: string;
   prevCarrying?: string;
   prevPrompt?: string;
   brk?: CafeBreak;
@@ -1575,7 +1576,13 @@ export function OfficeFloor() {
           onClick: (id) => useStore.getState().select(id),
         });
         character.show(charLayer);
-        const rt: Runtime = { character, seatIndex, waitTile, charName };
+        const rt: Runtime = {
+          character,
+          seatIndex,
+          waitTile,
+          charName,
+          prevCharacter: agent.character,
+        };
         // Standard desks paint the 2×2 PC monitor two rows above the seat —
         // give those a DeskScreen (lights up while seated) and a cup spot
         // beside the monitor, exactly where the tileset's baked-in mug used
@@ -1594,7 +1601,6 @@ export function OfficeFloor() {
         runtimes.set(agent.id, rt);
         applyState(agent, rt, true);
       };
-
       const removeCharacter = (id: string, departure?: Departure) => {
         const rt = runtimes.get(id);
         if (!rt) return;
@@ -1656,6 +1662,30 @@ export function OfficeFloor() {
 
       // Map an agent's store state onto its on-floor character.
       const applyState = (agent: Agent, rt: Runtime, force = false) => {
+        // LIVE ICON REBIND (harness-icon-edit-persist-20260817): the edit
+        // dialog can swap a live agent's sprite — repaint the avatar in place
+        // (same seat, same walk) instead of waiting for the next respawn.
+        // Async like addCharacter's frame load; guarded against a teardown or
+        // removal racing the load.
+        if (rt.prevCharacter !== agent.character) {
+          const nextCharName = theme.cast.byName[agent.character]
+            ? agent.character
+            : theme.cast.defaultCharacter;
+          if (nextCharName !== rt.charName) {
+            void theme.cast.getFrames(nextCharName).then((frames) => {
+              if (mountIdRef.current !== mountId) return;
+              if (
+                useStore.getState().agents.find((a) => a.id === agent.id)?.character !==
+                agent.character
+              )
+                return;
+              if (!runtimes.get(agent.id)) return;
+              rt.charName = nextCharName;
+              rt.character.setFrames(frames);
+            });
+          }
+          rt.prevCharacter = agent.character;
+        }
         const changed =
           force ||
           rt.prevStatus !== agent.status ||

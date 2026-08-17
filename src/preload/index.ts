@@ -803,10 +803,12 @@ const api = {
   /** Pin/unpin a worker — a pinned worker is never parkable. */
   hiveSetPinned: (id: string, pinned: boolean): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:setPinned', id, pinned),
-  /** Edit an agent's registry identity (name, role) — the edit dialog's write-back. */
+  /** Edit an agent's registry identity — the edit dialog's write-back. The
+   *  office fields carry the explicit icon edit (overwrite semantics; the
+   *  first-write-wins backfill rides hiveSaveOfficeIdentity). */
   hiveSetAgentMeta: (
     id: string,
-    meta: { name?: string; role?: string },
+    meta: { name?: string; role?: string; officeCharacter?: string; officeAccent?: string },
   ): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('hive:setAgentMeta', id, meta),
   hiveLog: (n?: number): Promise<unknown[]> => ipcRenderer.invoke('hive:log', n ?? 200),
   hiveMemory: (id: string): Promise<string> => ipcRenderer.invoke('hive:memory', id),

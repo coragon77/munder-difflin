@@ -64,3 +64,4 @@ test/office-identity-persistence.test.cjs
 test/hive-pin.test.cjs
 test/agent-edit.test.cjs
 test/agent-edit-monitor.test.cjs
+test/icon-edit-persist.test.cjs
