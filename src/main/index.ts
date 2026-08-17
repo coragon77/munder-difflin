@@ -6238,7 +6238,10 @@ function parkAgent(
  *  (command/model) lives in the renderer's roster mirror, so we read it back
  *  from roster.json and fall back to the configured default engine. Guard
  *  chain + repair block live in vacationFlow.recallAgentCore; pure wiring here. */
-async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: string }> {
+async function recallAgent(
+  agentId: string,
+  opts?: { background?: boolean },
+): Promise<{ ok: boolean; error?: string }> {
   return recallAgentCore(
     {
       hiveEnabled: () => hive.enabled(),
@@ -6249,11 +6252,20 @@ async function recallAgent(agentId: string): Promise<{ ok: boolean; error?: stri
       defaultCommand: readConfig().defaultCommand,
       commandAvailable: (bin) => ptyManager.isCommandAvailable(bin),
       pathExists: (p) => existsSync(p),
-      spawn: (opts) => spawnAgentCore(opts, liveWebContents()),
+      spawn: (spec) => spawnAgentCore(spec, liveWebContents()),
       setVacation: (id, v) => hive.setVacation(id, v),
       setArchived: (id, v) => hive.setArchived(id, v),
       appendLog: (e) => hive.appendLog(e),
-      notifySpawned: (e) => liveWebContents()?.send('hive:agentSpawned', e),
+      // background = god's vacation-request file (not the operator's UI click):
+      // stamp select:false on the broadcast so the renderer cards the agent
+      // WITHOUT stealing the operator's pane selection (card agent-recall-
+      // focus-steal-god-i-2026-08-17). The UI path (hive:recall IPC) passes no
+      // marker and keeps its explicit switch.
+      notifySpawned: (e) =>
+        liveWebContents()?.send(
+          'hive:agentSpawned',
+          opts?.background ? { ...e, select: false } : e,
+        ),
       log: (m) => console.log(m),
     },
     agentId,
@@ -6324,7 +6336,12 @@ async function processVacationRequest(filePath: string): Promise<void> {
   // forever instead of archiving to .failed.
   let res: { ok: boolean; error?: string };
   try {
-    res = recall ? await recallAgent(agentId) : parkAgent(agentId, plan.reason);
+    // Request-file recalls are god/system-initiated: the operator did not ask
+    // for this agent back, so the pane restores in the background — no
+    // selection change, no focus steal (recall-focus-steal card).
+    res = recall
+      ? await recallAgent(agentId, { background: true })
+      : parkAgent(agentId, plan.reason);
   } catch (e) {
     res = { ok: false, error: String(e) };
   }

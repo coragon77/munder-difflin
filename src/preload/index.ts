@@ -1035,6 +1035,9 @@ const api = {
       /** Registry-saved floor sprite + accent, when a pick was persisted. */
       character?: string;
       accent?: string;
+      /** false = BACKGROUND spawn (god-initiated vacation recall): card the
+       *  agent without touching the current selection (recall-focus-steal). */
+      select?: boolean;
     }) => void,
   ): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: Parameters<typeof cb>[0]) => cb(payload);

@@ -83,3 +83,4 @@ test/waiting-busy-pending-work.test.cjs
 test/hook-synthetic-gate.test.cjs
 test/hive-mail-cli.test.cjs
 test/agent-pane-gear-before-x.test.cjs
+test/recall-focus-steal.test.cjs

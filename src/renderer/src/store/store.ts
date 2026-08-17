@@ -244,7 +244,7 @@ interface State {
   updateAgent: (id: string, patch: Partial<Agent>) => void;
   setAgentNote: (id: string, note: string) => void;
   pushFeed: (id: string, line: string) => void;
-  addAgent: (agent: Agent) => void;
+  addAgent: (agent: Agent, opts?: { select?: boolean }) => void;
   removeAgent: (id: string) => void;
   /** Archive an agent (its terminal was closed): move it from the active roster
    *  into `archivedAgents` with its PTY cleared. Retained + flagged, NOT deleted.
@@ -795,7 +795,7 @@ export const useStore = create<State>((set) => ({
     }),
   pushFeed: (id, line) =>
     set((s) => ({ feeds: { ...s.feeds, [id]: [...(s.feeds[id] ?? []), line] } })),
-  addAgent: (agent) =>
+  addAgent: (agent, opts) =>
     set((s) => {
       // Idempotent by id: a MAIN-initiated spawn broadcast (hive:agentSpawned, e.g.
       // a voice hire) and a renderer-initiated hire (AddAgentModal) can both call
@@ -817,7 +817,12 @@ export const useStore = create<State>((set) => ({
       const archivedAgents = s.archivedAgents.filter((a) => a.id !== agent.id);
       // A live (re)spawn also consumes any restorable entry for the same id.
       const restorableAgents = s.restorableAgents.filter((a) => a.id !== agent.id);
-      persistAgents(agents, agent.id);
+      // select:false = a BACKGROUND spawn (god-initiated vacation recall, card
+      // agent-recall-focus-steal-god-i-2026-08-17): the card lands on the floor
+      // but the operator keeps their current pane — no selection change, no
+      // focus steal. Every other spawn (UI hire, UI recall, restore) selects.
+      const selectedId = opts?.select === false ? s.selectedId : agent.id;
+      persistAgents(agents, selectedId);
       persistArchived(archivedAgents);
       if (restorableAgents.length !== s.restorableAgents.length)
         persistRestorable(restorableAgents);
@@ -825,7 +830,7 @@ export const useStore = create<State>((set) => ({
         agents,
         archivedAgents,
         restorableAgents,
-        selectedId: agent.id,
+        selectedId,
         feeds: { ...s.feeds, [agent.id]: s.feeds[agent.id] ?? [] },
       };
     }),

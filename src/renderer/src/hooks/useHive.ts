@@ -1098,7 +1098,11 @@ export function useHive(config: HarnessConfig | null): void {
         spawnLabel: rec.spawnLabel, // leads the wake nudge → the CLI session's name
         recentTextTs: Date.now(),
       };
-      useStore.getState().addAgent(agent);
+      // A god-initiated recall (vacation-request file) stamps select:false on
+      // the broadcast — the pane restores in the BACKGROUND and the operator
+      // keeps their current selection (card agent-recall-focus-steal-god-i-
+      // 2026-08-17). UI-initiated spawns carry no marker and select as before.
+      useStore.getState().addAgent(agent, { select: rec.select !== false });
     });
     const offArchive = window.cth.onHiveAgentArchived?.((e) => {
       if (e?.id) useStore.getState().archiveAgent(e.id);
