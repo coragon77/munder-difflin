@@ -1,4 +1,4 @@
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { AGENT_MODELS, type HarnessConfig } from '@/store/config';
 import { AGENT_PROVIDER_PRESETS, normalizeAgentProvider } from '@shared/agentProvider';
 import { useProviderModels } from '@/hooks/useProviderModels';
@@ -56,6 +56,18 @@ const triggersApi = (): TriggersApi => window.cth as unknown as TriggersApi;
 function newWebhookId(): string {
   return `wh-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+/** Model chip (AddAgentModal's picker-button pattern) — visible by
+ *  construction where a datalist popup can silently not render. */
+const chipStyle: CSSProperties = {
+  padding: '3px 8px 1px',
+  background: 'var(--cth-cream-100)',
+  fontFamily: 'var(--cth-font-ui)',
+  fontSize: 12,
+  color: 'var(--cth-ink-900)',
+  cursor: 'pointer',
+  border: 'none',
+};
 
 /** Pixel-aesthetic text input, mirroring AddAgentModal's inputStyle. */
 const slackInputStyle: CSSProperties = {
@@ -300,11 +312,16 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
   // Ephemeral workers never read these. Blank = unset = today's behavior.
   const [internProvider, setInternProvider] = useState(cfgX.internDefaults?.provider ?? '');
   const [internModel, setInternModel] = useState(cfgX.internDefaults?.model ?? '');
+  // Dirty guard for the config-reseed effect below: once the operator has
+  // WRITTEN intern defaults here, a late-resolving readConfig must never snap
+  // the picks back to the (older) stored values mid-edit (live-app race).
+  const internDefaultsTouched = useRef(false);
   // Discovered (auth-scoped) list for the chosen provider — the settings
   // default must come from pi's OWN list, never a hardcoded id (card
   // agent-harness-provider-model-l-2026-08-17).
   const internModelOptions = useProviderModels(normalizeAgentProvider(internProvider) ?? 'claude');
   const writeInternDefaults = async (provider: string, model: string) => {
+    internDefaultsTouched.current = true;
     setInternProvider(provider);
     setInternModel(model);
     try {
@@ -723,8 +740,12 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
         setTgEnabled((cc as HarnessConfig).telegramEnabled ?? true);
         setSddAuthz((cc as HarnessConfig).sddSubagentsAuthorized !== false);
         setIntegrationMode((cc as HarnessConfig).integrationMode ?? 'god');
-        setInternProvider((cc as HarnessConfig).internDefaults?.provider ?? '');
-        setInternModel((cc as HarnessConfig).internDefaults?.model ?? '');
+        // Snap-back guard: once the operator wrote intern defaults here, a
+        // late readConfig resolve must not revert their picks mid-edit.
+        if (!internDefaultsTouched.current) {
+          setInternProvider((cc as HarnessConfig).internDefaults?.provider ?? '');
+          setInternModel((cc as HarnessConfig).internDefaults?.model ?? '');
+        }
         const kgOn =
           (cc as { knowledgeGraph?: { enabled?: boolean } }).knowledgeGraph?.enabled === true;
         setKgEnabled(kgOn);
@@ -2075,7 +2096,6 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                               ))}
                             </select>
                             <input
-                              list="intern-model-options"
                               value={internModel}
                               onChange={(e) =>
                                 void writeInternDefaults(internProvider, e.target.value)
@@ -2085,16 +2105,68 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                                   ? 'model id (blank = provider default)'
                                   : 'model id (blank = default model)'
                               }
-                              title="Default model for intern spawns — free text, suggestions from the provider's known models"
+                              title="Default model for intern spawns — pick a chip below or type any id"
                               style={{ ...slackInputStyle, flex: 1, minWidth: 160 }}
                             />
-                            <datalist id="intern-model-options">
-                              {internModelOptions.map((m) => (
-                                <option key={m.id ?? m.label} value={m.id ?? ''}>
+                          </div>
+                          {/* Model chips from the ADAPTER (discovered for pi,
+                               static otherwise) — VISIBLE BY CONSTRUCTION. A
+                               datalist can silently not render its popup (the
+                               live-app bug this replaces); chips are plain
+                               buttons, AddAgentModal's proven pattern. */}
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: 6,
+                              marginTop: 6,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <button
+                              onClick={() => void writeInternDefaults(internProvider, '')}
+                              title="No default model — the provider/CLI picks its own"
+                              style={{
+                                ...chipStyle,
+                                boxShadow: !internModel
+                                  ? 'inset 0 0 0 1.5px var(--cth-ink-500)'
+                                  : 'inset 0 0 0 1px var(--cth-ink-100)',
+                              }}
+                            >
+                              CLI default
+                            </button>
+                            {internModel &&
+                              !internModelOptions.some((m) => m.id === internModel) && (
+                                <button
+                                  onClick={() => void writeInternDefaults(internProvider, '')}
+                                  title="Configured model — not in the current list (auth scope may have changed). Click to clear."
+                                  style={{
+                                    ...chipStyle,
+                                    boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500)',
+                                  }}
+                                >
+                                  {internModel} (configured)
+                                </button>
+                              )}
+                            {internModelOptions.map((m) => {
+                              const active = internModel === (m.id ?? '');
+                              return (
+                                <button
+                                  key={m.id ?? m.label}
+                                  onClick={() =>
+                                    void writeInternDefaults(internProvider, m.id ?? '')
+                                  }
+                                  title={m.id ?? 'CLI default model'}
+                                  style={{
+                                    ...chipStyle,
+                                    boxShadow: active
+                                      ? 'inset 0 0 0 1.5px var(--cth-ink-500)'
+                                      : 'inset 0 0 0 1px var(--cth-ink-100)',
+                                  }}
+                                >
                                   {m.label}
-                                </option>
-                              ))}
-                            </datalist>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>

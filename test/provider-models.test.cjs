@@ -144,6 +144,28 @@ test('the intern-defaults settings field reads the adapter hook', () => {
   assert.ok(sm.includes('useProviderModels('), 'settings datalist uses discovered models');
 });
 
+test('settings model field renders VISIBLE chips from the adapter — no invisible datalist (live-app bug: no discovered suggestions)', () => {
+  const sm = read('src/renderer/src/components/SettingsModal.tsx');
+  assert.doesNotMatch(
+    sm,
+    /list="intern-model-options"/,
+    'datalist gone — it can silently not render (the live bug)',
+  );
+  assert.doesNotMatch(sm, /<datalist/, 'no datalist element at all');
+  // chip row from the adapter result, AddAgentModal-style
+  assert.match(sm, /internModelOptions\.map/, 'options render as chips');
+  assert.ok(
+    sm.includes("writeInternDefaults(internProvider, m.id ?? '')"),
+    'a chip click persists the model',
+  );
+});
+
+test('config reseed never snaps the intern-defaults picks back after the operator touched them (race guard)', () => {
+  const sm = read('src/renderer/src/components/SettingsModal.tsx');
+  assert.match(sm, /internDefaultsTouched/, 'dirty flag exists');
+  assert.ok(sm.includes('if (!internDefaultsTouched.current) {'), 'reseed is skipped once touched');
+});
+
 test('the hook falls back to the static list until discovery lands (never a broken picker)', () => {
   const hook = read('src/renderer/src/hooks/useProviderModels.ts');
   assert.ok(hook.includes('modelsForProvider'), 'static fallback present');
