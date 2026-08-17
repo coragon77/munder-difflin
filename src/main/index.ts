@@ -75,6 +75,7 @@ import {
   HiveManager,
   deriveSpawnLabel,
   floorCensus,
+  findCheckoutOccupant,
   type AgentMeta,
   type HiveMessage,
   type HiveTask,
@@ -3158,6 +3159,10 @@ function findCodexHomeForSession(sessionId: string, siblingsRoot: string): strin
 type AgentSpawnOptions = SpawnOptions & {
   hive?: AgentMeta;
   isolate?: boolean;
+  /** ONE-AGENT-PER-DIRECTORY override (operator addendum): allow a
+   *  non-isolated spawn into a checkout another live agent already works in.
+   *  God sets it ONLY on explicit operator instruction — never infers it. */
+  allowSharedCwd?: boolean;
   resume?: boolean;
   requireResume?: boolean;
   resumeSessionId?: string;
@@ -3239,6 +3244,36 @@ async function spawnAgentCore(
         return {
           ok: false,
           error: `floor cap reached — ${onFloor}/${cap} workplaces occupied (config floorMaxAgents; god excluded). Free a seat (fire an intern, park/archive an idle hire, raise the cap in Settings → Autonomy & Budgets) and retry.`,
+        };
+      }
+    }
+  }
+  // ── ONE AGENT PER DIRECTORY (operator addendum, same card) ──────────────
+  // At most one hire/intern per PHYSICAL CHECKOUT. A spawn that lands in the
+  // checkout itself (isolate !== true → no fresh worktree of its own) is
+  // refused when another live agent's RESOLVED working directory equals it.
+  // Resolved = the occupant's live worktree when it has one, else its
+  // registry cwd — a worktree-isolated occupant does NOT conflict (its seat
+  // is the worktree, not the base checkout), and registry cwd alone was
+  // never sufficient evidence of a conflict (root incident: Alfred-vs-Kevin
+  // in merlin_editionplatin, ruled without checking worktree state).
+  // `allowSharedCwd` is the explicit operator override — god may set it only
+  // on operator instruction, never inferred.
+  if (opts.hive && hive.enabled() && opts.isolate !== true && opts.allowSharedCwd !== true) {
+    const reg = hive.registry();
+    if (opts.hive.id !== reg.godId && !opts.hive.isGod) {
+      const dirs = new Map<string, string>();
+      for (const [id, a] of Object.entries(reg.agents)) {
+        if (id === opts.hive.id || id === reg.godId || a.isGod) continue;
+        if (a.archived || a.vacation || a.retired) continue; // off the floor
+        dirs.set(id, resolve(worktreePaths.get(id) ?? a.cwd));
+      }
+      const newDir = resolve(expandTilde(opts.cwd));
+      const occupant = findCheckoutOccupant(dirs, newDir, opts.hive.id);
+      if (occupant) {
+        return {
+          ok: false,
+          error: `one agent per directory — ${occupant} already works in ${newDir} without a worktree. Spawn with "isolate": true (its own worktree), free the directory, or set "allowSharedCwd": true ONLY on explicit operator instruction.`,
         };
       }
     }
@@ -5635,6 +5670,10 @@ interface SpawnRequest {
   isolate?: boolean; // default true (fresh worktree)
   tokenCap?: number; // optional per-worker token cap (advisory P1)
   persistent?: boolean; // NOT reaped — a standing floor agent (docs: HIRING_AGENTS_MD)
+  /** ONE-AGENT-PER-DIRECTORY override: permit a non-isolated spawn into a
+   *  checkout another live agent already works in. God may set it ONLY on
+   *  explicit operator instruction (addendum, card floormaxagents-s). */
+  allowSharedCwd?: boolean;
   label?: string; // optional explicit task label — session-naming (see below); alias: title
   title?: string; // alias for label
 }
@@ -5897,6 +5936,8 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     args: raw.model && !commandCarriesModel(command) ? ['--model', raw.model] : [],
     hive: meta,
     isolate,
+    // Operator-authorized shared-checkout override (one-agent-per-directory).
+    allowSharedCwd: raw.allowSharedCwd === true,
     provider: raw.provider,
     env: brokerEnv,
     permissionMode,
