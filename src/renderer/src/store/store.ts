@@ -221,6 +221,10 @@ interface State {
   ideOpen: boolean;
   sidebarWidth: number;
   sidebarTab: SidebarTab;
+  /** Panes currently detached to a kitty window (card harness-detach-to-
+   *  kitty-20260817): greyed out, input refused, kitty owns the size. Main
+   *  pushes the state (IPC events) — the renderer never decides this alone. */
+  detachedPtyIds: string[];
   godStatus: GodStatus;
   /** Per-agent outgoing message queue (agent id → messages awaiting delivery).
    *  Lets the user keep "talking" to a busy agent: messages park here and are
@@ -345,6 +349,9 @@ interface State {
    *  Called once at startup so a renderer reload (e.g. after the laptop sleeps)
    *  restores still-running agents and only removes truly-dead ones. */
   reconcileWithLivePtys: (livePtyIds: string[]) => void;
+  /** Toggle a pane's detached-to-kitty state. Driven by main's detach events
+   *  (pty:detached / pty:reattached) — idempotent both ways. */
+  setPtyDetached: (ptyId: string, detached: boolean) => void;
 }
 
 const LS_SIDEBAR_WIDTH = 'cth.sidebarWidth';
@@ -718,6 +725,17 @@ export const useStore = create<State>((set) => ({
   ideOpen: false,
   sidebarWidth: initialSidebarWidth,
   sidebarTab: initialSidebarTab,
+  detachedPtyIds: [],
+  setPtyDetached: (ptyId, detached) =>
+    set((s) => {
+      const has = s.detachedPtyIds.includes(ptyId);
+      if (has === detached) return s;
+      return {
+        detachedPtyIds: detached
+          ? [...s.detachedPtyIds, ptyId]
+          : s.detachedPtyIds.filter((p) => p !== ptyId),
+      };
+    }),
   godStatus: 'booting',
   messageQueues: initialQueues,
   toolCounts: {},

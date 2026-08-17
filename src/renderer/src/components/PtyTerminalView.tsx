@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import { Icon } from './Icon';
+import { useStore } from '@/store/store';
 import { acquireTerminal, attachTerminal, detachTerminal, reflowTerminal } from './terminalPool';
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
@@ -137,6 +138,32 @@ export function PtyTerminalView({
   const ptyTheme: PtyTheme = useTerminalTheme();
   const ptyThemeRef = useRef(ptyTheme);
   ptyThemeRef.current = ptyTheme;
+  // Detach-to-kitty (harness-detach-to-kitty-20260817): greyed-out read-only
+  // mirror while a kitty window carries the chat. Main is the authority — the
+  // store slice is driven by its IPC events.
+  const detached = useStore((s) => s.detachedPtyIds.includes(ptyId));
+  const wasDetachedRef = useRef(false);
+
+  // Reattach hand-off: the moment the pane becomes active again (kitty window
+  // closed — manually or via Reattach), the pane re-owns the winsize: refit
+  // the grid and hand the pty back its dimensions after kitty may have resized
+  // it. Only fires on the detached→active transition, never a plain mount.
+  useEffect(() => {
+    const was = wasDetachedRef.current;
+    wasDetachedRef.current = detached;
+    if (detached || !was) return;
+    const t = setTimeout(() => {
+      try {
+        const entry = acquireTerminal(ptyId, THEMES[ptyThemeRef.current], fontSizeRef.current);
+        entry.fit.fit();
+        void window.cth.resizePty(ptyId, entry.term.cols, entry.term.rows);
+        entry.term.scrollToBottom();
+      } catch {
+        /* host may not be sized yet — the observer fit catches up */
+      }
+    }, 50);
+    return () => clearTimeout(t);
+  }, [detached, ptyId]);
 
   // Attach this view to the pty's persistent terminal. The terminal and its
   // buffer live in the pool across mounts, so re-parenting its host element
@@ -183,7 +210,10 @@ export function PtyTerminalView({
         // previous frame into scrollback — the attach-time refit cascade (rAF,
         // 60ms, 240ms, font-load) used to stack the boot banner three times
         // before the user ever typed anything.
-        if (entry.term.cols !== before.cols || entry.term.rows !== before.rows) {
+        if (
+          (entry.term.cols !== before.cols || entry.term.rows !== before.rows) &&
+          !entry.detached
+        ) {
           window.cth.resizePty(ptyId, entry.term.cols, entry.term.rows);
         }
         entry.term.refresh(0, Math.max(0, entry.term.rows - 1));
@@ -299,7 +329,11 @@ export function PtyTerminalView({
     entry.term.options.fontSize = fontSize;
     try {
       entry.fit.fit();
-      window.cth.resizePty(ptyId, entry.term.cols, entry.term.rows);
+      // While detached, kitty owns the winsize — zoom only re-fits the local
+      // grid; the reattach hand-off re-syncs the pty.
+      if (!entry.detached) {
+        window.cth.resizePty(ptyId, entry.term.cols, entry.term.rows);
+      }
     } catch {
       /* host may not be sized yet */
     }
@@ -475,11 +509,55 @@ export function PtyTerminalView({
         onDragOver={onDragOver}
         onDrop={onDrop}
         style={{
+          position: 'relative',
           flex: 1,
           minHeight: 0,
           padding: embedded ? '0 8px 8px' : 0,
         }}
-      />
+      >
+        {/* Detached-to-kitty veil (harness-detach-to-kitty-20260817): the
+            terminal keeps mirroring output underneath (read-only), but input
+            is refused — the kitty window carries the chat. Tokens only. */}
+        {detached && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 5,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              fontFamily: 'var(--cth-font-ui)',
+              color: 'var(--cth-ink-700)',
+              background: 'color-mix(in srgb, var(--cth-paper-100) 82%, transparent)',
+              pointerEvents: 'none',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="detach" />
+              <span style={{ fontSize: 12 }}>
+                Detached to kitty — this pane is read-only while the kitty window carries the chat
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void window.cth.reattachPty(ptyId)}
+              title="Close the kitty window and type here again"
+              style={{
+                ...zoomBtnStyle,
+                pointerEvents: 'auto',
+                width: 'auto',
+                padding: '2px 10px',
+                fontFamily: 'var(--cth-font-ui)',
+              }}
+            >
+              Reattach
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -682,6 +682,36 @@ const api = {
     ipcRenderer.on(channel, listener);
     return () => ipcRenderer.removeListener(channel, listener);
   },
+  /** Broadcast detach-state changes for ANY pty (harness-detach-to-kitty-20260817)
+   *  — drives the store mirror (grey veil, card icon). Payload carries an
+   *  `error` when a reattach was forced by a failed detach. */
+  onPtyDetachState: (
+    cb: (e: { id: string; detached: boolean; error?: string }) => void,
+  ): (() => void) => {
+    const channel = 'pty:detachState';
+    const listener = (_e: IpcRendererEvent, p: { id: string; detached: boolean; error?: string }) =>
+      cb(p);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
+  },
+  /** Detach-to-kitty (card harness-detach-to-kitty-20260817): main opened the
+   *  bridge + kitty window — the pane greys out, input refused, kitty owns
+   *  the size. Optional payload carries a failure reason when a reattach was
+   *  forced by a detach that could not open a window. */
+  onPtyDetached: (id: string, cb: (e?: { error?: string }) => void): (() => void) => {
+    const channel = `pty:detached:${id}`;
+    const listener = (_e: IpcRendererEvent, p?: { error?: string }) => cb(p);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
+  },
+  /** The kitty window closed (manual close or Reattach) — the pane owns the
+   *  pty's input and winsize again. */
+  onPtyReattached: (id: string, cb: (e?: { error?: string }) => void): (() => void) => {
+    const channel = `pty:reattached:${id}`;
+    const listener = (_e: IpcRendererEvent, p?: { error?: string }) => cb(p);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
+  },
 
   // ─── Dialog ──────────────────────────────────────────────────────────────
   chooseFolder: (): Promise<{ ok: true; path: string } | { ok: false; error: string }> =>
@@ -693,6 +723,14 @@ const api = {
   /** Open the folder in Kitty (button hidden when main reports kitty absent). */
   openInKitty: (cwd: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('terminal:openInKitty', cwd),
+  /** Detach this pane's pty to a kitty window (harness-detach-to-kitty-20260817).
+   *  The pane greys out; kitty carries the SAME live chat. */
+  detachPty: (id: string, title: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('pty:detach', id, title),
+  /** Close the kitty window and re-enable the pane. Also happens on its own
+   *  when the user closes the kitty window. */
+  reattachPty: (id: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('pty:reattach', id),
   /** One-shot availability probe (cached main-side). */
   isKittyAvailable: (): Promise<boolean> => ipcRenderer.invoke('system:isKittyAvailable'),
 

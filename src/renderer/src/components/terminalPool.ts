@@ -70,6 +70,10 @@ export interface TerminalEntry {
    * the OLD process carry the generation they were registered under, so they can
    * be recognised and dropped instead of corrupting the replacement. */
   generation: number;
+  /** True while this pty is detached to a kitty window (harness-detach-to-
+   *  kitty-20260817): keystrokes are refused here (belt — main refuses the
+   *  pty:write too) and resize is skipped; kitty owns the size. */
+  detached: boolean;
   webgl?: WebglAddon;
 }
 
@@ -137,6 +141,7 @@ export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14):
     automationSettleUntil: 0,
     lineBuf: '',
     generation: 0,
+    detached: false,
   };
 
   // Subscribe to the pty stream ONCE for the terminal's whole lifetime, so the
@@ -186,6 +191,19 @@ export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14):
       } catch {
         /* not yet open */
       }
+    }),
+  );
+  // Detach-to-kitty state (harness-detach-to-kitty-20260817): the flag gates
+  // keystrokes and resize regardless of whether a view is mounted — the pool
+  // outlives views. Main pushes both events; the store mirrors them for UI.
+  entry.unsub.push(
+    window.cth.onPtyDetached(ptyId, () => {
+      entry.detached = true;
+    }),
+  );
+  entry.unsub.push(
+    window.cth.onPtyReattached(ptyId, () => {
+      entry.detached = false;
     }),
   );
 
@@ -238,7 +256,7 @@ export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14):
   // It lives on the entry (see TerminalEntry.lineBuf) so every prompt-clearing
   // path resets it too.
   term.onData((data) => {
-    if (entry.exited) return;
+    if (entry.exited || entry.detached) return;
     window.cth.writePty(ptyId, data);
     // A lone Escape or Ctrl-C closes interactive pickers. Arrow-key escape
     // sequences must NOT clear the block while the user navigates a picker.

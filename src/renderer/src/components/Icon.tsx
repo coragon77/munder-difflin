@@ -26,7 +26,8 @@ export type IconName =
   | 'info'
   | 'sidebar'
   | 'pin'
-  | 'pin-outline';
+  | 'pin-outline'
+  | 'detach';
 
 interface IconDef {
   ink: string; // primary color path d
@@ -149,6 +150,13 @@ const paths: Record<IconName, IconDef> = {
     // The head's hollow center is a second subpath cut out via evenodd, same
     // trick as the gear hub / info disc — a 1px-stroked ring would shimmer.
     ink: 'M4 2h8v6H4z M6 4h4v2H6z M7 8h2l-1 6z',
+  },
+  // Detach-to-kitty (harness-detach-to-kitty-20260817): a terminal window
+  // popping OUT to a second screen — small pane bottom-left, arrow to the
+  // bigger window top-right. Same glyph family as arrow-right.
+  detach: {
+    accentColor: 'var(--cth-sky)',
+    ink: 'M2 10h2v2h2v2H2v-4z M6 2h8v8h-4v-2h2V4H8v2H6V2z',
   },
 };
 
