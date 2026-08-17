@@ -1,5 +1,6 @@
 import { useState, useEffect, type CSSProperties } from 'react';
-import { AGENT_MODELS, type HarnessConfig } from '@/store/config';
+import { AGENT_MODELS, modelsForProvider, type HarnessConfig } from '@/store/config';
+import { AGENT_PROVIDER_PRESETS, normalizeAgentProvider } from '@shared/agentProvider';
 import { useStore } from '@/store/store';
 import {
   CLONE_NODE_BLURB,
@@ -290,6 +291,26 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       await window.cth.updateConfig({ internsEnabled: next } as Partial<HarnessConfig>);
     } catch {
       setInternsOn(!next);
+    }
+  };
+  // Intern spawn defaults (card agent-harness-settings-section-2026-08-17):
+  // provider/CLI + model applied when a persistent spawn-request omits them —
+  // explicit request fields always win (resolution in src/main/internDefaults.ts).
+  // Ephemeral workers never read these. Blank = unset = today's behavior.
+  const [internProvider, setInternProvider] = useState(cfgX.internDefaults?.provider ?? '');
+  const [internModel, setInternModel] = useState(cfgX.internDefaults?.model ?? '');
+  const writeInternDefaults = async (provider: string, model: string) => {
+    setInternProvider(provider);
+    setInternModel(model);
+    try {
+      await window.cth.updateConfig({
+        internDefaults: {
+          provider: provider || undefined,
+          model: model.trim() || undefined,
+        },
+      } as Partial<HarnessConfig>);
+    } catch {
+      /* surfaced by reopening settings — next flip retries */
     }
   };
   // SDD subagent authorization (card sdd-authorization-switch-20260816): ON
@@ -697,6 +718,8 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
         setTgEnabled((cc as HarnessConfig).telegramEnabled ?? true);
         setSddAuthz((cc as HarnessConfig).sddSubagentsAuthorized !== false);
         setIntegrationMode((cc as HarnessConfig).integrationMode ?? 'god');
+        setInternProvider((cc as HarnessConfig).internDefaults?.provider ?? '');
+        setInternModel((cc as HarnessConfig).internDefaults?.model ?? '');
         const kgOn =
           (cc as { knowledgeGraph?: { enabled?: boolean } }).knowledgeGraph?.enabled === true;
         setKgEnabled(kgOn);
@@ -1980,6 +2003,97 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                         >
                           {internsOn ? 'on' : 'off'}
                         </PixelButton>
+                      </div>
+
+                      {/* Intern spawn defaults (card
+                           agent-harness-settings-section-2026-08-17): provider +
+                           model for intern spawns whose request omits them.
+                           Provider list from the shared provider registry —
+                           never a second hardcoded list. Model is free text with
+                           the provider's known ids as datalist suggestions
+                           (claude gets its select-equivalent; pi takes
+                           provider/model ids like anthropic/claude-sonnet-4-5). */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              lineHeight: '20px',
+                              color: 'var(--cth-ink-900)',
+                            }}
+                          >
+                            Intern defaults — engine + model
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--cth-ink-500)',
+                            }}
+                          >
+                            Used when an intern spawn-request omits command/provider/model —
+                            explicit per-request fields always win. Ephemeral workers ignore these.
+                            Blank = the harness default (claude + default model).
+                          </span>
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: 8,
+                              marginTop: 6,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <select
+                              value={internProvider}
+                              onChange={(e) =>
+                                void writeInternDefaults(e.target.value, internModel)
+                              }
+                              title="Default engine/CLI for intern spawns"
+                              style={{
+                                ...slackInputStyle,
+                                width: 'auto',
+                                minWidth: 120,
+                              }}
+                            >
+                              <option value="">harness default</option>
+                              {AGENT_PROVIDER_PRESETS.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.label}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              list="intern-model-options"
+                              value={internModel}
+                              onChange={(e) =>
+                                void writeInternDefaults(internProvider, e.target.value)
+                              }
+                              placeholder={
+                                internProvider
+                                  ? 'model id (blank = provider default)'
+                                  : 'model id (blank = default model)'
+                              }
+                              title="Default model for intern spawns — free text, suggestions from the provider's known models"
+                              style={{ ...slackInputStyle, flex: 1, minWidth: 160 }}
+                            />
+                            <datalist id="intern-model-options">
+                              {modelsForProvider(
+                                normalizeAgentProvider(internProvider) ?? 'claude',
+                              ).map((m) => (
+                                <option key={m.id ?? m.label} value={m.id ?? ''}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </datalist>
+                          </div>
+                        </div>
                       </div>
 
                       {/* Subagent skill execution (SDD) authorization — scoped to

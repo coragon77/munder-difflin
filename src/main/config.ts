@@ -301,6 +301,13 @@ export interface HarnessConfig {
    *  fast-fail with an actionable error naming this setting (same card as
    *  `workersEnabled`). */
   internsEnabled?: boolean;
+  /** DEFAULT provider/CLI + model for INTERN spawns (persistent
+   *  spawn-requests), operator-configured in Settings → Autonomy & Budgets
+   *  (card agent-harness-settings-section-2026-08-17). Resolution in
+   *  src/main/internDefaults.ts: request field > this default > the existing
+   *  fallbacks — god's per-intern overrides always win. Unset fields keep
+   *  today's behavior; ephemeral workers never read this. */
+  internDefaults?: { provider?: AgentProvider; model?: string };
   /** Physical workplaces on the office floor — the hard ceiling on hires +
    *  interns ON THE FLOOR at once (god excluded; the office ships 16 desks).
    *  Operator-downsizable (Settings → Autonomy & Budgets, 1..16). Enforced in

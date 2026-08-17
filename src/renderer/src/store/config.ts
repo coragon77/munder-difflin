@@ -145,6 +145,9 @@ export interface HarnessConfig {
   /** Intern path switch — DEFAULT ON. Gates persistent:true spawn-requests.
    *  Mirrors src/main/config.ts. */
   internsEnabled?: boolean;
+  /** DEFAULT provider/CLI + model for intern spawns — request fields still
+   *  win (resolution in src/main/internDefaults.ts). Mirrors src/main/config.ts. */
+  internDefaults?: { provider?: AgentProvider; model?: string };
   circuitBreaker?: CircuitBreakerConfig;
   /** Enterprise Knowledge Graph (multimodal context for agents). Default OFF. */
   knowledgeGraph?: KnowledgeGraphConfig;

@@ -164,6 +164,7 @@ import {
   standupTarget,
   summarizeAnomalies,
 } from './standup';
+import { resolveInternSpawn } from './internDefaults';
 import { analytics } from './analytics';
 import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
@@ -6034,10 +6035,14 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     return;
   }
 
-  const command =
-    typeof raw.command === 'string' && raw.command.trim()
-      ? raw.command.trim()
-      : (readConfig().defaultCommand ?? 'claude');
+  // Engine resolution (card agent-harness-settings-section-2026-08-17):
+  // request fields > Settings intern defaults (persistent/intern requests
+  // only) > the old defaultCommand fallback. A provider named by either
+  // source also derives the command from its preset — fixes the old mismatch
+  // where raw.provider without a command spawned 'claude' while claiming
+  // another provider.
+  const resolved = resolveInternSpawn(readConfig(), raw, persistent);
+  const command = resolved.command;
   // Permission mode (card permission-mode-config-20260816): god's workers and
   // interns follow the installation's worker-bypass SETTING — DEFAULT OFF,
   // bypass is the operator's per-installation opt-in, never the shipped
@@ -6089,7 +6094,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   const meta: AgentMeta = {
     id: workerId,
     name: displayName,
-    provider: raw.provider,
+    provider: resolved.provider,
     role: persistent ? 'intern' : 'worker',
     cwd,
     // Session naming (card session-naming-seed-20260816): leads the hire's
@@ -6117,13 +6122,13 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     cols: 120,
     rows: 32,
     // A '--model' typed into the command tail already rides argv (prepended by
-    // the tail tokenization above) — never double it with the request's model field.
-    args: raw.model && !commandCarriesModel(command) ? ['--model', raw.model] : [],
+    // the tail tokenization above) — never double it with a resolved model.
+    args: resolved.model && !commandCarriesModel(command) ? ['--model', resolved.model] : [],
     hive: meta,
     isolate,
     // Operator-authorized shared-checkout override (one-agent-per-directory).
     allowSharedCwd: raw.allowSharedCwd === true,
-    provider: raw.provider,
+    provider: resolved.provider,
     env: brokerEnv,
     permissionMode,
   };
@@ -6199,7 +6204,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
       liveWebContents()?.send('hive:agentSpawned', {
         id: workerId,
         name: meta.name,
-        provider: raw.provider ?? 'claude',
+        provider: resolved.provider ?? 'claude',
         cwd: res.worktreePath ?? cwd,
         command,
         role: meta.role, // 'intern' for persistent hires — matches the registry (useHive shows it on the card)

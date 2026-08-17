@@ -97,3 +97,4 @@ test/worktree-node-modules.test.cjs
 test/force-select-remaining.test.cjs
 test/theme-guard.test.cjs
 test/standup-clerk-settings-toggle.test.cjs
+test/intern-defaults.test.cjs
