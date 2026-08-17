@@ -5664,6 +5664,13 @@ registerRealtimeActionIpc({
           spawnLabel: o.hive?.spawnLabel,
           character: savedId?.officeCharacter,
           accent: savedId?.officeAccent,
+          // A MAIN-initiated spawn (voice hire) is a BACKGROUND hire: card the
+          // agent without stealing the operator's pane selection (card
+          // agent-harness-remaining-force--2026-08-17) — same pattern as the
+          // recall (b4bb8d4) and spawn-request (0b3ab0e) fixes. UI hires go
+          // through spawnPty/AddAgentModal, never this bridge, and keep their
+          // explicit switch.
+          select: false,
         });
       } catch {
         /* window torn down */
@@ -5709,6 +5716,11 @@ registerRealtimeActionIpc({
         id,
         character: savedId?.officeCharacter,
         accent: savedId?.officeAccent,
+        // A voice unarchive re-cards the agent in the BACKGROUND — no pane
+        // focus steal (card agent-harness-remaining-force--2026-08-17), same
+        // pattern as b4bb8d4/0b3ab0e. The archive direction reads only { id },
+        // so the marker there is harmless.
+        select: false,
       });
     } catch {
       /* window gone */
