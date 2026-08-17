@@ -6190,6 +6190,11 @@ async function processSpawnRequest(filePath: string): Promise<void> {
         spawnLabel: meta.spawnLabel, // leads the renderer's typed nudge → session name
         character: savedId?.officeCharacter,
         accent: savedId?.officeAccent,
+        // A god spawn-request is a BACKGROUND hire: card the intern without
+        // stealing the operator's pane selection (card agent-harness-god-
+        // initiated-sp-2026-08-17) — same pattern as the recall focus-steal
+        // fix (b4bb8d4); the UI Add-Agent flow keeps its explicit switch.
+        select: false,
       });
     } catch {
       /* window torn down */
