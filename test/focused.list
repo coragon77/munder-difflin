@@ -88,3 +88,5 @@ test/waiting-label-display.test.cjs
 test/ensure-sandbox-perms.test.cjs
 test/vacation-park-when-quiet.test.cjs
 test/standup-clerk.test.cjs
+test/hive-dispatch-cli.test.cjs
+test/hive-inbox-cli.test.cjs

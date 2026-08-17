@@ -758,6 +758,17 @@ export class HiveManager {
     const mailCli = join(root, 'bin', 'hive-mail');
     writeFileSync(mailCli, HIVE_MAIL_CLI, 'utf8');
     if (process.platform !== 'win32') chmodSync(mailCli, 0o755);
+    // God's dispatch flow in ONE command (card agent-harness-hive-dispatch-
+    // cl-2026-08-17) — card + assign + recall + doing-flip + contract mail.
+    // Same refresh policy as the shims above.
+    const dispatchCli = join(root, 'bin', 'hive-dispatch');
+    writeFileSync(dispatchCli, HIVE_DISPATCH_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(dispatchCli, 0o755);
+    // The inbox drain (card agent-harness-hive-inbox-cli-o-2026-08-17) —
+    // print pending mail + archive to .done in one pass. Same refresh policy.
+    const inboxCli = join(root, 'bin', 'hive-inbox');
+    writeFileSync(inboxCli, HIVE_INBOX_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(inboxCli, 0o755);
     // The bundled-node launcher every shim above is invoked through — MUST be
     // written before any hook installer runs (they probe for it).
     this.writeNodeLauncher();
@@ -3081,6 +3092,51 @@ carrier (measured: ~12% on long findings mails, ~58% on short protocol mails):
 - No \`--body-file\` — deliberately: the body would land in context twice.
 `;
 
+const HIVE_INBOX_MD = `## HIVE-INBOX — draining your mail (every agent)
+
+> Generated from \`COMMANDS_MD\` in the harness source — manual edits to this file are wiped on the next bootstrap.
+
+Reading inbox JSON files one by one (and remembering to archive each) is the
+last hand-step of the mail loop. The drain does it in one pass:
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-inbox" drain            # print every pending mail, archive to inbox/.done/
+"$HIVE_ROOT/bin/hive-inbox" drain --peek     # print without archiving
+"$HIVE_ROOT/bin/hive-inbox" drain --agent <id>   # drain someone else's inbox (god)
+\`\`\`
+
+- Each mail prints as \`from | act | subject\` followed by its body, oldest
+  first; then every printed mail is archived to \`inbox/.done/\` (same pass).
+- Empty inbox: \`no mail\`, exit 0. An unparseable file is skipped with a
+  stderr warning and STAYS in the inbox for inspection.
+`;
+
+const HIVE_DISPATCH_MD = `## HIVE-DISPATCH — god's dispatch in one command
+
+> Generated from \`COMMANDS_MD\` in the harness source — manual edits to this file are wiped on the next bootstrap.
+
+The dispatch flow (card → assign → recall if parked → doing flip → contract
+mail) was five hand-steps. ONE command now:
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-dispatch" --card <existing-id> --assignee <agent> --body "<4-part contract>"
+"$HIVE_ROOT/bin/hive-dispatch" --title "New work" --assignee <agent> < contract.txt   # card created
+"$HIVE_ROOT/bin/hive-dispatch" --card <id> --assignee <agent> --adopt --body "…"      # 2nd card, same engagement
+\`\`\`
+
+- \`--card\` adopts/enriches an existing card (human-origin cards included);
+  \`--title\` mints it (origin 'agent'). Exactly one of the two.
+- The contract comes from \`--body\` or piped stdin. It is mailed to the
+  assignee on the \`card-<id>\` conversation (act 'request', expects a reply).
+- A PARKED assignee is recalled automatically (vacation-request queued).
+- \`--adopt\` passes through to the doing flip — the card runs in the agent's
+  CURRENT conversation, no clear.
+- REFUSES (writing nothing) if the assignee is active on a DIFFERENT
+  doing/blocked card, or on any bad input. Re-running with \`--card\` re-sends
+  the mail (idempotent dispatch/re-notify).
+- One receipt line out — that line is the record; do not cat files back.
+`;
+
 const HIVE_CARD_MD = `## HIVE-CARD — writing the kanban (every agent)
 
 > Generated from \`COMMANDS_MD\` in the harness source — manual edits to this file are wiped on the next bootstrap.
@@ -3402,7 +3458,15 @@ export function renderCommandsMd(integrationMode: IntegrationMode = 'god'): stri
     }
     lines.push('');
   }
-  lines.push(HIVE_CARD_MD, HIVE_MAIL_MD, HIRING_AGENTS_MD, CARD_SESSIONS_MD, KITTY_SATELLITE_MD);
+  lines.push(
+    HIVE_CARD_MD,
+    HIVE_MAIL_MD,
+    HIVE_INBOX_MD,
+    HIVE_DISPATCH_MD,
+    HIRING_AGENTS_MD,
+    CARD_SESSIONS_MD,
+    KITTY_SATELLITE_MD,
+  );
   // Integration mode (card integration-mode-toggle-20260817 + lean addendum):
   // 'workers'/'lean' append the worker-side merge+push policy; 'lean' adds the
   // lean-god posture section after it; 'god' (default) renders nothing extra —
@@ -4097,6 +4161,322 @@ const tmp = file + '.tmp-' + process.pid;
 fs.writeFileSync(tmp, JSON.stringify(msg, null, 2), 'utf8');
 fs.renameSync(tmp, file);
 process.stdout.write('queued ' + id + '.json\\n');
+`;
+
+// ─── hive-dispatch (written to <hive>/bin/hive-dispatch) ───────────────────────
+// God's whole dispatch flow collapsed into ONE command (card
+// agent-harness-hive-dispatch-cl-2026-08-17): card create-or-adopt + assign,
+// vacation recall for a parked assignee, the doing flip (--adopt passes
+// through), and the contract mail on the card conversation — one receipt line.
+// All validation (flags, registry, busy-assignee, body) happens BEFORE any
+// write; the ledger mutation is one locked read-modify-write (same lock file
+// as hive-card, so the two CLIs exclude each other), the recall request and
+// the outbox mail are atomic tmp+rename drops the pollers already consume.
+const HIVE_DISPATCH_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+function fail(msg) { throw new Error(msg); }
+function usage() {
+  fail([
+    'usage:',
+    '  hive-dispatch (--card <existing-id> | --title <t>) --assignee <agent>',
+    '                [--adopt] [--body <contract>]',
+    '',
+    '  The contract comes from --body or piped stdin. One command does the',
+    '  whole dispatch: card create-or-adopt + assign, vacation recall if the',
+    '  assignee is parked, the doing flip, and the contract mail on the card',
+    '  conversation. Prints one receipt line. Refuses (writing nothing) if the',
+    '  assignee is already active on a DIFFERENT card.',
+  ].join('\\n'));
+}
+
+const root = process.env.HIVE_ROOT;
+const from = (process.env.AGENT_ID || '').trim();
+if (!root || !from) {
+  process.stderr.write('hive-dispatch: HIVE_ROOT and AGENT_ID must be set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+const ledgerPath = path.join(root, 'tasks.json');
+const lockPath = ledgerPath + '.lock';
+
+function sleepMs(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+
+// Values: --card/--title/--assignee/--body. Boolean: --adopt. (= inline ok.)
+function parseArgs(argv) {
+  const vals = {};
+  const bools = {};
+  const VALUE_FLAGS = ['card', 'title', 'assignee', 'body'];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.indexOf('--') !== 0) fail('unexpected argument: ' + a + ' (flags look like --assignee <value>)');
+    let name = a.slice(2);
+    let inline;
+    const eq = name.indexOf('=');
+    if (eq >= 0) { inline = name.slice(eq + 1); name = name.slice(0, eq); }
+    if (VALUE_FLAGS.indexOf(name) >= 0) {
+      const v = inline !== undefined ? inline : argv[++i];
+      if (v === undefined) fail('missing value for --' + name);
+      vals[name] = v;
+    } else if (name === 'adopt') {
+      if (inline !== undefined) fail('--adopt takes no value.');
+      bools.adopt = true;
+    } else fail('unknown flag --' + name);
+  }
+  return { vals: vals, bools: bools };
+}
+
+function slug(title) {
+  const s = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+  return s || 'task';
+}
+
+function readLedger() {
+  if (!fs.existsSync(ledgerPath)) return { tasks: [] };
+  let data;
+  try { data = JSON.parse(fs.readFileSync(ledgerPath, 'utf8')); }
+  catch (_) { fail('tasks.json is not parseable JSON — refusing to write; fix or restore it first.'); }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.tasks)) {
+    fail('tasks.json has an unexpected shape (want {"tasks": [...]}) — refusing to write.');
+  }
+  return data;
+}
+
+function writeLedger(data) {
+  const tmp = ledgerPath + '.tmp-' + process.pid + '-' + Date.now();
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, ledgerPath);
+}
+
+// Exclusive lock across concurrent writers — THE SAME lock file hive-card uses,
+// so both CLIs' read-modify-writes exclude each other.
+function withLock(fn) {
+  for (let i = 0; i < 200; i++) {
+    try {
+      const st = fs.statSync(lockPath);
+      if (Date.now() - st.mtimeMs > 10000) { try { fs.unlinkSync(lockPath); } catch (_) {} }
+    } catch (_) {}
+    let held = false;
+    try { fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' }); held = true; }
+    catch (_) { sleepMs(25); continue; }
+    if (held) {
+      try { return fn(); }
+      finally { try { fs.unlinkSync(lockPath); } catch (_) {} }
+    }
+  }
+  fail('could not acquire the tasks.json lock — another writer seems stuck.');
+}
+
+function readRegistry() {
+  try {
+    const reg = JSON.parse(fs.readFileSync(path.join(root, 'registry.json'), 'utf8'));
+    if (!reg || typeof reg !== 'object' || !reg.agents || typeof reg.agents !== 'object') return null;
+    return reg;
+  } catch (_) { return null; }
+}
+
+function readBody(flagBody) {
+  let b = flagBody;
+  if (b === undefined) {
+    if (process.stdin.isTTY) fail('no contract — pass --body <text> or pipe the contract on stdin.');
+    b = fs.readFileSync(0, 'utf8');
+  }
+  b = String(b).trim();
+  if (!b) fail('the contract body is empty — --body or stdin must carry it.');
+  return b;
+}
+
+function main() {
+const parsed = parseArgs(process.argv.slice(2));
+const vals = parsed.vals;
+if ((vals.card ? 1 : 0) + (vals.title ? 1 : 0) !== 1) usage();
+const assignee = (vals.assignee || '').trim();
+if (!assignee) fail('--assignee is required (an agent id from registry.json).');
+const reg = readRegistry();
+if (!reg) fail('registry.json is not readable/parseable — cannot validate the assignee.');
+const entry = reg.agents[assignee];
+if (!entry) fail('no agent "' + assignee + '" in registry.json (ids look like creed-msx8l6ju — resolve names via registry.json).');
+const body = readBody(vals.body);
+
+// ONE locked ledger transaction: busy-check (refuse BEFORE writing), then
+// create-or-adopt + assign + doing flip.
+let cardId = '';
+let cardTitle = '';
+withLock(function () {
+  const data = readLedger();
+  const busy = data.tasks.find(function (t) {
+    return t && t.assignee === assignee &&
+      (t.status === 'doing' || t.status === 'blocked') && t.id !== vals.card;
+  });
+  if (busy) {
+    fail('refused: ' + assignee + ' is active on card "' + busy.id + '" (' + busy.status +
+      ') — finish, reassign or park that card first.');
+  }
+  if (vals.card) {
+    const card = data.tasks.find(function (t) { return t && t.id === vals.card; });
+    if (!card) fail('no card with id "' + vals.card + '" in tasks.json.');
+    card.assignee = assignee;
+    card.status = 'doing';
+    if (parsed.bools.adopt) card.sessionMode = 'adopt';
+    cardId = card.id;
+    cardTitle = card.title || cardId;
+  } else {
+    const title = vals.title.trim();
+    if (!title) fail('--title must be non-empty when given.');
+    const base = 'agent-' + slug(title) + '-' + new Date().toISOString().slice(0, 10);
+    cardId = base;
+    for (let n = 2; data.tasks.some(function (t) { return t && t.id === cardId; }); n++) cardId = base + '-' + n;
+    const card = {
+      id: cardId,
+      title: title,
+      status: 'doing',
+      dependsOn: [],
+      priority: 3,
+      createdAt: new Date().toISOString(),
+      origin: 'agent',
+      assignee: assignee,
+    };
+    if (parsed.bools.adopt) card.sessionMode = 'adopt';
+    data.tasks.push(card);
+    cardTitle = title;
+  }
+  writeLedger(data);
+});
+
+// Parked assignee: queue the recall the poller consumes (~1.5s), exactly like
+// god's hand-dropped vacation-request ({"agentId":..., "action":"recall"}).
+let recalled = false;
+if (entry.vacation === true) {
+  const dir = path.join(root, 'vacation-requests');
+  fs.mkdirSync(dir, { recursive: true });
+  const fp = path.join(dir, 'recall-' + Date.now() + '-' + Math.random().toString(16).slice(2, 8) + '.json');
+  const tmp = fp + '.tmp-' + process.pid;
+  fs.writeFileSync(tmp, JSON.stringify({ agentId: assignee, action: 'recall' }, null, 2) + '\\n', 'utf8');
+  fs.renameSync(tmp, fp);
+  recalled = true;
+}
+
+// The contract mail — same envelope as hive-mail, riding the card conversation.
+const rand = Math.random().toString(16).slice(2, 8);
+const mailId = new Date().toISOString().replace(/[:.]/g, '-') + '-' + rand;
+const msg = {
+  id: mailId,
+  conversation: 'card-' + cardId,
+  in_reply_to: null,
+  from: from,
+  to: assignee,
+  act: 'request',
+  subject: cardTitle + ' — card ' + cardId,
+  body: body,
+  hops: 0,
+  requires_reply: true,
+  needs_human: false,
+  created_at: new Date().toISOString(),
+};
+const outbox = path.join(root, 'agents', from, 'outbox');
+fs.mkdirSync(outbox, { recursive: true }); // a first-ever dispatch has no outbox yet
+const file = path.join(outbox, mailId + '.json');
+const tmp = file + '.tmp-' + process.pid;
+fs.writeFileSync(tmp, JSON.stringify(msg, null, 2), 'utf8');
+fs.renameSync(tmp, file);
+process.stdout.write('dispatched ' + cardId + ' -> ' + assignee +
+  (recalled ? ' (recall queued, mail ' : ' (mail ') + mailId + ')\\n');
+}
+try { main(); }
+catch (e) {
+  process.stderr.write('hive-dispatch: ' + (e && e.message ? e.message : String(e)) + '\\n');
+  process.exit(1);
+}
+`;
+
+// ─── hive-inbox (written to <hive>/bin/hive-inbox) ─────────────────────────────
+// The read side of the mail plumbing (card agent-harness-hive-inbox-cli-o-
+// 2026-08-17): drain prints every pending mail (from | act | subject, then
+// body) and archives each to inbox/.done/ in the same pass; --peek prints
+// without archiving; empty inbox exits 0 with 'no mail'. An unparseable file
+// is warned about and LEFT in the inbox — poison must never eat mail silently.
+const HIVE_INBOX_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+function fail(msg) { throw new Error(msg); }
+function usage() {
+  fail([
+    'usage:',
+    '  hive-inbox drain [--agent <id>] [--peek]',
+    '',
+    '  Prints every pending mail (from | act | subject, then body) and archives',
+    '  each to inbox/.done/ in the same pass. --peek prints without archiving.',
+    '  Default --agent: $AGENT_ID (the caller).',
+  ].join('\\n'));
+}
+
+const root = process.env.HIVE_ROOT;
+if (!root) {
+  process.stderr.write('hive-inbox: HIVE_ROOT is not set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+if (process.argv[2] !== 'drain') usage();
+
+let agent;
+let peek = false;
+const rest = process.argv.slice(3);
+for (let i = 0; i < rest.length; i++) {
+  const a = rest[i];
+  if (a === '--peek') { peek = true; continue; }
+  if (a.indexOf('--agent') === 0) {
+    let v;
+    const eq = a.indexOf('=');
+    if (eq >= 0) v = a.slice(eq + 1);
+    else { v = rest[++i]; if (v === undefined) fail('missing value for --agent'); }
+    agent = v;
+    continue;
+  }
+  fail('unexpected argument: ' + a + ' (drain takes --agent <id> and --peek).');
+}
+if (agent === undefined) {
+  agent = (process.env.AGENT_ID || '').trim();
+  if (!agent) fail('no --agent and no AGENT_ID — name the inbox to drain.');
+}
+agent = String(agent).trim();
+if (!agent) fail('--agent must be non-empty when given.');
+
+const inbox = path.join(root, 'agents', agent, 'inbox');
+const done = path.join(inbox, '.done');
+let files;
+try { files = fs.readdirSync(inbox); }
+catch (_) { process.stdout.write('no mail\\n'); process.exit(0); }
+// Filenames are ISO-prefixed ids, so lexical sort = oldest first. Files only
+// (.done and dotfiles drop out of the .json filter).
+files = files.filter(function (f) { return f.endsWith('.json'); }).sort();
+if (files.length === 0) { process.stdout.write('no mail\\n'); process.exit(0); }
+
+const out = [];
+let drained = 0;
+for (const f of files) {
+  const fp = path.join(inbox, f);
+  let msg;
+  try { msg = JSON.parse(fs.readFileSync(fp, 'utf8')); }
+  catch (e) {
+    process.stderr.write('hive-inbox: skipping unparseable ' + f + ' (' +
+      (e && e.message ? e.message : String(e)) + ') — it stays in the inbox.\\n');
+    continue;
+  }
+  out.push([msg.from, msg.act, msg.subject]
+    .map(function (p) { return p === undefined ? '?' : String(p); }).join(' | '));
+  out.push(String(msg.body === undefined ? '' : msg.body));
+  out.push('');
+  if (!peek) {
+    fs.mkdirSync(done, { recursive: true });
+    fs.renameSync(fp, path.join(done, f));
+    drained++;
+  }
+}
+const verb = peek ? 'peeked ' + files.length + ' message(s)'
+  : 'drained ' + drained + ' message(s) to inbox/.done';
+process.stdout.write(out.join('\\n') + verb + '\\n');
 `;
 
 // ─── hive-new (written to <hive>/bin/hive-new) ─────────────────────────────────
