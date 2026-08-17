@@ -164,7 +164,9 @@ import {
   isClaudeProvider,
   bridgeOf,
   nonInteractiveEnvForProvider,
+  commandCarriesModel,
   permissionModeArgs,
+  prependCommandTail,
   providerPreset,
   installInfoForProvider,
   resolveHirePermissionMode,
@@ -3136,6 +3138,19 @@ async function spawnAgentCore(
   const claudeProvider = isClaudeProvider(provider);
   opts.provider = provider;
   if (opts.hive) opts.hive = { ...opts.hive, provider };
+  // ── COMMAND TAIL → ARGV (card renderer-hire-flag-append-20260816) ─────────
+  // pty.spawn resolves opts.command to its bare binary and passes opts.args as
+  // argv — everything an operator typed after the binary ('claude --model X',
+  // 'pi --approve', a persisted '--permission-mode …') was silently dropped.
+  // Tokenize the tail and PREPEND it to args BEFORE the permission-mode guard
+  // below, so typed flags reach the process AND are visible to that
+  // idempotency guard (and every args.includes(…) guard downstream). The
+  // command STRING keeps its full text: registry/display store what the
+  // operator typed, and every spawn re-tokenizes, so the tail survives
+  // restarts instead of freezing into args. Idempotent: the install-relaunch
+  // path re-enters this function with the SAME opts object (its stored args
+  // already carry the tail) — prependCommandTail refuses to double it.
+  opts.args = prependCommandTail(opts.command, opts.args ?? []);
   // ── PERMISSION MODE ON ARGV (card permission-mode-config-20260816) ───────
   // Replaces 8e5fd6d's blanket readConfig().autoMode-keyed bypass injection:
   // bypass is the operator's per-installation opt-in, never the shipped
@@ -5660,7 +5675,9 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     command,
     cols: 120,
     rows: 32,
-    args: raw.model ? ['--model', raw.model] : [],
+    // A '--model' typed into the command tail already rides argv (prepended by
+    // the tail tokenization above) — never double it with the request's model field.
+    args: raw.model && !commandCarriesModel(command) ? ['--model', raw.model] : [],
     hive: meta,
     isolate,
     provider: raw.provider,

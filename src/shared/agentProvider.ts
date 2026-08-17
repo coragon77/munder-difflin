@@ -253,8 +253,9 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // Grok documents bypassPermissions as the CLI/config spelling of its
     // always-approve mode. Deny rules and lifecycle gates still take precedence.
     // Verified against a grok binary in an earlier round; NOT re-verified since
-    // the 2714c92 flag audit — no grok binary installed on this machine
-    // (2026-08-16, card renderer-hire-flag-append).
+    // the 2714c92 flag audit — no grok binary installed on this machine, and a
+    // 2026-08-17 sweep (card renderer-hire-flag-append) found no official xAI
+    // grok CLI package on the npm registry to check against either.
     autoModeFlag: '--permission-mode bypassPermissions',
     autoFlag: '--permission-mode bypassPermissions',
     supportsModel: true,
@@ -549,6 +550,55 @@ export function resolveHirePermissionMode(
   return explicit ?? stored ?? DEFAULT_HIRE_PERMISSION_MODE;
 }
 
+/** Split a command string into argv tokens. Spawn paths resolve only the FIRST
+ *  token to a binary — everything after it (flags an operator typed into the
+ *  hire command, 'claude --model X' / 'pi --approve') must be tokenized here
+ *  and ride the args array to reach the process
+ *  (card renderer-hire-flag-append-20260816). Double and single quotes are
+ *  honored so buildSpawnCommand's whitespace model labels ('--model "Gemini 3.1
+ *  Pro (High)"') survive as one token; the quotes themselves are stripped.
+ *  ponytail: no backslash-escape handling — add it if a typed flag ever needs
+ *  a literal quote character. */
+export function tokenizeCommand(command: string): string[] {
+  const tokens: string[] = [];
+  let cur = '';
+  let quote: '"' | "'" | null = null;
+  for (const ch of command) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      else cur += ch;
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (/\s/.test(ch)) {
+      if (cur) {
+        tokens.push(cur);
+        cur = '';
+      }
+    } else cur += ch;
+  }
+  if (cur) tokens.push(cur);
+  return tokens;
+}
+
+/** Whether the command string's tail (everything after the binary) already
+ *  carries '--model' — recall/spawn-request callers skip appending
+ *  ['--model', m] then, so a roster model field never doubles a typed --model. */
+export function commandCarriesModel(command: string | undefined): boolean {
+  return tokenizeCommand(command ?? '')
+    .slice(1)
+    .includes('--model');
+}
+
+/** Prepend the command tail (tokens after the binary) to an args array, so
+ *  flags typed into a hire command reach the spawned process. Idempotent: an
+ *  args array already prefixed with the tail is returned untouched — the
+ *  missing-CLI install-relaunch re-enters spawnAgentCore with the SAME opts
+ *  object (its stored args already carry the tail), so it must not double. */
+export function prependCommandTail(command: string, args: string[]): string[] {
+  const tail = tokenizeCommand(command).slice(1);
+  if (!tail.length || tail.every((t, i) => args[i] === t)) return args;
+  return [...tail, ...args];
+}
+
 /**
  * The permission-mode flag as ARGV TOKENS for a spawn command.
  *
@@ -557,9 +607,11 @@ export function resolveHirePermissionMode(
  * command string never reaches the process. It must ride the args array (the
  * same channel `--model` provably reaches argv through). Idempotent: a flag
  * the operator already wrote into the command string (or args — callers pass
- * the JOIN) wins and is never doubled; for claude 'auto' ANY typed
- * `--permission-mode <value>` wins, since appending a second --permission-mode
- * would conflict on the same key. Multi-token flags (copilot, grok) split into
+ * the JOIN) wins and is never doubled; for claude ANY typed
+ * `--permission-mode <value>` wins in BOTH auto and bypass (appending a second
+ * --permission-mode would conflict on the same key), and a typed
+ * `--dangerously-skip-permissions` wins over a bypass injection. Multi-token
+ * flags (copilot, grok) split into
  * one argv element per token. Empty for 'default'/unset modes or a provider
  * with no flag.
  */
@@ -579,8 +631,15 @@ export function permissionModeArgs(
   if (!tokens.length) return [];
   // ponytail: string includes-guard, not argv-aware matching — a flag glued
   // mid-token would false-negative, but no real flag spelling contains another.
-  const guard = claude && mode === 'auto' ? '--permission-mode' : tokens.join(' ');
-  return command.includes(guard) ? [] : tokens;
+  // Claude bypass ALSO yields to any explicit '--permission-mode <value>' on the
+  // line (e.g. a persisted command carrying '--permission-mode bypassPermissions'):
+  // a typed permission choice must win, never doubled by an injected
+  // '--dangerously-skip-permissions' (card renderer-hire-flag-append-20260816).
+  const present = claude
+    ? command.includes('--permission-mode') ||
+      (mode === 'bypass' && command.includes(tokens.join(' ')))
+    : command.includes(tokens.join(' '));
+  return present ? [] : tokens;
 }
 
 export function isClaudeProvider(provider: AgentProvider | undefined): boolean {

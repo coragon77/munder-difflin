@@ -10,6 +10,7 @@
  */
 
 import {
+  commandCarriesModel,
   inferAgentProvider,
   type AgentProvider,
   type HirePermissionMode,
@@ -195,7 +196,10 @@ export async function recallAgentCore(
       command,
       cols: 120,
       rows: 32,
-      args: recipe.model ? ['--model', recipe.model] : [],
+      // A '--model' typed into the saved command's tail reaches argv via
+      // spawnAgentCore's tail tokenization — never double it with the recipe's
+      // model field.
+      args: recipe.model && !commandCarriesModel(command) ? ['--model', recipe.model] : [],
       hive: { id: agentId, name: entry.name, provider, role: entry.role, cwd },
       isolate: false,
       provider,
