@@ -109,6 +109,11 @@ export interface Agent {
   vacation?: boolean;
   /** Epoch ms this agent was parked — drives the "parked 2h ago" line. */
   vacationSince?: number;
+  /** True while this worker is PINNED — the operator's standing "never park
+   *  this one". Registry-persisted (the registry is the enforcement
+   *  authority); this copy drives the pin toggle on the card + detail pane.
+   *  Durable by default (not in VOLATILE_AGENT_FIELDS), so it survives reloads. */
+  pinned?: boolean;
   /** Hive protocol to TYPE into this agent's TUI as its first turn, set at spawn
    *  for `seedDelivery:'type-into-tui'` providers (Crush) whose bare TUI rejects a
    *  positional seed. useHive types it once after boot-grace then clears it.

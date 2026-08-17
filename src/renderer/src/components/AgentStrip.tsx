@@ -21,6 +21,7 @@ export function AgentStrip({ config }: AgentStripProps) {
   const openTaskDetail = useStore((s) => s.openTaskDetail);
   const reorderAgents = useStore((s) => s.reorderAgents);
   const setAgentNote = useStore((s) => s.setAgentNote);
+  const updateAgent = useStore((s) => s.updateAgent);
   // Shared with the fullscreen roster so both show one restore in progress.
   const { restoring, autoRestoring, restoreNote, restoreTeam } = useRestoreTeam(config);
   // ONE restore control (bottom-right): a button whose dropdown OPENS UPWARD and
@@ -181,6 +182,17 @@ export function AgentStrip({ config }: AgentStripProps) {
             }}
             note={a.note}
             onEditNote={a.isGod ? undefined : () => setNoteEditId(a.id)}
+            pinned={a.pinned}
+            onTogglePin={
+              agentClassOf(a) === 'human'
+                ? async () => {
+                    // The registry is the authority — only flip the local icon
+                    // when main confirms the flag landed.
+                    const res = await window.cth.hiveSetPinned(a.id, !a.pinned);
+                    if (res.ok) updateAgent(a.id, { pinned: !a.pinned });
+                  }
+                : undefined
+            }
           />
           {/* The note itself lives INSIDE the card (its own row above the gauge).
               This is the transient EDITOR: a fixed popover ABOVE the card —

@@ -800,6 +800,9 @@ const api = {
   /** Fetch a vacationer back onto the floor — the respawn IS the recall. */
   hiveRecall: (id: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:recall', id),
+  /** Pin/unpin a worker — a pinned worker is never parkable. */
+  hiveSetPinned: (id: string, pinned: boolean): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('hive:setPinned', id, pinned),
   hiveLog: (n?: number): Promise<unknown[]> => ipcRenderer.invoke('hive:log', n ?? 200),
   hiveMemory: (id: string): Promise<string> => ipcRenderer.invoke('hive:memory', id),
   hiveInbox: (id: string): Promise<HiveMessage[]> => ipcRenderer.invoke('hive:inbox', id),

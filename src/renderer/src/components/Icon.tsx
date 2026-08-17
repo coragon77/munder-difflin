@@ -24,7 +24,9 @@ export type IconName =
   | 'mic'
   | 'ledger'
   | 'info'
-  | 'sidebar';
+  | 'sidebar'
+  | 'pin'
+  | 'pin-outline';
 
 interface IconDef {
   ink: string; // primary color path d
@@ -134,6 +136,19 @@ const paths: Record<IconName, IconDef> = {
   sidebar: {
     accentColor: 'var(--cth-ink-300)',
     ink: 'M1 3h14v10H1z M2 4h12v8H2z M2 4h4v8H2z',
+  },
+  // Pushpin, head-on: head + needle pointing straight down. `pin` (SOLID
+  // head) reads as pinned at a glance; `pin-outline` (1px ring head) is the
+  // unpinned affordance. Same needle both ways so a toggling pin doesn't jump.
+  pin: {
+    accentColor: 'var(--cth-ink-900)',
+    ink: 'M4 2h8v6H4z M7 8h2l-1 6z',
+  },
+  'pin-outline': {
+    accentColor: 'var(--cth-ink-300)',
+    // The head's hollow center is a second subpath cut out via evenodd, same
+    // trick as the gear hub / info disc — a 1px-stroked ring would shimmer.
+    ink: 'M4 2h8v6H4z M6 4h4v2H6z M7 8h2l-1 6z',
   },
 };
 

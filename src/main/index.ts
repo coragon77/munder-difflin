@@ -4185,6 +4185,14 @@ ipcMain.handle('hive:park', (_e, id: unknown, reason: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
   return parkAgent(id, typeof reason === 'string' ? reason : undefined, 'operator');
 });
+// The office UI's pin toggle — a pinned worker is never parkable (the refusal
+// lives in parkAgentCore's ladder + setVacation's registry guard). God is
+// refused here AND in setPinned; the button never renders for god anyway.
+ipcMain.handle('hive:setPinned', (_e, id: unknown, pinned: unknown) => {
+  if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
+  if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
+  return { ok: hive.setPinned(id, pinned === true) };
+});
 ipcMain.handle('hive:recall', (_e, id: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
   return recallAgent(id);

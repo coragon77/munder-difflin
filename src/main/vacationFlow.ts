@@ -117,6 +117,15 @@ export function parkAgentCore(
       error: `"${agentId}" was fired — retired and vacation are mutually exclusive`,
     };
   if (entry.vacation) return { ok: false, error: `"${agentId}" is already on vacation` };
+  // A PINNED worker is never parkable, no matter who asks (pin-workers-20260817):
+  // god's vacation-request, the UI button, any future auto-park — every path
+  // converges here. The refusal is a strict no-op: it must land BEFORE the
+  // busy gate and the PTY teardown so a refused park touches nothing.
+  if (entry.pinned)
+    return {
+      ok: false,
+      error: `"${agentId}" is pinned — pinned workers are never parked; unpin it in the office UI first`,
+    };
   const ptyId = deps.ptyForAgent(agentId);
   if (ptyId) {
     // Busy = REAL work inside the window (rule + rationale in vacationBusy.ts):

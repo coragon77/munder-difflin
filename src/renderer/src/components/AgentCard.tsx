@@ -4,6 +4,7 @@ import { PixelBadge, type StatusKind } from './PixelBadge';
 import { useHasTerminalDraft } from './terminalPool';
 import { SpritePortrait } from './SpritePortrait';
 import { RealtimeMichaelToggle } from './RealtimeMichaelToggle';
+import { Icon } from './Icon';
 import { CostHud } from '@/realtime/CostHud';
 import type { AccentColorName } from '@/design/tokens';
 import type { OfficeCharacterName } from '@/scene/office/cast';
@@ -44,6 +45,12 @@ export interface AgentCardProps {
   /** Opens the note editor (the strip owns the editing overlay). When set, the
    *  card shows a small ✎ affordance on its note row. */
   onEditNote?: () => void;
+  /** True while this worker is PINNED — rendered as a solid pushpin on the
+   *  note row. The registry is the enforcement authority; this drives display. */
+  pinned?: boolean;
+  /** Toggles the pin — when set (human-class workers only), the note row gets
+   *  the pin toggle beside the class chip. God/intern cards pass nothing. */
+  onTogglePin?: () => void;
 }
 
 const fmtK = (n: number): string => `${Math.round(n / 1000)}k`;
@@ -73,6 +80,8 @@ export function AgentCard({
   draggable,
   note,
   onEditNote,
+  pinned,
+  onTogglePin,
 }: AgentCardProps) {
   const [hover, setHover] = useState(false);
   const typing = useHasTerminalDraft(ptyId);
@@ -333,6 +342,45 @@ export function AgentCard({
                     }}
                   >
                     ✎
+                  </span>
+                )}
+                {/* The pin toggle on the intern-tag line — beside the ✎, before
+                    the chip. Filled pin = pinned (strong, readable at a glance);
+                    outline = unpinned (quiet until hovered, like the ✎). */}
+                {onTogglePin && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTogglePin();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onTogglePin();
+                      }
+                    }}
+                    title={
+                      pinned
+                        ? `${name} is pinned — never parked; click to unpin`
+                        : `Pin ${name} — pinned workers are never parked`
+                    }
+                    aria-label={`toggle pin for ${name}`}
+                    style={{
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      color: pinned
+                        ? 'var(--cth-ink-900)'
+                        : hover
+                          ? 'var(--cth-ink-500)'
+                          : 'var(--cth-ink-300)',
+                    }}
+                  >
+                    <Icon name={pinned ? 'pin' : 'pin-outline'} />
                   </span>
                 )}
                 {classChip}

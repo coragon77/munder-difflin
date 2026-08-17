@@ -109,6 +109,15 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
   // Only human-created hires go on vacation — god runs the floor and interns get
   // fired, never parked. `isReal` keeps the button off a card with no terminal.
   const canPark = isReal && agentClassOf(agent) === 'human';
+  // The pin lives on exactly the parkable class too (god never parks, interns
+  // are fired not parked) — and god's pane is the CommandCenter, which never
+  // renders this component, so the class check is the whole god-guard here.
+  const canPin = agentClassOf(agent) === 'human';
+  const onTogglePin = async () => {
+    const res = await window.cth.hiveSetPinned(agent.id, !agent.pinned);
+    if (!res.ok) return; // registry refused — the icon stays the truth
+    updateAgent(agent.id, { pinned: !agent.pinned });
+  };
   const onPark = async () => {
     const res = await window.cth.hivePark(agent.id, 'parked from the agent pane');
     if (!res.ok) {
@@ -190,6 +199,36 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
                 }}
               >
                 INT
+              </span>
+            )}
+            {/* The pin toggle — Stefan: it lives on THIS line (the role-tag
+                line). Filled = pinned (strong ink), outline = unpinned (quiet). */}
+            {canPin && (
+              <span
+                role="button"
+                tabIndex={0}
+                title={
+                  agent.pinned
+                    ? `${displayAgentName(agent)} is pinned — never parked; click to unpin`
+                    : `Pin ${displayAgentName(agent)} — pinned workers are never parked`
+                }
+                aria-label={`toggle pin for ${displayAgentName(agent)}`}
+                onClick={onTogglePin}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onTogglePin();
+                  }
+                }}
+                style={{
+                  flexShrink: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  color: agent.pinned ? 'var(--cth-ink-900)' : 'var(--cth-ink-300)',
+                }}
+              >
+                <Icon name={agent.pinned ? 'pin' : 'pin-outline'} />
               </span>
             )}
           </div>
