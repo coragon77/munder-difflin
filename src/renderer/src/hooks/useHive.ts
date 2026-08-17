@@ -1072,6 +1072,15 @@ export function useHive(config: HarnessConfig | null): void {
         ptyId: rec.id,
         command: rec.command,
         provider: rec.provider as Agent['provider'],
+        // The SAVED permission mode survives the respawn (card
+        // agent-harness-bug-saved-permis-2026-08-17): this record replaces the
+        // shelf row every later read consumes (next boot's restorable snapshot,
+        // rosterRecipe, the edit dialog), so dropping the field here silently
+        // downgraded recalled agents to 'auto' on the next restart. `prior` is
+        // the persisted choice; a first-time spawn has none and main's ladder
+        // defaults it (explicit god-spawn modes arrive on the spawn opts, not
+        // this broadcast).
+        permissionMode: prior?.permissionMode,
         isGod: false,
         spawnLabel: rec.spawnLabel, // leads the wake nudge → the CLI session's name
         recentTextTs: Date.now(),
