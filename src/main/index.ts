@@ -151,6 +151,7 @@ import { initCompletionWatcher } from './realtimeCompletionWatcher';
 import type { TaskCard, InboxMessage } from './realtimeCompletionWatcher';
 import { TelemetryCollector } from './telemetry';
 import { vacationBusy } from './vacationBusy';
+import { PendingWorkTracker } from './pendingWork';
 import { analytics } from './analytics';
 import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
@@ -481,6 +482,11 @@ let breakerBeatTimer: ReturnType<typeof setInterval> | null = null;
 telemetry.onApiError((agentId) => breaker.recordError(agentId));
 // HookServer needs BOTH: Oscar's control registry (HITL pause/gate/steer/halt via
 // hook returns) AND Jim's breaker (feed recordToolUse on each PostToolUse).
+// The pending-work census (waiting ≠ idle, card agent-harness-busy-signal-
+// coun-2026-08-17) is ONE tracker instance: the hook plane refreshes it, both
+// busy gates (park, card-session clear), fleet.json and the renderer's waiting
+// display all read it — one busy definition, no second one.
+const pendingWork = new PendingWorkTracker();
 const hookServer = new HookServer(
   hive,
   () => liveWebContents(),
@@ -488,6 +494,7 @@ const hookServer = new HookServer(
   control,
   breaker,
   telemetry,
+  pendingWork,
 );
 const memory = new MemoryManager(
   () => readConfig().harnessHome,
@@ -1614,6 +1621,10 @@ function writeFleetSnapshot(): void {
           lastTool: spans.length ? spans[spans.length - 1].tool : null,
           lastActiveSecAgo: u ? Math.round((now - u.ts) / 1000) : null,
           inboxBacklog: hive.inboxBacklog(id),
+          // Honest telemetry for god + the operator: 0 = truly idle, >0 = the
+          // agent is WAITING on that many finite background tasks (waiting ≠
+          // idle, card agent-harness-busy-signal-coun-2026-08-17).
+          pendingBackgroundWork: pendingWork.countFor(id),
         };
       });
     // Vacationers are NOT floor capacity (they have no PTY), but god must be able
@@ -6194,7 +6205,14 @@ function parkAgent(
         const provider = hive.registry().agents[agentId]?.provider;
         const providerReportsTelemetry =
           isClaudeProvider(provider) || bridgeOf(provider) !== undefined;
-        return vacationBusy(telemetryAgeMs, ptyIdleMs, providerReportsTelemetry);
+        // Waiting ≠ idle: pending finite background work (CI monitor, background
+        // shell, in-flight subagent) keeps the agent busy even at a silent prompt.
+        return vacationBusy(
+          telemetryAgeMs,
+          ptyIdleMs,
+          providerReportsTelemetry,
+          pendingWork.countFor(agentId),
+        );
       },
       dropWorktree: (ptyId) => {
         worktreePaths.delete(ptyId);
@@ -6691,7 +6709,13 @@ function bootstrapHiveServices(): void {
       const provider = hive.registry().agents[agentId]?.provider;
       const providerReportsTelemetry =
         isClaudeProvider(provider) || bridgeOf(provider) !== undefined;
-      return vacationBusy(telemetryAgeMs, ptyIdleMs, providerReportsTelemetry);
+      // Same tracker as parkAgent's gate — one busy definition, no second one.
+      return vacationBusy(
+        telemetryAgeMs,
+        ptyIdleMs,
+        providerReportsTelemetry,
+        pendingWork.countFor(agentId),
+      );
     },
     emit: paneCommandEmit,
     stampCard: (cardId, sessionId) => hive.stampCard(cardId, sessionId),

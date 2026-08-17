@@ -18,6 +18,7 @@ import type { HarnessConfig } from './config';
 import type { ControlRegistry } from './control';
 import type { CircuitBreaker } from './breaker';
 import type { TelemetryCollector } from './telemetry';
+import type { PendingWorkTracker } from './pendingWork';
 import { estimateCostUsd } from './pricing';
 
 interface HookPayload {
@@ -44,6 +45,16 @@ interface HookPayload {
   output?: number;
   cache_read?: number;
   cache_creation?: number;
+  /** Stop payloads only (claude 2.1.x): the live background-task registry
+   *  snapshot — running+backgrounded shells, subagents, workflows, monitors,
+   *  teammates… — the pending-work census for the house busy signal (card
+   *  agent-harness-busy-signal-coun-2026-08-17). Shape per Kjp():
+   *  {id, type, status, description, …}. */
+  background_tasks?: unknown;
+  /** PostToolUse payloads carry the tool's result — Monitor's is
+   *  {taskId, timeoutMs, persistent?}, the arm-time classification the census
+   *  uses to exclude never-completing (persistent) monitors. */
+  tool_response?: { taskId?: unknown; persistent?: boolean };
 }
 
 export class HookServer {
@@ -73,7 +84,14 @@ export class HookServer {
      *  opencode, qwen sidecar — have no OTLP; their hook payloads are their ONLY
      *  telemetry). Optional so tests can omit it. Claude agents keep OTLP as
      *  their source; the collector overlays OTLP over these rows. */
+    /** Telemetry sink for the hook plane (non-Claude providers — pi, agy, grok,
+     *  opencode, qwen sidecar — have no OTLP; their hook payloads are their ONLY
+     *  telemetry). Optional so tests can omit it. Claude agents keep OTLP as
+     *  their source; the collector overlays OTLP over these rows. */
     private telemetry?: TelemetryCollector,
+    /** Pending-background-work census (waiting ≠ idle). Optional so tests can
+     *  omit it — the tracker itself is the single source both busy gates read. */
+    private pendingWork?: PendingWorkTracker,
   ) {}
 
   start(): void {
@@ -150,6 +168,14 @@ export class HookServer {
     // fleet.json's lastActiveSecAgo stops reading null for non-Claude agents
     // (their hooks are their only telemetry — see TelemetryCollector).
     if (agentId) this.telemetry?.recordHookActivity(agentId);
+
+    // Session boundaries reset the pending-work census (card
+    // agent-harness-busy-signal-coun-2026-08-17): a fresh conversation
+    // inherits no stale census, and the dead session's persistent-monitor ids
+    // die with it (the new session re-arms and re-classifies within minutes).
+    if ((event === 'SessionStart' || event === 'SessionEnd') && agentId) {
+      this.pendingWork?.resetAgent(agentId);
+    }
 
     // Status-line payloads carry the session's EXACT context accounting —
     // current tokens AND the real window size (200k vs 1M, which nothing else
@@ -250,6 +276,17 @@ export class HookServer {
     if (event === 'PostToolUse' && agentId) {
       this.breaker?.recordToolUse(agentId, p.tool_name, p.tool_input);
       if (p.tool_name) this.telemetry?.recordHookSpan(agentId, p.tool_name);
+      // Monitor arm-time classification: the census excludes persistent
+      // (never-completing) monitors by the taskId learned HERE — counting them
+      // would make the whole floor permanently busy and no clear/park would
+      // ever fire. One-shot monitors (persistent false/absent) still count.
+      if (p.tool_name === 'Monitor') {
+        this.pendingWork?.recordMonitorArm(
+          agentId,
+          p.tool_response?.taskId,
+          p.tool_response?.persistent === true,
+        );
+      }
     }
 
     // Compaction exemption (issue #109): PreCompact opens it so the compaction
@@ -262,17 +299,30 @@ export class HookServer {
     }
 
     if ((event === 'Stop' || event === 'SubagentStop') && agentId) {
+      // The census refreshes at every SETTLE — exactly when the idle gates
+      // evaluate. Stop only: SubagentStop's agent_id is claude's internal
+      // subagent id, not the hive agent, so its snapshot would key garbage.
+      let pendingWorkCount: number | undefined;
+      if (event === 'Stop') {
+        this.pendingWork?.recordSettle(agentId, p.background_tasks);
+        pendingWorkCount = this.pendingWork?.countFor(agentId);
+      }
       // Respect any upstream Stop hook that already re-entered this boundary.
       if (p.stop_hook_active) {
-        this.emit(agentId, event, p);
+        this.emit(agentId, event, p, false, pendingWorkCount);
         return {};
       }
       // Never turn unread hive mail into a forced continuation at Stop. That old
       // path bypassed terminal-draft/HITL safety and could spend credits while a
       // user was answering a question. Inbox files remain durable; the renderer
       // wakes the agent later through its guarded idle-only delivery path.
-      this.notify(agentId ?? 'Agent', 'finished — idle');
-      this.emit(agentId, event, p);
+      this.notify(
+        agentId ?? 'Agent',
+        pendingWorkCount && pendingWorkCount > 0
+          ? `finished — waiting (${pendingWorkCount} background task${pendingWorkCount === 1 ? '' : 's'})`
+          : 'finished — idle',
+      );
+      this.emit(agentId, event, p, false, pendingWorkCount);
       return {};
     }
 
@@ -362,7 +412,13 @@ export class HookServer {
     this.getWebContents()?.send('control:approvalRequest', { agentId, tool, reason });
   }
 
-  private emit(agentId: string | undefined, event: string, p: HookPayload, blocked = false): void {
+  private emit(
+    agentId: string | undefined,
+    event: string,
+    p: HookPayload,
+    blocked = false,
+    pendingWork?: number,
+  ): void {
     this.getWebContents()?.send('hive:hookEvent', {
       agentId,
       event,
@@ -371,6 +427,7 @@ export class HookServer {
       source: p.source,
       message: p.message,
       blocked,
+      ...(pendingWork !== undefined ? { pendingWork } : {}),
     });
   }
 }

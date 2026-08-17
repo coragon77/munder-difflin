@@ -79,3 +79,4 @@ test/one-agent-per-directory.test.cjs
 test/worktree-isolation-refusal.test.cjs
 test/worker-intern-switches.test.cjs
 test/kitty-enabled-gate.test.cjs
+test/waiting-busy-pending-work.test.cjs

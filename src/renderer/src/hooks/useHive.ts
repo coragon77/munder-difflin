@@ -482,7 +482,20 @@ export function useHive(config: HarnessConfig | null): void {
         } else {
           // A genuine stop clears any breaker override — the run is over.
           breakerLevel.current[e.agentId] = 'healthy';
-          updateAgent(e.agentId, { status: 'idle', action: 'idle', carrying: undefined });
+          // Waiting ≠ idle (card agent-harness-busy-signal-coun-2026-08-17):
+          // settled with pending finite background work (CI monitor,
+          // background shell, in-flight subagent) the card reads 'waiting',
+          // not 'idle' — the clear/park gates refuse it on the same census.
+          const waiting = typeof e.pendingWork === 'number' ? e.pendingWork : 0;
+          if (waiting > 0) {
+            updateAgent(e.agentId, {
+              status: 'waiting',
+              action: `waiting (${waiting} background task${waiting === 1 ? '' : 's'})`,
+              carrying: undefined,
+            });
+          } else {
+            updateAgent(e.agentId, { status: 'idle', action: 'idle', carrying: undefined });
+          }
         }
       } else if (e.event === 'Notification' && !breakerArmed) {
         // Claude Code fires Notification for two very different situations:
