@@ -134,10 +134,11 @@ export interface HiveTask {
    *  once and never persisted), so a GET status lookup can match by hashing the
    *  presented token. Read-only capability: it never widens routing or exposure. */
   webhook?: { tokenHash: string };
-  /** Set when the HUMAN created this card from the tasks tab (addHumanTask).
-   *  Persistent origin marker: the UI's delete rule (only human-origin cards,
-   *  only while still 'todo') and the god's triage rely on it. */
-  origin?: 'human';
+  /** Set when the HUMAN created this card from the tasks tab (addHumanTask)
+   *  or an AGENT carded itself via the hive-card CLI. Persistent origin
+   *  marker: the UI's delete rule (only human-origin cards, only while still
+   *  'todo') and the god's triage rely on it. */
+  origin?: 'human' | 'agent';
   /** The conversation this card runs in (card-scoped-sessions-20260816): the
    *  agent's live claude session id, stamped automatically by recordSession
    *  whenever it CHANGES while the card is the agent's active 'doing' card —
@@ -690,6 +691,12 @@ export class HiveManager {
     writeFileSync(this.shimPath()!, HOOK_SHIM, 'utf8');
     // The proxy-bridge sidecar for hookless CLIs (qwen). Same refresh policy.
     writeFileSync(this.proxyShimPath()!, PROXY_BRIDGE_SHIM, 'utf8');
+    // The kanban CLI every agent writes tasks.json with — schema-checked and
+    // ATOMIC, so a hand-edit of the shared ledger never happens again (card
+    // harness-hive-card-cli-20260817). Same refresh policy as the hook shims.
+    const cardCli = join(root, 'bin', 'hive-card');
+    writeFileSync(cardCli, HIVE_CARD_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(cardCli, 0o755);
     // The bundled-node launcher every shim above is invoked through — MUST be
     // written before any hook installer runs (they probe for it).
     this.writeNodeLauncher();
@@ -2895,6 +2902,37 @@ export class HiveManager {
 /** The '## HIRING AGENTS' section appended to COMMANDS.md — the two spawn
  *  paths: ephemeral spawn-requests workers (god-runnable from Bash) vs
  *  human-only persistent hires (Add Agent modal / voice verb). */
+const HIVE_CARD_MD = `## HIVE-CARD — writing the kanban (every agent)
+
+> Generated from \`COMMANDS_MD\` in the harness source — manual edits to this file are wiped on the next bootstrap.
+
+tasks.json is SHARED — **never hand-edit it** (a bare rewrite or a stale
+read-modify-write can clobber a concurrent writer's update). Use the
+\`hive-card\` CLI from \`$HIVE_ROOT/bin/\` — schema-checked and ATOMIC (tempfile
++ rename, exclusive lock), available in every agent pane:
+
+**Card work for yourself** (e.g. the operator says "card it" in your window):
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-card" add --title "Fix the flaky login test" --status doing --notes "seen twice on CI"
+# → prints the new card id, e.g. agent-fix-the-flaky-login-test-2026-08-17
+\`\`\`
+
+- \`--title\` (required), \`--status todo|doing\` (required); \`--notes\` optional.
+- \`--assignee\` defaults to your \`$AGENT_ID\`; the card's \`origin\` is 'agent'.
+- Card work for SOMEONE ELSE is god's dispatch job — message god instead.
+
+**Keep your card's status current** (the ledger is how the floor sees you):
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-card" status <card-id> doing    # picked it up
+"$HIVE_ROOT/bin/hive-card" status <card-id> blocked  # waiting on something
+"$HIVE_ROOT/bin/hive-card" status <card-id> done     # verifiably complete
+\`\`\`
+
+Both subcommands validate before writing and refuse an unparseable ledger
+instead of clobbering it. Errors explain themselves on stderr (exit 1).`;
+
 const HIRING_AGENTS_MD = `## HIRING AGENTS
 
 > Generated from \`COMMANDS_MD\` in the harness source — manual edits to this file are wiped on the next bootstrap.
@@ -3106,7 +3144,7 @@ export function renderCommandsMd(integrationMode: IntegrationMode = 'god'): stri
     }
     lines.push('');
   }
-  lines.push(HIRING_AGENTS_MD, CARD_SESSIONS_MD, KITTY_SATELLITE_MD);
+  lines.push(HIVE_CARD_MD, HIRING_AGENTS_MD, CARD_SESSIONS_MD, KITTY_SATELLITE_MD);
   // Integration mode (card integration-mode-toggle-20260817 + lean addendum):
   // 'workers'/'lean' append the worker-side merge+push policy; 'lean' adds the
   // lean-god posture section after it; 'god' (default) renders nothing extra —
@@ -3353,6 +3391,12 @@ There are two shared surfaces, both in the hive root:
 - \`board.md\` — the freeform narrative plan. The god agent is its sole scribe; others \`propose\` edits.
 - \`tasks.json\` — the structured task ledger (a kanban: \`todo / doing / blocked / done\`, with title,
   assignee, priority, deps). Keep the task you're working reflected in its status.
+  **NEVER hand-edit tasks.json** — it is shared and a bare rewrite can clobber a
+  concurrent writer. Use the \`$HIVE_ROOT/bin/hive-card\` CLI (schema-checked,
+  atomic): \`hive-card add --title <t> --status todo|doing [--notes <n>]\` cards
+  work for yourself (assignee defaults to your \`$AGENT_ID\`, origin 'agent');
+  \`hive-card status <id> <todo|doing|blocked|done>\` keeps your card current.
+  See COMMANDS.md § HIVE-CARD.
 
 ## Guardrails: circuit breaker & token budgets
 A circuit breaker watches every agent for runaway behavior (looping on the same tool, error storms,
@@ -3383,6 +3427,166 @@ searchable MemPalace and you have the \`mempalace\` CLI:
 
 Your \`memory.md\` is mined into the palace automatically, so the durable facts you
 write there become searchable by every agent. You don't run \`mine\` yourself.
+`;
+
+// ─── hive-card CLI (written to <hive>/bin/hive-card) ─────────────────────────
+// Schema-checked, ATOMIC kanban writes for agents: the only sanctioned way for
+// a worker to touch tasks.json (never hand-edit). Read-modify-write under an
+// exclusive O_EXCL lock (stale takeover, same pattern as the usage cache in
+// HOOK_SHIM); the payload lands in a same-dir tempfile and renames onto
+// tasks.json, so readers never parse a half-written ledger.
+const HIVE_CARD_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+const ADD_STATUSES = ['todo', 'doing'];
+const ALL_STATUSES = ['todo', 'doing', 'blocked', 'done'];
+
+function fail(msg) { throw new Error(msg); }
+function usage() {
+  fail([
+    'usage:',
+    '  hive-card add --title <t> --status todo|doing [--notes <n>] [--assignee <id>]',
+    '  hive-card status <id> <todo|doing|blocked|done>',
+  ].join('\\n'));
+}
+
+const root = process.env.HIVE_ROOT;
+if (!root) {
+  process.stderr.write('hive-card: HIVE_ROOT is not set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+const ledgerPath = path.join(root, 'tasks.json');
+const lockPath = ledgerPath + '.lock';
+
+function sleepMs(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+
+function parseFlags(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i++) {
+    let a = argv[i];
+    if (a.indexOf('--') !== 0) fail('unexpected argument: ' + a + ' (flags look like --title <value>)');
+    a = a.slice(2);
+    let v;
+    const eq = a.indexOf('=');
+    if (eq >= 0) { v = a.slice(eq + 1); a = a.slice(0, eq); }
+    else { v = argv[++i]; }
+    if (v === undefined) fail('missing value for --' + a);
+    out[a] = v;
+  }
+  return out;
+}
+
+function slug(title) {
+  const s = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+  return s || 'task';
+}
+
+function readLedger() {
+  if (!fs.existsSync(ledgerPath)) return { tasks: [] };
+  let data;
+  try { data = JSON.parse(fs.readFileSync(ledgerPath, 'utf8')); }
+  catch (_) { fail('tasks.json is not parseable JSON — refusing to write; fix or restore it first.'); }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.tasks)) {
+    fail('tasks.json has an unexpected shape (want {"tasks": [...]}) — refusing to write.');
+  }
+  return data;
+}
+
+function writeLedger(data) {
+  const tmp = ledgerPath + '.tmp-' + process.pid + '-' + Date.now();
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, ledgerPath);
+}
+
+// Exclusive lock across concurrent writers: O_EXCL create + stale takeover.
+// The rename above already makes single writes atomic for READERS; the lock
+// stops two read-modify-writes from clobbering each other's cards.
+function withLock(fn) {
+  for (let i = 0; i < 200; i++) {
+    try {
+      const st = fs.statSync(lockPath);
+      // A lock older than 10s is abandoned (crashed holder) — take it over.
+      if (Date.now() - st.mtimeMs > 10000) { try { fs.unlinkSync(lockPath); } catch (_) {} }
+    } catch (_) {}
+    let held = false;
+    try { fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' }); held = true; }
+    catch (_) { sleepMs(25); continue; }
+    if (held) {
+      try { return fn(); }
+      finally { try { fs.unlinkSync(lockPath); } catch (_) {} }
+    }
+  }
+  fail('could not acquire the tasks.json lock — another writer seems stuck.');
+}
+
+function cmdAdd(argv) {
+  const flags = parseFlags(argv);
+  for (const k of Object.keys(flags)) {
+    if (['title', 'status', 'notes', 'assignee'].indexOf(k) < 0) fail('unknown flag --' + k);
+  }
+  const title = (flags.title || '').trim();
+  if (!title) fail('--title is required and must be non-empty.');
+  if (ADD_STATUSES.indexOf(flags.status) < 0) {
+    fail('--status must be todo or doing (got: ' + (flags.status === undefined ? 'none' : flags.status) + ').');
+  }
+  let assignee;
+  if (flags.assignee !== undefined) {
+    assignee = flags.assignee.trim();
+    if (!assignee) fail('--assignee must be non-empty when given.');
+  } else {
+    assignee = (process.env.AGENT_ID || '').trim();
+  }
+  let id = '';
+  withLock(function () {
+    const data = readLedger();
+    const base = 'agent-' + slug(title) + '-' + new Date().toISOString().slice(0, 10);
+    id = base;
+    for (let n = 2; data.tasks.some((t) => t && t.id === id); n++) id = base + '-' + n;
+    const card = {
+      id: id,
+      title: title,
+      status: flags.status,
+      dependsOn: [],
+      priority: 3,
+      createdAt: new Date().toISOString(),
+      origin: 'agent',
+    };
+    if (flags.notes && flags.notes.trim()) card.description = flags.notes.trim();
+    if (assignee) card.assignee = assignee;
+    data.tasks.push(card);
+    writeLedger(data);
+  });
+  process.stdout.write(id + '\\n');
+}
+
+function cmdStatus(argv) {
+  if (argv.length !== 2) usage();
+  const cardId = argv[0];
+  const next = argv[1];
+  if (ALL_STATUSES.indexOf(next) < 0) {
+    fail('status must be one of: ' + ALL_STATUSES.join(', ') + ' (got: ' + next + ').');
+  }
+  withLock(function () {
+    const data = readLedger();
+    const card = data.tasks.find((t) => t && t.id === cardId);
+    if (!card) fail('no card with id "' + cardId + '" in tasks.json.');
+    card.status = next;
+    writeLedger(data);
+  });
+  process.stdout.write(cardId + ' -> ' + next + '\\n');
+}
+
+try {
+  const cmd = process.argv[2];
+  if (cmd === 'add') cmdAdd(process.argv.slice(3));
+  else if (cmd === 'status') cmdStatus(process.argv.slice(3));
+  else usage();
+} catch (e) {
+  process.stderr.write('hive-card: ' + (e && e.message ? e.message : String(e)) + '\\n');
+  process.exit(1);
+}
 `;
 
 // ─── cth-hook shim (written to <hive>/bin/cth-hook.cjs) ──────────────────────
