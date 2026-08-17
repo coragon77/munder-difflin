@@ -4890,6 +4890,18 @@ ipcMain.handle('telemetry:snapshot', () => ({
           ts: Date.now(),
         }))
     : [],
+  // Waiting ≠ idle, display layer (card agent-waiting-vs-idle-display--2026-
+  // 08-17): the pending-work census for the renderer's badge derivation. The
+  // hook-event push (Stop carries pendingWork) covers the live path; this
+  // snapshot is the reload/boot backfill AND the TTL decay — countFor() reads
+  // 0 again once a census goes stale, so a waiting badge self-heals to idle.
+  pending: hive.enabled()
+    ? Object.fromEntries(
+        Object.entries(hive.registry().agents)
+          .filter(([, a]) => !a.archived && !a.retired)
+          .map(([id]) => [id, pendingWork.countFor(id)]),
+      )
+    : {},
 }));
 
 // ─── IPC: circuit-breaker state (Lane A #6 policy → this lane's avatars/meter) ─

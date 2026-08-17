@@ -492,9 +492,15 @@ export function useHive(config: HarnessConfig | null): void {
               status: 'waiting',
               action: `waiting (${waiting} background task${waiting === 1 ? '' : 's'})`,
               carrying: undefined,
+              pending: waiting,
             });
           } else {
-            updateAgent(e.agentId, { status: 'idle', action: 'idle', carrying: undefined });
+            updateAgent(e.agentId, {
+              status: 'idle',
+              action: 'idle',
+              carrying: undefined,
+              pending: 0,
+            });
           }
         }
       } else if (e.event === 'Notification' && !breakerArmed) {
@@ -659,6 +665,36 @@ export function useHive(config: HarnessConfig | null): void {
         }
       }
     }, QUIESCE_POLL_MS);
+    return () => clearInterval(iv);
+  }, [config?.onboardingComplete]);
+
+  // 2f) PENDING-WORK CENSUS BACKFILL (waiting ≠ idle, card agent-waiting-vs-
+  //     idle-display--2026-08-17). The Stop hook event pushes the count live,
+  //     but a reloaded renderer starts with none — and a waiting agent would
+  //     read idle until its NEXT settle. Poll telemetry:snapshot (main folds
+  //     pendingWork.countFor in, TTL included) and mirror the count onto
+  //     Agent.pending. Display-ONLY: the badge derivation (statusLabel.ts)
+  //     consumes it at render; store status (and with it the idle-gated
+  //     delivery paths) is untouched by this poll. Writes only on change so a
+  //     quiet floor costs one IPC round trip, not a per-agent store churn.
+  useEffect(() => {
+    if (!config?.onboardingComplete) return;
+    const PENDING_POLL_MS = 15_000;
+    const sync = async (): Promise<void> => {
+      try {
+        const snap = await window.cth.telemetrySnapshot?.();
+        if (!snap?.pending) return;
+        const { agents, updateAgent } = useStore.getState();
+        for (const a of agents) {
+          const n = snap.pending[a.id] ?? 0;
+          if ((a.pending ?? 0) !== n) updateAgent(a.id, { pending: n });
+        }
+      } catch {
+        /* main not ready — next tick retries */
+      }
+    };
+    void sync();
+    const iv = setInterval(() => void sync(), PENDING_POLL_MS);
     return () => clearInterval(iv);
   }, [config?.onboardingComplete]);
 

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PixelPanel } from './PixelPanel';
 import { PixelBadge, type StatusKind } from './PixelBadge';
+import { waitingBadge } from '../statusLabel';
 import { useHasTerminalDraft } from './terminalPool';
 import { SpritePortrait } from './SpritePortrait';
 import { RealtimeMichaelToggle } from './RealtimeMichaelToggle';
@@ -14,6 +15,10 @@ export interface AgentCardProps {
   character: OfficeCharacterName;
   accent: AccentColorName;
   status: StatusKind;
+  /** Pending finite background-work census — >0 upgrades an idle badge to
+   *  'waiting (N background tasks)' (waiting ≠ idle, card
+   *  agent-waiting-vs-idle-display--2026-08-17). */
+  pending?: number;
   /** This agent's pty, if it has one. Only used to notice that the USER has
    *  unsent text on its prompt — which holds the agent's queue, and otherwise
    *  looks identical to an idle agent with nothing to do. */
@@ -72,6 +77,7 @@ export function AgentCard({
   character,
   accent,
   status,
+  pending,
   ptyId,
   project,
   action,
@@ -94,6 +100,9 @@ export function AgentCard({
 }: AgentCardProps) {
   const [hover, setHover] = useState(false);
   const typing = useHasTerminalDraft(ptyId);
+  // Waiting ≠ idle: the census upgrades an idle badge to waiting (N) — but
+  // never past a stronger state (typing/working/…), which win by precedence.
+  const badge = waitingBadge(typing ? 'typing' : status, pending);
   // The god is always framed (stands out from the row); others only when selected.
   const framed = isGod || selected;
 
@@ -250,7 +259,7 @@ export function AgentCard({
               >
                 {name.toUpperCase()}
               </span>
-              <PixelBadge status={typing ? 'typing' : status} />
+              <PixelBadge status={badge.status} label={badge.label} />
             </div>
 
             {/* Context line: pure info — what it's DOING while working, WHERE

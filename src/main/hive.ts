@@ -2757,6 +2757,7 @@ export class HiveManager {
           lastTool?: string | null;
           lastActiveSecAgo?: number | null;
           inboxBacklog?: number;
+          pendingBackgroundWork?: number;
         }>;
         vacation?: unknown[];
         floor?: { maxAgents?: number; onFloor?: number; freeSeats?: number };
@@ -2804,6 +2805,14 @@ export class HiveManager {
             ? `active ${ago(a.lastActiveSecAgo)}`
             : 'no activity yet',
         ];
+        // Waiting ≠ idle (card agent-waiting-vs-idle-display--2026-08-17):
+        // census-settled with pending finite background work → say so, so god
+        // routes around (or watches) a waiting agent instead of reading idle.
+        if (typeof a.pendingBackgroundWork === 'number' && a.pendingBackgroundWork > 0) {
+          bits.push(
+            `waiting (${a.pendingBackgroundWork} background task${a.pendingBackgroundWork === 1 ? '' : 's'})`,
+          );
+        }
         if (a.tokens) bits.push(`${Math.round(a.tokens / 1000)}k tok`);
         if (a.usd) bits.push(`$${a.usd.toFixed(2)}`);
         if (a.inboxBacklog) bits.push(`inbox ${a.inboxBacklog}`);

@@ -84,3 +84,4 @@ test/hook-synthetic-gate.test.cjs
 test/hive-mail-cli.test.cjs
 test/agent-pane-gear-before-x.test.cjs
 test/recall-focus-steal.test.cjs
+test/waiting-label-display.test.cjs

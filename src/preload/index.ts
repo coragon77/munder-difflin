@@ -588,6 +588,9 @@ export interface TelemetrySnapshot {
   usage: AgentUsageSample[];
   spans: Record<string, ToolSpan[]>;
   breakers?: BreakerState[];
+  /** Pending finite background work per agent id (waiting ≠ idle display,
+   *  card agent-waiting-vs-idle-display--2026-08-17). */
+  pending?: Record<string, number>;
 }
 
 /** One captured user prompt from the SQLite command_history table. */

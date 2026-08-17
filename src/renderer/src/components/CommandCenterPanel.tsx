@@ -16,6 +16,7 @@ import { terminalInstanceKey } from './terminalRecovery';
 import { Icon } from './Icon';
 import { MemoryGraphPanel } from './MemoryGraphPanel';
 import { useFleetTelemetry } from '@/hooks/useTelemetry';
+import { waitingBadge } from '@/statusLabel';
 import { COMMAND_GROUPS } from '@shared/claudeCommands';
 import { useStore, triggerHistoryVisible, agentClassOf, type Agent } from '@/store/store';
 import { usePtyParser } from '@/hooks/usePtyParser';
@@ -972,7 +973,7 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                   {a.name}
                   {a.isGod ? ' (god)' : ''}
                 </button>
-                <PixelBadge status={armed ? 'looping' : a.status} />
+                <PixelBadge {...waitingBadge(armed ? 'looping' : a.status, a.pending)} />
                 {armed && (
                   <span title={breaker?.reason} style={{ color: 'var(--cth-coral)', fontSize: 12 }}>
                     ⚠

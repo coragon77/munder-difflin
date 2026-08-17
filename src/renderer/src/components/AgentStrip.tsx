@@ -167,6 +167,7 @@ export function AgentStrip({ config }: AgentStripProps) {
             character={a.character}
             accent={a.accent}
             status={a.status}
+            pending={a.pending}
             ptyId={a.ptyId}
             project={a.project}
             action={a.action}

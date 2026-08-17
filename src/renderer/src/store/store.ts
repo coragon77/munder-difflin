@@ -52,6 +52,13 @@ export interface Agent {
   note?: string;
   status: StatusKind;
   action: string;
+  /** Pending finite background-work census (waiting ≠ idle, card
+   *  agent-waiting-vs-idle-display--2026-08-17): 0/undefined = truly idle,
+   *  >0 = settled but WAITING on that many background tasks. Volatile — fed
+   *  live by the Stop hook event and backfilled from telemetry:snapshot so a
+   *  reload keeps the waiting badge honest. Never a status authority: the
+   *  badge derivation (statusLabel.ts) reads it at render time only. */
+  pending?: number;
   progress: number;
   currentStation?: StationKind;
   carrying?: ToolKind;
@@ -510,6 +517,7 @@ function persistAgents(agents: Agent[], selectedId: string | null): void {
 const VOLATILE_AGENT_FIELDS = new Set<keyof Agent>([
   'status',
   'action',
+  'pending',
   'progress',
   'currentStation',
   'carrying',
