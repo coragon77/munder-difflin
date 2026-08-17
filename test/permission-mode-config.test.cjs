@@ -78,7 +78,7 @@ test('god co-terminal defaults to Claude Auto, not bypass', () => {
     assert.equal(file, 'claude');
     assert.deepEqual(
       args,
-      ['--permission-mode', 'auto'],
+      ['--permission-mode', 'auto', '--disallowedTools', 'AskUserQuestion'],
       'the satellite god mirrors the in-app god default (Claude Auto)',
     );
   });
@@ -91,7 +91,12 @@ test('god co-terminal respects a typed --permission-mode, never doubles', () => 
       JSON.stringify({ defaultCommand: 'claude --permission-mode acceptEdits' }),
     );
     const { args } = godCommand();
-    assert.deepEqual(args, ['--permission-mode', 'acceptEdits']);
+    assert.deepEqual(args, [
+      '--permission-mode',
+      'acceptEdits',
+      '--disallowedTools',
+      'AskUserQuestion',
+    ]);
   });
 });
 
@@ -194,12 +199,12 @@ test('god co-terminal: registry god bypass => bypass flag, not Claude Auto', () 
 
 test('god co-terminal: no registry record => unchanged Claude-Auto default', () => {
   const { args } = withGodRegistry({});
-  assert.deepEqual(args, ['--permission-mode', 'auto']);
+  assert.deepEqual(args, ['--permission-mode', 'auto', '--disallowedTools', 'AskUserQuestion']);
 });
 
 test('god co-terminal: registry stored default mode => no flag at all', () => {
   const { args } = withGodRegistry({ permissionMode: 'default' });
-  assert.deepEqual(args, []);
+  assert.deepEqual(args, ['--disallowedTools', 'AskUserQuestion']);
 });
 
 test('god co-terminal: a typed --permission-mode beats the registry record', () => {
@@ -207,7 +212,12 @@ test('god co-terminal: a typed --permission-mode beats the registry record', () 
     { permissionMode: 'bypass' },
     'claude --permission-mode acceptEdits',
   );
-  assert.deepEqual(args, ['--permission-mode', 'acceptEdits']);
+  assert.deepEqual(args, [
+    '--permission-mode',
+    'acceptEdits',
+    '--disallowedTools',
+    'AskUserQuestion',
+  ]);
 });
 
 test('resolution: stored mode wins; legacy agents fall back to Claude Auto, never bypass', () => {
@@ -245,7 +255,14 @@ test('god co-terminal resolves the engine binary through the login-shell resolve
     writeFileSync(cfgPath, JSON.stringify({ defaultCommand: 'claude --model sonnet' }));
     const { file, args, cwd } = godCommand(() => '/nvm/versions/node/v24/bin/claude');
     assert.equal(file, '/nvm/versions/node/v24/bin/claude');
-    assert.deepEqual(args, ['--model', 'sonnet', '--permission-mode', 'auto']);
+    assert.deepEqual(args, [
+      '--model',
+      'sonnet',
+      '--permission-mode',
+      'auto',
+      '--disallowedTools',
+      'AskUserQuestion',
+    ]);
     assert.equal(cwd, null, 'no harnessHome in config → no god cwd');
   });
 });

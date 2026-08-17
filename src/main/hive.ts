@@ -1596,6 +1596,11 @@ export class HiveManager {
         : 'For anything ambiguous, cross-cutting, or needing sign-off, address a message to "god".';
     const guardrailsLine =
       'Guardrails: a circuit breaker watches the floor — a "Circuit breaker: steer/constrain" message means you are looping or overspending, so STOP repeating, summarize what you tried, and follow it. Be token-frugal (a floor-wide or per-agent token budget can pause you). The shared plan has two parts: board.md (freeform; god is the sole scribe) and tasks.json (structured kanban — todo/doing/blocked/done).';
+    // QUESTION ROUTING (card block-askuserquestion-20260817): mode-independent
+    // — applies to every agent, god included (the tool deny at spawn is global
+    // too). One sentence; volatile-free (prompt-cache invariant holds).
+    const questionRoutingLine =
+      'QUESTIONS TO THE HUMAN: never a question tool — AskUserQuestion is denied at spawn because its modal cannot be answered from outside your pane; ask in your pane chat (the operator reads it) or on your card via humanQA (the ASK ME board), and answers arrive as inbox mail.';
     // Operator authorization for subagent skill execution (card
     // sdd-authorization-switch-20260816). The claude CLI stock prompt forbids
     // the AgentTool "unless the user requested it"; this line is the operator's
@@ -1633,6 +1638,7 @@ export class HiveManager {
       '4. At the END of a task, append what you learned to memory.md so future-you remembers.',
       monitorLine,
       guardrailsLine,
+      questionRoutingLine,
       integrationLine,
       sddAuthzLine,
       memoryLine,

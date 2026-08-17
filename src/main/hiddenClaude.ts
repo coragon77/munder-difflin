@@ -123,7 +123,15 @@ export function runHiddenClaude(
 
     const binary = (opts.command || 'claude').trim().split(/\s+/)[0] || 'claude';
     const exe = resolveCommand(binary);
-    const disallowed = opts.disallowedTools ?? ['Edit', 'Write', 'NotebookEdit'];
+    const disallowed = opts.disallowedTools ?? [
+      'Edit',
+      'Write',
+      'NotebookEdit',
+      // Same rule as pane spawns (card block-askuserquestion-20260817): a
+      // question modal in a hidden session answers nobody and burns the
+      // timeout — questions belong to the caller, not the hidden session.
+      'AskUserQuestion',
+    ];
     const addDirs = (opts.addDirs ?? []).filter((d) => d && existsSync(d));
 
     const args: string[] = [

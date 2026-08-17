@@ -28,6 +28,7 @@ import { join } from 'node:path';
 import { resolveCommand } from './shellEnv';
 import {
   DEFAULT_HIRE_PERMISSION_MODE,
+  disallowedToolsArgs,
   permissionModeArgs,
   type HirePermissionMode,
 } from '../shared/agentProvider';
@@ -132,6 +133,13 @@ export function godCommand(resolve: (command: string) => string = resolveCommand
       parts.push(
         ...permissionModeArgs(parts.join(' '), 'claude', godMode ?? DEFAULT_HIRE_PERMISSION_MODE),
       );
+    }
+    // Same absolute deny as every other claude spawn (card
+    // block-askuserquestion-20260817): god's satellite co-terminal must not
+    // modal either — an unattended pane nobody can answer. Idempotent against
+    // a config defaultCommand that already carries the deny.
+    if (parts[0] === 'claude') {
+      parts.push(...disallowedToolsArgs(parts.join(' '), 'claude'));
     }
     // Claude at the hive root finds the god's memory/board/inbox via its cwd.
     const godCwd = hive ? join(hive, 'agents', 'god') : null;

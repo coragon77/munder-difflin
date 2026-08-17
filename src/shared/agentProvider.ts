@@ -642,6 +642,36 @@ export function permissionModeArgs(
   return present ? [] : tokens;
 }
 
+/** AskUserQuestion must never render in a harness pane: its modal blocks
+ *  the session and no harness mechanism can answer it from outside the pane
+ *  (live precedent 2026-08-15: a worker froze mid-merge at a skill-triggered
+ *  AskUserQuestion). claude-only: deny the tool at spawn via
+ *  `--disallowedTools` — verified against the installed claude 2.1.221 help
+ *  (variadic, comma/space-separated); deny rules apply in EVERY permission
+ *  mode, composing with --dangerously-skip-permissions (hiddenClaude already
+ *  runs exactly that pair live). The block is ABSOLUTE: an operator-typed
+ *  deny list is preserved and the AskUserQuestion deny is still appended —
+ *  the CLI concatenates duplicate variadic options — so only an ALREADY
+ *  present AskUserQuestion deny (either spelling, comma form included)
+ *  suppresses the append, which is also what keeps the missing-CLI
+ *  install-relaunch re-entry (same opts object) from doubling it. Empty for
+ *  every other provider (no such tool to block). (card
+ *  block-askuserquestion-20260817) */
+export function disallowedToolsArgs(
+  command: string,
+  provider: AgentProvider | undefined,
+): string[] {
+  if (!isClaudeProvider(inferAgentProvider(command, provider))) return [];
+  const tokens = tokenizeCommand(command);
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] !== '--disallowedTools' && tokens[i] !== '--disallowed-tools') continue;
+    for (let j = i + 1; j < tokens.length && !tokens[j].startsWith('--'); j++) {
+      if (tokens[j].split(',').includes('AskUserQuestion')) return [];
+    }
+  }
+  return ['--disallowedTools', 'AskUserQuestion'];
+}
+
 export function isClaudeProvider(provider: AgentProvider | undefined): boolean {
   return provider === 'claude';
 }

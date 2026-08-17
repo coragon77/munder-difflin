@@ -344,8 +344,11 @@ export class MemoryReflector {
       model: CONDENSE_MODEL,
       cwd: home,
       command: this.getCommand(),
-      // Pure text transform — must never touch the repo or shell out.
-      disallowedTools: ['Edit', 'Write', 'NotebookEdit', 'Bash'],
+      // Pure text transform — must never touch the repo or shell out. The
+      // AskUserQuestion deny is the same absolute rule as pane spawns (card
+      // block-askuserquestion-20260817) — this explicit list overrides
+      // hiddenClaude's default, so it must carry the deny itself.
+      disallowedTools: ['Edit', 'Write', 'NotebookEdit', 'Bash', 'AskUserQuestion'],
       env: this.getMemoryEnv(),
       timeoutMs: DEFAULT_TIMEOUT_MS,
     });

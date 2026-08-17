@@ -166,6 +166,7 @@ import {
   nonInteractiveEnvForProvider,
   commandCarriesModel,
   permissionModeArgs,
+  disallowedToolsArgs,
   prependCommandTail,
   providerPreset,
   installInfoForProvider,
@@ -3186,6 +3187,20 @@ async function spawnAgentCore(
       permissionMode,
     );
     if (autoArgs.length) opts.args = [...(opts.args ?? []), ...autoArgs];
+  }
+  // ── ASKUSERQUESTION DENY ON ARGV (card block-askuserquestion-20260817) ────
+  // claude-only, god included: AskUserQuestion's modal blocks the pane and no
+  // harness mechanism can answer it (a worker froze mid-merge at one,
+  // 2026-08-15). Deny rules survive every permission mode, so this composes
+  // with the mode flags above. Rides opts.args like they do (the only channel
+  // that reaches argv — 66f564e), and everything appended LATER for claude is
+  // flag-led (--append-system-prompt, --settings, --model, --max-turns,
+  // --resume), so the variadic --disallowedTools swallows nothing. Idempotent
+  // across the install-relaunch re-entry: disallowedToolsArgs sees the
+  // command+args join and refuses to double an existing AskUserQuestion deny.
+  {
+    const denyArgs = disallowedToolsArgs([opts.command, ...(opts.args ?? [])].join(' '), provider);
+    if (denyArgs.length) opts.args = [...(opts.args ?? []), ...denyArgs];
   }
   // ── Missing engine CLI → run its installer visibly (pre-spawn) ───────────────
   // If the agent's engine binary (claude/codex/…) isn't installed, spawning it

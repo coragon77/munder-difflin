@@ -59,3 +59,4 @@ test/realtime-roster-words.test.cjs
 test/vacation-renderer-reconcile.test.cjs
 test/hire-flag-tail.test.cjs
 test/integration-mode-toggle.test.cjs
+test/block-askuserquestion.test.cjs
