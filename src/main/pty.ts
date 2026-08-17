@@ -71,6 +71,12 @@ interface PtySession {
   proc: pty.IPty;
   cwd: string;
   command: string;
+  /** Recent raw output (bounded ring, newest tail) — the replay source for a
+   *  kitty detach (card harness-detach-to-kitty-20260817): the client gets
+   * these bytes before the live stream, so the window opens with context
+   * instead of a blank grid. Full-screen TUIs repaint anyway; the tail buys
+   * scrollback history for line-oriented programs. */
+  outputTail: string;
   /** The window (webContents) that spawned this PTY and should receive its
    *  output. Multi-window: each floor owns its own terminals, so `pty:data:<id>`
    *  / `pty:exit:<id>` route ONLY here — never broadcast — so one floor's stream
@@ -86,6 +92,10 @@ interface PtySession {
   /** True after the child has emitted at least one frame. Automation waits for
    *  this before typing, so startup prompts cannot outrun the TUI subscription. */
   hasOutput: boolean;
+  /** Optional main-side output tap — the kitty detach bridge (card
+   *  harness-detach-to-kitty-20260817) installs one while its window is live so
+   *  pty bytes also flow to the socket. `null`/absent = no tap. */
+  outputTap?: ((data: string) => void) | null;
 }
 
 export interface SpawnOptions {
@@ -136,6 +146,10 @@ export function buildCmdCommandLine(resolved: string, args: string[]): string {
   const inner = [resolved, ...args].map(quoteToken).join(' ');
   return `/d /s /c "${inner}"`;
 }
+
+/** Replay ring cap per session (~48KB) — enough scrollback context for the
+ *  kitty detach replay, flat memory for any chatter rate. */
+const OUTPUT_TAIL_MAX = 48 * 1024;
 
 export class PtyManager {
   private sessions = new Map<string, PtySession>();
@@ -404,6 +418,7 @@ export class PtyManager {
         proc,
         cwd: opts.cwd,
         command: resolved,
+        outputTail: '',
         lastOutputAt: Date.now(),
         hasOutput: false,
         owner,
@@ -416,6 +431,11 @@ export class PtyManager {
         if (this.sessions.get(opts.id) !== session) return;
         session.hasOutput = true;
         session.lastOutputAt = Date.now();
+        // Bounded tail for the detach replay — cap keeps memory flat no matter
+        // how chatty the child is. ponytail: plain string concat + slice; a
+        // proper ring buffer if this ever shows up in a profile.
+        session.outputTail = (session.outputTail + data).slice(-OUTPUT_TAIL_MAX);
+        session.outputTap?.(data);
         // Route to the session's owner window (multi-window owner routing).
         this.safeSend(`pty:data:${opts.id}`, data, session.owner);
       });
@@ -518,6 +538,18 @@ export class PtyManager {
   idleFor(id: string): number | undefined {
     const s = this.sessions.get(id);
     return s ? Date.now() - s.lastOutputAt : undefined;
+  }
+
+  /** The bounded recent-output tail — the detach bridge's replay source. */
+  outputTail(id: string): string {
+    return this.sessions.get(id)?.outputTail ?? '';
+  }
+
+  /** Install/remove the main-side output tap for a pty (the kitty detach
+   *  bridge while its window is live). Null removes. Best-effort. */
+  setOutputTap(id: string, fn: ((data: string) => void) | null): void {
+    const s = this.sessions.get(id);
+    if (s) s.outputTap = fn;
   }
 
   /** Bulk-kill every PTY for app quit / reset. This is wholesale shutdown, not

@@ -51,6 +51,13 @@ export interface AgentCardProps {
   /** Toggles the pin — when set (human-class workers only), the note row gets
    *  the pin toggle beside the class chip. God/intern cards pass nothing. */
   onTogglePin?: () => void;
+  /** Detach-to-kitty (harness-detach-to-kitty-20260817): true while this
+   *  worker's chat is detached to a kitty window — the icon shows the
+   *  REATTACH affordance. */
+  detached?: boolean;
+  /** Detach/reattach toggle — when set (human-class workers with a live pane
+   *  only), the note row gets an icon-only detach button beside the pin. */
+  onToggleDetach?: () => void;
 }
 
 const fmtK = (n: number): string => `${Math.round(n / 1000)}k`;
@@ -82,6 +89,8 @@ export function AgentCard({
   onEditNote,
   pinned,
   onTogglePin,
+  detached,
+  onToggleDetach,
 }: AgentCardProps) {
   const [hover, setHover] = useState(false);
   const typing = useHasTerminalDraft(ptyId);
@@ -381,6 +390,46 @@ export function AgentCard({
                     }}
                   >
                     <Icon name={pinned ? 'pin' : 'pin-outline'} />
+                  </span>
+                )}
+                {/* Detach-to-kitty (harness-detach-to-kitty-20260817) — icon-only,
+                    beside the pin: while detached the pane greys out and a kitty
+                    window carries the SAME live chat. Same quiet-until-hover
+                    posture as the ✎/pin. */}
+                {onToggleDetach && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleDetach();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onToggleDetach();
+                      }
+                    }}
+                    title={
+                      detached
+                        ? `${name} is in a kitty window — click to reattach here`
+                        : `Detach ${name} to a kitty window — the pane stays live but read-only`
+                    }
+                    aria-label={`toggle kitty detach for ${name}`}
+                    style={{
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      color: detached
+                        ? 'var(--cth-ink-900)'
+                        : hover
+                          ? 'var(--cth-ink-500)'
+                          : 'var(--cth-ink-300)',
+                    }}
+                  >
+                    <Icon name="detach" />
                   </span>
                 )}
                 {classChip}

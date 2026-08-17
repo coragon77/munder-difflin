@@ -30,6 +30,7 @@ import {
 } from 'node:fs';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { join, resolve, sep, basename, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
 import { request as httpsRequest } from 'node:https';
 import { PtyManager, type SpawnOptions } from './pty';
 import { resolveCommand as resolveCliCommand } from './shellEnv';
@@ -108,6 +109,7 @@ import {
   writeTelegramEnv,
 } from './telegram';
 import { startKittySatellite, kittySocketPath, kittyBinPath, godCommand } from './kittySatellite';
+import { DetachBridge, kittyLaunchPlan, sweepDetachSockets } from './detachBridge';
 import {
   WebhookServer,
   type WebhookDispatch,
@@ -200,6 +202,78 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const ptyManager = new PtyManager();
+
+// ── Detach-to-kitty bridge (card harness-detach-to-kitty-20260817) ──────────
+// The pane is only a VIEW; the pty lives here. Detach opens a socket bridge
+// onto the live pty + a kitty window running resources/md-detach-client.cjs
+// under ELECTRON_RUN_AS_NODE. Deps are the live singletons; the bridge itself
+// is electron-free and pinned by test/detach-bridge.test.cjs.
+
+/** The bundled client script — same packaged/dev resolution as the other
+ *  resources/ helpers (extraResources in electron-builder.yml). */
+function detachClientScript(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'md-detach-client.cjs')
+    : join(app.getAppPath(), 'resources', 'md-detach-client.cjs');
+}
+
+const detachBridge = new DetachBridge({
+  socketDir: join(tmpdir(), 'md-detach'),
+  connectTimeoutMs: 10_000,
+  ptyExists: (id) => ptyManager.list().some((p) => p.id === id),
+  ptyWrite: (id, data) => {
+    ptyManager.write(id, data);
+  },
+  ptyResize: (id, cols, rows) => {
+    ptyManager.resize(id, cols, rows);
+  },
+  ptyOutputTail: (id) => ptyManager.outputTail(id),
+  tapOutput: (id, fn) => {
+    ptyManager.setOutputTap(id, fn);
+  },
+  launchKitty: ({ dataSock, ctlSock, title }) => {
+    const kittyBin = kittyBinPath();
+    const socket = kittySocketPath();
+    const plan = kittyLaunchPlan({
+      kittySocketExists: existsSync(socket),
+      kittySocket: socket,
+      kittyBin,
+      execPath: process.execPath,
+      clientScript: detachClientScript(),
+      dataSock,
+      ctlSock,
+      title: `MD · ${title}`,
+    });
+    if (!plan.ok) return { ok: false, error: plan.error };
+    try {
+      const child = spawn(plan.file, plan.args, {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, ...plan.env },
+      });
+      child.unref();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+  notify: (e) => {
+    try {
+      const payload = e.error
+        ? { id: e.id, detached: e.detached, error: e.error }
+        : { id: e.id, detached: e.detached };
+      // Per-pty channel: the terminal pool's gate (terminals subscribe to
+      // their own id). Generic channel: the store mirror that drives the UI
+      // (grey veil, card icon) — one subscription for any pane.
+      liveWebContents()?.send(`pty:detached:${e.id}`, payload);
+      liveWebContents()?.send(`pty:reattached:${e.id}`, payload);
+      liveWebContents()?.send('pty:detachState', payload);
+    } catch {
+      /* window gone — state still holds main-side */
+    }
+  },
+  log: (m) => console.log('[detach]', m),
+});
 
 function runCodexDaemonCommand(
   executable: string,
@@ -3616,12 +3690,30 @@ async function spawnAgentCore(
 ipcMain.handle('pty:write', (_evt, id: string, data: string) => {
   if (typeof id !== 'string' || typeof data !== 'string')
     return { ok: false, error: 'invalid args' };
+  // NOTE: deliberately NOT gated on detach. Two input producers share this
+  // channel: the pane's xterm (USER keystrokes — already refused renderer-side
+  // by the pool's entry.detached gate, the single chokepoint every typed byte
+  // flows through) and automation (queue delivery, breaker, god's nudges) —
+  // the agent must stay FULLY LIVE while detached, and its effects are
+  // visible in the kitty window. Blocking here would wedge every queued
+  // message for a detached agent.
   return ptyManager.write(id, data);
 });
 ipcMain.handle('pty:resize', (_evt, id: string, cols: number, rows: number) => {
   if (typeof id !== 'string' || typeof cols !== 'number' || typeof rows !== 'number')
     return { ok: false, error: 'invalid args' };
+  // Same ownership rule: the ACTIVE view owns the winsize — kitty while
+  // detached, the pane after reattach.
+  if (detachBridge.isDetached(id)) return { ok: false, error: 'detached to kitty' };
   return ptyManager.resize(id, cols, rows);
+});
+ipcMain.handle('pty:detach', async (_evt, id: string, title: unknown) => {
+  if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
+  return detachBridge.detach(id, typeof title === 'string' && title.trim() ? title.trim() : id);
+});
+ipcMain.handle('pty:reattach', (_evt, id: string) => {
+  if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
+  return detachBridge.reattach(id);
 });
 ipcMain.handle('pty:redraw', (_evt, id: string) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
@@ -3975,6 +4067,8 @@ ipcMain.handle('config:changeHome', async (_evt, payload: unknown) => {
   allowQuit = true;
   writeConfig({ harnessHome: newHome });
   try {
+    detachBridge.disposeAll();
+    sweepDetachSockets(join(tmpdir(), 'md-detach'));
     ptyManager.killAll();
   } catch (e) {
     console.error('[changeHome] killAll:', e);
@@ -4450,6 +4544,8 @@ function teardownAndQuit(): void {
   }
   console.log('[quit] pre-killAll, ptys:', ptyManager.list().length);
   try {
+    detachBridge.disposeAll();
+    sweepDetachSockets(join(tmpdir(), 'md-detach'));
     ptyManager.killAll();
   } catch (e) {
     console.error('[quit] killAll:', e);
@@ -4560,6 +4656,8 @@ ipcMain.handle('app:resetAll', () => {
     console.error('[reset] persist.close:', e);
   }
   try {
+    detachBridge.disposeAll();
+    sweepDetachSockets(join(tmpdir(), 'md-detach'));
     ptyManager.killAll();
   } catch (e) {
     console.error('[reset] killAll:', e);
@@ -6772,6 +6870,8 @@ app.on('before-quit', (e) => {
 app.on('window-all-closed', () => {
   console.log('[quit] window-all-closed, platform=', process.platform);
   if (process.platform !== 'darwin') {
+    detachBridge.disposeAll();
+    sweepDetachSockets(join(tmpdir(), 'md-detach'));
     ptyManager.killAll();
     app.quit();
     // Belt-and-braces: if the quit sequence wedges anywhere downstream (e.g. a

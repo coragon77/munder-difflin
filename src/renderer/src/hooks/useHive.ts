@@ -1088,10 +1088,17 @@ export function useHive(config: HarnessConfig | null): void {
       if (e?.id)
         useStore.getState().archiveAgent(e.id, { vacation: true, vacationSince: e.vacationSince });
     });
+    // Detach-to-kitty state mirror (harness-detach-to-kitty-20260817): main is
+    // the authority; the store slice drives the grey veil + card icon. The
+    // terminal pool subscribes per-pty itself — this is the UI-side mirror.
+    const offDetach = window.cth.onPtyDetachState?.((e) => {
+      if (e?.id) useStore.getState().setPtyDetached(e.id, !!e.detached);
+    });
     return () => {
       offSpawn?.();
       offArchive?.();
       offVacation?.();
+      offDetach?.();
     };
   }, [config?.onboardingComplete]);
 

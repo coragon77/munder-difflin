@@ -67,3 +67,5 @@ test/agent-edit-monitor.test.cjs
 test/icon-edit-persist.test.cjs
 test/hive-card-cli.test.cjs
 test/gear-vacation-archived.test.cjs
+test/detach-bridge.test.cjs
+test/detach-store.test.cjs

@@ -16,6 +16,7 @@ export function AgentStrip({ config }: AgentStripProps) {
   const agents = useStore((s) => s.agents);
   const restorableAgents = useStore((s) => s.restorableAgents);
   const selectedId = useStore((s) => s.selectedId);
+  const detachedPtyIds = useStore((s) => s.detachedPtyIds);
   const select = useStore((s) => s.select);
   const setAddAgentOpen = useStore((s) => s.setAddAgentOpen);
   const openTaskDetail = useStore((s) => s.openTaskDetail);
@@ -190,6 +191,19 @@ export function AgentStrip({ config }: AgentStripProps) {
                     // when main confirms the flag landed.
                     const res = await window.cth.hiveSetPinned(a.id, !a.pinned);
                     if (res.ok) updateAgent(a.id, { pinned: !a.pinned });
+                  }
+                : undefined
+            }
+            detached={a.ptyId ? detachedPtyIds.includes(a.ptyId) : false}
+            onToggleDetach={
+              a.ptyId && agentClassOf(a) === 'human'
+                ? () => {
+                    const ptyId = a.ptyId as string;
+                    if (detachedPtyIds.includes(ptyId)) {
+                      void window.cth.reattachPty(ptyId);
+                    } else {
+                      void window.cth.detachPty(ptyId, a.name);
+                    }
                   }
                 : undefined
             }
