@@ -281,6 +281,12 @@ interface State {
    *  mic button reactively (set by App on config load and by Settings on save). */
   freeflowEnabled: boolean;
   setFreeflowEnabled: (on: boolean) => void;
+  /** Mirror of config.workersEnabled (DEFAULT OFF — workers are superseded by
+   *  interns). Gates the workers tab in god's Command Center the way
+   *  freeflowEnabled gates the mic button; set by App on config load and by
+   *  Settings on save. */
+  workersEnabled: boolean;
+  setWorkersEnabled: (on: boolean) => void;
   /** Mirror of `!!config.groqApiKey` — boolean presence ONLY; the key value never
    *  enters the store. Lets the composer show the voice button disabled (with a
    *  "add a Groq key" tooltip) instead of hiding it. Set by App on config load and
@@ -949,6 +955,8 @@ export const useStore = create<State>((set) => ({
     })),
   freeflowEnabled: false,
   setFreeflowEnabled: (on) => set({ freeflowEnabled: on }),
+  workersEnabled: false,
+  setWorkersEnabled: (on) => set({ workersEnabled: on }),
   hasGroqKey: false,
   setHasGroqKey: (has) => set({ hasGroqKey: has }),
   hasOpenAiKey: false,

@@ -130,6 +130,13 @@ export interface HarnessConfig {
    *  floor (god excluded). Default 16 (Settings → Autonomy & Budgets);
    *  distinct from the headless-ephemeral maxConcurrentWorkers (main-only). */
   floorMaxAgents?: number;
+  /** Old ephemeral-worker system switch — DEFAULT OFF (workers are superseded
+   *  by interns on this floor). Gates non-persistent spawn-requests (main) and
+   *  the workers tab in god's pane (renderer). Mirrors src/main/config.ts. */
+  workersEnabled?: boolean;
+  /** Intern path switch — DEFAULT ON. Gates persistent:true spawn-requests.
+   *  Mirrors src/main/config.ts. */
+  internsEnabled?: boolean;
   circuitBreaker?: CircuitBreakerConfig;
   /** Enterprise Knowledge Graph (multimodal context for agents). Default OFF. */
   knowledgeGraph?: KnowledgeGraphConfig;

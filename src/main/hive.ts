@@ -3051,6 +3051,17 @@ vs **persistent named agents, which are human-only surfaces**.
   are REFUSED with a notice. \`fleet.json\`'s \`floor\` block shows the free
   seats.
 
+**The two switches — which path is allowed at all:**
+
+- \`workersEnabled\` (default **OFF**) — gates Path 1, the OLD ephemeral-worker
+  system: while off, non-persistent spawn-requests are REFUSED with a notice
+  naming this setting. Rationale: workers are superseded by interns on this
+  floor — use Path 3 instead. Only the operator can flip it (Settings →
+  Autonomy & Budgets, or voice, confirm tier).
+- \`internsEnabled\` (default **ON**) — gates Path 3: while off,
+  \`"persistent": true\` spawn-requests are REFUSED with a notice naming this
+  setting. Same surfaces to flip it.
+
 ### Path 1 — Ephemeral worker (god-runnable from Bash) ✅
 
 Drop a spawn-request JSON into \`$HIVE_ROOT/spawn-requests/\` (one file = one worker;
@@ -3087,7 +3098,8 @@ EOF
   this is \`true\`; set it ONLY on explicit operator instruction, never infer it).
 - **What happens** (main process, poll every 1.5s, queue concurrency = config
   \`maxConcurrentWorkers\` default 4; every spawn ALSO counts against the floor
-  cap \`floorMaxAgents\` — see "The two caps" above): validates → spawns \`worker-<id>\` via the shared core (\`ensureAgent\` →
+  cap \`floorMaxAgents\` — see "The two caps" above; and the whole path is gated
+  by \`workersEnabled\`, default OFF — see "The two switches"): validates → spawns \`worker-<id>\` via the shared core (\`ensureAgent\` →
   \`registry.json\` entry + \`agents/worker-<id>/\` + \`hive: register\` commit → PTY boots
   the CLI in \`cwd\`) → dispatches \`objective\` to its inbox \`from: god\`. Bad request /
   missing CLI → fast-fail, archived to \`.failed/\`, notice lands in god's inbox.
@@ -3113,7 +3125,8 @@ Respawning an existing registry agent after restart = the UI "restore team" flow
 ### Path 3 — Intern (persistent hire, standing floor agent) ✅
 
 A spawn-request with \`"persistent": true\` hires an INTERN — the OBSERVABLE
-variant of an ephemeral worker: same disposability, same one-task lifecycle,
+variant of an ephemeral worker (path gated by \`internsEnabled\`, default ON —
+see "The two switches" above): same disposability, same one-task lifecycle,
 but with a visible floor pane so the human can watch and talk to them.
 Persistence of the process is an implementation detail, not a promise of
 tenure. Interns are classified three ways so floor rules can target them:

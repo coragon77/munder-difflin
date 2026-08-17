@@ -277,6 +277,21 @@ export interface HarnessConfig {
    *  This is the HEADLESS-EPHEMERAL cap only — it never counts hires/interns on
    *  the floor; that ceiling is `floorMaxAgents` (see there). */
   maxConcurrentWorkers?: number;
+  /** Master switch for the OLD ephemeral-worker system (spawn-requests with
+   *  `persistent` unset/false). DEFAULT OFF — workers are superseded by interns
+   *  on this floor (operator order, card
+   *  agent-harness-workersenabled-d-2026-08-17): while off, non-persistent
+   *  spawn-requests fast-fail with an actionable error naming this setting, and
+   *  the workers tab in god's pane is hidden. Because DEFAULTS carries `false`
+   *  and `readConfig` merges over it, existing installs whose config.json
+   *  predates the field ALSO read off — the deliberate default asymmetry with
+   *  `internsEnabled`. */
+  workersEnabled?: boolean;
+  /** Master switch for the intern path (spawn-requests with
+   *  `persistent: true`). DEFAULT ON — while off, persistent spawn-requests
+   *  fast-fail with an actionable error naming this setting (same card as
+   *  `workersEnabled`). */
+  internsEnabled?: boolean;
   /** Physical workplaces on the office floor — the hard ceiling on hires +
    *  interns ON THE FLOOR at once (god excluded; the office ships 16 desks).
    *  Operator-downsizable (Settings → Autonomy & Budgets, 1..16). Enforced in
@@ -473,6 +488,12 @@ const DEFAULTS: HarnessConfig = {
   // (safe-readonly ON, write/secret OFF).
   mcpDefaults: defaultMcpDefaults(),
   maxConcurrentWorkers: 4,
+  // The spawn-switch asymmetry (card agent-harness-workersenabled-d-2026-08-17):
+  // the old ephemeral-worker system ships OFF (superseded by interns), interns
+  // ship ON. readConfig merges over these, so configs predating the fields
+  // resolve to exactly this.
+  workersEnabled: false,
+  internsEnabled: true,
   // The office ships 16 physical workplaces — the default floor ceiling.
   floorMaxAgents: 16,
   workerIdleTimeoutMinutes: 20,
@@ -621,6 +642,19 @@ function migrateTriggersV1(cfg: HarnessConfig): HarnessConfig {
     // migration retries on the next launch rather than on every single read.
     return cfg;
   }
+}
+
+/** Resolve the two spawn switches (card
+ *  agent-harness-workersenabled-d-2026-08-17) with their asymmetric defaults:
+ *  workers OFF unless explicitly `true`, interns ON unless explicitly `false`.
+ *  The spawn gate and any other consumer read through this so the defaults
+ *  can't drift — it also re-encodes them, so even a config that somehow missed
+ *  the DEFAULTS merge resolves to the shipped asymmetry. */
+export function spawnSwitches(cfg: Pick<HarnessConfig, 'workersEnabled' | 'internsEnabled'>): {
+  workers: boolean;
+  interns: boolean;
+} {
+  return { workers: cfg.workersEnabled === true, interns: cfg.internsEnabled !== false };
 }
 
 /** `floorMaxAgents` clamped into the office's physical range (1..16 workplaces);

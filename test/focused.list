@@ -77,3 +77,4 @@ test/agent-edit-pane.test.cjs
 test/floor-max-agents.test.cjs
 test/one-agent-per-directory.test.cjs
 test/worktree-isolation-refusal.test.cjs
+test/worker-intern-switches.test.cjs

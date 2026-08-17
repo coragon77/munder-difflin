@@ -105,11 +105,18 @@ export function CommandCenterPanel({
   // The rule itself lives in the store (`triggerHistoryVisible`) beside the two
   // mirrors it reads — a second copy here would drift from Settings.
   const showHistory = useStore(triggerHistoryVisible);
+  // The workers tab exists only while the old ephemeral-worker system is
+  // enabled (config workersEnabled, DEFAULT OFF — workers are superseded by
+  // interns). Same render-time gate pattern as trigger-history above.
+  const workersOn = useStore((s) => s.workersEnabled);
   // Never leave the panel parked on a tab that has just been hidden.
   useEffect(() => {
     if (!showHistory && tab === 'trigger-history') setTab('terminal');
-  }, [showHistory, tab]);
-  const visibleTabs = TABS.filter((t) => t.key !== 'trigger-history' || showHistory);
+    if (!workersOn && tab === 'workers') setTab('terminal');
+  }, [showHistory, workersOn, tab]);
+  const visibleTabs = TABS.filter(
+    (t) => (t.key !== 'trigger-history' || showHistory) && (t.key !== 'workers' || workersOn),
+  );
 
   // External tab requests (the office task board → 'tasks', the boss-room
   // calendar → 'triggers'). seq-keyed so clicking again re-opens the tab even
@@ -122,6 +129,7 @@ export function CommandCenterPanel({
     // Read the gate live rather than depending on it — as a dependency it would
     // re-fire a stale request the moment the tab appeared.
     if (key === 'trigger-history' && !triggerHistoryVisible(useStore.getState())) return;
+    if (key === 'workers' && !useStore.getState().workersEnabled) return;
     setTab(key);
   }, [ccTabRequest]);
   // A task-detail "assign" pre-fills the Floor dispatch box and jumps to it.

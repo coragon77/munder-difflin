@@ -164,6 +164,10 @@ const SETTING_POLICY: Record<
   godModel: { tier: 'confirm', type: 'string' },
   maxConcurrentWorkers: { tier: 'confirm', type: 'number', min: 1, max: 16 },
   floorMaxAgents: { tier: 'confirm', type: 'number', min: 1, max: 16 },
+  // Spawn switches (card agent-harness-workersenabled-d-2026-08-17) —
+  // behavior-changing like their siblings: which spawn paths exist at all.
+  workersEnabled: { tier: 'confirm', type: 'boolean' },
+  internsEnabled: { tier: 'confirm', type: 'boolean' },
   costCapTokens: { tier: 'confirm', type: 'number', min: 0, max: 1_000_000_000 },
   maxTurns: { tier: 'confirm', type: 'number', min: 1, max: 1000 },
   slackEnabled: { tier: 'confirm', type: 'boolean' },

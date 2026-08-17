@@ -111,6 +111,10 @@ export function App() {
       // Mirror the Free Flow flag into the store so the composer mic button shows
       // only when enabled (Settings keeps this in sync on save).
       useStore.getState().setFreeflowEnabled(!!c.freeflowEnabled);
+      // Mirror the workers switch so god's Command Center hides the workers tab
+      // when the old ephemeral-worker system is off (DEFAULT OFF — Settings keeps
+      // this in sync on save). `=== true`: a config predating the field reads off.
+      useStore.getState().setWorkersEnabled(c.workersEnabled === true);
       // Mirror boolean key-presence ONLY (never the key value) so the composer can
       // show the voice button disabled-with-tooltip when Free Flow is on but no
       // Groq key is set (Settings keeps this in sync on save).

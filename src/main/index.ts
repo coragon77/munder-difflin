@@ -41,6 +41,7 @@ import {
   writeConfig,
   resetConfig,
   normalizeFloorMaxAgents,
+  spawnSwitches,
   ensureHarnessHome,
   ensureClaudePermissionsAccepted,
   modelForRole,
@@ -5827,6 +5828,26 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   const objective = typeof raw.objective === 'string' ? raw.objective.trim() : '';
   if (!objective) {
     fail('missing "objective"');
+    return;
+  }
+
+  // Spawn switches (card agent-harness-workersenabled-d-2026-08-17): the old
+  // ephemeral-worker system is gated by `workersEnabled` (DEFAULT OFF — workers
+  // are superseded by interns on this floor), the intern path by
+  // `internsEnabled` (DEFAULT ON). Both refuse HERE, at the spawn-request door,
+  // before anything is spawned — the error names the setting so the operator
+  // (or god, re-dispatching as an intern) knows exactly what to do.
+  const switches = spawnSwitches(readConfig());
+  if (raw.persistent === true ? !switches.interns : !switches.workers) {
+    if (raw.persistent === true) {
+      fail(
+        'interns are disabled on this installation (config "internsEnabled" is off) — the operator can enable internsEnabled in Settings → Autonomy & Budgets',
+      );
+    } else {
+      fail(
+        'ephemeral workers are disabled on this installation (config "workersEnabled" is off, the default — workers are superseded by interns on this floor). Re-dispatch as an intern ("persistent": true), or the operator enables workersEnabled in Settings → Autonomy & Budgets',
+      );
+    }
     return;
   }
 

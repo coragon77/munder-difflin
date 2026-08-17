@@ -264,6 +264,34 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       setFloorCap(prev);
     }
   };
+  // Spawn switches (card agent-harness-workersenabled-d-2026-08-17):
+  // workersEnabled DEFAULT OFF — the old ephemeral-worker system is superseded
+  // by interns on this floor; internsEnabled DEFAULT ON. Both gate the
+  // spawn-request door in main; the workers flag is ALSO mirrored into the
+  // store so god's Command Center hides the workers tab live on flip.
+  const setWorkersEnabledStore = useStore((s) => s.setWorkersEnabled);
+  const [workersOn, setWorkersOn] = useState<boolean>(cfgX.workersEnabled === true);
+  const toggleWorkers = async () => {
+    const next = !workersOn;
+    setWorkersOn(next);
+    setWorkersEnabledStore(next);
+    try {
+      await window.cth.updateConfig({ workersEnabled: next } as Partial<HarnessConfig>);
+    } catch {
+      setWorkersOn(!next);
+      setWorkersEnabledStore(!next);
+    }
+  };
+  const [internsOn, setInternsOn] = useState<boolean>(cfgX.internsEnabled !== false);
+  const toggleInterns = async () => {
+    const next = !internsOn;
+    setInternsOn(next);
+    try {
+      await window.cth.updateConfig({ internsEnabled: next } as Partial<HarnessConfig>);
+    } catch {
+      setInternsOn(!next);
+    }
+  };
   // SDD subagent authorization (card sdd-authorization-switch-20260816): ON
   // writes the operator-authorization line (scoped to skill execution) into the
   // generated AGENTS.md + agent briefings; main regenerates AGENTS.md on flip.
@@ -1837,6 +1865,88 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                             +
                           </PixelButton>
                         </div>
+                      </div>
+
+                      {/* Spawn switches (card
+                           agent-harness-workersenabled-d-2026-08-17). Workers
+                           DEFAULT OFF, interns DEFAULT ON. */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              lineHeight: '20px',
+                              color: 'var(--cth-ink-900)',
+                            }}
+                          >
+                            {workersOn ? 'Ephemeral workers enabled' : 'Ephemeral workers disabled'}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--cth-ink-500)',
+                            }}
+                          >
+                            The old headless-worker spawn path (god's spawn-requests without
+                            "persistent"). OFF by default — workers are superseded by interns on
+                            this floor; while off, such requests are refused and the workers tab in
+                            Michael's panel is hidden.
+                          </span>
+                        </div>
+                        <PixelButton
+                          variant={workersOn ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={toggleWorkers}
+                        >
+                          {workersOn ? 'on' : 'off'}
+                        </PixelButton>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              lineHeight: '20px',
+                              color: 'var(--cth-ink-900)',
+                            }}
+                          >
+                            {internsOn ? 'Interns enabled' : 'Interns disabled'}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--cth-ink-500)',
+                            }}
+                          >
+                            God may hire interns (spawn-requests with "persistent": true) — the
+                            observable, floor-pane workers. ON by default; while off, such requests
+                            are refused.
+                          </span>
+                        </div>
+                        <PixelButton
+                          variant={internsOn ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={toggleInterns}
+                        >
+                          {internsOn ? 'on' : 'off'}
+                        </PixelButton>
                       </div>
 
                       {/* Subagent skill execution (SDD) authorization — scoped to
