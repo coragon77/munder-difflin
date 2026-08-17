@@ -287,6 +287,16 @@ export async function addWorktree(
   return { ok: false, error: fallback.error };
 }
 
+/** Actionable refusal for an isolate:true spawn whose worktree creation FAILED
+ *  (card agent-harness-harden-isolate-t-2026-08-17). spawnAgentCore returns this
+ *  instead of silently falling back to the shared base cwd — the old fallback let
+ *  an "isolated" worker land untracked in the checkout isolation exists to protect.
+ *  Names the git error and offers the three exits: retry, free the target path, or
+ *  an explicit (operator-authorized) allowSharedCwd re-spawn without isolate. */
+export function worktreeIsolationRefusal(wtPath: string, detail: string): string {
+  return `worktree isolation failed — ${detail}. Spawn REFUSED, no silent fallback to the shared checkout. Retry the spawn (transient git errors clear), free ${wtPath} if a stale worktree blocks it (git worktree remove --force + git worktree prune), or re-spawn WITHOUT "isolate" — adding "allowSharedCwd": true ONLY on explicit operator instruction if the one-agent-per-directory gate then refuses it.`;
+}
+
 /** Best-effort removal of an agent's worktree. Forced so a dirty tree doesn't
  *  block teardown; failures are surfaced but callers may ignore them. */
 export async function removeWorktree(

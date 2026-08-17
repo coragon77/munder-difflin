@@ -61,6 +61,7 @@ import {
   getDiff,
   mainRepoRoot,
   addWorktree,
+  worktreeIsolationRefusal,
   removeWorktree,
   worktreeHasUnintegratedWork,
   worktreeIsGcSafe,
@@ -3414,27 +3415,31 @@ async function spawnAgentCore(
   }
   // Git isolation: when requested and the cwd is a real repo, give this agent
   // its own worktree on an `agent/<id>` branch so it can't clobber other agents'
-  // (or the user's) working tree. Best-effort — a failure falls back to the
-  // shared cwd rather than blocking the spawn.
-  // NOTE (tracked, not yet hardened): isolate:false re-entry (recall, restore,
-  // un-archive) is handled by the ADOPTION block right below. But a stale
-  // `isolate:true` recipe spawned against an already-existing worktree path would
-  // still make addWorktree below conflict (path/branch exists) and fall back to
-  // reusing that path untracked — teaching THIS block to reuse an existing
-  // worktree instead of conflicting is the follow-up.
+  // (or the user's) working tree. HARD GATE (card agent-harness-harden-isolate-
+  // t-2026-08-17): a FAILED worktree creation refuses the spawn with an
+  // actionable error — no silent fallback to the shared cwd (that fallback let an
+  // isolate:true worker land untracked in the base checkout, exactly the collision
+  // isolation exists to prevent). Successful creation and the explicit
+  // isolate:false flow are unchanged.
+  // NOTE: isolate:false re-entry (recall, restore, un-archive) is handled by the
+  // ADOPTION block right below. A stale isolate:true re-spawn against an
+  // already-existing worktree path now REFUSES (addWorktree conflicts) — teaching
+  // this block to REUSE the existing worktree instead of refusing is the follow-up.
   if (opts.isolate === true && (await isRepo(opts.cwd))) {
-    try {
-      const origCwd = opts.cwd;
-      const wtRoot = join(readConfig().harnessHome ?? origCwd, 'worktrees');
-      // The id is renderer-supplied (validated only as a string). Slugify it so a
-      // crafted id can't inject path separators, then assert the resolved path
-      // stays under the worktrees root (defends against bare '..' that slugify
-      // leaves intact). If it would escape, bail isolation → fall back to cwd.
-      const seg = (opts.hive?.id ?? opts.id).replace(/[^A-Za-z0-9._-]/g, '-');
-      const wtPath = join(wtRoot, seg);
-      if (!resolve(wtPath).startsWith(resolve(wtRoot) + sep)) {
-        console.error('[worktree] refusing unsafe worktree path for id:', opts.hive?.id ?? opts.id);
-      } else {
+    const origCwd = opts.cwd;
+    const wtRoot = join(readConfig().harnessHome ?? origCwd, 'worktrees');
+    // The id is renderer-supplied (validated only as a string). Slugify it so a
+    // crafted id can't inject path separators, then assert the resolved path
+    // stays under the worktrees root (defends against bare '..' that slugify
+    // leaves intact).
+    const seg = (opts.hive?.id ?? opts.id).replace(/[^A-Za-z0-9._-]/g, '-');
+    const wtPath = join(wtRoot, seg);
+    let wtFailure: string | null = null;
+    if (!resolve(wtPath).startsWith(resolve(wtRoot) + sep)) {
+      wtFailure = `unsafe worktree path for id "${opts.hive?.id ?? opts.id}" (escapes ${wtRoot})`;
+      console.error('[worktree] refusing unsafe worktree path for id:', opts.hive?.id ?? opts.id);
+    } else {
+      try {
         const br = await getBranch(origCwd);
         const baseBranch = 'current' in br && br.current ? br.current : 'main';
         const wt = await addWorktree(origCwd, wtPath, baseBranch);
@@ -3443,11 +3448,16 @@ async function spawnAgentCore(
           worktreePaths.set(opts.id, wtPath);
           worktreeOrigins.set(opts.id, origCwd);
         } else {
+          wtFailure = wt.error ?? 'unknown git error';
           console.error('[worktree] addWorktree failed:', wt.error);
         }
+      } catch (e) {
+        wtFailure = e instanceof Error ? e.message : String(e);
+        console.error('[worktree] isolation failed:', e);
       }
-    } catch (e) {
-      console.error('[worktree] isolation failed:', e);
+    }
+    if (wtFailure) {
+      return { ok: false, error: worktreeIsolationRefusal(wtPath, wtFailure) };
     }
   }
   // Worktree RE-ENTRY adoption (card vacation-worktree-leak-20260816): recall,
