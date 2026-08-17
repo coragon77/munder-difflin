@@ -199,6 +199,81 @@ test('concurrent adds all survive and the file never parses half-written', {
   assert.deepEqual(leftovers, [], 'no tmp files left behind');
 });
 
+test('update: enrich an existing (human) card — title/notes/assignee, other cards untouched', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  // The god-adoption path: a human-origin card gets enriched + assigned
+  // in place (no duplicate card minted).
+  const card = s.hive.addHumanTask('Kampa: Ticket #3216');
+  s.hive.writeTasks([
+    ...s.tasks(),
+    {
+      id: 'other-card',
+      title: 'unrelated',
+      status: 'doing',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-17T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+  const before = s.tasks().find((c) => c.id === 'other-card');
+
+  const out = s.run(
+    'update',
+    card.id,
+    '--title',
+    'Kampa: VLB-ONIX conflicts (#3216)',
+    '--notes',
+    'VLB-ONIX delivery conflicts; redmine 3216',
+    '--assignee',
+    'stanley-1',
+  );
+  assert.match(out.trim(), new RegExp('^' + card.id + ' updated$'), 'prints <id> updated');
+
+  const after = s.tasks().find((c) => c.id === card.id);
+  assert.equal(after.title, 'Kampa: VLB-ONIX conflicts (#3216)');
+  assert.equal(after.description, 'VLB-ONIX delivery conflicts; redmine 3216');
+  assert.equal(after.assignee, 'stanley-1');
+  assert.equal(after.origin, 'human', 'same card, same origin — no duplicate minted');
+  assert.equal(s.tasks().length, 2, 'no extra card appears');
+  assert.deepEqual(
+    s.tasks().find((c) => c.id === 'other-card'),
+    before,
+  );
+});
+
+test('update: partial fields only touch what was given; rejects bad input', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const card = s.hive.addHumanTask('Only assign me');
+
+  s.run('update', card.id, '--assignee', 'jessica-1');
+  let c = s.tasks().find((x) => x.id === card.id);
+  assert.equal(c.assignee, 'jessica-1');
+  assert.equal(c.title, 'Only assign me', 'title untouched');
+  assert.equal(c.description, undefined, 'notes untouched');
+
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+  let r = s.runFail('update', 'no-such-card', '--assignee', 'x');
+  assert.notEqual(r.code, 0, 'unknown id rejected');
+  assert.match(r.stderr, /no card with id/);
+
+  r = s.runFail('update', card.id);
+  assert.notEqual(r.code, 0, 'no flags rejected — nothing to update');
+  assert.match(r.stderr, /nothing to update/);
+
+  r = s.runFail('update', card.id, '--status', 'doing');
+  assert.notEqual(r.code, 0, 'unknown flag rejected (status has its own subcommand)');
+
+  r = s.runFail('update', card.id, '--title', '   ');
+  assert.notEqual(r.code, 0, 'blank title rejected');
+
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched after rejections');
+});
+
 test('corrupt tasks.json: refuses to write, errors cleanly', { skip: !POSIX }, async (t) => {
   const s = setup(t);
   fs.writeFileSync(s.tasksPath, 'this is not json', 'utf8');

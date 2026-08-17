@@ -80,3 +80,21 @@ test('godLine carries the ATOMIC JSON WRITES rule', () => {
   assert.ok(/tempfile in the SAME directory/.test(p));
   assert.ok(/os\.replace\(\)/.test(p));
 });
+
+test('godLine carries the HUMAN-CARD REFERENCE rule (no duplicate cards)', () => {
+  // Card agent-harness-human-task-mail--2026-08-17: the tasks-tab assign flow
+  // mails god a 'Task from the human' that now references its kanban card
+  // (cardId field + body line) — god must enrich and assign THAT card, never
+  // mint a twin (live incident: human-kampa-ticket-3216-2026-08-17 got a
+  // god-made duplicate, since deleted).
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(
+    /Task from the human.{0,400}cardId/.test(p),
+    'god briefing must tie human task mail to its cardId',
+  );
+  assert.ok(
+    /NEVER create a duplicate/.test(p) || /never mint a duplicate/.test(p),
+    'must forbid duplicate cards for a referenced human card',
+  );
+  assert.ok(/hive-card update/.test(p), 'must name the enrichment tool (hive-card update)');
+});

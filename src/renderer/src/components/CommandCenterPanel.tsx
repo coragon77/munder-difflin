@@ -127,14 +127,18 @@ export function CommandCenterPanel({
   // A task-detail "assign" pre-fills the Floor dispatch box and jumps to it.
   // Seeded via the store one-shot (the detail overlay lives app-wide now);
   // { seq } makes every assign distinct so identical text re-seeds.
-  const [dispatchSeed, setDispatchSeed] = useState<{ text: string; seq: number }>({
+  const [dispatchSeed, setDispatchSeed] = useState<{ text: string; cardId?: string; seq: number }>({
     text: '',
     seq: 0,
   });
   const dispatchSeedRequest = useStore((s) => s.dispatchSeedRequest);
   useEffect(() => {
     if (!dispatchSeedRequest) return;
-    setDispatchSeed({ text: dispatchSeedRequest.text, seq: dispatchSeedRequest.seq });
+    setDispatchSeed({
+      text: dispatchSeedRequest.text,
+      cardId: dispatchSeedRequest.cardId,
+      seq: dispatchSeedRequest.seq,
+    });
   }, [dispatchSeedRequest]);
   // Lifted so the memory-graph tab can jump to a specific agent's memory file.
   const [selectedMemoryAgent, setSelectedMemoryAgent] = useState<string | null>(null);
@@ -512,7 +516,7 @@ function BoardTab() {
 
 // ─── Floor tab — roster, model, dispatch, dirs, assistant ────────────────────
 
-function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
+function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number } }) {
   const agents = useStore((s) => s.agents);
   const select = useStore((s) => s.select);
   // Edit-setup affordance (harness-editbtn-monitor-20260817): opens the SAME
@@ -540,6 +544,9 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [dispatchTo, setDispatchTo] = useState<string>(''); // '' = Michael decides
   const [dispatchText, setDispatchText] = useState('');
+  // Kanban card a seeded dispatch refers to (task-detail 'assign'): rides the
+  // mail as the structured cardId so god adopts THAT card, never a twin.
+  const [dispatchCardId, setDispatchCardId] = useState<string | undefined>(undefined);
   const [dispatchMsg, setDispatchMsg] = useState<string | null>(null);
   // ── ISSUES section state ──
   const [issueRepo, setIssueRepo] = useState<string>('');
@@ -566,8 +573,11 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
   // Seed the dispatch box from a task-card "assign" (keyed on seq so repeat
   // assigns re-prefill). seq === 0 is the untouched initial state — skip it.
   useEffect(() => {
-    if (seed.seq > 0) setDispatchText(seed.text);
-  }, [seed.seq, seed.text]);
+    if (seed.seq > 0) {
+      setDispatchText(seed.text);
+      setDispatchCardId(seed.cardId);
+    }
+  }, [seed.seq, seed.text, seed.cardId]);
 
   // Restart an agent's PTY in place. `resume:true` reattaches its prior Claude
   // conversation (`--resume <sessionId>`, resolved in the main process from the
@@ -741,10 +751,17 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
       ? `${body}\n\n(The human suggests ${suggested.name} (${suggested.id}) for this — your call as orchestrator.)`
       : body;
     const res = await window.cth.hiveSend(
-      { to: 'god', act: 'request', subject: 'Task from the human', body: full },
+      {
+        to: 'god',
+        act: 'request',
+        subject: 'Task from the human',
+        body: full,
+        ...(dispatchCardId ? { cardId: dispatchCardId } : {}),
+      },
       'human',
     );
     setDispatchText('');
+    setDispatchCardId(undefined);
     setDispatchMsg(
       res.ok
         ? `sent to Michael${suggested ? ` (suggesting ${suggested.name})` : ''}`
@@ -845,7 +862,15 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
         </div>
         <textarea
           value={dispatchText}
-          onChange={(e) => setDispatchText(e.target.value)}
+          onChange={(e) => {
+            setDispatchText(e.target.value);
+            // A card reference is only valid while its visible 'Card: <id>'
+            // line is still in the text — wipe it and the structured cardId
+            // drops too, so a rewritten dispatch can't mis-adopt the old card.
+            setDispatchCardId((id) =>
+              id && e.target.value.includes(`Card: ${id}`) ? id : undefined,
+            );
+          }}
           rows={2}
           placeholder="Describe the task… (Michael decomposes, writes the card, and assigns)"
           style={textareaStyle}

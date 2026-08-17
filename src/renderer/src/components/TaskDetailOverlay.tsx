@@ -62,12 +62,14 @@ export function TaskDetailOverlay() {
 
   const assign = () => {
     // Route through the Command Center's dispatch box (which mails the god —
-    // the human never writes into a worker's inbox directly).
+    // the human never writes into a worker's inbox directly). The seed names
+    // the card BOTH in prose ('Card: <id>' line) and structurally (cardId) so
+    // the god ADOPTS this card (hive-card update) instead of minting a twin.
     const st = useStore.getState();
     const god = st.agents.find((a) => a.isGod);
     if (god) st.select(god.id);
     const desc = task.description?.trim() ? task.description.trim() : '(no description)';
-    st.requestDispatchSeed(`Task: ${task.title}\nContext: ${desc}\n`);
+    st.requestDispatchSeed(`Task: ${task.title}\nContext: ${desc}\nCard: ${task.id}\n`, task.id);
     st.requestCommandCenterTab('floor');
     closeTaskDetail();
   };
