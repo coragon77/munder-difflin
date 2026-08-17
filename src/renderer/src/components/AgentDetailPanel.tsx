@@ -215,36 +215,6 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
                 INT
               </span>
             )}
-            {/* The pin toggle — Stefan: it lives on THIS line (the role-tag
-                line). Filled = pinned (strong ink), outline = unpinned (quiet). */}
-            {canPin && (
-              <span
-                role="button"
-                tabIndex={0}
-                title={
-                  agent.pinned
-                    ? `${displayAgentName(agent)} is pinned — never parked; click to unpin`
-                    : `Pin ${displayAgentName(agent)} — pinned workers are never parked`
-                }
-                aria-label={`toggle pin for ${displayAgentName(agent)}`}
-                onClick={onTogglePin}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onTogglePin();
-                  }
-                }}
-                style={{
-                  flexShrink: 0,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  color: agent.pinned ? 'var(--cth-ink-900)' : 'var(--cth-ink-300)',
-                }}
-              >
-                <Icon name={agent.pinned ? 'pin' : 'pin-outline'} />
-              </span>
-            )}
           </div>
           <div
             style={{
@@ -314,6 +284,30 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
               🐱{openTerminalState === 'opening' ? '...' : 'kitty'}
+            </span>
+          </PixelButton>
+        )}
+        {/* Pin/unpin (agent-harness-pin-unpin-button-2026-08-17) — beside the
+            detach button, driving the same registry flag the office card's pin
+            chip drives: a pinned worker is never parked. canPin is human-class
+            only; god renders the CommandCenter, never this pane. */}
+        {canPin && (
+          <PixelButton variant="secondary" size="sm" onClick={onTogglePin}>
+            <span
+              title={
+                agent.pinned
+                  ? `${displayAgentName(agent)} is pinned — never parked; click to unpin`
+                  : `Pin ${displayAgentName(agent)} — pinned workers are never parked`
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                color: agent.pinned ? 'var(--cth-ink-900)' : undefined,
+              }}
+            >
+              <Icon name={agent.pinned ? 'pin' : 'pin-outline'} />
+              {agent.pinned ? 'unpin' : 'pin'}
             </span>
           </PixelButton>
         )}

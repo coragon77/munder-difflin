@@ -231,3 +231,26 @@ test('the pin toggle reaches every layer', () => {
   const store = read('src/renderer/src/store/store.ts');
   assert.ok(store.includes('pinned?: boolean'), 'store Agent carries the flag');
 });
+
+// Agent-pane placement (agent-harness-pin-unpin-button-2026-08-17): the toggle
+// sits in the pane header's button row, next to the detach/reattach button.
+// Source pins, same as above — no DOM harness in this repo.
+test('the agent pane carries the pin toggle beside detach; the god pane stays clean', () => {
+  const pane = read('src/renderer/src/components/AgentDetailPanel.tsx');
+  assert.ok(pane.includes('hiveSetPinned'), 'it drives the registry flag');
+  assert.match(
+    pane,
+    /canPin\s*&&\s*\(\s*<PixelButton[^>]*onClick=\{onTogglePin\}/s,
+    'the pin is a header button (not a stray icon) gated by canPin',
+  );
+  const pinAt = pane.indexOf('onClick={onTogglePin}');
+  const detachAt = pane.indexOf('onClick={onToggleDetach}');
+  assert.ok(pinAt !== -1 && detachAt !== -1, 'both toggles render in the pane header');
+  assert.ok(pinAt < detachAt, 'the pin button sits next to (just before) detach');
+
+  const godPane = read('src/renderer/src/components/CommandCenterPanel.tsx');
+  assert.ok(
+    !godPane.includes('hiveSetPinned') && !godPane.includes('onTogglePin'),
+    'god cannot be pinned — no toggle ever renders on the command center',
+  );
+});
