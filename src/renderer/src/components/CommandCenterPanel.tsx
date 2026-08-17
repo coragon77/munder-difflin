@@ -17,7 +17,7 @@ import { Icon } from './Icon';
 import { MemoryGraphPanel } from './MemoryGraphPanel';
 import { useFleetTelemetry } from '@/hooks/useTelemetry';
 import { COMMAND_GROUPS } from '@shared/claudeCommands';
-import { useStore, triggerHistoryVisible, type Agent } from '@/store/store';
+import { useStore, triggerHistoryVisible, agentClassOf, type Agent } from '@/store/store';
 import { usePtyParser } from '@/hooks/usePtyParser';
 import {
   buildSpawnCommand,
@@ -482,6 +482,10 @@ function BoardTab() {
 function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
   const agents = useStore((s) => s.agents);
   const select = useStore((s) => s.select);
+  // Edit-setup affordance (harness-editbtn-monitor-20260817): opens the SAME
+  // agent dialog as the tasks-view chips, pre-filled for this agent. Human-class
+  // only — god runs himself, interns are fire-and-rehire (no setup dialog).
+  const setEditAgent = useStore((s) => s.setEditAgent);
   const updateAgent = useStore((s) => s.updateAgent);
   const toolCounts = useStore((s) => s.toolCounts);
   // Live OpenTelemetry per agent — merged into each agent card below (the old
@@ -911,6 +915,25 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
                   {toolCounts[a.id] ?? 0} tool calls
                 </span>
                 <TokenLimitEditor value={agentCap} onSet={(t) => setAgentCap(a.id, t)} />
+                {agentClassOf(a) === 'human' && (
+                  <button
+                    onClick={() => setEditAgent(a.id)}
+                    title={`edit ${a.name}'s setup — name, engine, briefing`}
+                    aria-label={`edit ${a.name}'s setup`}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      padding: 2,
+                      color: 'var(--cth-ink-500)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Icon name="gear" />
+                  </button>
+                )}
               </div>
               <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-all' }}>
                 {a.cwd}

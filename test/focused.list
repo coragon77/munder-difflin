@@ -63,3 +63,4 @@ test/block-askuserquestion.test.cjs
 test/office-identity-persistence.test.cjs
 test/hive-pin.test.cjs
 test/agent-edit.test.cjs
+test/agent-edit-monitor.test.cjs
