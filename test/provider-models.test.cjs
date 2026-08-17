@@ -166,6 +166,32 @@ test('config reseed never snaps the intern-defaults picks back after the operato
   assert.ok(sm.includes('if (!internDefaultsTouched.current) {'), 'reseed is skipped once touched');
 });
 
+// ——— live-app incident follow-up: ENOENT discovery (god's confirmed root cause) —
+// The live Electron app's PATH lacks the nvm dir where pi lives (desktop
+// session env); execFile('pi') → ENOENT → silent null → static list. PTY
+// spawns work because node-pty goes through the user's shell (sources nvm).
+// Discovery must borrow that property: run via the user's login shell.
+
+test("pi discovery runs through the user's LOGIN SHELL (the PTY-spawn property)", () => {
+  const src = read('src/main/providerModels.ts');
+  assert.match(
+    src,
+    /process\.env\.SHELL \|\| '\/bin\/bash'/,
+    'resolves the user shell with a bash fallback',
+  );
+  assert.match(
+    src,
+    /\['-l', '-i', '-c', 'pi --list-models'\]/,
+    'login-INTERACTIVE shell invocation (plain -lc exits 127: .bashrc returns before its nvm lines when non-interactive — verified live)',
+  );
+  assert.doesNotMatch(src, /execFile\(\s*'pi'/);
+});
+
+test('discovery failure is LOUD — err.code warned, not swallowed (took /proc spelunking to find)', () => {
+  const src = read('src/main/providerModels.ts');
+  assert.match(src, /console\.warn\([^)]*err\.code/, 'warns the error code on failure');
+});
+
 test('the hook falls back to the static list until discovery lands (never a broken picker)', () => {
   const hook = read('src/renderer/src/hooks/useProviderModels.ts');
   assert.ok(hook.includes('modelsForProvider'), 'static fallback present');

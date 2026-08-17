@@ -43,15 +43,33 @@ export function parsePiListModels(stdout: unknown): ModelOption[] {
 }
 
 /** Run one discovery. Returns null when nothing was discovered (CLI missing,
- *  timeout, unparseable output) — callers fall back to their static list. */
+ *  timeout, unparseable output) — callers fall back to their static list.
+ *
+ *  LOGIN-INTERACTIVE SHELL, NOT a bare execFile on the binary (live incident 2026-08-18, root
+ *  cause confirmed by god via /proc/<pid>/environ): the Electron app inherits
+ *  the desktop session env, whose PATH LACKS the nvm-managed dir where pi
+ *  lives — a bare execFile ENOENTs and silently fell back to the static list.
+ *  PTY spawns never had the problem because node-pty runs an INTERACTIVE
+ *  shell whose ~/.bashrc loads nvm; plain `bash -lc` is NOT enough (the
+ *  stock .bashrc returns early for non-interactive shells BEFORE its nvm
+ *  lines — verified live: -lc exits 127, -lic finds pi with PATH stripped).
+ *  Discovery borrows exactly that property via SHELL -l -i -c; the tty-less
+ *  warnings land on stderr (ignored), profile noise on stdout is dropped by
+ *  the 6-column shape check, and every version manager (nvm/asdf/volta/mise)
+ *  rides the user's own rc files — nothing manager-specific hardcoded. */
+const DISCOVERY_SHELL = process.env.SHELL || '/bin/bash';
 async function discoverPi(): Promise<ModelOption[] | null> {
   return new Promise((resolve) => {
     execFile(
-      'pi',
-      ['--list-models'],
+      DISCOVERY_SHELL,
+      ['-l', '-i', '-c', 'pi --list-models'],
       { timeout: PI_TIMEOUT_MS, env: { ...process.env, PI_SKIP_VERSION_CHECK: '1' } },
       (err, stdout) => {
-        if (err) return resolve(null);
+        if (err) {
+          // LOUD: this ENOENT took /proc spelunking to find when it was silent.
+          console.warn('[providerModels] pi --list-models failed:', err.code ?? err.message);
+          return resolve(null);
+        }
         const models = parsePiListModels(stdout);
         resolve(models.length ? models : null);
       },
