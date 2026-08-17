@@ -702,6 +702,11 @@ export class HiveManager {
     const cardCli = join(root, 'bin', 'hive-card');
     writeFileSync(cardCli, HIVE_CARD_CLI, 'utf8');
     if (process.platform !== 'win32') chmodSync(cardCli, 0o755);
+    // The card-free fresh-conversation CLI (card harness-hive-new-script).
+    // Same refresh policy as the shims above.
+    const newCli = join(root, 'bin', 'hive-new');
+    writeFileSync(newCli, HIVE_NEW_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(newCli, 0o755);
     // The bundled-node launcher every shim above is invoked through — MUST be
     // written before any hook installer runs (they probe for it).
     this.writeNodeLauncher();
@@ -3209,7 +3214,13 @@ in the same conversation — the trigger is a NEW card, not task-feels-done.
 
 **Manual steering** (any pane, no card involved): drop a request JSON into
 \`$HIVE_ROOT/session-requests/\` — \`{ "agentId": "...", "verb": "clear" }\` or
-\`{ "agentId": "...", "verb": "resume", "sessionId": "<uuid>" }\`.`;
+\`{ "agentId": "...", "verb": "resume", "sessionId": "<uuid>" }\`; an optional
+\`"lead": "<text>"\` is typed right after the command as the fresh conversation's
+first user turn. The god pane is refused. For the clear+lead form there is a
+thin wrapper — \`"$HIVE_ROOT/bin/hive-new" <agentId> [--lead <text>]\` — named
+'new' because /new is the cross-agent term (the typed command stays each
+provider's own clear verb, e.g. /clear for claude). No card is created or
+consulted; delivery still waits for the pane to go idle.`;
 
 /** Integration mode union (card integration-mode-toggle-20260817 + lean-god
  *  addendum): 'god' = classic flow · 'workers' = worker-side merge+push ·
@@ -3673,6 +3684,81 @@ try {
   process.stderr.write('hive-card: ' + (e && e.message ? e.message : String(e)) + '\\n');
   process.exit(1);
 }
+`;
+
+// ─── hive-new (written to <hive>/bin/hive-new) ─────────────────────────────────
+// The card-free fresh-conversation CLI (card harness-hive-new-script-2026-08-17).
+// Deliberately THIN: parse args, guard (god pane / unknown agent), drop an
+// ATOMIC request JSON into session-requests/ — every other gate (archived,
+// retired, live pane, delivery) lives in main's processSessionRequest, so the
+// CLI can never drift from the hand-dropped-JSON path it wraps. Operator
+// naming call: 'new', not 'clear' — /new is the cross-agent term (the typed
+// command is still each provider's clear verb from the shared table).
+const HIVE_NEW_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+function fail(msg) { throw new Error(msg); }
+function usage() {
+  fail([
+    'usage:',
+    '  hive-new <agentId> [--lead <text>]',
+    '',
+    'queues a fresh conversation into the agent\\'s LIVE pane (no card involved):',
+    'the provider\\'s clear command (/new, /clear — per engine) followed by the',
+    'optional lead line as the new conversation\\'s first user turn. Delivered',
+    'through the pane queue gates once the agent is idle. Refuses the god pane.',
+  ].join('\\n'));
+}
+
+const root = process.env.HIVE_ROOT;
+if (!root) {
+  process.stderr.write('hive-new: HIVE_ROOT is not set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+
+const args = process.argv.slice(2);
+let agentId = null;
+let lead;
+for (let i = 0; i < args.length; i++) {
+  const a = args[i];
+  if (a === '--lead' || a.indexOf('--lead=') === 0) {
+    lead = a === '--lead' ? args[++i] : a.slice(7);
+    if (lead === undefined) fail('missing value for --lead');
+    continue;
+  }
+  if (a.indexOf('--') === 0) fail('unknown flag ' + a + ' (only --lead is known)');
+  if (agentId !== null) fail('unexpected argument: ' + a + ' (usage: hive-new <agentId> [--lead <text>])');
+  agentId = a;
+}
+if (agentId === null || !agentId.trim()) usage();
+agentId = agentId.trim();
+if (lead !== undefined && !lead.trim()) fail('--lead must be non-empty when given.');
+
+let reg;
+try { reg = JSON.parse(fs.readFileSync(path.join(root, 'registry.json'), 'utf8')); }
+catch (e) { fail('registry.json is not readable/parseable — ' + (e && e.message ? e.message : String(e))); }
+const agents = reg && typeof reg === 'object' && reg.agents && typeof reg.agents === 'object' ? reg.agents : {};
+const entry = agents[agentId] || null;
+// The god pane is never cleared — main re-checks this at the choke point; the
+// script's copy is fail-fast UX for the operator/god invoking it by hand.
+if (entry && entry.isGod || reg.godId === agentId) {
+  fail('the god pane is never cleared — hive-new targets worker panes only.');
+}
+if (!entry) {
+  fail('no agent "' + agentId + '" in registry.json (ids look like creed-msx8l6ju — resolve names via registry.json).');
+}
+
+const dir = path.join(root, 'session-requests');
+fs.mkdirSync(dir, { recursive: true });
+const req = { agentId: agentId, verb: 'clear' };
+if (lead && lead.trim()) req.lead = lead.trim();
+const fp = path.join(dir, 'new-' + Date.now() + '-' + process.pid + '.json');
+const tmp = fp + '.tmp'; // atomic drop: a reader never parses a half-written request
+fs.writeFileSync(tmp, JSON.stringify(req, null, 2) + '\\n', 'utf8');
+fs.renameSync(tmp, fp);
+process.stdout.write('queued a fresh conversation for ' + agentId + (req.lead ? ' (lead: "' + req.lead + '")' : '') + ' — delivered on the next poll (~1.5s), once the pane is idle.\\n');
 `;
 
 // ─── cth-hook shim (written to <hive>/bin/cth-hook.cjs) ──────────────────────

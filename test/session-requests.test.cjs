@@ -61,6 +61,92 @@ test('compose: sessionId on clear is rejected (resume-only field)', () => {
   if (!r.ok) assert.match(r.reason, /clear/);
 });
 
+// — hive-new (card harness-hive-new-script): clear + lead, god refusal —
+
+test("clear + lead: the lead is typed right AFTER the command (fresh conv's first turn)", () => {
+  const tmp = setup();
+  const { deps, emitted } = fakeDeps(tmp, {
+    agents: { 'agent-x': LIVE },
+    ptys: { 'agent-x': 'pty-1' },
+  });
+  const fp = drop(tmp, 'lead', { agentId: 'agent-x', verb: 'clear', lead: 'pick up the slack' });
+
+  processSessionRequest(fp, deps);
+
+  assert.deepEqual(emitted, [
+    { agentId: 'agent-x', text: '/clear' },
+    { agentId: 'agent-x', text: 'pick up the slack' },
+  ]);
+  assert.equal(fs.existsSync(arch(tmp, '.done', 'lead')), true);
+});
+
+test('lead with only whitespace is dropped (no empty second turn)', () => {
+  const tmp = setup();
+  const { deps, emitted } = fakeDeps(tmp, {
+    agents: { 'agent-x': LIVE },
+    ptys: { 'agent-x': 'pty-1' },
+  });
+  const fp = drop(tmp, 'blank', { agentId: 'agent-x', verb: 'clear', lead: '   ' });
+
+  processSessionRequest(fp, deps);
+
+  assert.deepEqual(emitted, [{ agentId: 'agent-x', text: '/clear' }]);
+  assert.equal(fs.existsSync(arch(tmp, '.done', 'blank')), true);
+});
+
+test('lead emit fails after the command went out → .failed + god informed', () => {
+  const tmp = setup();
+  let n = 0;
+  const emitted = [];
+  const deps = {
+    root: () => tmp,
+    registry: () => ({ agents: { 'agent-x': LIVE } }),
+    ptyForAgent: () => 'pty-1',
+    emit: (agentId, text) => {
+      emitted.push({ agentId, text });
+      return ++n === 1; // first emit (command) ok, second (lead) refused
+    },
+    informGod: () => {},
+  };
+  const fp = drop(tmp, 'half', { agentId: 'agent-x', verb: 'clear', lead: 'the lead' });
+
+  processSessionRequest(fp, deps);
+
+  assert.equal(emitted.length, 2, 'both emits were attempted');
+  assert.equal(fs.existsSync(arch(tmp, '.failed', 'half')), true);
+});
+
+test('god pane is refused → .failed, nothing emitted (isGod flag)', () => {
+  const tmp = setup();
+  const { deps, emitted, informs } = fakeDeps(tmp, {
+    agents: { michael: { ...LIVE, isGod: true } },
+    ptys: { michael: 'pty-1' },
+  });
+  const fp = drop(tmp, 'godflag', { agentId: 'michael', verb: 'clear' });
+
+  processSessionRequest(fp, deps);
+
+  assert.equal(emitted.length, 0);
+  assert.equal(fs.existsSync(arch(tmp, '.failed', 'godflag')), true);
+  assert.match(informs[0].body, /god/i);
+});
+
+test('god pane is refused via registry godId (no isGod flag on the entry)', () => {
+  const tmp = setup();
+  const deps = {
+    root: () => tmp,
+    registry: () => ({ agents: { michael: LIVE }, godId: 'michael' }),
+    ptyForAgent: () => 'pty-1',
+    emit: () => true,
+    informGod: () => {},
+  };
+  const fp = drop(tmp, 'godid', { agentId: 'michael', verb: 'clear' });
+
+  processSessionRequest(fp, deps);
+
+  assert.equal(fs.existsSync(arch(tmp, '.failed', 'godid')), true);
+});
+
 // — processSessionRequest: validation, archival, IPC emission —
 
 function fakeDeps(tmp, { agents = {}, ptys = {}, emitResult = true } = {}) {

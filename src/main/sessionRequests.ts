@@ -22,6 +22,10 @@ export interface SessionRequest {
   agentId?: string;
   verb?: string; // 'clear' | 'resume'
   sessionId?: string; // resume only
+  /** Optional line typed right AFTER the command — the fresh conversation's
+   *  first user turn (hive-new's --lead; same shape as the card-session
+   *  label). Works with either verb; whitespace-only is dropped. */
+  lead?: string;
 }
 
 /** Everything the watcher needs from the host process (see index.ts wiring). */
@@ -30,7 +34,11 @@ export interface SessionRequestDeps {
   root(): string | null;
   /** Live registry snapshot (structural subset of hive.Registry). */
   registry(): {
-    agents: Record<string, { provider?: AgentProvider; archived?: boolean; retired?: boolean }>;
+    agents: Record<
+      string,
+      { provider?: AgentProvider; archived?: boolean; retired?: boolean; isGod?: boolean }
+    >;
+    godId?: string | null;
   };
   /** PTY id of the agent's live pane, or undefined when none is open. */
   ptyForAgent(agentId: string): string | undefined;
@@ -135,9 +143,18 @@ export function processSessionRequest(filePath: string, deps: SessionRequestDeps
     return;
   }
 
-  const entry = deps.registry().agents[agentId];
+  const reg = deps.registry();
+  const entry = reg.agents[agentId];
   if (!entry) {
     fail(`no agent "${agentId}" in the registry`);
+    return;
+  }
+  // The god pane is never cleared by machinery (hive-new guard): the
+  // orchestrator's window is the operator dialogue — a stray clear here would
+  // wipe god's live context. Enforced at the choke point so every writer of
+  // the queue (CLI, skill, hand-dropped JSON) inherits it.
+  if (entry.isGod || reg.godId === agentId) {
+    fail(`"${agentId}" is the god agent — its pane is never cleared`);
     return;
   }
   if (entry.archived) {
@@ -159,7 +176,12 @@ export function processSessionRequest(filePath: string, deps: SessionRequestDeps
     return;
   }
 
-  if (!deps.emit(agentId, cmd.command)) {
+  const lead = typeof raw.lead === 'string' ? raw.lead.trim() : '';
+  // Command first, lead second — FIFO queue keeps the order (same emit shape
+  // as the card-session watcher's command-then-label). A failed LEAD emit
+  // after a delivered command still fails the request so god hears about the
+  // half-delivery; a retry at worst re-clears an already-fresh conversation.
+  if (!deps.emit(agentId, cmd.command) || (lead && !deps.emit(agentId, lead))) {
     fail('no live floor window to receive the command — retry once the app window is up');
     return;
   }
