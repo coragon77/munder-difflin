@@ -1470,6 +1470,11 @@ function relAge(ms: number): string {
 function VacationSection() {
   const archived = useStore((s) => s.archivedAgents);
   const vacationers = useMemo(() => archived.filter((a) => a.vacation), [archived]);
+  // Same edit-setup affordance as the active cards (harness-gear-vacation-
+  // archived-20260817): opens the shared edit dialog pre-filled (App renders
+  // the one modal instance); engine edits ride the next RECALL (the recipe
+  // reads the roster's archived rows).
+  const setEditAgent = useStore((s) => s.setEditAgent);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | undefined>();
   if (vacationers.length === 0) return null;
@@ -1555,6 +1560,25 @@ function VacationSection() {
           >
             {busy === a.id ? '…' : 'Recall'}
           </PixelButton>
+          {agentClassOf(a) === 'human' && (
+            <button
+              onClick={() => setEditAgent(a.id)}
+              title={`edit ${a.name}'s setup — applies on next recall`}
+              aria-label={`edit ${a.name}'s setup`}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                padding: 2,
+                color: 'var(--cth-ink-500)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Icon name="gear" />
+            </button>
+          )}
         </div>
       ))}
     </Section>
@@ -1565,6 +1589,9 @@ function ArchivedSection() {
   const archived = useStore((s) => s.archivedAgents);
   const archivedAgents = useMemo(() => archived.filter((a) => !a.vacation), [archived]);
   const removeArchivedAgent = useStore((s) => s.removeArchivedAgent);
+  // Same edit-setup affordance as the active cards (harness-gear-vacation-
+  // archived-20260817); engine edits ride the next restore/re-hire.
+  const setEditAgent = useStore((s) => s.setEditAgent);
   const [open, setOpen] = useState(false);
   if (archivedAgents.length === 0) return null;
   return (
@@ -1644,6 +1671,25 @@ function ArchivedSection() {
             >
               <Icon name="x" />
             </button>
+            {agentClassOf(a) === 'human' && (
+              <button
+                onClick={() => setEditAgent(a.id)}
+                title={`edit ${a.name}'s setup — applies on next re-hire`}
+                aria-label={`edit ${a.name}'s setup`}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  padding: 2,
+                  color: 'var(--cth-ink-500)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Icon name="gear" />
+              </button>
+            )}
           </div>
         ))}
     </Section>

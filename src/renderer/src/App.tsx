@@ -40,7 +40,14 @@ export function App() {
   const addAgentOpen = useStore((s) => s.addAgentOpen);
   const editAgentId = useStore((s) => s.editAgentId);
   const setEditAgent = useStore((s) => s.setEditAgent);
-  const editOf = editAgentId ? agents.find((a) => a.id === editAgentId) : undefined;
+  // The edit dialog can be opened for an agent that is NOT on the floor (the
+  // monitor's VACATION/ARCHIVED rows — gear-vacation-archived-20260817): the
+  // lookup spans the archived list too, or the modal would silently never
+  // open for a parked id.
+  const archivedAgents = useStore((s) => s.archivedAgents);
+  const editOf = editAgentId
+    ? (agents.find((a) => a.id === editAgentId) ?? archivedAgents.find((a) => a.id === editAgentId))
+    : undefined;
   const setAddAgentOpen = useStore((s) => s.setAddAgentOpen);
   const godStatus = useStore((s) => s.godStatus);
   const fullscreenAgentId = useStore((s) => s.fullscreenAgentId);

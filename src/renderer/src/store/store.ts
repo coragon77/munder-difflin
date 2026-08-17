@@ -739,6 +739,19 @@ export const useStore = create<State>((set) => ({
       // only in memory, so the selector snapped back to the old model on reload
       // and restore relaunched the old command.
       if (touchesDurableAgentField(patch)) persistAgents(agents, s.selectedId);
+      // An edit aimed at an agent that is NOT on the floor (the edit dialog
+      // opened from the monitor's VACATION/ARCHIVED rows — gear-vacation-
+      // archived-20260817) must not silently no-op: patch the ARCHIVED entry
+      // too, so the row itself updates and the engine fields (command/model/
+      // permissionMode) ride the NEXT RECALL — main's rosterRecipe reads the
+      // roster's archived rows, and persistArchived mirrors straight into
+      // them. Only the edit dialog addresses archived ids (live callers all
+      // key off a pty, which archived agents don't have).
+      if (!s.agents.some((a) => a.id === id) && s.archivedAgents.some((a) => a.id === id)) {
+        const archivedAgents = s.archivedAgents.map((a) => (a.id === id ? { ...a, ...patch } : a));
+        persistArchived(archivedAgents);
+        return { agents, archivedAgents };
+      }
       return { agents };
     }),
   setAgentNote: (id, note) =>
