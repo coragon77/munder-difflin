@@ -119,6 +119,27 @@ test('a <task-notification> wake on god: no roster, no steer take, still emitted
   );
 });
 
+// Card agent-harness-slim-god-s-per-t-2026-08-17 (b): a turn whose WHOLE
+// content is a system-reminder (the "user named this session" event) is a
+// system event, not a human — nothing to steer, nothing to route. Only when it
+// is the entire prompt: a reminder appended to real typing must still pass.
+test('a prompt that is ONLY a <system-reminder> gates too', async (t) => {
+  const { hive, fire, steerCalls } = await floor(t, { steer: 'OPERATOR: queued guidance' });
+  snapshot(hive);
+
+  const reminder =
+    '<system-reminder>\nThe user named this session "#3217". This may indicate the session\'s focus or intent.\n</system-reminder>';
+  assert.equal(context(await fire('god-1', 'UserPromptSubmit', reminder)), '');
+  assert.deepEqual(steerCalls, [], 'a system event must not eat the queued steer');
+
+  const withTyping = `ship it now\n${reminder}`;
+  assert.match(
+    context(await fire('god-1', 'UserPromptSubmit', withTyping)),
+    /OPERATOR: queued guidance/,
+    'a reminder riding along with real typing is a REAL prompt',
+  );
+});
+
 test('pass-list: hive nudges, Telegram <channel>, <agent-message>, human text all pass', async (t) => {
   const { hive, fire, steerCalls } = await floor(t, { steer: 'OPERATOR: queued guidance' });
   snapshot(hive);

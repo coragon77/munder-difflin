@@ -355,8 +355,13 @@ export class HookServer {
     // <agent-message> all pass — 0 false positives over 2033 real prompts,
     // intern corpus 2026-08-17). The event is still emitted below so
     // avatars/telemetry stay live.
+    // A turn whose ENTIRE content is a <system-reminder> (the "user named this
+    // session" event) is a system event by the same argument — but only when it
+    // is the whole prompt: a reminder appended to real typing is a real prompt.
     const syntheticWake =
-      event === 'UserPromptSubmit' && /^\s*<task-notification/.test(p.prompt ?? '');
+      event === 'UserPromptSubmit' &&
+      (/^\s*<task-notification/.test(p.prompt ?? '') ||
+        /^\s*<system-reminder>[\s\S]*<\/system-reminder>\s*$/.test(p.prompt ?? ''));
 
     // 7C.2 — mid-run steering: inject queued operator guidance as context on the
     // next eligible hook (no fragile typing into the TUI). Delivered once.
@@ -383,7 +388,10 @@ export class HookServer {
       (event === 'SessionStart' || event === 'UserPromptSubmit') &&
       !!agentId &&
       this.hive.isGod(agentId);
-    const roster = wantsRoster ? this.hive.rosterContext() : null;
+    // Full block on SessionStart (the fresh transcript has no roster at all),
+    // slim on every prompt after it until the floor actually moves — see
+    // HiveManager.rosterContext.
+    const roster = wantsRoster ? this.hive.rosterContext(agentId, event === 'SessionStart') : null;
 
     if (steer || roster) {
       this.emit(agentId, event, p);

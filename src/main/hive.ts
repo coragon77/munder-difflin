@@ -2747,8 +2747,18 @@ export class HiveManager {
    *
    * Returns null when there is nothing to say (no hive, no snapshot, no agents),
    * so the hook stays a no-op rather than injecting noise.
+   *
+   * STEADY STATE IS SLIM (card agent-harness-slim-god-s-per-t-2026-08-17): the
+   * full block (~600 tok) is only worth its weight when the floor actually
+   * MOVED. Pass `forAgentId` and every later turn gets the slim line — ids +
+   * their state, seat count, vacation COUNT (<200 tok) — until the roster
+   * CHANGES (join/leave/park/recall/breaker flip) or `force` (SessionStart,
+   * whose fresh transcript contains no roster at all) re-emits the full block.
+   * Called without `forAgentId` it is stateless and always full.
    */
-  rosterContext(): string | null {
+  private lastRosterSig = new Map<string, string>();
+
+  rosterContext(forAgentId?: string, force = false): string | null {
     const root = this.root();
     if (!root) return null;
     try {
@@ -2802,6 +2812,50 @@ export class HiveManager {
             : s < 5400
               ? `${Math.round(s / 60)}m ago`
               : `${Math.round(s / 3600)}h ago`;
+
+      // What "the roster CHANGED" means: who is on the floor, who is parked,
+      // how many seats — plus each agent's breaker (the one status that flips
+      // routing). Deliberately NOT tokens/activity/inbox: those move every turn
+      // and would make every turn a full block again. The slim line carries
+      // them anyway.
+      const sig = JSON.stringify([
+        agents.map((a) => `${a.id}:${a.breaker ?? ''}`).sort(),
+        pool.map((v) => v.id).sort(),
+        fl?.onFloor ?? -1,
+        fl?.maxAgents ?? -1,
+      ]);
+      const unchanged = !!forAgentId && !force && this.lastRosterSig.get(forAgentId) === sig;
+      if (forAgentId) this.lastRosterSig.set(forAgentId, sig);
+
+      if (unchanged) {
+        const short = (s: number | null | undefined): string =>
+          typeof s !== 'number'
+            ? 'new'
+            : s < 90
+              ? `${s}s`
+              : s < 5400
+                ? `${Math.round(s / 60)}m`
+                : `${Math.round(s / 3600)}h`;
+        const slimRows = agents.map((a) => {
+          const bits = [short(a.lastActiveSecAgo)];
+          if (a.pendingBackgroundWork) bits.push(`waiting(${a.pendingBackgroundWork})`);
+          if (a.inboxBacklog) bits.push(`inbox ${a.inboxBacklog}`);
+          if (a.breaker && a.breaker !== 'ok' && a.breaker !== 'none')
+            bits.push(`breaker ${a.breaker}`);
+          if (a.isGod) bits.push('you');
+          return `${a.id}${a.name ? ` "${a.name}"` : ''} (${bits.join(', ')})`;
+        });
+        return (
+          `[LIVE ROSTER — unchanged since the last injection] ${agents.length} active: ` +
+          `${slimRows.join('; ')}.` +
+          (fl && typeof fl.onFloor === 'number' && typeof fl.maxAgents === 'number'
+            ? ` FLOOR ${fl.onFloor}/${fl.maxAgents}` +
+              ((fl.freeSeats ?? 0) > 0 ? `, ${fl.freeSeats} free.` : ' — FULL.')
+            : '') +
+          (pool.length ? ` VACATION ${pool.length} parked (fetchable).` : '') +
+          ' Detail (names, roles, spend): fleet.json.'
+        );
+      }
 
       // Cap the list so a big floor can't crowd out the actual prompt. The
       // remainder is still counted, and fleet.json is one Read away.
