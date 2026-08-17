@@ -22,12 +22,12 @@ import {
   AGENT_PROVIDER_PRESETS,
   buildSpawnCommand,
   tokenizeCommand,
-  modelsForProvider,
   inferAgentProvider,
   providerPreset,
   isClaudeProvider,
 } from '@/store/config';
 import { DEFAULT_HIRE_PERMISSION_MODE, type HirePermissionMode } from '@shared/agentProvider';
+import { useProviderModels } from '@/hooks/useProviderModels';
 
 const ACCENTS: AccentColorName[] = ['coral', 'mint', 'sky', 'lemon', 'lilac', 'peach'];
 
@@ -207,6 +207,9 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
     editOf?.description ?? pendingHire?.description ?? 'a fresh harness',
   );
   const [hireMeta, setHireMeta] = useState<HireManifest | null>(editOf ? null : pendingHire);
+  // Discovered (auth-scoped) model list — static curated list until the
+  // adapter lands one (card agent-harness-provider-model-l-2026-08-17).
+  const providerModelOptions = useProviderModels(provider);
 
   // Picking a model rebuilds the command; the command field stays editable for
   // power users (it's the source of truth for the actual spawn).
@@ -1151,7 +1154,7 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
                             // hardcoded list (e.g. claude-fable-5). Surface it as a real,
                             // selected card instead of leaving the picker looking unset —
                             // the command field already carries it either way.
-                            const known = modelsForProvider(provider);
+                            const known = providerModelOptions;
                             return model && !known.some((m) => m.id === model)
                               ? [...known, { id: model, label: `${model} (from hire)` }]
                               : known;

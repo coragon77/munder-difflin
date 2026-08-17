@@ -1,6 +1,7 @@
 import { useState, useEffect, type CSSProperties } from 'react';
-import { AGENT_MODELS, modelsForProvider, type HarnessConfig } from '@/store/config';
+import { AGENT_MODELS, type HarnessConfig } from '@/store/config';
 import { AGENT_PROVIDER_PRESETS, normalizeAgentProvider } from '@shared/agentProvider';
+import { useProviderModels } from '@/hooks/useProviderModels';
 import { useStore } from '@/store/store';
 import {
   CLONE_NODE_BLURB,
@@ -299,6 +300,10 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
   // Ephemeral workers never read these. Blank = unset = today's behavior.
   const [internProvider, setInternProvider] = useState(cfgX.internDefaults?.provider ?? '');
   const [internModel, setInternModel] = useState(cfgX.internDefaults?.model ?? '');
+  // Discovered (auth-scoped) list for the chosen provider — the settings
+  // default must come from pi's OWN list, never a hardcoded id (card
+  // agent-harness-provider-model-l-2026-08-17).
+  const internModelOptions = useProviderModels(normalizeAgentProvider(internProvider) ?? 'claude');
   const writeInternDefaults = async (provider: string, model: string) => {
     setInternProvider(provider);
     setInternModel(model);
@@ -2084,9 +2089,7 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                               style={{ ...slackInputStyle, flex: 1, minWidth: 160 }}
                             />
                             <datalist id="intern-model-options">
-                              {modelsForProvider(
-                                normalizeAgentProvider(internProvider) ?? 'claude',
-                              ).map((m) => (
+                              {internModelOptions.map((m) => (
                                 <option key={m.id ?? m.label} value={m.id ?? ''}>
                                   {m.label}
                                 </option>

@@ -8,6 +8,7 @@ import {
   type AgentProvider,
 } from '@shared/agentProvider';
 import type { ContextTriggerConfig, OrgTriggerConfig, WebhookTrigger } from '@shared/triggers';
+import type { ModelOption } from '@shared/modelOptions';
 
 export {
   AGENT_PROVIDER_PRESETS,
@@ -195,12 +196,9 @@ export interface HarnessConfig {
  *  in src/main/assistant.ts; keep the two in sync. */
 export const ASSISTANT_MODEL = 'claude-sonnet-4-6[1m]';
 
-export interface ModelOption {
-  /** undefined = use the CLI default (no --model flag) */
-  id?: string;
-  label: string;
-}
-
+// Single definition lives in @shared/modelOptions (main's discovery adapter
+// needs the same shape); re-exported here so existing imports keep working.
+export type { ModelOption } from '@shared/modelOptions';
 /** The models offered in the "add agent" picker and the per-agent selector.
  *  `[1m]` selects the 1M-token context window variant. */
 // Deliberately has NO "pass no --model flag" entry. Every option here names a

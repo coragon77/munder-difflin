@@ -1170,6 +1170,13 @@ const api = {
     ipcRenderer.invoke('telemetry:spans', agentId),
   /** Cold-start backfill of all agents' usage + recent spans. */
   telemetrySnapshot: (): Promise<TelemetrySnapshot> => ipcRenderer.invoke('telemetry:snapshot'),
+  /** Discovered (auth-scoped) model list for a provider (card
+   *  agent-harness-provider-model-l-2026-08-17); discovered=false + null
+   *  models when the adapter has nothing — caller keeps its static list. */
+  providerListModels: (
+    provider: string,
+  ): Promise<{ discovered: boolean; models: { id?: string; label: string }[] | null }> =>
+    ipcRenderer.invoke('provider:listModels', provider),
   /** Subscribe to live telemetry pushes; returns an unsubscribe fn. */
   onTelemetryEvent: (cb: (e: TelemetryEvent) => void): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: TelemetryEvent) => cb(payload);

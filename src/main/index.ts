@@ -165,6 +165,7 @@ import {
   summarizeAnomalies,
 } from './standup';
 import { resolveInternSpawn } from './internDefaults';
+import { ProviderModelCache } from './providerModels';
 import { analytics } from './analytics';
 import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
@@ -184,6 +185,7 @@ import { ClosingTimeController } from './closingTime';
 import {
   inferAgentProvider,
   isClaudeProvider,
+  normalizeAgentProvider,
   bridgeOf,
   nonInteractiveEnvForProvider,
   commandCarriesModel,
@@ -4132,6 +4134,17 @@ ipcMain.handle('integrations:test', async (_evt, payload: unknown) => {
 
 // ─── IPC: config ────────────────────────────────────────────────────────────
 ipcMain.handle('config:get', (): HarnessConfig => readConfig());
+// Discovered (auth-scoped) model lists for every picker (card
+// agent-harness-provider-model-l-2026-08-17). Discovery result only — the
+// STATIC fallback lives renderer-side in useProviderModels (it owns the
+// curated lists), so main never duplicates them.
+const providerModels = new ProviderModelCache();
+ipcMain.handle('provider:listModels', async (_evt, provider: unknown) => {
+  const p = normalizeAgentProvider(provider) ?? 'claude';
+  const discovered = await providerModels.list(p);
+  return { discovered: !!discovered, models: discovered };
+});
+
 ipcMain.handle('config:update', (_evt, patch: Partial<HarnessConfig>) => {
   const next = writeConfig(patch);
   // Live opt-in/out from Settings → Privacy (TELEMETRY.md).
