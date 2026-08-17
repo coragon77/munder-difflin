@@ -61,7 +61,8 @@ agents live as files under `<harnessHome>/hive/` — `registry.json`, `board.md`
 - Single writer per file: an agent writes only inside its own `agents/<id>/`.
   Cross-agent delivery = router moves `outbox/` → recipient `inbox/`.
 - One JSON file per message, atomic temp-file + rename. `log.jsonl` is
-  append-only. `board.md` has exactly one scribe (the god agent).
+  append-only. `board.md` has exactly one scribe (the god agent; the standup clerk's
+one-line escalation appends are the sole exception).
 
 ## Layout
 

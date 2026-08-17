@@ -92,3 +92,4 @@ test/hive-dispatch-cli.test.cjs
 test/hive-inbox-cli.test.cjs
 test/intern-portrait-pool.test.cjs
 test/spawn-focus-steal.test.cjs
+test/godline-text-sweep.test.cjs
