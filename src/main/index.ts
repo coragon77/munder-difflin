@@ -3791,6 +3791,12 @@ ipcMain.handle('pty:resize', (_evt, id: string, cols: number, rows: number) => {
 });
 ipcMain.handle('pty:detach', async (_evt, id: string, title: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
+  // kittyEnabled gate (agent-harness-kittyenabled-set-2026-08-17): refuse NEW
+  // detaches when the switch is off. REATTACH below stays deliberately open —
+  // it is the recovery path for a pane detached before the flip; refusing it
+  // would strand a live pty in an orphaned kitty window.
+  if (readConfig().kittyEnabled !== true)
+    return { ok: false, error: 'Kitty integration is disabled in Settings' };
   return detachBridge.detach(id, typeof title === 'string' && title.trim() ? title.trim() : id);
 });
 ipcMain.handle('pty:reattach', (_evt, id: string) => {
@@ -3858,6 +3864,10 @@ ipcMain.handle('dialog:chooseFolder', async (evt) => {
  *  per click). `null` = not installed → the renderer hides the Kitty button. */
 let kittyAvailable: boolean | null = null;
 ipcMain.handle('system:isKittyAvailable', () => {
+  // kittyEnabled gate: off → report unavailable so every probe-driven kitty
+  // affordance (kitty buttons) hides without touching each component. Checked
+  // per call so a settings flip takes effect on the next probe/remount.
+  if (readConfig().kittyEnabled !== true) return false;
   if (kittyAvailable === null) {
     const home = process.env.HOME ?? '';
     kittyAvailable = [`${home}/.local/bin/kitty`, '/usr/local/bin/kitty', '/usr/bin/kitty'].some(
@@ -3900,6 +3910,10 @@ ipcMain.handle('terminal:openAtFolder', async (_evt, cwd: unknown) => {
  *  satellite first, then open the tab. `kitty @ launch --type=tab` lands in every
  *  os-window of the instance — single satellite → exactly one tab. */
 ipcMain.handle('terminal:openInKitty', async (_evt, cwd: unknown) => {
+  // kittyEnabled gate: the satellite, its tabs and every kitty launch refuse
+  // when the switch is off (belt for the hidden button, suspenders for IPC).
+  if (readConfig().kittyEnabled !== true)
+    return { ok: false, error: 'Kitty integration is disabled in Settings' };
   // Empty cwd (god panel button) = the satellite itself is Michael's terminal —
   // if it's already up just focus/no-op; if not, start it (first tab = god).
   const godCwd = godCommand().cwd ?? process.cwd();

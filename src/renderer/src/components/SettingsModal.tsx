@@ -444,6 +444,22 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
     return String(n);
   };
 
+  // --- Kitty integration (agent-harness-kittyenabled-set-2026-08-17) ---
+  // Self-contained switch: default off, persists immediately, mirrors into the
+  // store so every kitty affordance (buttons, detach toggles) flips live.
+  const [kittyEnabled, setKittyEnabled] = useState(config.kittyEnabled === true);
+  const setKittyEnabledStore = useStore((s) => s.setKittyEnabled);
+  const toggleKitty = async () => {
+    const next = !kittyEnabled;
+    setKittyEnabled(next);
+    try {
+      await window.cth.updateConfig({ kittyEnabled: next } as Partial<HarnessConfig>);
+      setKittyEnabledStore(next);
+    } catch {
+      setKittyEnabled(!next); // persist refused — the config stays the truth
+    }
+  };
+
   // --- Slack integration ---
   const [slackEnabled, setSlackEnabled] = useState(config.slackEnabled ?? false);
   const [slackSecret, setSlackSecret] = useState(config.slackSigningSecret ?? '');
@@ -656,6 +672,7 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
             : '',
         );
         setSlackEnabled(cc.slackEnabled ?? false);
+        setKittyEnabled((cc as HarnessConfig).kittyEnabled === true);
         setSlackSecret(cc.slackSigningSecret ?? '');
         setSlackBotToken(cc.slackBotToken ?? '');
         setSlackChannel(cc.slackChannelId ?? '');
@@ -2426,6 +2443,49 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                           Leads the section; the hardcoded Slack/Webhook/Free Flow
                           blocks below stay as-is. */}
                       <IntegrationsRegistry />
+
+                      <div style={{ height: 2, background: 'var(--cth-ink-300)' }} />
+
+                      {/* Kitty integration (agent-harness-kittyenabled-set-2026-08-17) —
+                          gates every kitty feature (satellite window, kitty
+                          buttons, detach-to-kitty panes/tabs). Default off. */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                          <span
+                            title="Kitty integration, if on assumes kitty is installed."
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--cth-ink-900)',
+                            }}
+                          >
+                            Kitty integration
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--cth-ink-500)',
+                            }}
+                          >
+                            Satellite window, kitty tabs and detach-to-kitty panes.
+                          </span>
+                        </div>
+                        <PixelButton
+                          variant={kittyEnabled ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => void toggleKitty()}
+                        >
+                          {kittyEnabled ? 'on' : 'off'}
+                        </PixelButton>
+                      </div>
 
                       <div style={{ height: 2, background: 'var(--cth-ink-300)' }} />
 

@@ -188,6 +188,7 @@ export function CommandCenterPanel({
   const godDetached = useStore((s) =>
     agent.ptyId ? s.detachedPtyIds.includes(agent.ptyId) : false,
   );
+  const kittyEnabled = useStore((s) => s.kittyEnabled);
 
   return (
     <PixelPanel
@@ -302,7 +303,7 @@ export function CommandCenterPanel({
           {/* Detach/reattach for god's own pane (agent-harness-detach-follow-up-
             2026-08-17): detaches the LIVE god pty to a kitty window — the pane
             below greys out (read-only mirror) while Michael keeps running. */}
-          {agent.ptyId && (
+          {agent.ptyId && (kittyEnabled || godDetached) && (
             <PixelButton
               variant="secondary"
               size="sm"
@@ -1493,13 +1494,17 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
  *  it can render from any scope (FloorTab has no agent/config props). */
 function GodKittyButton() {
   const [available, setAvailable] = useState<boolean | null>(null);
+  const kittyEnabled = useStore((s) => s.kittyEnabled);
   useEffect(() => {
     void window.cth
       .isKittyAvailable()
       .then(setAvailable)
       .catch(() => setAvailable(false));
   }, []);
-  if (available !== true) return null;
+  // kittyEnabled gate (agent-harness-kittyenabled-set-2026-08-17): the probe
+  // is already main-gated (off → unavailable); the store flag hides the button
+  // the moment the switch flips, without waiting for a remount/re-probe.
+  if (available !== true || !kittyEnabled) return null;
   return (
     <PixelButton
       variant="secondary"

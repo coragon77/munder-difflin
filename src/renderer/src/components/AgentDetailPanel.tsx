@@ -38,6 +38,7 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
   // with the hooks ABOVE the god early-return — hook order must not depend on
   // agent class.
   const detached = useStore((s) => (agent.ptyId ? s.detachedPtyIds.includes(agent.ptyId) : false));
+  const kittyEnabled = useStore((s) => s.kittyEnabled);
   const isReal = !!agent.ptyId;
   // While this agent is shown in the fullscreen overlay, the fullscreen view
   // owns the pty (it sizes it to fill the screen). Keeping the embedded terminal
@@ -273,7 +274,7 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
                   : 'open'}
           </span>
         </PixelButton>
-        {kittyAvailable === true && (
+        {kittyAvailable === true && kittyEnabled && (
           <PixelButton
             variant="secondary"
             size="sm"
@@ -332,7 +333,7 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
             follow-up-2026-08-17): detaches this agent's LIVE pty to a kitty
             window — the terminal tab greys out (read-only mirror) while the
             agent keeps running. */}
-        {isReal && agentClassOf(agent) === 'human' && (
+        {isReal && agentClassOf(agent) === 'human' && (kittyEnabled || detached) && (
           <PixelButton variant="secondary" size="sm" onClick={onToggleDetach}>
             <span
               title={

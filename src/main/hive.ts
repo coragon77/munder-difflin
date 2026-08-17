@@ -3213,6 +3213,11 @@ session, exactly like any other respawn.`;
  *  verified against src/main/kittySatellite.ts + the openInKitty IPC. */
 const KITTY_SATELLITE_MD = `## KITTY SATELLITE — your second terminal (remote-controllable kitty)
 
+NOTE: this whole surface is behind the operator's Settings → Connections →
+"Kitty integration" switch (default OFF). While it is off no socket exists,
+no kitty button offers anything, and detach-to-kitty refuses — everything
+below applies only when the switch is on.
+
 The harness keeps a "satellite" kitty window alive as your co-terminal: it
 starts lazily with the FIRST agent spawn (or an in-app kitty button) and runs
 with remote control restricted to its socket only (allow_remote_control

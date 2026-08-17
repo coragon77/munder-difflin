@@ -322,6 +322,10 @@ export interface HarnessConfig {
   opsStandupSeeded?: boolean;
   heartbeatSeeded?: boolean;
   notifications?: boolean;
+  /** Kitty integration gate (agent-harness-kittyenabled-set-2026-08-17) —
+   *  default OFF, missing = off. Mirrors main + renderer HarnessConfig so
+   *  updateConfig({ kittyEnabled }) is typed across the bridge. */
+  kittyEnabled?: boolean;
   /** Opt-in strong keep-alive (prevent-display-sleep). Mirrors main + renderer
    *  HarnessConfig so updateConfig({ strongKeepalive }) is typed across the bridge. */
   strongKeepalive?: boolean;

@@ -90,6 +90,10 @@ export interface HarnessConfig {
   opsStandupSeeded?: boolean;
   heartbeatSeeded?: boolean;
   notifications?: boolean;
+  /** Kitty integration — gates every kitty feature (satellite, kitty buttons,
+   *  detach-to-kitty). Default off; missing field reads as off. Mirrors
+   *  src/main/config.ts. */
+  kittyEnabled?: boolean;
   /** Opt-in "strong keep-alive": escalates the in-app power blocker to
    *  prevent-display-sleep so scheduled missions/terminals keep firing on time
    *  while away (battery cost; best on AC). Default off = survive + catch up on

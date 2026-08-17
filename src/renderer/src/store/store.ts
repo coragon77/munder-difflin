@@ -225,6 +225,11 @@ interface State {
    *  kitty-20260817): greyed out, input refused, kitty owns the size. Main
    *  pushes the state (IPC events) — the renderer never decides this alone. */
   detachedPtyIds: string[];
+  /** Kitty integration switch mirror (card agent-harness-kittyenabled-set-
+   *  2026-08-17): config is main's truth, App syncs this flag whenever config
+   *  loads/changes, and every kitty affordance subscribes to it. False =
+   *  hide/disable (a pane ALREADY detached keeps its reattach escape). */
+  kittyEnabled: boolean;
   godStatus: GodStatus;
   /** Per-agent outgoing message queue (agent id → messages awaiting delivery).
    *  Lets the user keep "talking" to a busy agent: messages park here and are
@@ -358,6 +363,8 @@ interface State {
   /** Toggle a pane's detached-to-kitty state. Driven by main's detach events
    *  (pty:detached / pty:reattached) — idempotent both ways. */
   setPtyDetached: (ptyId: string, detached: boolean) => void;
+  /** Set the kittyEnabled mirror from App's config state. */
+  setKittyEnabled: (v: boolean) => void;
 }
 
 const LS_SIDEBAR_WIDTH = 'cth.sidebarWidth';
@@ -732,6 +739,8 @@ export const useStore = create<State>((set) => ({
   sidebarWidth: initialSidebarWidth,
   sidebarTab: initialSidebarTab,
   detachedPtyIds: [],
+  kittyEnabled: false,
+  setKittyEnabled: (v) => set({ kittyEnabled: v }),
   setPtyDetached: (ptyId, detached) =>
     set((s) => {
       const has = s.detachedPtyIds.includes(ptyId);

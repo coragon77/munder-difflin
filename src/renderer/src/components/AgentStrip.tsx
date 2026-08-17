@@ -17,6 +17,7 @@ export function AgentStrip({ config }: AgentStripProps) {
   const restorableAgents = useStore((s) => s.restorableAgents);
   const selectedId = useStore((s) => s.selectedId);
   const detachedPtyIds = useStore((s) => s.detachedPtyIds);
+  const kittyEnabled = useStore((s) => s.kittyEnabled);
   const select = useStore((s) => s.select);
   const setAddAgentOpen = useStore((s) => s.setAddAgentOpen);
   const openTaskDetail = useStore((s) => s.openTaskDetail);
@@ -196,7 +197,12 @@ export function AgentStrip({ config }: AgentStripProps) {
             }
             detached={a.ptyId ? detachedPtyIds.includes(a.ptyId) : false}
             onToggleDetach={
-              a.ptyId && agentClassOf(a) === 'human'
+              a.ptyId &&
+              agentClassOf(a) === 'human' &&
+              // kittyEnabled gate: no NEW detach affordance while off — but a
+              // pane already detached keeps its icon (click = reattach, the
+              // only way back from a pre-flip kitty window).
+              (kittyEnabled || detachedPtyIds.includes(a.ptyId))
                 ? () => {
                     const ptyId = a.ptyId as string;
                     if (detachedPtyIds.includes(ptyId)) {

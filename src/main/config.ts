@@ -323,6 +323,11 @@ export interface HarnessConfig {
   knowledgeGraph?: KnowledgeGraphConfig;
   /** Fire native desktop notifications on agent lifecycle events (idle finish / waiting for input). */
   notifications?: boolean;
+  /** Kitty integration (card agent-harness-kittyenabled-set-2026-08-17) —
+   *  gates EVERY kitty feature: the satellite window + kitty buttons, and
+   *  detach-to-kitty panes/tabs. DEFAULT OFF, and a MISSING field reads as
+   *  off for existing configs. If on, assumes kitty is installed. */
+  kittyEnabled?: boolean;
   /** Opt-in "strong keep-alive": while ≥1 agent PTY is live, escalate the power
    *  blocker from 'prevent-app-suspension' to 'prevent-display-sleep', which on
    *  macOS also blocks TRUE system sleep (lid-close/idle) so scheduled missions
@@ -503,6 +508,7 @@ const DEFAULTS: HarnessConfig = {
   embeddingModel: 'minilm',
   missions: [OPS_STANDUP_MISSION],
   notifications: false,
+  kittyEnabled: false,
   strongKeepalive: false,
   autoUpdate: true,
   telemetryEnabled: true,

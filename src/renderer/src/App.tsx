@@ -115,6 +115,10 @@ export function App() {
       // when the old ephemeral-worker system is off (DEFAULT OFF — Settings keeps
       // this in sync on save). `=== true`: a config predating the field reads off.
       useStore.getState().setWorkersEnabled(c.workersEnabled === true);
+      // Kitty gate mirror (agent-harness-kittyenabled-set-2026-08-17): every
+      // kitty affordance subscribes to the store flag; Settings keeps it in
+      // sync on toggle. Missing field = off (default OFF for existing configs).
+      useStore.getState().setKittyEnabled(c.kittyEnabled === true);
       // Mirror boolean key-presence ONLY (never the key value) so the composer can
       // show the voice button disabled-with-tooltip when Free Flow is on but no
       // Groq key is set (Settings keeps this in sync on save).
