@@ -14,6 +14,7 @@ import {
 import { spawn } from 'node:child_process';
 import {
   rmSync,
+  appendFileSync,
   existsSync,
   readFileSync,
   readdirSync,
@@ -154,6 +155,15 @@ import type { TaskCard, InboxMessage } from './realtimeCompletionWatcher';
 import { TelemetryCollector } from './telemetry';
 import { vacationBusy } from './vacationBusy';
 import { PendingWorkTracker } from './pendingWork';
+import { runHiddenClaude } from './hiddenClaude';
+import {
+  STANDUP_CLERK_MODEL,
+  boardLine,
+  clerkPrompt,
+  detectAnomalies,
+  standupTarget,
+  summarizeAnomalies,
+} from './standup';
 import { analytics } from './analytics';
 import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
@@ -948,6 +958,84 @@ function floorQuietSince(since: number): boolean {
   }
 }
 
+/** Answer a due ops-standup with a cheap haiku-class one-shot instead of waking
+ *  god for a full turn (card agent-harness-standup-clerk-ch-2026-08-17).
+ *
+ *  Escalate-only, in three steps:
+ *   1. the four escalation conditions are decided DETERMINISTICALLY in
+ *      `detectAnomalies` — a healthy floor means no mail, no board line and no
+ *      spawn at all (an LLM asked to confirm "all fine" is a bill for silence);
+ *   2. only when something IS wrong does the clerk run, through the existing
+ *      hidden one-shot machinery (`runHiddenClaude`, read-only), to turn the
+ *      findings into the prose god reads;
+ *   3. the harness delivers — board line + `request` to god (the same act and
+ *      sender the classic standup used, so every downstream wake/FYI filter
+ *      behaves exactly as before). The deterministic summary is appended to
+ *      whatever the clerk writes, and IS the message when the clerk fails, so a
+ *      timeout can never swallow an escalation.
+ *
+ *  The board append is normally god's alone (single-scribe invariant); this one
+ *  line per anomalous standup is the card's explicit exception, written by main
+ *  (which owns every git write anyway), never by an agent. */
+async function runStandupClerk(): Promise<void> {
+  const root = hive.root();
+  if (!root) return;
+  const readJson = (name: string): unknown => {
+    try {
+      return JSON.parse(readFileSync(join(root, name), 'utf8'));
+    } catch {
+      return null; // missing/corrupt → no findings, never a false alarm
+    }
+  };
+  const cfg = readConfig();
+  const anomalies = detectAnomalies(readJson('fleet.json'), readJson('tasks.json'), cfg);
+  // The clerk's "done" back to the scheduler: the cycle is recorded in the hive
+  // log (and lastFiredAt is stamped by the caller) whether or not god hears.
+  try {
+    hive.appendLog({ kind: 'standup', by: 'clerk', anomalies: anomalies.length });
+  } catch {
+    /* logging is best-effort */
+  }
+  if (!anomalies.length) {
+    console.log('[standup] clerk: nothing to escalate — god stays silent');
+    return;
+  }
+  const facts = summarizeAnomalies(anomalies);
+  let report = facts;
+  try {
+    const res = await runHiddenClaude(clerkPrompt(root, anomalies), {
+      model: STANDUP_CLERK_MODEL,
+      cwd: root,
+      command: cfg.defaultCommand,
+      // Read-only: the clerk judges and writes, the harness delivers. Same
+      // AskUserQuestion deny as every other hidden session (card
+      // block-askuserquestion-20260817) — an explicit list overrides the default.
+      disallowedTools: ['Edit', 'Write', 'NotebookEdit', 'Bash', 'AskUserQuestion'],
+      timeoutMs: 120_000,
+    });
+    if (res.ok && res.text?.trim()) report = `${res.text.trim()}\n\n${facts}`;
+    else console.warn('[standup] clerk produced nothing, using the facts:', res.error);
+  } catch (e) {
+    console.warn('[standup] clerk failed, using the facts:', e);
+  }
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  try {
+    appendFileSync(join(root, 'board.md'), `${boardLine(stamp, report)}\n`, 'utf8');
+  } catch (e) {
+    console.error('[standup] board append failed', e);
+  }
+  // hive.send commits the hive root, so the board line lands in the same commit.
+  hive.send(
+    {
+      to: 'god',
+      act: 'request',
+      subject: `Standup: ${anomalies.length} finding${anomalies.length === 1 ? '' : 's'}`,
+      body: report,
+    },
+    'scheduler',
+  );
+}
+
 /** Rebuild the scheduler from persisted config: clear every existing timer,
  *  then arm each enabled mission honoring its lastFiredAt — a setTimeout for the
  *  time remaining until its next due fire, which then settles into a steady
@@ -981,7 +1069,18 @@ function syncMissions(): void {
         // we deliberately do NOT add `&& m.body`, so other (dispatch) missions keep
         // their prior behaviour, including the historical empty-body send (Pam N1).
         if (m.kind !== 'compact' && hive.enabled() && !quietSkip) {
-          hive.send({ to: m.to, act: 'request', subject: m.label, body: m.body }, 'scheduler');
+          // standupClerk (card agent-harness-standup-clerk-ch-2026-08-17): the
+          // built-in hourly standup is answered by a cheap one-shot clerk
+          // instead of waking god for a full turn. Escalate-only — god is
+          // mailed from inside runStandupClerk and only when something is
+          // actually wrong. Every OTHER mission (and the OFF setting) keeps the
+          // classic dispatch below, byte-identical. Deliberately AFTER the
+          // quietSkip gate: a quiet floor still costs zero, clerk or no clerk.
+          if (m.id === OPS_STANDUP_MISSION.id && standupTarget(readConfig()) === 'clerk') {
+            void runStandupClerk();
+          } else {
+            hive.send({ to: m.to, act: 'request', subject: m.label, body: m.body }, 'scheduler');
+          }
         }
         // Auto-compact: do NOT jam /compact into busy terminals. Hand it to the
         // renderer, which queues a /compact per agent (deduped — never two at

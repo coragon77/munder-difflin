@@ -1,0 +1,211 @@
+/**
+ * Standup clerk (card agent-harness-standup-clerk-ch-2026-08-17).
+ *
+ * The hourly ops standup used to wake GOD for a full turn every hour — an
+ * expensive orchestrator reading two JSON files. With `standupClerk` ON (the
+ * shipped default) the scheduler routes the standup to a cheap haiku-class
+ * one-shot instead, and god only hears about it when something is actually
+ * wrong: stalled · blocked-unowned · breaker-armed · over-budget.
+ *
+ * The split of labour here is deliberate:
+ *  - THIS module decides, deterministically, whether anything is wrong. That
+ *    keeps the escalation conditions testable and means a healthy-but-busy
+ *    floor spawns NOTHING at all (an LLM asked to say "all fine" is a bill for
+ *    silence). It also guarantees a real escalation survives an LLM that times
+ *    out — `summarizeAnomalies` is the fallback text.
+ *  - The CLERK (a hidden one-shot, `runHiddenClaude`) writes the prose: it sees
+ *    the same fleet.json / tasks.json and turns the findings into the board
+ *    line and the mail body god actually reads.
+ *
+ * The quiet-floor skip (`skipWhenFloorQuiet`, 13c6f7d) is upstream of all of
+ * this and unchanged: a quiet floor never reaches the clerk.
+ */
+
+/** Where a due ops-standup goes. */
+export type StandupTarget = 'clerk' | 'god';
+
+/** The four escalation conditions. Anything else is the floor working. */
+export type AnomalyKind = 'stalled' | 'blocked-unowned' | 'breaker-armed' | 'over-budget';
+
+export interface Anomaly {
+  kind: AnomalyKind;
+  /** Agent id or card id the finding is about (for the mail's first line). */
+  subject: string;
+  /** One human-readable sentence — also the deterministic fallback text. */
+  detail: string;
+}
+
+/** The slice of `fleet.json` the clerk reasons about (see writeFleetSnapshot). */
+export interface FleetAgent {
+  id: string;
+  name?: string;
+  isGod?: boolean;
+  breaker?: string;
+  tokens?: number;
+  /** null = no telemetry yet (fresh spawn) — never read as "idle forever". */
+  lastActiveSecAgo?: number | null;
+  pendingBackgroundWork?: number;
+}
+
+export interface StandupTask {
+  id: string;
+  title?: string;
+  status?: string;
+  assignee?: string;
+}
+
+export interface StandupBudgets {
+  costCapTokens?: number;
+  agentTokenCaps?: Record<string, number>;
+}
+
+/** Idle time that turns "working" into "stalled" for an agent holding a doing
+ *  card: half the hourly standup interval, so a stall is caught on the first
+ *  standup after it starts rather than the second. */
+export const STALLED_SEC = 1800;
+
+/** Cheap by design — the whole point of the card. */
+export const STANDUP_CLERK_MODEL = 'claude-haiku-4-5-20251001';
+
+/** Routing decision. Unset ⇒ clerk (default ON per operator); only an explicit
+ *  `false` restores the old wake-god-every-hour dispatch. */
+export function standupTarget(cfg: { standupClerk?: boolean }): StandupTarget {
+  return cfg.standupClerk === false ? 'god' : 'clerk';
+}
+
+const asArray = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+const mins = (sec: number): string => `${Math.round(sec / 60)}m`;
+
+/**
+ * The escalation conditions, evaluated against the same two files god reads.
+ * Everything is best-effort: a missing/corrupt snapshot yields no anomalies
+ * rather than throwing (the opposite bias to `floorQuietSince`, which fails
+ * toward firing — here a false alarm would wake god, which is what the card
+ * exists to stop).
+ */
+export function detectAnomalies(
+  fleet: unknown,
+  tasks: unknown,
+  budgets: StandupBudgets,
+  stalledSec = STALLED_SEC,
+): Anomaly[] {
+  const agents = asArray<FleetAgent>((fleet as { agents?: unknown })?.agents).filter(
+    (a) => a && typeof a.id === 'string',
+  );
+  const cards = asArray<StandupTask>((tasks as { tasks?: unknown })?.tasks).filter(
+    (t) => t && typeof t.id === 'string',
+  );
+  const byId = new Map(agents.map((a) => [a.id, a]));
+  const out: Anomaly[] = [];
+
+  // (1) stalled — a card is in 'doing' but its owner isn't moving. An owner
+  // with pending background work is WAITING, not idle (card
+  // agent-harness-busy-signal-coun-2026-08-17), and one with no telemetry yet
+  // has simply not reported a first tool call.
+  for (const c of cards) {
+    if (c.status !== 'doing') continue;
+    const owner = c.assignee?.trim();
+    if (!owner) continue;
+    const a = byId.get(owner);
+    if (!a) {
+      out.push({
+        kind: 'stalled',
+        subject: c.id,
+        detail: `card ${c.id} is 'doing' but its owner "${owner}" is not on the floor`,
+      });
+      continue;
+    }
+    const idle = a.lastActiveSecAgo;
+    if (typeof idle !== 'number' || idle <= stalledSec) continue;
+    if ((a.pendingBackgroundWork ?? 0) > 0) continue;
+    out.push({
+      kind: 'stalled',
+      subject: a.id,
+      detail: `${a.name ?? a.id} has been idle ${mins(idle)} while holding card ${c.id}`,
+    });
+  }
+
+  // (2) blocked-unowned — a blocker nobody owns is a blocker nobody is clearing.
+  for (const c of cards) {
+    if (c.status === 'blocked' && !c.assignee?.trim()) {
+      out.push({
+        kind: 'blocked-unowned',
+        subject: c.id,
+        detail: `card ${c.id}${c.title ? ` ("${c.title}")` : ''} is blocked with no assignee`,
+      });
+    }
+  }
+
+  // (3) breaker-armed — anything above 'healthy' means the breaker already acted.
+  for (const a of agents) {
+    if (a.breaker && a.breaker !== 'healthy') {
+      out.push({
+        kind: 'breaker-armed',
+        subject: a.id,
+        detail: `${a.name ?? a.id} is breaker-armed (${a.breaker})`,
+      });
+    }
+  }
+
+  // (4) over-budget — per-agent caps first, then the floor total. An unset or 0
+  // cap is "unlimited" everywhere else in the harness; it is here too.
+  const caps = budgets.agentTokenCaps ?? {};
+  for (const a of agents) {
+    const cap = caps[a.id];
+    const tokens = a.tokens ?? 0;
+    if (typeof cap === 'number' && cap > 0 && tokens > cap) {
+      out.push({
+        kind: 'over-budget',
+        subject: a.id,
+        detail: `${a.name ?? a.id} is over its token cap (${tokens} / ${cap})`,
+      });
+    }
+  }
+  const floorCap = budgets.costCapTokens;
+  if (typeof floorCap === 'number' && floorCap > 0) {
+    const total = agents.reduce((n, a) => n + (a.tokens ?? 0), 0);
+    if (total > floorCap) {
+      out.push({
+        kind: 'over-budget',
+        subject: 'floor',
+        detail: `the floor is over the token budget (${total} / ${floorCap})`,
+      });
+    }
+  }
+  return out;
+}
+
+/** Deterministic write-up of the findings. Used verbatim when the clerk fails
+ *  or times out, and appended to whatever the clerk writes so no fact is lost
+ *  to paraphrase. Empty findings ⇒ empty string (nothing to say). */
+export function summarizeAnomalies(anomalies: Anomaly[]): string {
+  if (!anomalies.length) return '';
+  const head = `${anomalies.length} standup finding${anomalies.length === 1 ? '' : 's'}:`;
+  return [head, ...anomalies.map((a) => `- [${a.kind}] ${a.detail}`)].join('\n');
+}
+
+/** One appended board line — board.md is narrative prose, so a multi-line
+ *  report collapses to its first line. */
+export function boardLine(stamp: string, text: string): string {
+  const first = text.split('\n').find((l) => l.trim()) ?? 'anomalies found';
+  return `- ${stamp} standup (clerk): ${first.trim()}`;
+}
+
+/** The clerk's whole job in one prompt: it re-reads the two files itself (so it
+ *  can add the context a rule can't see) but is handed the findings so it can
+ *  never miss one. Read-only — the harness does the writing. */
+export function clerkPrompt(root: string, anomalies: Anomaly[]): string {
+  return [
+    'You are the hive standup clerk. This is a one-shot: no follow-up turn.',
+    `Read ${root}/fleet.json (live per-agent status) and ${root}/tasks.json (the kanban).`,
+    '',
+    'A deterministic pass already found these escalations:',
+    summarizeAnomalies(anomalies),
+    '',
+    'Write the standup report for the orchestrator ("god"):',
+    '- FIRST LINE: one sentence, under 140 characters, naming the worst problem.',
+    '- Then at most 4 short lines: what is wrong, who owns it, the next action.',
+    'Name agents and card ids. No preamble, no markdown headings, no questions.',
+    'Do not use any tool other than reading files. Do not write, edit, or run anything.',
+  ].join('\n');
+}

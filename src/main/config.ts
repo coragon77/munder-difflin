@@ -241,6 +241,15 @@ export interface HarnessConfig {
   embeddingModel: 'minilm' | 'embeddinggemma';
   /** Recurring auto-dispatch missions handled by the scheduler. */
   missions?: ScheduledMission[];
+  /** Route the hourly ops standup to a cheap haiku-class clerk instead of god
+   *  (card agent-harness-standup-clerk-ch-2026-08-17). DEFAULT ON (operator
+   *  call): a due standup on a NON-quiet floor is answered by a one-shot clerk
+   *  that reads fleet.json + tasks.json, and god is mailed ONLY on a real
+   *  escalation (stalled · blocked-unowned · breaker-armed · over-budget) — on
+   *  a healthy floor god hears nothing. `false` restores the old behaviour
+   *  (the standup dispatch lands in god's inbox every hour). Orthogonal to
+   *  `skipWhenFloorQuiet`, which still skips a quiet floor before any of this. */
+  standupClerk?: boolean;
   /** One-time guard: has the built-in hourly ops standup been seeded into an
    *  existing install's missions? Prevents re-adding it after a user deletes it. */
   opsStandupSeeded?: boolean;
@@ -507,6 +516,10 @@ const DEFAULTS: HarnessConfig = {
   semanticMemory: true,
   embeddingModel: 'minilm',
   missions: [OPS_STANDUP_MISSION],
+  // The standup goes to a cheap clerk, not to god (operator call). Existing
+  // installs read the same default: readConfig merges over DEFAULTS, so a
+  // config.json predating the field routes to the clerk too.
+  standupClerk: true,
   notifications: false,
   kittyEnabled: false,
   strongKeepalive: false,

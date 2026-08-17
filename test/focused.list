@@ -87,3 +87,4 @@ test/recall-focus-steal.test.cjs
 test/waiting-label-display.test.cjs
 test/ensure-sandbox-perms.test.cjs
 test/vacation-park-when-quiet.test.cjs
+test/standup-clerk.test.cjs
