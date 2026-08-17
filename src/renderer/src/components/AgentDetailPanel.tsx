@@ -289,22 +289,6 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
             </span>
           </PixelButton>
         )}
-        {/* Agent settings gear (agent-harness-agent-settings-b-2026-08-17) —
-            opens the SAME edit dialog the monitor and tasks windows open
-            (setEditAgent → the single dialog App mounts for editOf), no new editing
-            surface. Scoped like every other gear: human-class only — god's pane
-            is the CommandCenter (which offers no god gear today) and interns
-            are fire-and-rehire, never edited. */}
-        {agentClassOf(agent) === 'human' && (
-          <PixelButton
-            variant="secondary"
-            size="sm"
-            title={`edit ${displayAgentName(agent)}'s setup — name, engine, briefing`}
-            onClick={() => setEditAgent(agent.id)}
-          >
-            <Icon name="gear" />
-          </PixelButton>
-        )}
         {/* Pin/unpin (agent-harness-pin-unpin-button-2026-08-17) — beside the
             detach button, driving the same registry flag the office card's pin
             chip drives: a pinned worker is never parked. canPin is human-class
@@ -351,6 +335,23 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
         {canPark && (
           <PixelButton variant="secondary" size="sm" onClick={onPark}>
             <span title="Send on vacation — off the floor, keeps state, recallable">vacation</span>
+          </PixelButton>
+        )}
+        {/* Agent settings gear (agent-harness-agent-settings-b-2026-08-17) —
+            opens the SAME edit dialog the monitor and tasks windows open
+            (setEditAgent → the single dialog App mounts for editOf), no new editing
+            surface. Scoped like every other gear: human-class only — god's pane
+            is the CommandCenter (which offers no god gear today) and interns
+            are fire-and-rehire, never edited. Moved left of the X
+            (agent-agent-window-move-settin-2026-08-17). */}
+        {agentClassOf(agent) === 'human' && (
+          <PixelButton
+            variant="secondary"
+            size="sm"
+            title={`edit ${displayAgentName(agent)}'s setup — name, engine, briefing`}
+            onClick={() => setEditAgent(agent.id)}
+          >
+            <Icon name="gear" />
           </PixelButton>
         )}
         {isReal && (

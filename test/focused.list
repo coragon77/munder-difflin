@@ -82,3 +82,4 @@ test/kitty-enabled-gate.test.cjs
 test/waiting-busy-pending-work.test.cjs
 test/hook-synthetic-gate.test.cjs
 test/hive-mail-cli.test.cjs
+test/agent-pane-gear-before-x.test.cjs

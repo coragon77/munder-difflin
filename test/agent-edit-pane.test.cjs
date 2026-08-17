@@ -5,7 +5,7 @@
  *
  * The agent-edit dialog (AddAgentModal editOf) was reachable from the monitor
  * and tasks windows only. The operator wants the SAME gear in the agent pane
- * header, beside the pin/detach controls. This file source-pins the wiring:
+ * header. This file source-pins the wiring:
  *
  *  • AgentDetailPanel calls the SAME store mechanism (setEditAgent) — App
  *    already renders the single <AddAgentModal editOf> keyed on editAgentId,
@@ -23,7 +23,7 @@ const path = require('node:path');
 const repoRoot = path.join(__dirname, '..');
 const read = (p) => readFileSync(path.join(repoRoot, p), 'utf8');
 
-test('the agent pane header anchors the edit gear beside the pin control', () => {
+test('the agent pane header anchors the edit gear', () => {
   const src = read('src/renderer/src/components/AgentDetailPanel.tsx');
   assert.ok(src.includes('setEditAgent'), 'the pane opens the edit dialog via the store');
   assert.ok(
@@ -36,11 +36,11 @@ test('the agent pane header anchors the edit gear beside the pin control', () =>
   );
   assert.ok(src.includes('Icon name="gear"'), 'the affordance is the same gear icon');
 
-  // Placement: inside the header, next to the pin button (the card pins it to
-  // the existing header controls cluster, not the tab body or the composer).
-  const gearAt = src.indexOf('setEditAgent(agent.id)');
-  const pinAt = src.indexOf('onClick={onTogglePin}');
-  assert.ok(gearAt > 0 && pinAt > gearAt, 'the gear sits with the header controls, before pin');
+  // Placement: inside the header strip (not the tab body or the composer).
+  // Exact ordering (gear immediately left of the X) is pinned by
+  // agent-pane-gear-before-x.test.cjs (card agent-agent-window-move-settin-2026-08-17).
+  const header = src.slice(src.indexOf('Thin header strip'), src.indexOf('openTerminalError &&'));
+  assert.ok(header.includes('setEditAgent(agent.id)'), 'the gear sits with the header controls');
 
   // No second dialog: the pane must not import or mount its own edit modal.
   assert.ok(
