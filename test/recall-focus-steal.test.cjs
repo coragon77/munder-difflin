@@ -6,17 +6,18 @@
  * A god-initiated recall (vacation-request file) restores the agent's pane in
  * the BACKGROUND: no selection change, no window/tab focus steal — the
  * operator keeps typing where they were. An operator-clicked recall in the UI
- * keeps its explicit switch to the recalled agent.
+ * is background too: the card returns to the floor, the pane stays where it
+ * was clicked (card agent-harness-ui-recall-button-2026-08-17).
  *
  * The steal mechanism is store.addAgent setting selectedId = new agent, which
  * every spawn broadcast flows through. Pinned here:
  *  - addAgent(agent, { select: false }) leaves the current selection AND its
  *    persistence untouched (the background recall)
- *  - addAgent(agent) default behavior is unchanged (UI paths still switch)
- *  - index.ts distinguishes the initiator AT THE SOURCE: the vacation-request
- *    path passes a background marker into recallAgent, which stamps
- *    `select: false` onto the hive:agentSpawned broadcast; the hive:recall
- *    IPC (UI click) passes no marker (source pins — index.ts is not loadable
+ *  - addAgent(agent) default behavior is unchanged (UI hire still switches)
+ *  - index.ts stamps EVERY recall origin background AT THE SOURCE: the
+ *    vacation-request path AND the hive:recall IPC (UI click) both pass the
+ *    background marker into recallAgent, which stamps `select: false` onto
+ *    the hive:agentSpawned broadcast (source pins — index.ts is not loadable
  *    outside Electron; same pattern as worker-intern-switches)
  *  - the renderer hands the marker through to addAgent (useHive source pin)
  *  - the preload payload type carries the marker (preload source pin)
@@ -96,7 +97,7 @@ test('background addAgent ({ select: false }) does not change the selected pane'
   assert.ok(Array.isArray(s.feeds['ada-1']), 'recalled agent still gets a feed');
 });
 
-test('default addAgent still selects the new agent (UI paths unchanged)', () => {
+test('default addAgent still selects the new agent (UI hire unchanged)', () => {
   memoryStorage.data = {};
   useStore.setState({
     agents: [agent('pam-1', { ptyId: 'pty-pam-1' })],
@@ -115,7 +116,7 @@ test('default addAgent still selects the new agent (UI paths unchanged)', () => 
 
 // ── index.ts: initiator distinguished at the source ────────────────────────
 
-test('the vacation-request path recalls in the background; the UI IPC does not', () => {
+test('both recall origins restore in the background (god request file + UI button)', () => {
   const src = read('src/main/index.ts');
 
   // recallAgent accepts the background marker and stamps it onto the
@@ -138,11 +139,12 @@ test('the vacation-request path recalls in the background; the UI IPC does not',
     'processVacationRequest recalls with background:true',
   );
 
-  // ...the UI IPC path does not (explicit switch preserved).
+  // ...and the UI IPC path now does too (card agent-harness-ui-recall-
+  // button-2026-08-17: the pane stays where it was clicked).
   assert.match(
     src,
-    /ipcMain\.handle\('hive:recall', \(_e, id: unknown\) => \{\s*if \(typeof id !== 'string'\) return \{ ok: false, error: 'invalid id' \};\s*return recallAgent\(id\);\s*\}\)/,
-    'hive:recall (UI click) passes no background marker',
+    /ipcMain\.handle\('hive:recall', \(_e, id: unknown\) => \{\s*if \(typeof id !== 'string'\) return \{ ok: false, error: 'invalid id' \};[\s\S]{0,600}?return recallAgent\(id, \{ background: true \}\);\s*\}\)/,
+    'hive:recall (UI click) passes the background marker',
   );
 });
 

@@ -4524,7 +4524,11 @@ ipcMain.handle('hive:setAgentMeta', (_e, id: unknown, meta: unknown) => {
 });
 ipcMain.handle('hive:recall', (_e, id: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
-  return recallAgent(id);
+  // A UI-button recall is a BACKGROUND restore too: the card returns to the
+  // floor but the operator keeps the pane they clicked from (card
+  // agent-harness-ui-recall-button-2026-08-17) — same select:false stamp as
+  // the god vacation-request path. The button itself does no local selection.
+  return recallAgent(id, { background: true });
 });
 
 // ─── IPC: semantic memory (MemPalace CLI) ───────────────────────────────────
@@ -6382,11 +6386,11 @@ async function recallAgent(
       setVacation: (id, v) => hive.setVacation(id, v),
       setArchived: (id, v) => hive.setArchived(id, v),
       appendLog: (e) => hive.appendLog(e),
-      // background = god's vacation-request file (not the operator's UI click):
+      // background = EVERY recall origin (god's vacation-request file AND the
+      // operator's UI button, card agent-harness-ui-recall-button-2026-08-17):
       // stamp select:false on the broadcast so the renderer cards the agent
       // WITHOUT stealing the operator's pane selection (card agent-recall-
-      // focus-steal-god-i-2026-08-17). The UI path (hive:recall IPC) passes no
-      // marker and keeps its explicit switch.
+      // focus-steal-god-i-2026-08-17) — the window stays where it was clicked.
       notifySpawned: (e) =>
         liveWebContents()?.send(
           'hive:agentSpawned',
