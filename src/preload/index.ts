@@ -329,6 +329,10 @@ export interface HarnessConfig {
   /** Opt-in strong keep-alive (prevent-display-sleep). Mirrors main + renderer
    *  HarnessConfig so updateConfig({ strongKeepalive }) is typed across the bridge. */
   strongKeepalive?: boolean;
+  /** Standup clerk switch — DEFAULT ON (missing = on, only explicit false is
+   *  off); routes the hourly ops standup to the cheap clerk instead of god
+   *  (f415122). Mirrors src/main/config.ts + standup.ts. */
+  standupClerk?: boolean;
   /** Auto-update from GitHub releases (default ON; Settings → General). */
   autoUpdate?: boolean;
   /** Anonymous product analytics (default ON, opt-out; see TELEMETRY.md).

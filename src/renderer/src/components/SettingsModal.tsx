@@ -460,6 +460,22 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
     }
   };
 
+  // --- Standup clerk (card agent-harness-settings-ui-mirr-2026-08-17) ---
+  // Mirrors the standupClerk config switch (default ON — only explicit false
+  // is off, same semantics as standupTarget). No store mirror: the scheduler
+  // reads the config at standup time in main; nothing renderer-side consumes
+  // it live.
+  const [standupClerk, setStandupClerk] = useState(config.standupClerk !== false);
+  const toggleStandupClerk = async () => {
+    const next = !standupClerk;
+    setStandupClerk(next);
+    try {
+      await window.cth.updateConfig({ standupClerk: next } as Partial<HarnessConfig>);
+    } catch {
+      setStandupClerk(!next); // persist refused — the config stays the truth
+    }
+  };
+
   // --- Slack integration ---
   const [slackEnabled, setSlackEnabled] = useState(config.slackEnabled ?? false);
   const [slackSecret, setSlackSecret] = useState(config.slackSigningSecret ?? '');
@@ -2486,6 +2502,51 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                           onClick={() => void toggleKitty()}
                         >
                           {kittyEnabled ? 'on' : 'off'}
+                        </PixelButton>
+                      </div>
+
+                      <div style={{ height: 2, background: 'var(--cth-ink-300)' }} />
+
+                      {/* Standup clerk (card agent-harness-settings-ui-mirr-
+                          2026-08-17) — hourly ops standup routed to the cheap
+                          clerk (default ON); off = god takes the standup again. */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                        }}
+                      >
+                        <div
+                          style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}
+                        >
+                          <span
+                            title="Hourly ops standup handled by the cheap standup clerk; off routes it to god."
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--cth-ink-900)',
+                            }}
+                          >
+                            Standup clerk
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--cth-ink-500)',
+                            }}
+                          >
+                            Hourly ops standup runs on the cheap clerk; off wakes god.
+                          </span>
+                        </div>
+                        <PixelButton
+                          variant={standupClerk ? 'primary' : 'secondary'}
+                          size="sm"
+                          onClick={() => void toggleStandupClerk()}
+                        >
+                          {standupClerk ? 'on' : 'off'}
                         </PixelButton>
                       </div>
 

@@ -94,6 +94,10 @@ export interface HarnessConfig {
    *  detach-to-kitty). Default off; missing field reads as off. Mirrors
    *  src/main/config.ts. */
   kittyEnabled?: boolean;
+  /** Standup clerk — hourly ops standup on the cheap clerk instead of god
+   *  (f415122). Default ON; missing reads as on, only explicit false is off.
+   *  Mirrors src/main/config.ts + standup.ts. */
+  standupClerk?: boolean;
   /** Opt-in "strong keep-alive": escalates the in-app power blocker to
    *  prevent-display-sleep so scheduled missions/terminals keep firing on time
    *  while away (battery cost; best on AC). Default off = survive + catch up on
