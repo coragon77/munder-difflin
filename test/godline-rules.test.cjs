@@ -166,15 +166,20 @@ test('godLine carries the PARALLEL-DISPATCH + FLOOR-CAP policy', () => {
 });
 
 test('godLine carries the INTERN SPRITES name->sprite rule', () => {
-  // Card agent-harness-gendered-intern--2026-08-17: the harness maps intern
-  // NAMES onto office sprites (female-coded name -> Angela, else the default
-  // Jim), so god picks the NAME to match the sprite he wants. Harness rules
-  // live in the harness: the rule must ride the shipped god briefing.
+  // Card agent-harness-gendered-intern--2026-08-17 introduced gendered intern
+  // sprites; card agent-harness-intern-portrait--2026-08-17 replaced the
+  // Angela/Jim mapping with a pool hash: a FEMALE-coded name hashes onto the
+  // female intern pool, any other name onto the male pool — name-stable, and
+  // an intern never wears a hire-cast face by default. Harness rules live in
+  // the harness: the rule must ride the shipped god briefing.
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
   assert.ok(/INTERN SPRITES/.test(p), 'the rule must be named');
-  assert.ok(/FEMALE-coded name renders the Angela sprite/.test(p));
-  assert.ok(/renders the default Jim sprite/.test(p), 'every other name keeps Jim');
+  assert.ok(/hashes onto the female intern pool/.test(p), 'female-coded -> female pool');
+  assert.ok(/onto the male pool/.test(p), 'every other name -> male pool');
+  assert.ok(/same name always wears the same face/.test(p), 'the hash is name-stable');
+  assert.ok(/never wears a hire-cast face/.test(p), 'interns get intern-only faces');
   assert.ok(/FEMALE_CODED_NAMES/.test(p), 'names the list constant');
+  assert.ok(/INTERN_FEMALE_POOL/.test(p), 'names the pool constants');
   assert.ok(
     /src\/renderer\/src\/scene\/office\/spawnIdentity\.ts/.test(p),
     'points god at the source of the name list',
@@ -182,6 +187,11 @@ test('godLine carries the INTERN SPRITES name->sprite rule', () => {
   assert.ok(
     /pick the NAME of each intern to match the sprite/.test(p),
     'god picks the name to match the sprite he wants',
+  );
+  assert.ok(/All 25 faces/.test(p), 'the picker lists hires + interns');
+  assert.ok(
+    /registry-saved or operator icon pick always beats the mapping/.test(p),
+    'operator pick still wins',
   );
   assert.ok(/always beats the mapping/.test(p), 'an explicit saved/operator pick wins');
 });
