@@ -19,7 +19,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
-const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, lstatSync, symlinkSync, readlinkSync } = require('node:fs');
+const {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+  lstatSync,
+  symlinkSync,
+  readlinkSync,
+} = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join, dirname } = require('node:path');
 const loadTs = require('./load-ts.cjs');
@@ -32,7 +41,19 @@ function makeRepo() {
   const repo = join(tmp, 'repo');
   mkdirSync(repo);
   execFileSync('git', ['-C', repo, 'init', '-b', 'main', '-q']);
-  execFileSync('git', ['-C', repo, '-c', 'user.email=t@t.local', '-c', 'user.name=t', 'commit', '--allow-empty', '-m', 'init', '-q']);
+  execFileSync('git', [
+    '-C',
+    repo,
+    '-c',
+    'user.email=t@t.local',
+    '-c',
+    'user.name=t',
+    'commit',
+    '--allow-empty',
+    '-m',
+    'init',
+    '-q',
+  ]);
   mkdirSync(join(repo, 'node_modules'));
   writeFileSync(join(repo, 'node_modules', 'marker'), 'live');
   return { tmp, repo };
@@ -53,8 +74,16 @@ test('a freshly created worktree gets a working node_modules symlink (zero manua
     assert.equal(res.ok, true, `addWorktree must succeed: ${res.error ?? ''}`);
     const st = lstatSync(join(wtPath, 'node_modules'));
     assert.equal(st.isSymbolicLink(), true, 'node_modules must be a symlink');
-    assert.equal(readlinkSync(join(wtPath, 'node_modules')), join(repo, 'node_modules'), 'must point at the main checkout');
-    assert.equal(readFileSync(join(wtPath, 'node_modules', 'marker'), 'utf8'), 'live', 'modules readable through the link');
+    assert.equal(
+      readlinkSync(join(wtPath, 'node_modules')),
+      join(repo, 'node_modules'),
+      'must point at the main checkout',
+    );
+    assert.equal(
+      readFileSync(join(wtPath, 'node_modules', 'marker'), 'utf8'),
+      'live',
+      'modules readable through the link',
+    );
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -65,7 +94,19 @@ test('addWorktree still succeeds when the main checkout has no node_modules (no 
   const repo = join(tmp, 'repo');
   mkdirSync(repo);
   execFileSync('git', ['-C', repo, 'init', '-b', 'main', '-q']);
-  execFileSync('git', ['-C', repo, '-c', 'user.email=t@t.local', '-c', 'user.name=t', 'commit', '--allow-empty', '-m', 'init', '-q']);
+  execFileSync('git', [
+    '-C',
+    repo,
+    '-c',
+    'user.email=t@t.local',
+    '-c',
+    'user.name=t',
+    'commit',
+    '--allow-empty',
+    '-m',
+    'init',
+    '-q',
+  ]);
   try {
     const wtPath = join(tmp, 'worktrees', 'agent-y');
     mkdirSync(dirname(wtPath), { recursive: true });
@@ -92,7 +133,11 @@ test('never clobbers an existing node_modules (pre-linked worktree or own instal
     writeFileSync(join(wt, 'node_modules', 'own'), 'mine');
     const res = await linkNodeModules(wt, mainRoot);
     assert.equal(res.linked, false, 'must skip, not replace');
-    assert.equal(readFileSync(join(wt, 'node_modules', 'own'), 'utf8'), 'mine', 'own install untouched');
+    assert.equal(
+      readFileSync(join(wt, 'node_modules', 'own'), 'utf8'),
+      'mine',
+      'own install untouched',
+    );
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -129,7 +174,11 @@ test('leaves an already-provisioned symlink alone (idempotent re-run)', async ()
     symlinkSync(join(mainRoot, 'node_modules'), join(wt, 'node_modules'));
     const res = await linkNodeModules(wt, mainRoot);
     assert.equal(res.linked, false, 'existing link is not replaced');
-    assert.equal(readlinkSync(join(wt, 'node_modules')), join(mainRoot, 'node_modules'), 'original target kept');
+    assert.equal(
+      readlinkSync(join(wt, 'node_modules')),
+      join(mainRoot, 'node_modules'),
+      'original target kept',
+    );
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
