@@ -28,10 +28,22 @@ import interiorsUrl from '@/assets/tilesets/interiors.png?url';
 // .tmj is Tiled JSON; imported as raw text and parsed by the loader.
 import officeMapRaw from '@/assets/maps/office.tmj?raw';
 import brooklyn99MapRaw from '@/assets/maps/brooklyn99.tmj?raw';
+import customMapRaw from '@/assets/maps/custom.tmj?raw';
+import modernOfficeRevampedUrl from '@/assets/tilesets/modern-office-revamped.png?url';
+import roomBuilderOfficeUrl from '@/assets/tilesets/room-builder-office.png?url';
 
 /** Theme identifiers. Only `office` exists in Phase 0; the five TV-show themes
- *  (friends, brooklyn99, siliconvalley, got, hogwarts) land in later phases. */
-export type ThemeId = 'office' | 'friends' | 'brooklyn99' | 'siliconvalley' | 'got' | 'hogwarts';
+ *  (friends, brooklyn99, siliconvalley, got, hogwarts) land in later phases.
+ *  `custom` is the operator's editable clone of the office (card
+ *  agent-harness-custom-office-th-2026-08-17). */
+export type ThemeId =
+  | 'office'
+  | 'custom'
+  | 'friends'
+  | 'brooklyn99'
+  | 'siliconvalley'
+  | 'got'
+  | 'hogwarts';
 
 export interface Tile {
   x: number;
@@ -118,6 +130,12 @@ export interface ThemeConfig {
   id: ThemeId;
   /** Raw Tiled JSON text; parsed + tileset-patched by themeLoader. */
   mapRaw: string;
+  /** Non-destructive switch (card agent-harness-custom-office-th-2026-08-17):
+   *  when set, a switch to this theme SKIPS the kill/archive teardown — the
+   *  scene rebuild re-seats the LIVE roster (same path boot uses), provided
+   *  the cast resolves every live character and the seats fit (themeGuard).
+   *  Show themes leave this unset and keep the destructive modal. */
+  preservesAgents?: boolean;
   /** Ordered atlases — order matches both the texture load order and the map's
    *  tileset array (texture[i] ↔ tilesets[i]). */
   tilesets: TilesetEntry[];
@@ -384,10 +402,61 @@ export const BROOKLYN99_THEME: ThemeConfig = {
   cast: OFFICE_THEME.cast,
 };
 
+/** Custom office — the operator's editable clone of The Office floor (card
+ *  agent-harness-custom-office-th-2026-08-17). Starts as a byte-copy of
+ *  office.tmj (same gid space, same anchors — the guard pins that) and the
+ *  operator iterates it in Tiled. The purchased LimeZu upgrades (Modern
+ *  Office Revamped v1.2, Room Builder Office — paid license, commercial OK)
+ *  ride as EXTRA atlases at fresh firstgids after the office three (1..2448),
+ *  so painting them can never shift an existing gid; the collision layer is
+ *  separate, so repaints can never break walkability. Same cast + seats as
+ *  the office, hence preservesAgents: switching office<->custom keeps every
+ *  live agent, pane and session. */
+export const CUSTOM_THEME: ThemeConfig = {
+  id: 'custom',
+  mapRaw: customMapRaw,
+  preservesAgents: true,
+  tilesets: [
+    ...OFFICE_THEME.tilesets,
+    {
+      url: modernOfficeRevampedUrl,
+      firstgid: 2449,
+      image: 'modernOfficeRevamped',
+      imagewidth: 256,
+      imageheight: 848,
+      tilewidth: 16,
+      tileheight: 16,
+      columns: 16,
+      tilecount: 848,
+    },
+    {
+      url: roomBuilderOfficeUrl,
+      firstgid: 3297,
+      image: 'roomBuilderOffice',
+      imagewidth: 256,
+      imageheight: 224,
+      tilewidth: 16,
+      tileheight: 16,
+      columns: 16,
+      tilecount: 224,
+    },
+  ],
+  primarySeatNames: OFFICE_THEME.primarySeatNames,
+  cafeSeatNames: OFFICE_THEME.cafeSeatNames,
+  cafeStands: OFFICE_THEME.cafeStands,
+  coffee: OFFICE_THEME.coffee,
+  anchors: OFFICE_THEME.anchors,
+  errandSpots: OFFICE_THEME.errandSpots,
+  monitor: OFFICE_THEME.monitor,
+  palette: OFFICE_THEME.palette,
+  cast: OFFICE_THEME.cast,
+};
+
 /** All registered themes. Phase 0 ships only the office; show themes register
  *  here as their content lands (Phase 2). */
 export const THEMES: Partial<Record<ThemeId, ThemeConfig>> = {
   office: OFFICE_THEME,
+  custom: CUSTOM_THEME,
   brooklyn99: BROOKLYN99_THEME,
 };
 

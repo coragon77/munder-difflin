@@ -1134,10 +1134,12 @@ export function useHive(config: HarnessConfig | null): void {
         spawnLabel: rec.spawnLabel, // leads the wake nudge → the CLI session's name
         recentTextTs: Date.now(),
       };
-      // A god-initiated recall (vacation-request file) stamps select:false on
-      // the broadcast — the pane restores in the BACKGROUND and the operator
-      // keeps their current selection (card agent-recall-focus-steal-god-i-
-      // 2026-08-17). UI-initiated spawns carry no marker and select as before.
+      // A background spawn (either recall origin, voice hire, unarchive —
+      // cards agent-recall-focus-steal-god-i-2026-08-17, agent-harness-
+      // remaining-force--2026-08-17, agent-harness-ui-recall-button-2026-08-17)
+      // stamps select:false on the broadcast — the card lands in the
+      // BACKGROUND and the operator keeps their current selection. UI-initiated
+      // hires carry no marker and select as before.
       useStore.getState().addAgent(agent, { select: rec.select !== false });
     });
     const offArchive = window.cth.onHiveAgentArchived?.((e) => {

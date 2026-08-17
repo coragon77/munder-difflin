@@ -5,7 +5,8 @@ import { disposeTerminal } from './terminalPool';
 import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { Icon } from './Icon';
-import type { ThemeId } from '@/scene/office/themeRegistry';
+import { getTheme, type ThemeId } from '@/scene/office/themeRegistry';
+import { missingAnchors, requiredAnchors, switchPreservesAgents } from '@/scene/office/themeGuard';
 
 // TV-show office themes (Phase 1 = the switch flow infra). Only `office` has a
 // real map+cast today; the five shows render via the loader's office fallback
@@ -26,6 +27,13 @@ const THEME_META: ThemeMeta[] = [
     blurb: 'Dunder Mifflin — the original floor',
     built: true,
     swatch: '#6b5a4a',
+  },
+  {
+    id: 'custom',
+    label: 'Custom Office',
+    blurb: 'Your editable Dunder Mifflin — paint it in Tiled',
+    built: true,
+    swatch: '#7a6a4a',
   },
   {
     id: 'friends',
@@ -96,6 +104,12 @@ export function OfficeThemePicker({ config }: { config: HarnessConfig }) {
   const onSelect = (id: ThemeId) => {
     setNote('');
     if (busy || id === current) return; // no-op on the current theme
+    // A preservesAgents target (custom) is NON-DESTRUCTIVE — nothing to
+    // confirm; the guard inside applyTheme refuses a broken map.
+    if (getTheme(id).preservesAgents) {
+      void applyTheme(id);
+      return;
+    }
     if (nonGodAgents().length === 0) {
       void applyTheme(id);
       return;
@@ -111,6 +125,39 @@ export function OfficeThemePicker({ config }: { config: HarnessConfig }) {
       // PTY is never touched. If a PTY won't die, abort the switch (surface the
       // error, don't persist the new theme) rather than leave a half-switched floor.
       const victims = nonGodAgents();
+      // NON-DESTRUCTIVE switch (card agent-harness-custom-office-th-2026-08-17):
+      // a preservesAgents target (custom) that resolves every live character
+      // and fits the seats skips the teardown ENTIRELY — persist + rebuild,
+      // and OfficeFloor's init re-seats the LIVE roster exactly like boot on a
+      // populated store; PTYs, terminals and panes are untouched. Guard first:
+      // a custom map the operator edited in Tiled may have lost anchors —
+      // refuse, never break the floor.
+      const theme = getTheme(id);
+      if (
+        switchPreservesAgents({
+          preservesAgents: !!theme.preservesAgents,
+          liveCharacters: victims.map((a) => a.character),
+          castByName: theme.cast.byName,
+          liveWorkers: victims.length,
+          workerSeats: theme.primarySeatNames.length - 1,
+        })
+      ) {
+        const missing = missingAnchors(theme.mapRaw, requiredAnchors(theme));
+        if (missing.length > 0) {
+          setNote(
+            `Switch refused — the ${id} map is missing anchors: ${missing.slice(0, 6).join(', ')}${missing.length > 6 ? '…' : ''}. Fix it in Tiled and try again.`,
+          );
+          return;
+        }
+        await window.cth.updateConfig({ officeTheme: id });
+        setCurrent(id);
+        setOfficeTheme(id); // → OfficeFloor rebuilds and re-seats the live roster
+        const meta = THEME_META.find((t) => t.id === id);
+        setNote(
+          `Switched to ${meta?.label ?? id} — your ${victims.length} agent${victims.length === 1 ? '' : 's'} kept ${victims.length === 1 ? 'its' : 'their'} seat${victims.length === 1 ? '' : 's'}.`,
+        );
+        return;
+      }
       for (const a of victims) {
         if (a.ptyId) {
           await window.cth.killPty(a.ptyId);

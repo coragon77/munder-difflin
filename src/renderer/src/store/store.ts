@@ -825,10 +825,12 @@ export const useStore = create<State>((set) => ({
       const archivedAgents = s.archivedAgents.filter((a) => a.id !== agent.id);
       // A live (re)spawn also consumes any restorable entry for the same id.
       const restorableAgents = s.restorableAgents.filter((a) => a.id !== agent.id);
-      // select:false = a BACKGROUND spawn (god-initiated vacation recall, card
-      // agent-recall-focus-steal-god-i-2026-08-17): the card lands on the floor
-      // but the operator keeps their current pane — no selection change, no
-      // focus steal. Every other spawn (UI hire, UI recall, restore) selects.
+      // select:false = a BACKGROUND spawn (either recall origin, voice hires,
+      // unarchive — cards agent-recall-focus-steal-god-i-2026-08-17,
+      // agent-harness-remaining-force--2026-08-17, agent-harness-ui-recall-
+      // button-2026-08-17): the card lands on the floor but the operator keeps
+      // their current pane — no selection change, no focus steal. UI hires and
+      // restores carry no marker and select as before.
       const selectedId = opts?.select === false ? s.selectedId : agent.id;
       persistAgents(agents, selectedId);
       persistArchived(archivedAgents);
