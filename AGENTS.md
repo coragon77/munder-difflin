@@ -13,6 +13,12 @@ Viewer/controller, not a CLI replacement.
 
 ```bash
 npm install        # postinstall rebuilds node-pty for Electron's ABI (most common setup failure)
+# Linux trap (incident 2026-08-17): npm ci/install recreates node_modules and
+# wipes the SUID perms on node_modules/electron/dist/chrome-sandbox — the boot
+# then dies with a cryptic SUID sandbox FATAL. The postinstall guard catches
+# this at install time and exits 1 with the two exact sudo commands; run them,
+# then retry the install. CI legs that can never chown to root set
+# MD_SKIP_SANDBOX_CHECK=1 (see .github/workflows/release.yml).
 npm run dev        # live-reloading Electron dev build
 npm run typecheck  # node + web TS projects — part of the standard gate
 npm run lint       # biome check (lint rules + format verification) — part of the standard gate

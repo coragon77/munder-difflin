@@ -46,6 +46,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          # Linux runners can never chown chrome-sandbox to root (card
+          # agent-harness-postinstall-guar-2026-08-17) — the packaged
+          # installers set their own perms; this build never boots the
+          # sandbox. macOS legs no-op the check either way.
+          MD_SKIP_SANDBOX_CHECK: "1"
 
       - name: Compile (electron-vite → out/)
         run: npm run build
