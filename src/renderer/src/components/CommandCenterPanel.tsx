@@ -169,6 +169,13 @@ export function CommandCenterPanel({
     const all = useStore.getState().agents;
     await Promise.all(all.map((a) => window.cth.controlAutoDelivery(a.id, next).catch(() => null)));
   };
+  // Detach-to-kitty follow-up (card agent-harness-detach-follow-up-2026-08-17):
+  // the same toggle the worker cards get — god's pty detaches through the
+  // identical ptyId-based chokepoints (pool keystroke gate, resize ownership,
+  // grey veil, auto-reattach), so nothing god-specific is needed here.
+  const godDetached = useStore((s) =>
+    agent.ptyId ? s.detachedPtyIds.includes(agent.ptyId) : false,
+  );
 
   return (
     <PixelPanel
@@ -280,6 +287,32 @@ export function CommandCenterPanel({
           {/* Same kitty access as the worker agents get — opens the satellite,
             whose first tab is Michael's own co-terminal. Self-probing. */}
           <GodKittyButton />
+          {/* Detach/reattach for god's own pane (agent-harness-detach-follow-up-
+            2026-08-17): detaches the LIVE god pty to a kitty window — the pane
+            below greys out (read-only mirror) while Michael keeps running. */}
+          {agent.ptyId && (
+            <PixelButton
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const ptyId = agent.ptyId as string;
+                if (godDetached) void window.cth.reattachPty(ptyId);
+                else void window.cth.detachPty(ptyId, agent.name);
+              }}
+            >
+              <span
+                title={
+                  godDetached
+                    ? `${agent.name} is in a kitty window — click to reattach here`
+                    : `Detach ${agent.name} to a kitty window — the pane stays live but read-only`
+                }
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                <Icon name="detach" />
+                {godDetached ? 'reattach' : 'detach'}
+              </span>
+            </PixelButton>
+          )}
         </div>
       </div>
 
