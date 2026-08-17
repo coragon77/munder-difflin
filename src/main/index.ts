@@ -4165,6 +4165,18 @@ ipcMain.handle('hive:setArchived', (_evt, id: unknown, archived: unknown) => {
   hive.setArchived(id, archived === true);
   return { ok: true };
 });
+// Backfill-on-sight (card agent-icon-persistence-20260817): the renderer offers
+// every carding's sprite pick; first-write-wins is enforced in the registry, so
+// a saved identity is never changed under a live agent.
+ipcMain.handle(
+  'hive:saveOfficeIdentity',
+  (_evt, id: unknown, character: unknown, accent: unknown) => {
+    if (typeof id !== 'string' || typeof character !== 'string' || typeof accent !== 'string')
+      return false;
+    if (!hive.enabled()) return false;
+    return hive.saveOfficeIdentity(id, character, accent);
+  },
+);
 // The UI's park/recall buttons run the SAME functions god's
 // vacation-requests do — one code path, so the rules can't drift between them.
 // The one deliberate divergence is the busy rung (operator decision): the
@@ -5283,6 +5295,10 @@ registerRealtimeActionIpc({
     // renderer (useHive) builds the Agent card from this descriptor; addAgent is
     // idempotent so a renderer-initiated hire is never double-carded.
     if (res.ok) {
+      // Registry-saved office identity (agent-icon-persistence-20260817): a
+      // re-spawn of a known id keeps its persisted sprite; a fresh hire has
+      // none yet and the renderer derives + writes back.
+      const savedId = hive.enabled() ? hive.registry().agents[o.id] : undefined;
       try {
         liveWebContents()?.send('hive:agentSpawned', {
           id: o.id,
@@ -5293,6 +5309,8 @@ registerRealtimeActionIpc({
           role: o.hive?.role,
           worktreePath: res.worktreePath,
           spawnLabel: o.hive?.spawnLabel,
+          character: savedId?.officeCharacter,
+          accent: savedId?.officeAccent,
         });
       } catch {
         /* window torn down */
@@ -5330,7 +5348,15 @@ registerRealtimeActionIpc({
     }
     hive.setArchived(id, archived);
     try {
-      liveWebContents()?.send(archived ? 'hive:agentArchived' : 'hive:agentSpawned', { id });
+      // The unarchive direction re-cards the agent in the renderer — carry the
+      // registry-saved sprite so it comes back as itself (archive ignores the
+      // extra fields; its payload is { id }).
+      const savedId = !archived && hive.enabled() ? hive.registry().agents[id] : undefined;
+      liveWebContents()?.send(archived ? 'hive:agentArchived' : 'hive:agentSpawned', {
+        id,
+        character: savedId?.officeCharacter,
+        accent: savedId?.officeAccent,
+      });
     } catch {
       /* window gone */
     }
@@ -5774,6 +5800,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     // this broadcast a MAIN-spawned persistent hire is headless-invisible. Effect
     // 5b (useHive) builds the card — pane + queue included; ptyId == workerId.
     try {
+      const savedId = hive.enabled() ? hive.registry().agents[workerId] : undefined;
       liveWebContents()?.send('hive:agentSpawned', {
         id: workerId,
         name: meta.name,
@@ -5782,6 +5809,8 @@ async function processSpawnRequest(filePath: string): Promise<void> {
         command,
         role: meta.role, // 'intern' for persistent hires — matches the registry (useHive shows it on the card)
         spawnLabel: meta.spawnLabel, // leads the renderer's typed nudge → session name
+        character: savedId?.officeCharacter,
+        accent: savedId?.officeAccent,
       });
     } catch {
       /* window torn down */

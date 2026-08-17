@@ -219,6 +219,17 @@ export interface RegistryAgent extends AgentMeta {
    *  is unchanged (spawn meta never carries it; ensureAgent's `...prev` spread
    *  preserves it) — it changes only through operator action. */
   permissionMode?: HirePermissionMode;
+  /** The agent's office identity — floor sprite + accent — persisted so every
+   *  spawn path (recall, restore-team, respawn) reuses the hire-time pick
+   *  instead of re-deriving it from the name (card agent-icon-persistence-
+   *  20260817; the symptom was recalled Ada wearing Jim's sprite because
+   *  "ada" matches no cast member). Plain strings on purpose: main must not
+   *  import the pixi-bound cast module — the renderer validates against the
+   *  cast on read (spawnIdentity ignores unknown names). FIRST WRITE WINS:
+   *  saveOfficeIdentity only fills an empty slot, so a write-back never
+   *  changes a live agent's icon. */
+  officeCharacter?: string;
+  officeAccent?: string;
   /** Epoch ms the agent was parked — the "parked 2h ago" the VACATION section and
    *  god's fetchable pool read. Cleared when the vacation ends. */
   vacationSince?: number;
@@ -1182,6 +1193,30 @@ export class HiveManager {
    *  delete guards all read this. */
   isOnVacation(id: string): boolean {
     return !!this.registry().agents[id]?.vacation;
+  }
+
+  /** Backfill the agent's office identity (sprite + accent) into the registry
+   *  — the durable home every spawn path reads. FIRST WRITE WINS: returns
+   *  `true` only when this call actually persisted a value; a slot that is
+   *  already filled is refused (`false`) so the renderer's write-back can
+   *  never change a live agent's icon as a side effect. Fire-and-forget by
+   *  design — callers do not await a floor's cosmetics. */
+  saveOfficeIdentity(id: string, character: string, accent: string): boolean {
+    const root = this.root();
+    if (!root) return false;
+    try {
+      const reg = this.registry();
+      const agent = reg.agents[id];
+      if (!agent || !character || !accent) return false;
+      if (agent.officeCharacter) return false;
+      agent.officeCharacter = character;
+      agent.officeAccent = accent;
+      this.writeJson(join(root, 'registry.json'), reg);
+      return true;
+    } catch {
+      /* best-effort — never crash a carding path */
+      return false;
+    }
   }
 
   /**

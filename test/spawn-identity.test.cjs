@@ -47,3 +47,48 @@ test('accent fallback is a stable id-hash from the palette', () => {
   assert.equal(a.accent, again.accent);
   assert.ok(SPAWN_ACCENTS.includes(a.accent));
 });
+
+// ─── Registry-saved identity (card agent-icon-persistence-20260817) ─────────
+//
+// The prior row lives in the RENDERER's shelves (localStorage / roster.json
+// mirror) — fragile across origins and wipes. The registry is the durable
+// home: a spawn broadcast that carries a saved identity must beat both the
+// prior row and any derivation. This is the rung that was missing when a
+// recalled Ada came back as Jim despite the 7b974a3 prior-row fix.
+
+test('a registry-saved identity beats the prior row', () => {
+  const saved = spawnIdentity(
+    'ada-1',
+    'Ada',
+    { character: 'jim', accent: 'lemon' },
+    {
+      character: 'angela',
+      accent: 'sky',
+    },
+  );
+  assert.equal(saved.character, 'angela');
+  assert.equal(saved.accent, 'sky');
+});
+
+test('a saved identity alone (no prior row) still wins over derivation', () => {
+  // "ada" matches no cast member — derivation yields the default (jim).
+  const saved = spawnIdentity('ada-1', 'Ada', undefined, { character: 'angela', accent: 'sky' });
+  assert.equal(saved.character, 'angela');
+  assert.equal(saved.accent, 'sky');
+});
+
+test('an unknown saved character is ignored, never rendered', () => {
+  // Registry strings are written by whatever version wrote them — a name the
+  // current cast does not know must fall through to the normal ladder, not
+  // crash the sprite lookup downstream.
+  const r = spawnIdentity('ada-1', 'Ada', undefined, { character: 'not-a-cast-member' });
+  assert.equal(r.character, 'jim', 'falls through to the default, not the bogus value');
+  // Derivation still picks a stable accent when the saved accent is missing.
+  assert.ok(SPAWN_ACCENTS.includes(r.accent));
+});
+
+test('an unknown saved accent is ignored', () => {
+  const r = spawnIdentity('ada-1', 'Ada', undefined, { character: 'angela', accent: 'neon' });
+  assert.equal(r.character, 'angela');
+  assert.ok(SPAWN_ACCENTS.includes(r.accent), 'accent falls back to the id-hash rotation');
+});

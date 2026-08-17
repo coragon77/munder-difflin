@@ -4,11 +4,12 @@
 // operator pick, a MAIN-initiated spawn (voice hire, intern, recall) falls back
 // to a cast-name match, else the default character and an id-hash accent.
 // Every LATER spawn of the same id — vacation recall, unarchive, a race with
-// restore — must REUSE the prior row's identity instead: it is the persisted
-// hire-time pick (the roster mirror keeps it on the archived/restorable shelf
-// until addAgent consumes it). Re-deriving it fresh here is exactly how a
-// recalled vacationer came back with a different sprite (Ada: angela → default
-// jim, card vacation-recall-sprite-change-20260816).
+// restore — must REUSE the prior identity instead: the registry-saved pick
+// first (agent-icon-persistence-20260817), else the persisted hire-time row
+// (the roster mirror keeps it on the archived/restorable shelf until addAgent
+// consumes it). Re-deriving it fresh here is exactly how a recalled vacationer
+// came back with a different sprite (Ada: angela → default jim, card
+// vacation-recall-sprite-change-20260816).
 
 import type { AccentColorName } from '@/design/tokens';
 import { DEFAULT_CHARACTER, OFFICE_CAST, type OfficeCharacterName } from './cast';
@@ -22,22 +23,47 @@ export interface PriorIdentity {
   accent?: AccentColorName;
 }
 
+/** A registry-saved identity (officeCharacter/officeAccent) riding a spawn
+ *  broadcast — plain strings from main, validated here against the cast. */
+export interface SavedIdentity {
+  character?: string;
+  accent?: string;
+}
+
 /**
- * The office identity for a spawn. `prior` (a same-id row from the archived or
- * restorable shelf) wins over any derivation — a re-spawn is the same agent,
- * not a new hire.
+ * The office identity for a spawn. Ladder, top rung first:
+ *  1. `saved` — the registry-saved hire-time pick (durable across renderer
+ *     data loss; the fix for recalled agents wearing a stranger's sprite,
+ *     card agent-icon-persistence-20260817).
+ *  2. `prior` — a same-id row from the archived/restorable shelf (the
+ *     roster-mirror copy addAgent is about to consume).
+ *  3. Derivation — cast-name match, else the default character, with a
+ *     stable id-hash accent.
+ * Unknown `saved` names (a registry written by a different cast version) are
+ * ignored per-field, never rendered.
  */
 export function spawnIdentity(
   id: string,
   name: string | undefined,
   prior?: PriorIdentity,
+  saved?: SavedIdentity,
 ): { character: OfficeCharacterName; accent: AccentColorName } {
   const key = (name || id).toLowerCase();
+  const savedCharacter = saved?.character;
+  const isKnownCharacter = (c: string): c is OfficeCharacterName =>
+    OFFICE_CAST.some((m) => m.name === c);
+  const savedAccent = saved?.accent;
+  const isKnownAccent = (a: string): a is AccentColorName =>
+    (SPAWN_ACCENTS as readonly string[]).includes(a);
   const character =
+    (savedCharacter && isKnownCharacter(savedCharacter) ? savedCharacter : undefined) ??
     prior?.character ??
     OFFICE_CAST.find((m) => m.name === key || m.displayName.toLowerCase() === key)?.name ??
     DEFAULT_CHARACTER;
+  const accent =
+    (savedAccent && isKnownAccent(savedAccent) ? savedAccent : undefined) ?? prior?.accent;
+  if (accent) return { character, accent };
   let h = 0;
   for (const ch of id) h = (h + ch.charCodeAt(0)) % SPAWN_ACCENTS.length;
-  return { character, accent: prior?.accent ?? SPAWN_ACCENTS[h] };
+  return { character, accent: SPAWN_ACCENTS[h] };
 }

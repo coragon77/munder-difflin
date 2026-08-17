@@ -745,6 +745,16 @@ export const useStore = create<State>((set) => ({
       // addAgent for the same id — never render a duplicate card. The first writer
       // (richer local record) wins; the broadcast is a no-op for it.
       if (s.agents.some((a) => a.id === agent.id)) return s;
+      // BACKFILL-ON-SIGHT (card agent-icon-persistence-20260817): offer this
+      //  carding's sprite pick to the registry — the durable home the recall
+      //  broadcast reads. Main's first-write-wins guard makes this a no-op
+      //  once a pick is saved, so it can never change a live agent's icon.
+      //  Fire-and-forget: the floor card is already correct either way.
+      try {
+        window.cth?.hiveSaveOfficeIdentity?.(agent.id, agent.character, agent.accent);
+      } catch {
+        /* best-effort — the mirror still holds the identity */
+      }
       const agents = [...s.agents, agent];
       // Re-spawning an archived agent un-archives it: an id is active xor archived.
       const archivedAgents = s.archivedAgents.filter((a) => a.id !== agent.id);

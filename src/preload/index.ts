@@ -108,6 +108,12 @@ export interface HiveRegistry {
       vacationSince?: number;
       retired?: boolean;
       sessionId?: string;
+      /** Registry-saved office identity (floor sprite + accent), written
+       *  backfill-on-sight so recalls reuse the hire-time pick
+       *  (agent-icon-persistence-20260817). Plain strings — validate against
+       *  the cast on read. */
+      officeCharacter?: string;
+      officeAccent?: string;
     }
   >;
 }
@@ -939,7 +945,10 @@ const api = {
     return () => ipcRenderer.removeListener('hive:enqueueToAgent', listener);
   },
   /** A MAIN-initiated agent spawn (e.g. a voice hire via rt-5) — the renderer adds
-   *  the floor card from this descriptor since it didn't initiate the hire itself. */
+   *  the floor card from this descriptor since it didn't initiate the hire itself.
+   *  `character`/`accent` carry the registry-saved office identity when one
+   *  exists (agent-icon-persistence-20260817); absent for a never-backfilled
+   *  agent, and the renderer derives as before. */
   onHiveAgentSpawned: (
     cb: (rec: {
       id: string;
@@ -951,6 +960,9 @@ const api = {
       worktreePath?: string;
       /** Engagement label (session naming) — leads the typed wake nudge. */
       spawnLabel?: string;
+      /** Registry-saved floor sprite + accent, when a pick was persisted. */
+      character?: string;
+      accent?: string;
     }) => void,
   ): (() => void) => {
     const listener = (_e: IpcRendererEvent, payload: Parameters<typeof cb>[0]) => cb(payload);
@@ -1197,6 +1209,11 @@ const api = {
    *  archives it automatically via pty:kill; this is the explicit primitive. */
   hiveSetArchived: (id: string, archived: boolean): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:setArchived', id, archived),
+  /** Backfill the agent's office identity (floor sprite + accent) into the
+   *  registry — the durable home the recall broadcast reads. First-write-wins
+   *  main-side, so callers fire-and-forget it on every carding. */
+  hiveSaveOfficeIdentity: (id: string, character: string, accent: string): Promise<boolean> =>
+    ipcRenderer.invoke('hive:saveOfficeIdentity', id, character, accent),
 
   // ─── Slack integration (Slack message → Michael's queue) ─────────────────────
   /** Register a listener for inbound Slack messages; returns an unsubscribe fn.

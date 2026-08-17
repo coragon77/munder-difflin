@@ -251,6 +251,13 @@ export async function recallAgentCore(
       command,
       role: entry.role,
       worktreePath: res.worktreePath,
+      // The registry-saved office identity (card agent-icon-persistence-
+      //  20260817): the renderer prefers it over its own shelf rows, so a
+      //  recall reuses the hire-time sprite even when the renderer's mirror
+      //  has no row for this id. Absent (undefined) for a never-backfilled
+      //  agent — spawnIdentity then falls through to prior-row/derivation.
+      character: entry.officeCharacter,
+      accent: entry.officeAccent,
     });
   } catch {
     /* window torn down */

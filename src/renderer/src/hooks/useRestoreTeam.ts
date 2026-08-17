@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react';
+import { spawnIdentity } from '@/scene/office/spawnIdentity';
 import { useStore, type Agent } from '@/store/store';
 import {
   buildSpawnCommand,
@@ -232,8 +233,19 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
                 return null;
               }
               restored++;
+              // Office identity (agent-icon-persistence-20260817): the
+              // registry-saved pick wins over the roster row's — same ladder
+              // as the recall broadcast (spawnIdentity validates the strings).
+              const identity = spawnIdentity(
+                a.id,
+                a.name,
+                { character: a.character, accent: a.accent },
+                { character: entry?.officeCharacter, accent: entry?.officeAccent },
+              );
               return {
                 ...a,
+                character: identity.character,
+                accent: identity.accent,
                 provider,
                 ptyId,
                 archived: false,

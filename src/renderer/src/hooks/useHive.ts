@@ -1048,7 +1048,13 @@ export function useHive(config: HarnessConfig | null): void {
       // about to consume — over re-deriving it. Re-deriving is how a recalled
       // vacationer came back with the default sprite (ada: angela → jim).
       const prior = [...s.archivedAgents, ...s.restorableAgents].find((a) => a.id === rec.id);
-      const { character, accent } = spawnIdentity(rec.id, rec.name, prior);
+      // Registry-saved identity (agent-icon-persistence-20260817) outranks the
+      // prior row: the registry is durable where the renderer's shelves are
+      // wipeable, so a recall keeps its sprite even with no local row.
+      const { character, accent } = spawnIdentity(rec.id, rec.name, prior, {
+        character: rec.character,
+        accent: rec.accent,
+      });
       const project = (rec.cwd || '').split(/[\\/]/).filter(Boolean).pop() || 'hive';
       const agent: Agent = {
         id: rec.id,
