@@ -549,7 +549,20 @@ test('recall: the spawn recipe is pinned — isolate:false into the existing wor
   });
   assert.equal(spec.isolate, false);
   assert.equal(spec.provider, 'grok');
+  assert.equal(spec.resume, true); // the LAST conversation, not a fresh boot
   assert.equal(spec.permissionMode, 'ask'); // the hire-time choice, never overridden
+});
+
+test('recall: resume rides the spawn — the pane continues the LAST conversation', async () => {
+  // Card recall-resume-conversation-20260817: recall used to boot a FRESH
+  // conversation, so the operator had to /resume by hand. `resume: true` routes
+  // through the same adopt-recent-session machinery restore-team uses
+  // (spawnAgentCore: hive.lastSession → provider resume flag; no-op when the
+  // agent has no recorded session, so a first-ever boot still works).
+  const { deps, t } = recallDeps({ recipe: { command: 'claude', cwd: '/wt/vic' } });
+  assert.deepEqual(await recallAgentCore(deps, 'vic'), { ok: true });
+  const spec = JSON.parse(t.events.find((e) => e.startsWith('spawn')).slice('spawn:'.length));
+  assert.equal(spec.resume, true);
 });
 
 test('recall: provider falls back to inference from the command when the entry has none', async () => {

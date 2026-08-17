@@ -37,6 +37,10 @@ export interface RecallSpawnSpec {
   args?: string[];
   hive?: { id: string; name: string; provider?: AgentProvider; role?: string; cwd: string };
   isolate?: boolean;
+  /** Route through spawnAgentCore's adopt-recent-session machinery — the
+   *  recalled pane continues the agent's LAST conversation instead of booting
+   *  fresh (no-op when no session was ever recorded). */
+  resume?: boolean;
   provider?: AgentProvider;
   permissionMode?: HirePermissionMode;
 }
@@ -202,6 +206,15 @@ export async function recallAgentCore(
       args: recipe.model && !commandCarriesModel(command) ? ['--model', recipe.model] : [],
       hive: { id: agentId, name: entry.name, provider, role: entry.role, cwd },
       isolate: false,
+      // The pane must come back to the agent's LAST conversation, not a fresh
+      // boot (card recall-resume-conversation-20260817) — the same
+      // adopt-recent-session path restore-team uses. spawnAgentCore resolves
+      // hive.lastSession(id) into the provider's resume flag (Claude --resume
+      // with transcript seeding, codex resume, …) and attaches NOTHING when no
+      // session was ever recorded, so a first-ever boot stays a plain fresh
+      // spawn. Resume is argv-only — a /clear typed into the pane right after
+      // recall still wins, it is just input to the resumed conversation.
+      resume: true,
       provider,
       // The vacationer's OWN hire-time choice (roster mirror) — the central
       // injection appends its flag; a flag typed into the saved command wins.
