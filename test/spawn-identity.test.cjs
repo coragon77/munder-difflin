@@ -9,7 +9,8 @@
  *
  * These tests pin the extracted selection logic (spawnIdentity): a prior row
  * for the same id ALWAYS wins; first-carding falls back to cast-name match,
- * then the default character, with a deterministic id-hash accent.
+ * then the intern portrait pool (intern-portrait-pool-20260817), with a
+ * deterministic id-hash accent.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -30,9 +31,9 @@ test('the female-coded name list is lowercase and covers the known cases', () =>
 
 test('recall reuses the prior row identity (ada keeps angela/sky)', () => {
   const firstCard = spawnIdentity('ada-msw5vf5o', 'Ada');
-  // Since the gendered-sprite card, a female-coded name DERIVES angela — but the
-  // ACCENT still comes from the id hash, so the prior row's pick must win.
-  assert.equal(firstCard.character, 'angela');
+  // A female-coded name DERIVES an intern-pool face (nellie for 'ada') — but
+  // the prior row's pick must win on recall.
+  assert.equal(firstCard.character, 'nellie');
 
   const recalled = spawnIdentity('ada-msw5vf5o', 'Ada', { character: 'angela', accent: 'sky' });
   assert.equal(recalled.character, 'angela');
@@ -46,47 +47,50 @@ test('prior identity wins even when the name would match a cast member', () => {
   assert.equal(recalled.accent, 'coral');
 });
 
-test('first carding: cast-name match, else default character', () => {
+test('first carding: cast-name match, else the intern pool', () => {
   assert.equal(spawnIdentity('dwight-msu29wrc', 'Dwight').character, 'dwight');
   assert.equal(spawnIdentity('pam-msu2xdpo', 'Pam').character, 'pam');
-  assert.equal(spawnIdentity('bob-msw9x', 'Bob').character, 'jim'); // DEFAULT_CHARACTER
+  // Since the intern-portrait-pool card, unmapped names hash onto the pool
+  // instead of falling to the default character ('bob' hashes to gabe).
+  assert.equal(spawnIdentity('bob-msw9x', 'Bob').character, 'gabe');
 });
 
 // ─── Gendered intern sprites (card agent-harness-gendered-intern--2026-08-17)
 //
 // Main-initiated spawns (interns, voice hires, recalls) with a FEMALE-coded
-// name derive Angela's sprite; every other name keeps the default Jim. The
-// saved/prior rungs above still outrank the map — the operator's explicit
-// icon pick beats the name derivation.
+// name derive a face from the female intern pool (intern-portrait-pool-
+// 20260817); every other name hashes onto the male pool. The saved/prior
+// rungs above still outrank the map — the operator's explicit icon pick
+// beats the name derivation.
 
-test('first carding: a female-coded name derives the angela sprite', () => {
-  assert.equal(spawnIdentity('ada-msw5vf5o', 'Ada').character, 'angela');
-  assert.equal(spawnIdentity('holly-msx1', 'Holly').character, 'angela');
-  assert.equal(spawnIdentity('emma-msx2', 'Emma').character, 'angela');
+test('first carding: a female-coded name derives a female-pool face', () => {
+  assert.equal(spawnIdentity('ada-msw5vf5o', 'Ada').character, 'nellie');
+  assert.equal(spawnIdentity('emma-msx2', 'Emma').character, 'erin');
+  // 'Holly' is now a cast member — the cast-name rung gets her her own face.
+  assert.equal(spawnIdentity('holly-msx1', 'Holly').character, 'holly');
 });
 
 test('female-coded match also works on the tokens of the key', () => {
   // The key falls back to the id; the name rides a later token (live pattern
-  // intern-holly / intern-erin). Same for display names like 'Holly (Intern)'.
-  assert.equal(spawnIdentity('ada-msw5vf5o', undefined).character, 'angela');
-  assert.equal(spawnIdentity('intern-holly', undefined).character, 'angela');
-  assert.equal(spawnIdentity('intern-holly-x1', 'Holly (Intern)').character, 'angela');
-  // An unmapped name keeps the default.
-  assert.equal(spawnIdentity('intern-pete', 'Pete (Intern)').character, 'jim');
+  // intern-holly / intern-erin). Same for display names like 'Nora (Intern)'.
+  assert.equal(spawnIdentity('ada-msw5vf5o', undefined).character, 'nellie');
+  assert.equal(spawnIdentity('intern-nora-x1', 'Nora (Intern)').character, 'jan');
+  // An unmapped male-coded name hashes onto the male pool.
+  assert.equal(spawnIdentity('intern-pete', 'Pete (Intern)').character, 'darryl');
 });
 
-test('male-coded and unknown names keep the default jim sprite', () => {
-  assert.equal(spawnIdentity('carl-msx3', 'Carl').character, 'jim');
-  assert.equal(spawnIdentity('zed-msx4', 'Zed').character, 'jim');
+test('male-coded and unknown names hash onto the male pool', () => {
+  assert.equal(spawnIdentity('carl-msx3', 'Carl').character, 'robert');
+  assert.equal(spawnIdentity('zed-msx4', 'Zed').character, 'robert');
 });
 
-test('a registry-saved pick beats the gendered name map', () => {
+test('a registry-saved pick beats the pool mapping', () => {
   // Operator set Ada to jim explicitly — the map must not overrule the pick.
   const saved = spawnIdentity('ada-1', 'Ada', undefined, { character: 'jim' });
   assert.equal(saved.character, 'jim');
 });
 
-test('a prior row beats the gendered name map', () => {
+test('a prior row beats the pool mapping', () => {
   const prior = spawnIdentity('holly-1', 'Holly', { character: 'jim', accent: 'lemon' });
   assert.equal(prior.character, 'jim');
 });
@@ -121,7 +125,7 @@ test('a registry-saved identity beats the prior row', () => {
 });
 
 test('a saved identity alone (no prior row) still wins over derivation', () => {
-  // The saved rung outranks any derivation, gendered map included.
+  // The saved rung outranks any derivation, pool hash included.
   const saved = spawnIdentity('ada-1', 'Ada', undefined, { character: 'angela', accent: 'sky' });
   assert.equal(saved.character, 'angela');
   assert.equal(saved.accent, 'sky');
@@ -132,7 +136,7 @@ test('an unknown saved character is ignored, never rendered', () => {
   // current cast does not know must fall through to the normal ladder, not
   // crash the sprite lookup downstream.
   const r = spawnIdentity('bob-1', 'Bob', undefined, { character: 'not-a-cast-member' });
-  assert.equal(r.character, 'jim', 'falls through to the default, not the bogus value');
+  assert.equal(r.character, 'gabe', 'falls through to the pool hash, not the bogus value');
   // Derivation still picks a stable accent when the saved accent is missing.
   assert.ok(SPAWN_ACCENTS.includes(r.accent));
 });
@@ -141,4 +145,12 @@ test('an unknown saved accent is ignored', () => {
   const r = spawnIdentity('ada-1', 'Ada', undefined, { character: 'angela', accent: 'neon' });
   assert.equal(r.character, 'angela');
   assert.ok(SPAWN_ACCENTS.includes(r.accent), 'accent falls back to the id-hash rotation');
+});
+
+// 'intern-roy': the id key hashes the 'roy' token (char-code sum mod pool
+// size) — roy is also a cast member, but the FULL key 'intern-roy' does not
+// match the cast-name rung, so the pool hash decides. 'roy' is a fixed point
+// of the hash (346 mod 5 = 1 = its own pool index) — pin it:
+test('id-key spawns named after a pool member land on the pool hash', () => {
+  assert.equal(spawnIdentity('intern-roy', undefined).character, 'roy');
 });

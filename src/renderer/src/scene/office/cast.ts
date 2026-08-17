@@ -24,7 +24,19 @@ export type OfficeCharacterName =
   | 'ryan'
   | 'toby'
   | 'creed'
-  | 'meredith';
+  | 'meredith'
+  // Intern pool (card agent-harness-intern-portrait--20260817) — Office side
+  // characters: the DEFAULT mapping for interns, and selectable in the picker.
+  | 'holly'
+  | 'erin'
+  | 'jan'
+  | 'karen'
+  | 'nellie'
+  | 'darryl'
+  | 'roy'
+  | 'gabe'
+  | 'robert'
+  | 'mose';
 
 export interface CastMember {
   name: OfficeCharacterName;
@@ -52,6 +64,19 @@ export const OFFICE_CAST: CastMember[] = [
   { name: 'toby', displayName: 'Toby', shirt: '#9a8c5a', blurb: 'Human resources' },
   { name: 'creed', displayName: 'Creed', shirt: '#6b7a4b', blurb: 'Quality assurance' },
   { name: 'meredith', displayName: 'Meredith', shirt: '#b5544a', blurb: 'Supplier relations' },
+  // ── Intern pool — Office side characters (intern-portrait-pool-20260817).
+  // Interns hash onto these by gender pool (spawnIdentity.ts); the icon picker
+  // lists all 25 faces.
+  { name: 'holly', displayName: 'Holly', shirt: '#60968c', blurb: 'HR, kindred spirit' },
+  { name: 'erin', displayName: 'Erin', shirt: '#96b4d6', blurb: 'Receptionist, sunny' },
+  { name: 'jan', displayName: 'Jan', shirt: '#343a4c', blurb: 'VP of sales (former)' },
+  { name: 'karen', displayName: 'Karen', shirt: '#789668', blurb: 'Sales, Stamford' },
+  { name: 'nellie', displayName: 'Nellie', shirt: '#be9642', blurb: 'Special projects' },
+  { name: 'darryl', displayName: 'Darryl', shirt: '#82868e', blurb: 'Warehouse foreman' },
+  { name: 'roy', displayName: 'Roy', shirt: '#5a6474', blurb: 'Warehouse' },
+  { name: 'gabe', displayName: 'Gabe', shirt: '#607868', blurb: 'Tall. Skeleton.' },
+  { name: 'robert', displayName: 'Robert', shirt: '#303038', blurb: 'CEO, intense' },
+  { name: 'mose', displayName: 'Mose', shirt: '#6e5c42', blurb: 'Beet farmer, cousin' },
 ];
 
 export const CAST_BY_NAME: Record<OfficeCharacterName, CastMember> = Object.fromEntries(

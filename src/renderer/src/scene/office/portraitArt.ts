@@ -1155,6 +1155,123 @@ const RECIPES: Record<OfficeCharacterName, Recipe> = {
     mouth: 'smile',
     lashes: true,
   },
+  // ── Intern pool — Office side characters (card
+  // agent-harness-intern-portrait--20260817). Intern-only faces: the DEFAULT
+  // spawn mapping never puts a hire-cast face on an intern (the floor reads
+  // by face). Same recipe pipeline, so card portrait + walking sprite match.
+  holly: {
+    skin: 'light',
+    hairc: [140, 84, 44],
+    hair: 'styleFrame',
+    hairargs: { length: 19, vol: 1 },
+    cloth: 'cardigan',
+    c1: [96, 150, 140],
+    c2: [244, 242, 238],
+    brow: 'soft',
+    mouth: 'smile',
+    blush: true,
+    lashes: true,
+  },
+  erin: {
+    skin: 'light',
+    hairc: [168, 96, 50],
+    hair: 'styleFrame',
+    hairargs: { length: 22, vol: 1 },
+    cloth: 'blouse',
+    c1: [150, 180, 214],
+    brow: 'raised',
+    mouth: 'grin',
+    blush: true,
+    lashes: true,
+  },
+  jan: {
+    skin: 'light',
+    hairc: [124, 100, 64],
+    hair: 'styleFrame',
+    hairargs: { length: 13, vol: 1 },
+    cloth: 'suit',
+    c1: [52, 58, 76],
+    tie: [120, 124, 140],
+    brow: 'flat',
+    mouth: 'neutral',
+    lashes: true,
+  },
+  karen: {
+    skin: 'tan',
+    hairc: [54, 38, 28],
+    hair: 'styleFrame',
+    hairargs: { length: 15, vol: 1 },
+    cloth: 'blouse',
+    c1: [120, 150, 104],
+    brow: 'flat',
+    mouth: 'smile',
+    lashes: true,
+  },
+  nellie: {
+    skin: 'light',
+    hairc: [178, 92, 40],
+    hair: 'styleCurly',
+    cloth: 'cardigan',
+    c1: [190, 150, 66],
+    c2: [235, 233, 226],
+    brow: 'raised',
+    mouth: 'smile',
+    lashes: true,
+    heavy: true,
+  },
+  darryl: {
+    skin: 'dark',
+    hairc: [30, 26, 22],
+    hair: 'styleShort',
+    hairargs: { part: 'L' },
+    cloth: 'polo',
+    c1: [130, 134, 142],
+    c2: [104, 108, 118],
+    brow: 'flat',
+    mouth: 'smile',
+  },
+  roy: {
+    skin: 'light',
+    hairc: [152, 120, 72],
+    hair: 'styleShort',
+    hairargs: { part: 'L' },
+    cloth: 'polo',
+    c1: [90, 100, 116],
+    c2: [70, 80, 96],
+    brow: 'angry',
+    mouth: 'neutral',
+    heavy: true,
+  },
+  gabe: {
+    skin: 'light',
+    hairc: [118, 92, 60],
+    hair: 'styleFloppy',
+    cloth: 'cardigan',
+    c1: [96, 120, 104],
+    c2: [235, 233, 226],
+    brow: 'flat',
+    mouth: 'neutral',
+  },
+  robert: {
+    skin: 'light',
+    hairc: [150, 148, 144],
+    hair: 'styleShort',
+    hairargs: { part: 'R' },
+    cloth: 'suit',
+    c1: [48, 48, 56],
+    brow: 'flat',
+    mouth: 'neutral',
+  },
+  mose: {
+    skin: 'light',
+    hairc: [88, 62, 38],
+    hair: 'styleMessy',
+    cloth: 'dressshirt',
+    c1: [110, 92, 66],
+    facial: 'stubble',
+    brow: 'raised',
+    mouth: 'neutral',
+  },
 };
 
 /** The face/hair group (head → face → facial hair → hair → glasses), no clothing. */
@@ -1215,6 +1332,11 @@ function getBuf(name: OfficeCharacterName): Buf {
     bufCache.set(name, buf);
   }
   return buf;
+}
+
+/** The raw 18×28 portrait buffer for a character (pins the recipes in tests). */
+export function portraitBuf(name: OfficeCharacterName): Buf {
+  return getBuf(name);
 }
 
 export interface SceneFrames {
