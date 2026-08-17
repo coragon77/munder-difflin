@@ -400,7 +400,15 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
         permissionMode,
       });
       await window.cth
-        .hiveSetAgentMeta(editOf.id, { name: name.trim(), role: description.trim() || undefined })
+        .hiveSetAgentMeta(editOf.id, {
+          name: name.trim(),
+          role: description.trim() || undefined,
+          // The icon edit is EXPLICIT — overwrite semantics in the setter, so
+          // the recall broadcast (registry-saved rung) keeps this pick instead
+          // of the stale first-write-wins backfill (harness-icon-edit-persist).
+          officeCharacter: character,
+          officeAccent: accent,
+        })
         .catch(() => {
           /* registry best-effort — the store copy is already updated */
         });

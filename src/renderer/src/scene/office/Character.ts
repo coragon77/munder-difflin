@@ -499,6 +499,12 @@ export class Character {
     this.onSmokeDone = null;
   }
 
+  /** Swap the character art in place — see CharacterSprite.setFrames
+   *  (harness-icon-edit-persist-20260817). */
+  setFrames(frames: Texture[][]): void {
+    this.sprite.setFrames(frames);
+  }
+
   setBaseAlpha(alpha: number): void {
     this.targetAlpha = alpha;
   }

@@ -1203,10 +1203,18 @@ export class HiveManager {
    *  routing hint god's fetchable-pool picks by; the dialog seeds it from the
    *  description). Read-modify-write on the FRESH registry like every other
    *  setter, so concurrent stamps (recordSession, hooks) are never clobbered.
-   *  The agent id is immutable — memory, inbox and cost ledger key on it.
-   *  Semantics mirror setPinned: true = the registry holds the request (or
-   *  nothing needed changing), false = unknown agent / failed write. */
-  setAgentMeta(id: string, meta: { name?: string; role?: string }): boolean {
+   *  `officeCharacter`/`officeAccent` (harness-icon-edit-persist-20260817) are
+   *  the EXPLICIT dialog icon edit — OVERWRITE semantics, unlike the
+   *  first-write-wins backfill in saveOfficeIdentity: an operator edit must
+   *  replace even a filled slot, or a recalled agent reverts to the stale
+   *  name-derived pick. Blank strings are ignored (never written). The agent
+   *  id is immutable — memory, inbox and cost ledger key on it. Semantics
+   *  mirror setPinned: true = the registry holds the request (or nothing
+   *  needed changing), false = unknown agent / failed write. */
+  setAgentMeta(
+    id: string,
+    meta: { name?: string; role?: string; officeCharacter?: string; officeAccent?: string },
+  ): boolean {
     const root = this.root();
     if (!root) return false;
     try {
@@ -1216,9 +1224,23 @@ export class HiveManager {
       const next = { ...meta };
       if (typeof next.name !== 'string' || !next.name.trim()) delete next.name;
       if (typeof next.role !== 'string' || !next.role.trim()) delete next.role;
-      if (next.name === undefined && next.role === undefined) return true;
+      if (typeof next.officeCharacter !== 'string' || !next.officeCharacter.trim())
+        delete next.officeCharacter;
+      if (typeof next.officeAccent !== 'string' || !next.officeAccent.trim())
+        delete next.officeAccent;
+      if (
+        next.name === undefined &&
+        next.role === undefined &&
+        next.officeCharacter === undefined &&
+        next.officeAccent === undefined
+      )
+        return true;
       if (next.name !== undefined) agent.name = next.name.trim();
       if (next.role !== undefined) agent.role = next.role.trim();
+      // Explicit icon edit — overwrite on purpose (see docblock); blank was
+      // deleted above so these only ever write a real pick.
+      if (next.officeCharacter !== undefined) agent.officeCharacter = next.officeCharacter.trim();
+      if (next.officeAccent !== undefined) agent.officeAccent = next.officeAccent.trim();
       agent.lastSeen = Date.now();
       this.writeJson(join(root, 'registry.json'), reg);
       this.appendLog({
