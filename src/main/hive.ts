@@ -69,6 +69,11 @@ export interface HiveMessage {
   act: MessageAct;
   subject: string;
   body: string;
+  /** The kanban card this mail is about (card human-task-mail-card-ref:
+   *  the tasks-tab 'Task from the human' mail references its created card so
+   *  god enriches and assigns THAT card instead of minting a duplicate).
+   *  Machine-readable twin of the 'Card: <id>' body line; optional. */
+  cardId?: string;
   hops: number;
   requires_reply: boolean;
   needs_human: boolean;
@@ -1735,7 +1740,7 @@ export class HiveManager {
       ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST: BEFORE minting an intern (spawn-requests/), check the roster for an EXISTING fitting agent that is not currently busy and route the task there; interns are the fallback, not the default — mint one only when (a) the human explicitly ordered an intern/observable worker, or (b) parallelism: every fitting agent is mid-task. Say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, ' +
         godOwnsClause +
         " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm it as a DETACHED process BEFORE the close (a setsid script that polls for the harness process to disappear, ff-merges the batch, pushes, appends to a known log file, and exits — proven pattern: pam-cwd retarget watcher, 2026-08-17), then verify the log after reboot. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. ARCHIVE-ON-READ: the moment you have READ an inbox mail, move it to inbox/.done/ IMMEDIATELY, before acting on it, so the typed-nudge fallback stands down inside its grace window; the card/board carry the work state, not the inbox file. ATOMIC JSON WRITES: all direct writes to tasks.json (or any other shared hive JSON — registry.json, fleet.json) must be ATOMIC — serialize the full new content to a tempfile in the SAME directory, then os.replace() it onto the target; a bare in-place rewrite risks corrupting the shared kanban mid-write, and a stale read-modify-write can clobber a concurrent landing stamp (another writer's update lost between your read and your write)." +
-        ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
+        ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. HUMAN-CARD REFERENCE — a 'Task from the human' mail that references a card (a cardId field and/or a 'Card: <id>' line in the body) means that card ALREADY EXISTS in tasks.json: ENRICH and ASSIGN that exact card — NEVER create a duplicate (hive-card update <id> [--title <t>] [--notes <n>] --assignee <worker>, then hive-card status <id> doing). In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
         ' INTERNS — you OWN their lifecycle: mint them via spawn-requests/ ("persistent": true; template in COMMANDS.md) for delegated standing work, and FIRE them via fire-requests/ IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate.' +
         ' VACATION — before spawning anything, check fleet.json\'s vacation pool for a fitting parked agent and fetch it back via vacation-requests/ ("action":"recall") instead of minting new; park an idle human-created agent the same way ({"agentId":..., "reason":...}) once it is idle ≥ 1 hour, has no doing/blocked card, and its inbox is drained. PARKING GATE — idle time alone is NEVER sufficient to park: park only on POSITIVE done evidence — (a) a done/standby report to you for the current engagement, OR (b) the agent confirms on a pre-park ping that nothing is open in its pane (the agent\'s transcript knows; fleet.json does not — an idle pane may be a stepped-away operator mid-discussion). No evidence: ping first, park only on confirmation. Your judgment can still hold one back if the floor will need it again soon. Interns are FIRED, never parked. PINNED workers (registry "pinned" flag, set from the office UI) are NEVER parked — check the pin before any park decision and skip anyone pinned; the pin is the human\'s call, unpinning is too.'
       : meta.isAssistant
@@ -1812,6 +1817,7 @@ export class HiveManager {
       act,
       subject: partial.subject ?? '',
       body: partial.body ?? '',
+      ...(partial.cardId ? { cardId: partial.cardId } : {}),
       hops: typeof partial.hops === 'number' ? partial.hops : 0,
       requires_reply: partial.requires_reply ?? ['request', 'query', 'propose'].includes(act),
       needs_human: partial.needs_human ?? false,
@@ -2930,7 +2936,20 @@ read-modify-write can clobber a concurrent writer's update). Use the
 "$HIVE_ROOT/bin/hive-card" status <card-id> done     # verifiably complete
 \`\`\`
 
-Both subcommands validate before writing and refuse an unparseable ledger
+**Enrich an existing card in place** (god's adoption path for human-origin
+cards — the card is never duplicated):
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-card" update <card-id> --title "Better title" --notes "context" --assignee <worker-id>
+\`\`\`
+
+- \`update\` takes any of \`--title\`, \`--notes\` (the card's description),
+  \`--assignee\`; at least one is required, untouched fields stay as they are.
+- A 'Task from the human' mail that references a card (cardId field or
+  \`Card: <id>\` body line) means that card exists — \`update\` it and assign it;
+  NEVER add a second card for the same task.
+
+All subcommands validate before writing and refuse an unparseable ledger
 instead of clobbering it. Errors explain themselves on stderr (exit 1).`;
 
 const HIRING_AGENTS_MD = `## HIRING AGENTS
@@ -3268,7 +3287,10 @@ when (a) the human explicitly ordered an intern/observable worker, or
 (b) parallelism — every fitting agent is mid-task or on vacation.
 
 Human-created cards (origin 'human', from the tasks tab) arrive without a
-message — triage them at heartbeat standups, roster-first.
+message — triage them at heartbeat standups, roster-first. When a 'Task from
+the human' mail references its card (cardId field / 'Card: <id>' body line),
+enrich and assign THAT existing card (hive-card update) — never mint a
+duplicate card for the same task.
 
 ## Superpowers
 
@@ -3395,7 +3417,10 @@ There are two shared surfaces, both in the hive root:
   concurrent writer. Use the \`$HIVE_ROOT/bin/hive-card\` CLI (schema-checked,
   atomic): \`hive-card add --title <t> --status todo|doing [--notes <n>]\` cards
   work for yourself (assignee defaults to your \`$AGENT_ID\`, origin 'agent');
-  \`hive-card status <id> <todo|doing|blocked|done>\` keeps your card current.
+  \`hive-card status <id> <todo|doing|blocked|done>\` keeps your card current;
+  \`hive-card update <id> [--title <t>] [--notes <n>] [--assignee <id>]\` enriches
+  an existing card in place (god's path for adopting a human-origin card — never
+  duplicate a referenced card).
   See COMMANDS.md § HIVE-CARD.
 
 ## Guardrails: circuit breaker & token budgets
@@ -3449,6 +3474,7 @@ function usage() {
     'usage:',
     '  hive-card add --title <t> --status todo|doing [--notes <n>] [--assignee <id>]',
     '  hive-card status <id> <todo|doing|blocked|done>',
+    '  hive-card update <id> [--title <t>] [--notes <n>] [--assignee <id>]',
   ].join('\\n'));
 }
 
@@ -3578,10 +3604,45 @@ function cmdStatus(argv) {
   process.stdout.write(cardId + ' -> ' + next + '\\n');
 }
 
+// Enrich an EXISTING card in place (the god-adoption path for human cards):
+// --title/--notes/--assignee touch only what was given; --notes maps to the
+// card's description (same as add); a card is never duplicated or re-minted.
+function cmdUpdate(argv) {
+  if (argv.length < 1) usage();
+  const cardId = argv[0];
+  const flags = parseFlags(argv.slice(1));
+  for (const k of Object.keys(flags)) {
+    if (['title', 'notes', 'assignee'].indexOf(k) < 0) fail('unknown flag --' + k);
+  }
+  if (flags.title === undefined && flags.notes === undefined && flags.assignee === undefined) {
+    fail('nothing to update — give at least one of --title, --notes, --assignee.');
+  }
+  if (flags.title !== undefined && !flags.title.trim()) {
+    fail('--title must be non-empty when given.');
+  }
+  if (flags.notes !== undefined && !flags.notes.trim()) {
+    fail('--notes must be non-empty when given.');
+  }
+  if (flags.assignee !== undefined && !flags.assignee.trim()) {
+    fail('--assignee must be non-empty when given.');
+  }
+  withLock(function () {
+    const data = readLedger();
+    const card = data.tasks.find((t) => t && t.id === cardId);
+    if (!card) fail('no card with id "' + cardId + '" in tasks.json.');
+    if (flags.title !== undefined) card.title = flags.title.trim();
+    if (flags.notes !== undefined) card.description = flags.notes.trim();
+    if (flags.assignee !== undefined) card.assignee = flags.assignee.trim();
+    writeLedger(data);
+  });
+  process.stdout.write(cardId + ' updated\\n');
+}
+
 try {
   const cmd = process.argv[2];
   if (cmd === 'add') cmdAdd(process.argv.slice(3));
   else if (cmd === 'status') cmdStatus(process.argv.slice(3));
+  else if (cmd === 'update') cmdUpdate(process.argv.slice(3));
   else usage();
 } catch (e) {
   process.stderr.write('hive-card: ' + (e && e.message ? e.message : String(e)) + '\\n');
