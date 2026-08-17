@@ -164,3 +164,24 @@ test('godLine carries the PARALLEL-DISPATCH + FLOOR-CAP policy', () => {
   assert.ok(/REFUSES any spawn past the cap/.test(p), 'god knows the cap is enforced');
   assert.ok(/fleet\.json's floor block/.test(p), 'god is pointed at the live seat count');
 });
+
+test('godLine carries the INTERN SPRITES name->sprite rule', () => {
+  // Card agent-harness-gendered-intern--2026-08-17: the harness maps intern
+  // NAMES onto office sprites (female-coded name -> Angela, else the default
+  // Jim), so god picks the NAME to match the sprite he wants. Harness rules
+  // live in the harness: the rule must ride the shipped god briefing.
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/INTERN SPRITES/.test(p), 'the rule must be named');
+  assert.ok(/FEMALE-coded name renders the Angela sprite/.test(p));
+  assert.ok(/renders the default Jim sprite/.test(p), 'every other name keeps Jim');
+  assert.ok(/FEMALE_CODED_NAMES/.test(p), 'names the list constant');
+  assert.ok(
+    /src\/renderer\/src\/scene\/office\/spawnIdentity\.ts/.test(p),
+    'points god at the source of the name list',
+  );
+  assert.ok(
+    /pick the NAME of each intern to match the sprite/.test(p),
+    'god picks the name to match the sprite he wants',
+  );
+  assert.ok(/always beats the mapping/.test(p), 'an explicit saved/operator pick wins');
+});
