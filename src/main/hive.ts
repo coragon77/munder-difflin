@@ -1756,19 +1756,28 @@ export class HiveManager {
     const knowledgeLine = knowledgeGraph
       ? 'Enterprise knowledge: this organisation has a private Knowledge Graph of its own documents, policies, and business context. When a task needs that context — company-specific facts, house style, internal processes — query it instead of guessing: run `"$HIVE_NODE" "$KG_CLI" search "<query>"` for ranked passages, `"$HIVE_NODE" "$KG_CLI" list` to see what is available, and `"$HIVE_NODE" "$KG_CLI" get <id>` for a full document. ($HIVE_NODE is the harness\'s bundled Node — use it instead of bare `node`, which may not be on your PATH.)'
       : '';
-    // INBOX MONITOR ARMING (card inbox-wake-quieting-20260816): monitor-capable
-    // engines arm a persistent poll of their own inbox at session start so mail
-    // wakes them IN-SESSION; the typed nudge stays the universal fallback.
-    // claude-only today: claude's Monitor tool is proven live (god, 2026-08-16);
-    // pi has no agent-armable wake primitive (its bash is synchronous — verified
-    // against pi 0.84's tool surface), codex/crush get nothing. The loop skips
-    // system FYI mail (act 'inform' from system senders) — it must never wake
-    // anyone and waits for the next natural drain. Volatile-free: `dir` is
-    // stable for the agent's lifetime, so the prompt-cache invariant holds.
+    // INBOX MONITOR ARMING (card inbox-wake-quieting-20260816; seed+debounce+
+    // bundle upgraded by card agent-waiting-vs-idle-display--2026-08-17's
+    // addendum): monitor-capable engines arm a persistent poll of their own
+    // inbox at session start so mail wakes them IN-SESSION; the typed nudge
+    // stays the universal fallback. Three upgrades over the raw diff loop:
+    // (1) SEED — prev is initialized with the CURRENT listing before the loop,
+    // so arming starts silent instead of replaying every unread file as a
+    // "new mail" burst on every restart (mail that arrived while the agent
+    // was down stays covered by the typed-nudge fallback); (2) DEBOUNCE — on
+    // detecting new files, sleep 3 and rescan so a burst of near-simultaneous
+    // deliveries (router fan-out) lands as ONE wake instead of a line per
+    // straggler; (3) BUNDLE — one summary line per burst with the count and
+    // names. The loop still skips system FYI mail (act 'inform' from system
+    // senders) — it must never wake anyone. claude-only today: claude's
+    // Monitor tool is proven live (god, 2026-08-16); pi has no agent-armable
+    // wake primitive (its bash is synchronous — verified against pi 0.84's
+    // tool surface), codex/crush get nothing. Volatile-free: `dir` is stable
+    // for the agent's lifetime, so the prompt-cache invariant holds.
     const monitorLine = hasInboxMonitor(meta.provider ?? 'claude')
-      ? 'INBOX WAKE — at session start, arm ONE persistent monitor on your inbox so new mail wakes you in-session instead of waiting for the typed nudge. Launch your Monitor tool with this command:\n' +
-        `  prev=""; while true; do cur=$(ls ${dir}/inbox/*.json 2>/dev/null); for f in $(comm -13 <(echo "$prev") <(echo "$cur")); do grep -q '"act": *"inform"' "$f" && grep -Eq '"from": *"(ephemeral-worker|scheduler|heartbeat|breaker|system)"' "$f" && continue; echo "new hive mail: \${f##*/}"; done; prev="$cur"; sleep 1; done\n` +
-        'Each "new hive mail:" line means a message arrived — read your inbox and handle it (handled files go to inbox/.done/ per protocol). System FYI notices are skipped on purpose. If you cannot arm the monitor, do nothing — the harness\'s typed "read your inbox" nudge remains the fallback and fires only if mail is still unread after its grace window.'
+      ? 'INBOX WAKE — at session start, arm ONE persistent monitor on your inbox so new mail wakes you in-session instead of waiting for the typed nudge (arming is silent about mail that is already there — only NEW arrivals after arming wake you). Launch your Monitor tool with this command:\n' +
+        `  flt() { grep -q '"act": *"inform"' "$1" && grep -Eq '"from": *"(ephemeral-worker|scheduler|heartbeat|breaker|system)"' "$1"; }; scan() { news=""; for f in $(comm -13 <(echo "$prev") <(echo "$cur")); do flt "$f" || news="$news \${f##*/}"; done; }; prev=$(ls ${dir}/inbox/*.json 2>/dev/null); while true; do cur=$(ls ${dir}/inbox/*.json 2>/dev/null); scan; [ -n "$news" ] && { sleep 3; cur=$(ls ${dir}/inbox/*.json 2>/dev/null); scan; }; [ -n "$news" ] && { set -- $news; echo "new hive mail (\$#): $news"; }; prev="$cur"; sleep 1; done\n` +
+        'Each "new hive mail (N):" line means N messages arrived as one burst (names listed; a 3s debounce collects stragglers) — read your inbox and handle them (handled files go to inbox/.done/ per protocol). System FYI notices are skipped on purpose. If you cannot arm the monitor, do nothing — the harness\'s typed "read your inbox" nudge remains the fallback and fires only if mail is still unread after its grace window.'
       : '';
     // Integration ownership (card integration-mode-toggle-20260817): in 'god'
     // mode (default) the god briefing keeps its exact current wording. In

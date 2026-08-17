@@ -185,3 +185,63 @@ test('godLine carries the INTERN SPRITES name->sprite rule', () => {
   );
   assert.ok(/always beats the mapping/.test(p), 'an explicit saved/operator pick wins');
 });
+
+// ── INBOX WAKE monitor command: seed + debounce + bundle ──────────────────
+// (card agent-waiting-vs-idle-display--2026-08-17, operator addendum). The
+// command every monitor-capable agent arms must (1) SEED prev with the
+// current inbox listing BEFORE the loop — arming starts silent, killing the
+// once-per-restart replay burst (pre-arm mail stays covered by the typed
+// nudge), (2) DEBOUNCE — sleep 3 + rescan when new files appear so a
+// near-simultaneous burst lands as ONE wake, (3) BUNDLE — one summary line
+// 'new hive mail (N): <names>' per burst instead of a line per file. The
+// system-FYI filter (inform from system senders never wakes anyone) must
+// survive the rewrite. Source pin — the shell itself was verified live
+// against a temp inbox (burst + straggler + FYI → exactly one bundled line).
+
+const MONITOR_CMD_RE = /INBOX WAKE — .*\n\s+(.+)\n/s;
+
+test('INBOX WAKE command seeds prev with the current listing before the loop', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  const cmd = MONITOR_CMD_RE.exec(p)?.[1] ?? '';
+  assert.ok(cmd, 'the monitor command must be extractable from the briefing');
+  assert.match(cmd, /prev=\$\(ls [^)]*inbox\/\*\.json 2>\/dev\/null\)/, 'prev is SEEDED');
+  assert.doesNotMatch(cmd, /prev=""/, 'the unseeded empty-prev variant must be gone');
+  // seed must precede the loop: index(order) in the one-liner
+  assert.ok(
+    cmd.indexOf('prev=$(ls') < cmd.indexOf('while true'),
+    'seed happens BEFORE the poll loop starts',
+  );
+});
+
+test('INBOX WAKE command debounces: sleep 3 + rescan before emitting', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  const cmd = MONITOR_CMD_RE.exec(p)?.[1] ?? '';
+  assert.ok(cmd);
+  assert.match(cmd, /sleep 3/, 'the debounce window exists');
+  // the rescan (ls) between detection and emit: a second scan call
+  assert.match(cmd, /scan; \[ -n "\$news" \] && \{ sleep 3; cur=\$\(ls/, 'rescan after the sleep');
+});
+
+test('INBOX WAKE command bundles: one summary line with count + names', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  const cmd = MONITOR_CMD_RE.exec(p)?.[1] ?? '';
+  assert.ok(cmd);
+  assert.match(cmd, /echo "new hive mail \(\$#\): \$news"/, 'count + names in ONE line');
+  assert.doesNotMatch(cmd, /echo "new hive mail: /, 'per-file lines are gone');
+  // exactly one mail echo in the whole command — a burst is never split
+  // (the other `echo`s are the process-substitution feeds for comm, not output)
+  assert.equal((cmd.match(/echo "new hive mail/g) ?? []).length, 1);
+});
+
+test('INBOX WAKE keeps the system-FYI filter across the rewrite', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  const cmd = MONITOR_CMD_RE.exec(p)?.[1] ?? '';
+  assert.ok(cmd);
+  assert.match(cmd, /'"act": \*"inform"'/, 'act-inform check survives');
+  assert.match(
+    cmd,
+    /ephemeral-worker\|scheduler\|heartbeat\|breaker\|system/,
+    'the system-sender list survives',
+  );
+  assert.match(p, /System FYI notices are skipped on purpose/, 'prose keeps the filter note');
+});
