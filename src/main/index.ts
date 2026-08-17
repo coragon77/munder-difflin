@@ -6042,7 +6042,14 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   // where raw.provider without a command spawned 'claude' while claiming
   // another provider.
   const resolved = resolveInternSpawn(readConfig(), raw, persistent);
-  const command = resolved.command;
+  let command = resolved.command;
+  // pi gates on folder trust and a HEADLESS spawn has no human to confirm it —
+  // the intern sat at the trust prompt for 10+ minutes in the card's E2E
+  // (alive, zero tokens, inbox undeliverable). --approve is per-run PROJECT
+  // trust only (tool auto-allow stays in HIVE_AUTO_APPROVE, so default mode's
+  // posture is unchanged); safe to always pass for pi on this headless path.
+  if (inferAgentProvider(command, resolved.provider) === 'pi' && !command.includes('--approve'))
+    command = `${command} --approve`;
   // Permission mode (card permission-mode-config-20260816): god's workers and
   // interns follow the installation's worker-bypass SETTING — DEFAULT OFF,
   // bypass is the operator's per-installation opt-in, never the shipped

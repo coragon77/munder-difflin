@@ -117,6 +117,15 @@ test('the spawn-request path resolves through resolveInternSpawn', () => {
   assert.match(callSite.slice(0, 400), /persistent/, 'resolution knows persistent (intern gate)');
 });
 
+test('the spawn-request path appends pi --approve (folder trust) for headless pi spawns', () => {
+  const idx = read('src/main/index.ts');
+  assert.match(
+    idx,
+    /=== 'pi' && !command\.includes\('--approve'\)/,
+    'headless pi spawns carry the folder-trust flag (the E2E hang root cause)',
+  );
+});
+
 test('Settings exposes intern defaults and writes through updateConfig', () => {
   const sm = read('src/renderer/src/components/SettingsModal.tsx');
   assert.ok(sm.includes('internDefaults'), 'modal reads/writes the field');
