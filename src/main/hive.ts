@@ -752,6 +752,12 @@ export class HiveManager {
     const newCli = join(root, 'bin', 'hive-new');
     writeFileSync(newCli, HIVE_NEW_CLI, 'utf8');
     if (process.platform !== 'win32') chmodSync(newCli, 0o755);
+    // The cheap mail carrier (card agent-harness-reduce-transcrip-2026-08-17,
+    // E2) — envelope autofill + one-line stdout so agents stop hand-authoring
+    // and cat-verifying outbox JSON. Same refresh policy as the shims above.
+    const mailCli = join(root, 'bin', 'hive-mail');
+    writeFileSync(mailCli, HIVE_MAIL_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(mailCli, 0o755);
     // The bundled-node launcher every shim above is invoked through — MUST be
     // written before any hook installer runs (they probe for it).
     this.writeNodeLauncher();
@@ -1686,7 +1692,7 @@ export class HiveManager {
     const reason = [
       `You have ${fresh.length} new hive message(s) in your inbox. Address them before finishing:`,
       lines,
-      `Open the files in ${dir}/inbox/ for full detail, act on each, then move handled ones to inbox/.done/. Reply via your outbox if a message requires it.`,
+      `Open the files in ${dir}/inbox/ for full detail, act on each, then move handled ones to inbox/.done/. Reply via \`$HIVE_ROOT/bin/hive-mail\` if a message requires it.`,
     ].join('\n');
     return { block: true, reason };
   }
@@ -1845,7 +1851,7 @@ export class HiveManager {
       'HIVE PROTOCOL — follow it every task:',
       `1. At the START of a task, read ${dir}/memory.md and EVERY file in ${dir}/inbox/ (messages other agents sent you). After handling an inbox message, move its file into ${dir}/inbox/.done/.`,
       `2. Record durable facts, decisions, and context by appending to ${dir}/memory.md.`,
-      `3. To ask another agent for something or share information, write ONE message JSON into ${dir}/outbox/ (schema in PROTOCOL.md). NEVER write into another agent's folder — the orchestrator delivers your outbox.`,
+      `3. To ask another agent for something or share information, use \`$HIVE_ROOT/bin/hive-mail --to <id> --act <request|inform|propose|query|agree|refuse|done> --subject <s> --body <b>\` (it fills the envelope and prints the receipt — never cat the file back). NEVER write into another agent's folder — the orchestrator delivers your outbox.`,
       '4. At the END of a task, append what you learned to memory.md so future-you remembers.',
       monitorLine,
       guardrailsLine,
@@ -2982,6 +2988,27 @@ export class HiveManager {
 /** The '## HIRING AGENTS' section appended to COMMANDS.md — the two spawn
  *  paths: ephemeral spawn-requests workers (god-runnable from Bash) vs
  *  human-only persistent hires (Add Agent modal / voice verb). */
+const HIVE_MAIL_MD = `## HIVE-MAIL — sending mail (every agent)
+
+> Generated from \`COMMANDS_MD\` in the harness source — manual edits to this file are wiped on the next bootstrap.
+
+Hand-authoring outbox JSON costs ~350 tokens of envelope per mail, and
+
+cat-verifying it re-reads the whole body into context. The CLI is the cheap
+carrier (measured: ~12% on long findings mails, ~58% on short protocol mails):
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-mail" --to god --act done --subject "Card X shipped @ abc1234" --body "VERIFIED: ..."
+# → prints exactly one line: queued <id>.json   ← that IS the receipt; do NOT cat the file back
+\`\`\`
+
+- Required: \`--to\`, \`--act\` (request|inform|propose|query|agree|refuse|done), \`--subject\`, \`--body\`.
+- Optional: \`--conversation <id>\` (carry a thread), \`--in-reply-to <message id>\`.
+- The CLI fills \`id\`/\`from\`/\`hops\`/\`created_at\` and derives \`requires_reply\`
+  from the act (request/query/propose expect a reply; the rest are terminal).
+- No \`--body-file\` — deliberately: the body would land in context twice.
+`;
+
 const HIVE_CARD_MD = `## HIVE-CARD — writing the kanban (every agent)
 
 > Generated from \`COMMANDS_MD\` in the harness source — manual edits to this file are wiped on the next bootstrap.
@@ -3280,7 +3307,7 @@ export function renderCommandsMd(integrationMode: IntegrationMode = 'god'): stri
     }
     lines.push('');
   }
-  lines.push(HIVE_CARD_MD, HIRING_AGENTS_MD, CARD_SESSIONS_MD, KITTY_SATELLITE_MD);
+  lines.push(HIVE_CARD_MD, HIVE_MAIL_MD, HIRING_AGENTS_MD, CARD_SESSIONS_MD, KITTY_SATELLITE_MD);
   // Integration mode (card integration-mode-toggle-20260817 + lean addendum):
   // 'workers'/'lean' append the worker-side merge+push policy; 'lean' adds the
   // lean-god posture section after it; 'god' (default) renders nothing extra —
@@ -3536,7 +3563,18 @@ only thing that moves messages between agents.
 orchestrator routes it. This keeps every file single-writer.
 
 ## Sending a message
-Write one JSON file into \`outbox/\` (any filename ending in \`.json\`):
+Use the \`hive-mail\` CLI — it fills the envelope (\`id\`, \`from\`, \`hops\`,
+timestamps, \`requires_reply\`), writes your outbox atomically, and prints ONE line:
+\`queued <id>.json\`. That printed line IS the receipt — do NOT cat the file back
+
+to verify (the read re-costs the whole body):
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-mail" --to <agent-id|god|broadcast> --act <request|inform|propose|query|agree|refuse|done> --subject "one-line summary" --body "the details" [--conversation <id>] [--in-reply-to <message id>]
+\`\`\`
+
+Fallback when the CLI is unavailable — write one JSON file into \`outbox/\`
+(any filename ending in \`.json\`):
 
 \`\`\`json
 {
@@ -3881,6 +3919,89 @@ try {
   process.stderr.write('hive-card: ' + (e && e.message ? e.message : String(e)) + '\\n');
   process.exit(1);
 }
+`;
+
+// ─── hive-mail (written to <hive>/bin/hive-mail) ─────────────────────────────
+// The cheap mail carrier (card agent-harness-reduce-transcrip-2026-08-17, E2).
+// The agent authors ONLY --to/--act/--subject/--body; this fills the envelope
+// (id/from/hops/created_at/requires_reply — the same contract the router's
+// normalize() applies), writes the outbox JSON ATOMICALLY, and prints EXACTLY
+// ONE line. Those two conditions carry the measured saving (~215-235 tok per
+// long findings mail, ~58% on the many short protocol mails): a chatty stdout
+// or a cat-the-file-back verification re-reads the body into context and the
+// win evaporates. Deliberately NO --body-file variant (measured worst carrier:
+// the body lands twice, once written, once read back).
+const HIVE_MAIL_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+const ACTS = ['request', 'inform', 'propose', 'query', 'agree', 'refuse', 'done'];
+const REPLY_EXPECTED = ['request', 'query', 'propose'];
+
+function fail(msg) { throw new Error(msg); }
+
+const root = process.env.HIVE_ROOT;
+const from = (process.env.AGENT_ID || '').trim();
+if (!root || !from) {
+  process.stderr.write('hive-mail: HIVE_ROOT and AGENT_ID must be set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+
+function parseFlags(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i++) {
+    let a = argv[i];
+    if (a.indexOf('--') !== 0) fail('unexpected argument: ' + a + ' (flags look like --to <value>)');
+    a = a.slice(2);
+    let v;
+    const eq = a.indexOf('=');
+    if (eq >= 0) { v = a.slice(eq + 1); a = a.slice(0, eq); }
+    else { v = argv[++i]; }
+    if (v === undefined) fail('missing value for --' + a);
+    out[a] = v;
+  }
+  return out;
+}
+
+const flags = parseFlags(process.argv.slice(2));
+for (const k of Object.keys(flags)) {
+  if (['to', 'act', 'subject', 'body', 'conversation', 'in-reply-to'].indexOf(k) < 0) {
+    fail('unknown flag --' + k);
+  }
+}
+for (const k of ['to', 'act', 'subject', 'body']) {
+  if (flags[k] === undefined) fail('--' + k + ' is required.');
+  if (!String(flags[k]).trim()) fail('--' + k + ' must be non-empty when given.');
+}
+if (ACTS.indexOf(flags.act) < 0) {
+  fail('--act must be one of: ' + ACTS.join(', ') + ' (got: ' + flags.act + ').');
+}
+
+const rand = Math.random().toString(16).slice(2, 8);
+const id = new Date().toISOString().replace(/[:.]/g, '-') + '-' + rand;
+const msg = {
+  id: id,
+  conversation: (flags.conversation || '').trim() || 'conv-' + rand,
+  in_reply_to: (flags['in-reply-to'] || '').trim() || null,
+  from: from,
+  to: flags.to.trim(),
+  act: flags.act,
+  subject: flags.subject,
+  body: flags.body,
+  hops: 0,
+  requires_reply: REPLY_EXPECTED.indexOf(flags.act) >= 0,
+  needs_human: false,
+  created_at: new Date().toISOString(),
+};
+
+const outbox = path.join(root, 'agents', from, 'outbox');
+fs.mkdirSync(outbox, { recursive: true }); // a first-ever mail has no outbox yet
+const file = path.join(outbox, id + '.json');
+const tmp = file + '.tmp-' + process.pid;
+fs.writeFileSync(tmp, JSON.stringify(msg, null, 2), 'utf8');
+fs.renameSync(tmp, file);
+process.stdout.write('queued ' + id + '.json\\n');
 `;
 
 // ─── hive-new (written to <hive>/bin/hive-new) ─────────────────────────────────

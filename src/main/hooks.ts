@@ -345,12 +345,30 @@ export class HookServer {
       }
     }
 
+    // 7C.4 — synthetic-wake gate (transcript-pollution card, E1): a background
+    // task-notification delivered as a queued user prompt is machine-generated —
+    // it needs neither the roster line below nor a steer take (measured ~43k
+    // tok/session of injected boilerplate on a busy god). takeSteer() is
+    // DESTRUCTIVE (delivered-once queue): on a gated wake it must NEVER run, or
+    // queued operator guidance is silently swallowed. ONLY ^<task-notification>
+    // gates (god-ratified pass-list: hive inbox nudges, Telegram <channel>,
+    // <agent-message> all pass — 0 false positives over 2033 real prompts,
+    // intern corpus 2026-08-17). The event is still emitted below so
+    // avatars/telemetry stay live.
+    const syntheticWake =
+      event === 'UserPromptSubmit' && /^\s*<task-notification/.test(p.prompt ?? '');
+
     // 7C.2 — mid-run steering: inject queued operator guidance as context on the
     // next eligible hook (no fragile typing into the TUI). Delivered once.
     // Merged with the roster line below so the two injections never displace each
     // other (only ONE additionalContext can be returned per hook).
     let steer: string | null = null;
-    if ((event === 'UserPromptSubmit' || event === 'PostToolUse') && agentId && this.control) {
+    if (
+      !syntheticWake &&
+      (event === 'UserPromptSubmit' || event === 'PostToolUse') &&
+      agentId &&
+      this.control
+    ) {
       steer = this.control.takeSteer(agentId) ?? null;
     }
 
@@ -361,6 +379,7 @@ export class HookServer {
     // knows the floor all the time instead of only when it remembers to Read.
     // God-only and one line — every other agent is unaffected.
     const wantsRoster =
+      !syntheticWake &&
       (event === 'SessionStart' || event === 'UserPromptSubmit') &&
       !!agentId &&
       this.hive.isGod(agentId);

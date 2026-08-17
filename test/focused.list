@@ -80,3 +80,5 @@ test/worktree-isolation-refusal.test.cjs
 test/worker-intern-switches.test.cjs
 test/kitty-enabled-gate.test.cjs
 test/waiting-busy-pending-work.test.cjs
+test/hook-synthetic-gate.test.cjs
+test/hive-mail-cli.test.cjs
