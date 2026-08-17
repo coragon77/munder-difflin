@@ -74,3 +74,4 @@ test/human-task-card-ref.test.cjs
 test/hive-report-contract.test.cjs
 test/hive-new-cli.test.cjs
 test/agent-edit-pane.test.cjs
+test/floor-max-agents.test.cjs

@@ -66,6 +66,26 @@ export function parkedAgentIds(reg: {
   );
 }
 
+/** Clamp into the office's physical range (1..16 workplaces) — same rule as
+ *  main's normalizeFloorMaxAgents, repeated here because renderer can't import
+ *  main (the two config mirrors are already hand-synced the same way). */
+export function clampFloorCap(n: number): number {
+  return Number.isFinite(n) ? Math.min(16, Math.max(1, Math.floor(n))) : 16;
+}
+
+/** Split a restorable list against free floor seats (card
+ *  agent-harness-floormaxagents-s-2026-08-17): the first `freeSeats` agents in
+ *  roster order restore; the rest are HELD — they stay on the restorable list
+ *  (retryable once a seat frees) and the caller surfaces a note. Pure on
+ *  purpose so the cap behavior is testable without mounting the hook. */
+export function capRestorables<T>(
+  restorable: T[],
+  freeSeats: number,
+): { restoring: T[]; held: number } {
+  const free = Math.max(0, Math.floor(freeSeats));
+  return { restoring: restorable.slice(0, free), held: Math.max(0, restorable.length - free) };
+}
+
 export interface RestoreTeamState {
   restoring: boolean;
   /** True when the run in flight was started automatically at boot, not by a
@@ -117,6 +137,20 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
       return;
     }
     const restorableAgents = useStore.getState().restorableAgents.filter((a) => !parked.has(a.id));
+    // FLOOR CAP (card agent-harness-floormaxagents-s-2026-08-17): when the floor
+    // has fewer free seats than restorable agents — e.g. the operator downsized
+    // floorMaxAgents below the registry size — restore in ROSTER ORDER up to the
+    // cap and HOLD the rest. Held agents stay restorable (retry once a seat
+    // frees) and the note below says why they didn't come back. The main-side
+    // spawn gate is the backstop; this is the proposal the operator sees.
+    const floorCap = clampFloorCap(
+      typeof config?.floorMaxAgents === 'number' ? config.floorMaxAgents : 16,
+    );
+    const liveOnFloor = useStore.getState().agents.filter((a) => !a.isGod).length;
+    const { restoring: toRestore, held: heldByCap } = capRestorables(
+      restorableAgents,
+      floorCap - liveOnFloor,
+    );
     // Tally every agent's outcome so the run ALWAYS leaves a visible trace — the
     // original bug was that every failure path was console-only, so a click that
     // couldn't spawn anything looked like a dead button.
@@ -136,7 +170,7 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
       // slow git probe silently overwrote the sequence the user had dragged the
       // cards into.
       const restoredInOrder = await Promise.all(
-        [...restorableAgents].map(async (a): Promise<Agent | null> => {
+        [...toRestore].map(async (a): Promise<Agent | null> => {
           // Per-agent guard: one agent's failure (or a rejected IPC call) must NEVER
           // abort the others — an unhandled rejection here used to make the
           // entire restore a silent no-op after the first bad agent.
@@ -296,6 +330,10 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
       const parts: string[] = [];
       if (restored) parts.push(`restored ${restored}`);
       if (alreadyLive) parts.push(`${alreadyLive} already live`);
+      if (heldByCap)
+        parts.push(
+          `held ${heldByCap} — floor cap ${floorCap} reached (floorMaxAgents, Settings → Autonomy & Budgets); they stay restorable`,
+        );
       if (failures.length) parts.push(`${failures.length} failed — ${failures.join('; ')}`);
       note = parts.length ? parts.join(' · ') : 'nothing to restore';
       emit();

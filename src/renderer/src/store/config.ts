@@ -126,6 +126,10 @@ export interface HarnessConfig {
   agentTokenCaps?: Record<string, number>;
   autoDeliveryPausedAgents?: string[];
   maxTurns?: number;
+  /** Physical workplaces on the floor — ceiling for hires + interns on the
+   *  floor (god excluded). Default 16 (Settings → Autonomy & Budgets);
+   *  distinct from the headless-ephemeral maxConcurrentWorkers (main-only). */
+  floorMaxAgents?: number;
   circuitBreaker?: CircuitBreakerConfig;
   /** Enterprise Knowledge Graph (multimodal context for agents). Default OFF. */
   knowledgeGraph?: KnowledgeGraphConfig;

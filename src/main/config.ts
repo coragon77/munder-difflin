@@ -273,8 +273,18 @@ export interface HarnessConfig {
    *  (Claude Code's default). A coarse runaway guard independent of the breaker. */
   maxTurns?: number;
   /** Max concurrent god-triggered ephemeral Slack workers; extra spawn-requests
-   *  wait in the queue (natural backpressure, a resource backstop). Default 4. */
+   *  wait in the queue (natural backpressure, a resource backstop). Default 4.
+   *  This is the HEADLESS-EPHEMERAL cap only — it never counts hires/interns on
+   *  the floor; that ceiling is `floorMaxAgents` (see there). */
   maxConcurrentWorkers?: number;
+  /** Physical workplaces on the office floor — the hard ceiling on hires +
+   *  interns ON THE FLOOR at once (god excluded; the office ships 16 desks).
+   *  Operator-downsizable (Settings → Autonomy & Budgets, 1..16). Enforced in
+   *  spawnAgentCore, the single door every spawn path passes through (Add Agent,
+   *  restore-team, god spawn-requests incl. interns). DISTINCT from
+   *  `maxConcurrentWorkers`, which caps only the headless ephemeral-worker queue
+   *  concurrency. Default 16 (card agent-harness-floormaxagents-s-2026-08-17). */
+  floorMaxAgents?: number;
   /** Minutes an ephemeral worker may produce NO output before the reaper kills it
    *  — idle-based, never wall-clock, so an actively-working worker is never reaped.
    *  Default 20. */
@@ -463,6 +473,8 @@ const DEFAULTS: HarnessConfig = {
   // (safe-readonly ON, write/secret OFF).
   mcpDefaults: defaultMcpDefaults(),
   maxConcurrentWorkers: 4,
+  // The office ships 16 physical workplaces — the default floor ceiling.
+  floorMaxAgents: 16,
   workerIdleTimeoutMinutes: 20,
   integrations: [],
   defaultWorkerTokenCap: 0, // 0 = unlimited (human directive: NO per-worker cap)
@@ -609,6 +621,15 @@ function migrateTriggersV1(cfg: HarnessConfig): HarnessConfig {
     // migration retries on the next launch rather than on every single read.
     return cfg;
   }
+}
+
+/** `floorMaxAgents` clamped into the office's physical range (1..16 workplaces);
+ *  unset/invalid → 16 (the full floor). Shared by the spawn gate, the fleet
+ *  snapshot, and the settings widget so they can't drift apart. */
+export function normalizeFloorMaxAgents(n: number | undefined | null): number {
+  return typeof n === 'number' && Number.isFinite(n)
+    ? Math.min(16, Math.max(1, Math.floor(n)))
+    : 16;
 }
 
 export function readConfig(): HarnessConfig {

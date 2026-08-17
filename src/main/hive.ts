@@ -270,6 +270,23 @@ export interface Registry {
   agents: Record<string, RegistryAgent>;
 }
 
+/** How many physical workplaces on the floor are occupied right now — every
+ *  live hire/intern (not archived, not on vacation, not retired), god excluded.
+ *  The `floorMaxAgents` spawn gate (spawnAgentCore) and the fleet snapshot's
+ *  `floor` block both read this one census so gate and reporting can't drift.
+ *  `excludeId` lets a respawn keep its own seat warm (re-entering the same id
+ *  never counts against itself). Pure on purpose — tested directly. */
+export function floorCensus(reg: Registry, excludeId?: string): number {
+  let n = 0;
+  for (const [id, a] of Object.entries(reg.agents)) {
+    if (id === excludeId) continue;
+    if (id === reg.godId || a.isGod) continue; // god has his own desk
+    if (a.archived || a.vacation || a.retired) continue; // off the floor
+    n++;
+  }
+  return n;
+}
+
 /** Build env + extra spawn args that make an agent process hive-aware. */
 export interface SpawnInjection {
   args: string[];
@@ -1742,7 +1759,7 @@ export class HiveManager {
           ? `final QA — and remain the sole scribe of board.md. ${delegatedClause}`
           : 'branch integration, and final QA — and remain the sole scribe of board.md.';
     const godLine = meta.isGod
-      ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST: BEFORE minting an intern (spawn-requests/), check the roster for an EXISTING fitting agent that is not currently busy and route the task there; interns are the fallback, not the default — mint one only when (a) the human explicitly ordered an intern/observable worker, or (b) parallelism: every fitting agent is mid-task. Say that you checked. One capable owner beats a duplicate. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, ' +
+      ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST and dispatch is PARALLEL BY DEFAULT: (a) AREA FAN-OUT — when an area has multiple INDEPENDENT open cards, dispatch them to ALL available fitting workers AT ONCE: floor agents first, then recall fitting parked workers (fleet.json vacation pool); one owner per card, parallel across cards — say that you checked the roster. (b) Go sequential ONLY on real ticket dependencies (one card genuinely blocked on another\'s output) — never serialize independent work. (c) INTERNS ARE THE OVERFLOW — when independent cards outnumber the fitting hires on floor + vacation, mint interns (spawn-requests/) for the surplus: overflow capacity, NOT a last resort; the per-card roster-first check still applies, and an explicit human order for an intern always wins. (d) "One capable owner beats a duplicate" is PER-CARD ONLY — never two owners on one card, but never use it to serialize two independent cards either. FLOOR CAP — the office has config floorMaxAgents physical workplaces (default 16, god excluded); hires + interns on the floor can never exceed it — the harness REFUSES any spawn past the cap (fleet.json\'s floor block shows the free seats), so when the floor is full, park or fire to free a seat, or queue the card until one opens. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, ' +
         godOwnsClause +
         " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — what to use or avoid, and any references to read instead of re-deriving; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm it as a DETACHED process BEFORE the close (a setsid script that polls for the harness process to disappear, ff-merges the batch, pushes, appends to a known log file, and exits — proven pattern: pam-cwd retarget watcher, 2026-08-17), then verify the log after reboot. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. ARCHIVE-ON-READ: the moment you have READ an inbox mail, move it to inbox/.done/ IMMEDIATELY, before acting on it, so the typed-nudge fallback stands down inside its grace window; the card/board carry the work state, not the inbox file. ATOMIC JSON WRITES: all direct writes to tasks.json (or any other shared hive JSON — registry.json, fleet.json) must be ATOMIC — serialize the full new content to a tempfile in the SAME directory, then os.replace() it onto the target; a bare in-place rewrite risks corrupting the shared kanban mid-write, and a stale read-modify-write can clobber a concurrent landing stamp (another writer's update lost between your read and your write)." +
         ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. HUMAN-CARD REFERENCE — a 'Task from the human' mail that references a card (a cardId field and/or a 'Card: <id>' line in the body) means that card ALREADY EXISTS in tasks.json: ENRICH and ASSIGN that exact card — NEVER create a duplicate (hive-card update <id> [--title <t>] [--notes <n>] --assignee <worker>, then hive-card status <id> doing). In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
@@ -2708,6 +2725,7 @@ export class HiveManager {
           inboxBacklog?: number;
         }>;
         vacation?: unknown[];
+        floor?: { maxAgents?: number; onFloor?: number; freeSeats?: number };
       };
       const agents = Array.isArray(snap.agents) ? snap.agents : [];
       if (!agents.length) return null;
@@ -2719,6 +2737,18 @@ export class HiveManager {
         ? ` ON VACATION (parked, zero cost, FETCHABLE — prefer fetching a fitting one back over spawning anyone new): ` +
           `${pool.map((v) => `${v.id}${v.name ? ` "${v.name}"` : ''} (${v.role ?? 'agent'})`).join('; ')}.`
         : '';
+
+      // FLOOR SEATS (card agent-harness-floormaxagents-s-2026-08-17): the
+      // fan-out policy needs the live seat count every turn — the cap itself is
+      // named in the volatile-free briefing, the NUMBERS ride this live channel.
+      const fl = snap.floor;
+      const floorSeatsLine =
+        fl && typeof fl.maxAgents === 'number' && typeof fl.onFloor === 'number'
+          ? ` FLOOR SEATS: ${fl.onFloor} of ${fl.maxAgents} workplaces occupied (cap = config floorMaxAgents)` +
+            ((fl.freeSeats ?? 0) > 0
+              ? ` — ${fl.freeSeats} free (room to fan out or mint overflow interns).`
+              : ' — FULL: spawns are refused until a seat frees (park/fire or raise the cap).')
+          : '';
 
       const ago = (s: number | null | undefined): string =>
         typeof s !== 'number'
@@ -2758,7 +2788,8 @@ export class HiveManager {
         'This is the CURRENT floor and it SUPERSEDES any roster earlier in this conversation — ' +
         'agents you remember that are absent here have been archived or killed, so do not message them. ' +
         'Route work to someone on this list before spawning anyone new.' +
-        vacationLine
+        vacationLine +
+        floorSeatsLine
       );
     } catch {
       return null;
@@ -2974,6 +3005,17 @@ const HIRING_AGENTS_MD = `## HIRING AGENTS
 There are TWO spawn paths. Headline: **ephemeral workers god can mint from Bash**
 vs **persistent named agents, which are human-only surfaces**.
 
+**The two caps — do not confuse them:**
+
+- \`maxConcurrentWorkers\` (default 4) — concurrency of the HEADLESS ephemeral
+  worker queue only (god's Bash spawn-requests with \`persistent: false\`);
+  excess requests wait in \`spawn-requests/\` and drain as workers finish.
+- \`floorMaxAgents\` (default 16 — the office's physical workplaces) — the
+  ceiling on hires + interns ON THE FLOOR at once (god excluded), across ALL
+  spawn paths (workers, interns, Add Agent, restore-team). Spawns past the cap
+  are REFUSED with a notice. \`fleet.json\`'s \`floor\` block shows the free
+  seats.
+
 ### Path 1 — Ephemeral worker (god-runnable from Bash) ✅
 
 Drop a spawn-request JSON into \`$HIVE_ROOT/spawn-requests/\` (one file = one worker;
@@ -3005,8 +3047,9 @@ EOF
   the CLI session is NAMED after the engagement instead of "check your inbox…";
   default = first sentence of \`objective\`), \`slack\` \`{channel, thread_ts}\` (reply target + failure surfacing),
   \`persistent\` (default \`false\` — see Path 3).
-- **What happens** (main process, poll every 1.5s, cap = config \`maxConcurrentWorkers\`
-  default 4): validates → spawns \`worker-<id>\` via the shared core (\`ensureAgent\` →
+- **What happens** (main process, poll every 1.5s, queue concurrency = config
+  \`maxConcurrentWorkers\` default 4; every spawn ALSO counts against the floor
+  cap \`floorMaxAgents\` — see "The two caps" above): validates → spawns \`worker-<id>\` via the shared core (\`ensureAgent\` →
   \`registry.json\` entry + \`agents/worker-<id>/\` + \`hive: register\` commit → PTY boots
   the CLI in \`cwd\`) → dispatches \`objective\` to its inbox \`from: god\`. Bad request /
   missing CLI → fast-fail, archived to \`.failed/\`, notice lands in god's inbox.
@@ -3300,17 +3343,34 @@ the WORKER's dispatch contract — they never pull god into executor mode.
 God-side probes are limited to dispatch prep: locate an entry point, scope the
 contract.
 
-## Roster first (orchestrator/god)
+## Roster first, fan out in parallel (orchestrator/god)
 
 Delegate-first says don't do it yourself; roster-first says check who's
-already on the floor before hiring. BEFORE minting an intern
-(spawn-requests/), check the live roster (fleet.json + registry.json) for an
-EXISTING agent that fits the work and is not currently busy — route the task
-there. If none fit, check fleet.json's \`vacation\` pool for a matching parked
-agent and fetch it back (vacation-requests/, see Vacation below) before
-minting anything new. Interns are the fallback, not the default: mint only
-when (a) the human explicitly ordered an intern/observable worker, or
-(b) parallelism — every fitting agent is mid-task or on vacation.
+already on the floor before hiring. For EACH card, check the live roster
+(fleet.json + registry.json) for an EXISTING agent that fits the work and is
+not currently busy — route the task there. If none fit, check fleet.json's
+\`vacation\` pool for a matching parked agent and fetch it back
+(vacation-requests/, see Vacation below) before minting anything new.
+
+PARALLEL IS THE DEFAULT ACROSS CARDS:
+
+- AREA FAN-OUT — multiple INDEPENDENT open cards for an area get dispatched
+  to ALL available fitting workers at once: floor agents first, then recalled
+  vacationers; one owner per card, parallel across cards.
+- Sequential ONLY on real ticket dependencies (one card genuinely blocked on
+  another's output) — never serialize independent work.
+- INTERNS ARE THE OVERFLOW when independent cards exceed the fitting hires —
+  mint them for the surplus (spawn-requests/); overflow capacity, not a last
+  resort. The roster-first check still applies per card, and an explicit
+  human order for an intern always wins.
+- "One capable owner beats a duplicate" is PER-CARD ONLY — never two owners
+  on one card, but never use it to serialize independent cards either.
+
+FLOOR CAP — the office has \`floorMaxAgents\` physical workplaces (default
+16, god excluded): hires + interns on the floor can never exceed it. The
+harness refuses any spawn past the cap (fleet.json's \`floor\` block shows
+the free seats) — park or fire to free a seat, or queue the card until one
+opens.
 
 Human-created cards (origin 'human', from the tasks tab) arrive without a
 message — triage them at heartbeat standups, roster-first. When a 'Task from

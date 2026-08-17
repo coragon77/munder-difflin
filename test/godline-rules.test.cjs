@@ -98,3 +98,25 @@ test('godLine carries the HUMAN-CARD REFERENCE rule (no duplicate cards)', () =>
   );
   assert.ok(/hive-card update/.test(p), 'must name the enrichment tool (hive-card update)');
 });
+
+test('godLine carries the PARALLEL-DISPATCH + FLOOR-CAP policy', () => {
+  // Cards agent-harness-parallel-dispatc-2026-08-17 +
+  // agent-harness-floormaxagents-s-2026-08-17: god's briefing must fan
+  // independent cards out in parallel, treat interns as overflow (not a last
+  // resort), serialize only on real dependencies, keep "one capable owner"
+  // per-card, and know the floor cap that refuses over-cap spawns.
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/PARALLEL BY DEFAULT/.test(p), 'dispatch defaults to parallel');
+  assert.ok(/AREA FAN-OUT/.test(p), 'must name the area fan-out rule');
+  assert.ok(/one owner per card, parallel across cards/.test(p));
+  assert.ok(/sequential ONLY on real ticket dependencies/.test(p));
+  assert.ok(/INTERNS ARE THE OVERFLOW/.test(p), 'interns are overflow, not last resort');
+  assert.ok(/overflow capacity, NOT a last resort/.test(p));
+  assert.ok(
+    /"One capable owner beats a duplicate" is PER-CARD ONLY/.test(p),
+    'one-owner rule keeps only its per-card meaning',
+  );
+  assert.ok(/config floorMaxAgents/.test(p), 'rule text references the floorMaxAgents config');
+  assert.ok(/REFUSES any spawn past the cap/.test(p), 'god knows the cap is enforced');
+  assert.ok(/fleet\.json's floor block/.test(p), 'god is pointed at the live seat count');
+});

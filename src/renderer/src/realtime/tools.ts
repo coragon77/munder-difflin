@@ -277,6 +277,10 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
             );
           if (typeof cc.maxConcurrentWorkers === 'number')
             parts.push(`Up to ${plural(cc.maxConcurrentWorkers, 'worker')} run concurrently.`);
+          if (typeof cc.floorMaxAgents === 'number')
+            parts.push(
+              `The floor has ${cc.floorMaxAgents} workplaces for hires and interns (god excluded).`,
+            );
           // De-monetized: report only the token cap (no dollar cap), and avoid
           // money words. The $ runaway guard still exists + fires; it just isn't spoken.
           if (typeof c.costCapTokens === 'number' && c.costCapTokens > 0)

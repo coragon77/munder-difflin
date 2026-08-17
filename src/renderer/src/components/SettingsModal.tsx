@@ -244,6 +244,26 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       setWorkerBypassOn(!next);
     }
   };
+  // Floor cap (card agent-harness-floormaxagents-s-2026-08-17): physical
+  // workplaces on the floor — ceiling for hires + interns (god excluded),
+  // enforced by the spawn gate. Default 16 (the office's desks), downsizable
+  // 1..16. DISTINCT from maxConcurrentWorkers (headless ephemeral queue only).
+  const clampFloorCap = (n: number): number => Math.min(16, Math.max(1, Math.floor(n)));
+  const [floorCap, setFloorCap] = useState<number>(() =>
+    typeof cfgX.floorMaxAgents === 'number' && Number.isFinite(cfgX.floorMaxAgents)
+      ? clampFloorCap(cfgX.floorMaxAgents)
+      : 16,
+  );
+  const changeFloorCap = async (next: number) => {
+    const clamped = clampFloorCap(next);
+    const prev = floorCap;
+    setFloorCap(clamped);
+    try {
+      await window.cth.updateConfig({ floorMaxAgents: clamped } as Partial<HarnessConfig>);
+    } catch {
+      setFloorCap(prev);
+    }
+  };
   // SDD subagent authorization (card sdd-authorization-switch-20260816): ON
   // writes the operator-authorization line (scoped to skill execution) into the
   // generated AGENTS.md + agent briefings; main regenerates AGENTS.md on flip.
@@ -1754,6 +1774,67 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                             onClick={toggleWorkerBypass}
                           >
                             {workerBypassOn ? 'bypass' : 'off'}
+                          </PixelButton>
+                        </div>
+                      </div>
+
+                      {/* Floor cap — physical workplaces (card
+                           agent-harness-floormaxagents-s-2026-08-17). Stepper 1..16. */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span
+                            style={{
+                              fontSize: 13,
+                              lineHeight: '20px',
+                              color: 'var(--cth-ink-900)',
+                            }}
+                          >
+                            Floor workplaces
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              lineHeight: '16px',
+                              color: 'var(--cth-ink-500)',
+                            }}
+                          >
+                            Max hires + interns on the floor at once (god excluded). The office has
+                            16 physical workplaces; spawns past the cap are refused — fire/park to
+                            free a seat. Separate from the headless ephemeral-worker queue limit.
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <PixelButton
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => void changeFloorCap(floorCap - 1)}
+                          >
+                            −
+                          </PixelButton>
+                          <span
+                            style={{
+                              fontFamily: 'var(--cth-font-display)',
+                              fontSize: 12,
+                              color: 'var(--cth-ink-900)',
+                              minWidth: 44,
+                              textAlign: 'center',
+                            }}
+                          >
+                            {floorCap} / 16
+                          </span>
+                          <PixelButton
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => void changeFloorCap(floorCap + 1)}
+                          >
+                            +
                           </PixelButton>
                         </div>
                       </div>

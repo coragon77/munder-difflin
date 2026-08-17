@@ -40,6 +40,7 @@ import {
   readConfig,
   writeConfig,
   resetConfig,
+  normalizeFloorMaxAgents,
   ensureHarnessHome,
   ensureClaudePermissionsAccepted,
   modelForRole,
@@ -73,9 +74,11 @@ import {
 import {
   HiveManager,
   deriveSpawnLabel,
+  floorCensus,
   type AgentMeta,
   type HiveMessage,
   type HiveTask,
+  type Registry,
 } from './hive';
 import { startSessionRequestWatcher } from './sessionRequests';
 import { shouldAdoptWorktree } from './worktreeAdopt';
@@ -1622,10 +1625,21 @@ function writeFleetSnapshot(): void {
         cwd: a.cwd,
         parkedAt: a.vacationSince ?? null,
       }));
-    hive.writeFleetSnapshot({ ts: now, agents, vacation });
+    hive.writeFleetSnapshot({ ts: now, agents, vacation, floor: floorSeats(reg) });
   } catch (e) {
     console.error('[fleet] snapshot failed:', e);
   }
+}
+
+/** The floor's seat ledger for fleet.json (card
+ *  agent-harness-floormaxagents-s-2026-08-17): god reads `floor.freeSeats`
+ *  before fanning out or minting overflow interns, and the harness spawn gate
+ *  refuses anything past the cap. `agents` above is the same census minus god
+ *  (archived/retired already filtered), so the numbers always agree. */
+function floorSeats(reg: Registry): { maxAgents: number; onFloor: number; freeSeats: number } {
+  const cap = normalizeFloorMaxAgents(readConfig().floorMaxAgents);
+  const onFloor = floorCensus(reg);
+  return { maxAgents: cap, onFloor, freeSeats: Math.max(0, cap - onFloor) };
 }
 
 /** Arm the heartbeat with an adaptive, self-rescheduling cadence (recursive
@@ -3206,6 +3220,28 @@ async function spawnAgentCore(
       ok: false,
       error: `${opts.hive.id} was fired — reinstate them first (unarchive) if they should come back`,
     };
+  }
+  // ── FLOOR CAP (card agent-harness-floormaxagents-s-2026-08-17) ───────────
+  // The office ships `floorMaxAgents` physical workplaces (default 16, Settings
+  // → Autonomy & Budgets). Every spawn path funnels through this door — Add
+  // Agent, restore-team, god spawn-requests (workers AND interns) — so one
+  // census here gates them all: live hires + interns on the floor can never
+  // exceed the cap. God is excluded (his own desk), and the id being spawned
+  // never counts against itself (a respawn re-seats its own chair). This is
+  // the FLOOR ceiling — distinct from maxConcurrentWorkers, which caps only
+  // headless ephemeral-worker queue concurrency.
+  if (opts.hive && hive.enabled()) {
+    const reg = hive.registry();
+    if (opts.hive.id !== reg.godId && !opts.hive.isGod) {
+      const cap = normalizeFloorMaxAgents(readConfig().floorMaxAgents);
+      const onFloor = floorCensus(reg, opts.hive.id);
+      if (onFloor >= cap) {
+        return {
+          ok: false,
+          error: `floor cap reached — ${onFloor}/${cap} workplaces occupied (config floorMaxAgents; god excluded). Free a seat (fire an intern, park/archive an idle hire, raise the cap in Settings → Autonomy & Budgets) and retry.`,
+        };
+      }
+    }
   }
   opts.cwd = expandTilde(opts.cwd);
   if (opts.hive) opts.hive = { ...opts.hive, cwd: expandTilde(opts.hive.cwd) };

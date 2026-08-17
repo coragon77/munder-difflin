@@ -163,6 +163,7 @@ const SETTING_POLICY: Record<
   godProvider: { tier: 'confirm', type: 'string' },
   godModel: { tier: 'confirm', type: 'string' },
   maxConcurrentWorkers: { tier: 'confirm', type: 'number', min: 1, max: 16 },
+  floorMaxAgents: { tier: 'confirm', type: 'number', min: 1, max: 16 },
   costCapTokens: { tier: 'confirm', type: 'number', min: 0, max: 1_000_000_000 },
   maxTurns: { tier: 'confirm', type: 'number', min: 1, max: 1000 },
   slackEnabled: { tier: 'confirm', type: 'boolean' },
