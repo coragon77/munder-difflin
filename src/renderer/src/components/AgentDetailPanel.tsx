@@ -32,6 +32,11 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
   const fullscreenAgentId = useStore((s) => s.fullscreenAgentId);
   const sidebarTab = useStore((s) => s.sidebarTab);
   const setSidebarTab = useStore((s) => s.setSidebarTab);
+  // Detach-to-kitty follow-up (card agent-harness-detach-follow-up-2026-08-17):
+  // the card's icon toggle as a labeled button beside the kitty opener. Lives
+  // with the hooks ABOVE the god early-return — hook order must not depend on
+  // agent class.
+  const detached = useStore((s) => (agent.ptyId ? s.detachedPtyIds.includes(agent.ptyId) : false));
   const isReal = !!agent.ptyId;
   // While this agent is shown in the fullscreen overlay, the fullscreen view
   // owns the pty (it sizes it to fill the screen). Keeping the embedded terminal
@@ -109,6 +114,15 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
   // Only human-created hires go on vacation — god runs the floor and interns get
   // fired, never parked. `isReal` keeps the button off a card with no terminal.
   const canPark = isReal && agentClassOf(agent) === 'human';
+  // Detach gating mirrors the card rule exactly: human-class workers with a
+  // live pane (god's detail view is the CommandCenter, its own toggle lives
+  // there; interns stay on the card rule — ephemeral).
+  const onToggleDetach = () => {
+    const ptyId = agent.ptyId;
+    if (!ptyId) return;
+    if (detached) void window.cth.reattachPty(ptyId);
+    else void window.cth.detachPty(ptyId, displayAgentName(agent));
+  };
   // The pin lives on exactly the parkable class too (god never parks, interns
   // are fired not parked) — and god's pane is the CommandCenter, which never
   // renders this component, so the class check is the whole god-guard here.
@@ -300,6 +314,25 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
             >
               🐱{openTerminalState === 'opening' ? '...' : 'kitty'}
+            </span>
+          </PixelButton>
+        )}
+        {/* Detach/reattach next to the kitty opener (agent-harness-detach-
+            follow-up-2026-08-17): detaches this agent's LIVE pty to a kitty
+            window — the terminal tab greys out (read-only mirror) while the
+            agent keeps running. */}
+        {isReal && agentClassOf(agent) === 'human' && (
+          <PixelButton variant="secondary" size="sm" onClick={onToggleDetach}>
+            <span
+              title={
+                detached
+                  ? `${displayAgentName(agent)} is in a kitty window — click to reattach here`
+                  : `Detach ${displayAgentName(agent)} to a kitty window — the pane stays live but read-only`
+              }
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <Icon name="detach" />
+              {detached ? 'reattach' : 'detach'}
             </span>
           </PixelButton>
         )}
