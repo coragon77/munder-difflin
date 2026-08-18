@@ -62,7 +62,13 @@ async function floor(t, agents) {
   });
   for (const a of agents) await hive.ensureAgent({ cwd: home, ...a });
   const control = new ControlRegistry();
-  const server = new HookServer(hive, () => null, () => CONFIG, control, undefined);
+  const server = new HookServer(
+    hive,
+    () => null,
+    () => CONFIG,
+    control,
+    undefined,
+  );
   const fire = (agent_id, hook_event_name, extra = {}) =>
     server.handle({ agent_id, hook_event_name, session_id: 's1', ...extra });
   const logLines = () =>
@@ -116,7 +122,11 @@ test('a steer for a fire-and-forget agent is NOT consumed — it stays queued', 
 
   const res = await fire('oc-1', 'PostToolUse', { tool_name: 'bash' });
   assert.equal(context(res), '', 'nothing is handed to a bridge that never reads it');
-  assert.equal(control.snapshot('oc-1').pendingSteers, 1, 'the steer survives, visible in the queue');
+  assert.equal(
+    control.snapshot('oc-1').pendingSteers,
+    1,
+    'the steer survives, visible in the queue',
+  );
 });
 
 test('the undeliverable steer is surfaced LOUDLY — once per episode', async (t) => {
@@ -129,7 +139,9 @@ test('the undeliverable steer is surfaced LOUDLY — once per episode', async (t
   await fire('qwen-1', 'PostToolUse', { tool_name: 'shell' });
   await fire('qwen-1', 'PostToolUse', { tool_name: 'shell' });
 
-  const loud = shown.filter((n) => /cannot receive.*steer|steer.*cannot/i.test(`${n.title} ${n.body}`));
+  const loud = shown.filter((n) =>
+    /cannot receive.*steer|steer.*cannot/i.test(`${n.title} ${n.body}`),
+  );
   assert.equal(loud.length, 1, 'one desktop notification per episode, not one per hook');
   const logged = logLines().filter((l) => l.kind === 'steer_undeliverable');
   assert.equal(logged.length, 1, 'a durable hive-log record names the agent');

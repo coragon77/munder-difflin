@@ -80,7 +80,9 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
 test('a steer-bearing hook response is injected via pi.sendMessage(deliverAs:steer)', async () => {
   const steer = 'OPERATOR: stop the refactor and summarize.';
   const { pi, posts, sent } = await loadExtension(
-    JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: steer } }),
+    JSON.stringify({
+      hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: steer },
+    }),
   );
 
   pi.handlers.tool_result({ toolName: 'bash' }, { sessionManager: { getSessionId: () => 's1' } });
@@ -105,7 +107,9 @@ test('a steer arriving on the turn-start (UserPromptSubmit) post is injected too
   // the same injection path.
   const steer = 'OPERATOR: circuit breaker — slow down.';
   const { pi, sent } = await loadExtension(
-    JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: steer } }),
+    JSON.stringify({
+      hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: steer },
+    }),
   );
   assert.ok(pi.handlers.agent_start, 'the bridge posts a turn-start UserPromptSubmit');
   pi.handlers.agent_start({}, { sessionManager: { getSessionId: () => 's1' } });
