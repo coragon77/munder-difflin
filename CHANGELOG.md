@@ -58,6 +58,15 @@ longer drift apart. Appearance only — no functional change.
   downsampling a 512px portrait.
 
 ### Fixed
+- **Hive services no longer stay dead for the whole first run after onboarding** (intent-port of
+  the fix inside upstream 1b821b3). `bootstrapHiveServices()` runs once at app-ready and
+  early-returns while `harnessHome` is null — exactly the state a fresh install boots in. Onboarding
+  then sets the home through `config:update`, which never re-bootstrapped: the message router, hook
+  server, telemetry collector and mission scheduler stayed dead for the entire session (mail never
+  moved, cards never reported, "Restart & Continue" had no session id), healing only on the next
+  launch. `config:update` now bootstraps on the null → set transition (gated so ordinary config
+  writes never re-enter), and the breaker beat records the live session id from the usage tick — a
+  second resume-key source so "Restart & Continue" works even when no hook ever landed.
 - **Process-tree kills probe the group before SIGKILL** (port of upstream b97034b onto our
   diverged `procKill.ts`). `hardKillTree` fired SIGKILL at the process group blind — inside the
   4s grace window the kernel can recycle an exited group's pgid onto an unrelated process group,

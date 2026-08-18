@@ -132,3 +132,4 @@ test/pi-models-dynamic.test.cjs
 test/hive-cli-live-root-guard.test.cjs
 test/mail-stall-backstop.test.cjs
 test/settings-helper-reopen.test.cjs
+test/bootstrap-on-home-set.test.cjs

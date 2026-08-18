@@ -1690,6 +1690,14 @@ function runBreakerBeat(progressWindowMs: number): void {
     // (aggregateLive picks the most-recent live session id), so this gates on
     // "is there a live session" without changing any live-agent behavior.
     if (sample?.sessionId) hive.appendCostLedger(sample); // ledger covers everyone incl. god
+    // Second source for the resume key: recordSession() is otherwise reachable
+    // only from the hook shim, and in any window where hooks don't land (e.g.
+    // the first-run bootstrap gap) the registry keeps no sessionId and
+    // "Restart & Continue" refuses — while this very sample proves the app knew
+    // the live id all along (the ledger line above writes it out). Same id,
+    // same liveness gate; recordSession writes only on change, so it is a
+    // no-op once hooks are flowing. (Ported from upstream 1b821b3.)
+    if (sample?.sessionId) hive.recordSession(id, sample.sessionId);
     if (id === reg.godId) continue; // breaker skips god
     // Progress = fresh coordination files OR a recent OTel tool span. The span
     // leg closes the background-work blind spot: subagent/Workflow tool calls
@@ -4278,9 +4286,27 @@ ipcMain.handle('provider:listModels', async (_evt, provider: unknown) => {
 });
 
 ipcMain.handle('config:update', (_evt, patch: Partial<HarnessConfig>) => {
+  // FIRST RUN: bootstrapHiveServices() runs once at app-ready and early-returns
+  // while harnessHome is null — exactly the state a fresh install boots in.
+  // Onboarding then sets harnessHome through THIS handler; without the
+  // re-bootstrap below, the message router, hook server, telemetry collector
+  // and mission scheduler stayed dead for the whole first session (mail never
+  // moved, cards never reported, "Restart & Continue" had no session id) — it
+  // healed on the next launch, which is why it survived unnoticed. changeHome
+  // relaunches; onboarding does not. Gated on the transition so ordinary
+  // config writes never re-enter it. (Ported from upstream 1b821b3.)
+  const hiveWasEnabled = hive.enabled();
   const next = writeConfig(patch);
   // Live opt-in/out from Settings → Privacy (TELEMETRY.md).
   if (typeof patch?.telemetryEnabled === 'boolean') analytics.setEnabled(patch.telemetryEnabled);
+  if (!hiveWasEnabled && hive.enabled()) {
+    console.log('[hive] harnessHome configured — bootstrapping hive services');
+    try {
+      bootstrapHiveServices();
+    } catch (e) {
+      console.error('[hive] bootstrap after onboarding:', e);
+    }
+  }
   // SDD switch flip or integration-mode flip → regenerate the generated prose
   // files immediately (<harnessHome>/AGENTS.md + hive COMMANDS.md — they
   // otherwise refresh on the next spawn/bootstrap via ensureHive). Briefings
