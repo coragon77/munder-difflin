@@ -105,6 +105,17 @@ const ADOPT_SESSION_MS = 120_000;
  * rule) — pane-restarting commands (clear/resume) come back `deferred` for a
  * busy pane instead of firing (engagement-aware flips 2026-08-17: never wipe
  * a working pane; re-decide each tick until it goes quiet).
+ *
+ * `booted` (the tick wires it from the BOOT sentinel in `seen`): false = the
+ * watcher's FIRST tick after start — an unseen card is a restart survivor and
+ * is only snapshotted, never steered. true = mid-session — an unseen card is
+ * a genuinely NEW card; when it is first observed ALREADY 'doing' with an
+ * assignee (hive-dispatch creates and flips in one command), the watcher can
+ * never see a non-doing state for it, so the first sight IS the →doing
+ * transition and the card gets its fresh/resumed conversation like any flip
+ * (dispatch-first-sight-2026-08-18: cards created that way used to silently
+ * continue the agent's PREVIOUS conversation and never gain a sessionId). An
+ * unseen NON-doing card stays a snapshot in both modes.
  */
 export function cardSessionDecisions(
   cards: CardLike[],
@@ -114,11 +125,16 @@ export function cardSessionDecisions(
   sessionStarted: Record<string, number | undefined> = {},
   now: number = Date.now(),
   busy: Record<string, boolean> = {},
+  booted = false,
 ): CardSessionAction[] {
   const actions: CardSessionAction[] = [];
   for (const card of cards) {
     const prev = seen[card.id];
-    if (!prev || prev.status === card.status) continue; // not a transition TO doing
+    if (!prev) {
+      // Unseen card: snapshot at boot; mid-session, first-sight-already-doing
+      // is the dispatch-created card's transition (see docblock).
+      if (!booted || card.status !== 'doing' || !card.assignee) continue;
+    } else if (prev.status === card.status) continue; // not a transition TO doing
     if (card.status !== 'doing' || !card.assignee) continue;
     const live = registrySessions[card.assignee];
     let command: string | null = null;
@@ -248,6 +264,11 @@ function readCards(root: string): CardLike[] {
   }
 }
 
+/** Reserved `seen` key: set once the watcher has COMPLETED a tick, so the
+ *  next tick knows an unseen card is genuinely new (created between ticks)
+ *  rather than a restart survivor — see cardSessionDecisions' `booted`. */
+const BOOT_SEEN_KEY = '__cardSessionBooted__';
+
 /** One poll tick: diff tasks.json against `seen`, queue actions, update `seen`.
  *  `seen` is owned by the caller (the watcher loop) so the function stays pure
  *  apart from the deps side effects — and testable with a hand-fed snapshot.
@@ -277,6 +298,7 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
   // RESTORED, so the next tick re-detects todo→doing and retries. (Deleting the
   // entry instead would read as a first sight — snapshot-only — and never retry.)
   const prevSeen: CardSeen = { ...seen };
+  const booted = prevSeen[BOOT_SEEN_KEY]?.status === 'done';
   const actions = cardSessionDecisions(
     cards,
     seen,
@@ -285,6 +307,7 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
     sessionStarted,
     Date.now(),
     busy,
+    booted,
   );
   const failed = new Set<string>();
   const deferredIds = new Set<string>();
@@ -366,6 +389,9 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
       seen[card.id] = { status: card.status };
     }
   }
+  // Mark the tick complete: from the NEXT tick on, an unseen card is a
+  // genuinely new card (dispatch-created), not a restart survivor.
+  seen[BOOT_SEEN_KEY] = { status: 'done' };
 }
 
 /** HH:MM (UTC, the hive log timezone) for the fired-at notice line. */

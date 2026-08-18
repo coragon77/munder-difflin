@@ -118,6 +118,69 @@ test('card whose session is already live → no-op (already in that conversation
   assert.equal(actions.length, 0);
 });
 
+test('MID-SESSION first sight of an already-doing card (dispatch created+flipped between ticks) → clear fires', () => {
+  // hive-dispatch creates the card AND flips it to doing in one command, so
+  // the watcher's first observation is already 'doing' — the unseen-skip
+  // used to swallow it (Toby worked ticket 3227 inside his old SST chat,
+  // dispatch-first-sight-2026-08-18). After boot, first sight IS the
+  // transition.
+  const [a] = cardSessionDecisions(
+    [CARD()],
+    {}, // never seen before — and NOT a boot tick
+    { dwight: 'an-old-unrelated-session' },
+    { dwight: 'claude' },
+    {},
+    Date.now(),
+    {},
+    true, // booted — the watcher has completed its boot tick
+  );
+  assert.equal(a.kind, 'clear');
+  assert.equal(a.command, '/clear');
+});
+
+test('MID-SESSION first sight: already-doing card with a stale sessionId → resume', () => {
+  const [a] = cardSessionDecisions(
+    [CARD({ sessionId: 'card-session-uuid' })],
+    {},
+    { dwight: 'a-different-live-session' },
+    { dwight: 'claude' },
+    {},
+    Date.now(),
+    {},
+    true,
+  );
+  assert.equal(a.kind, 'resume');
+  assert.equal(a.command, '/resume card-session-uuid');
+});
+
+test('MID-SESSION first sight of a NON-doing card stays a snapshot', () => {
+  const actions = cardSessionDecisions(
+    [CARD({ status: 'todo' })],
+    {},
+    { dwight: 's' },
+    { dwight: 'claude' },
+    {},
+    Date.now(),
+    {},
+    true,
+  );
+  assert.equal(actions.length, 0);
+});
+
+test('BOOT first sight of an already-doing card → still nothing (restart never re-clears)', () => {
+  const actions = cardSessionDecisions(
+    [CARD()],
+    {}, // boot tick: empty seen
+    { dwight: 's' },
+    { dwight: 'claude' },
+    {},
+    Date.now(),
+    {},
+    false, // not booted yet
+  );
+  assert.equal(actions.length, 0);
+});
+
 test('FIRST TICK (card unseen) → nothing — a restart never re-clears a working pane', () => {
   const actions = cardSessionDecisions(
     [CARD()],
@@ -673,4 +736,38 @@ test('stampCard: stamps exactly the named card (the watcher’s adopt path)', ()
   const tasks = JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks;
   assert.equal(tasks.find((t) => t.id === 'a').sessionId, 'adopted-session');
   assert.equal(tasks.find((t) => t.id === 'b').sessionId, undefined);
+});
+
+// ——— dispatch-created cards: first sight already doing (2026-08-18 scope add) ———
+
+test('tick: card created+flipped by dispatch between ticks gets its clear (no todo phase observed)', () => {
+  const tmp = tmpHive();
+  setCards(tmp, []); // empty board at boot
+  const { deps, emitted, informs } = fakeDeps(tmp, {
+    dwight: { sessionId: 'an-old-unrelated-session', provider: 'claude' },
+  });
+  const seen = {};
+  cardSessionTick(deps, seen); // boot tick: snapshot only
+  assert.equal(emitted.length, 0);
+  setCards(tmp, [CARD()]); // dispatch created AND flipped — first sight is doing
+  cardSessionTick(deps, seen); // mid-session now: first sight IS the transition
+  assert.equal(emitted.length, 2, 'clear + card-title lead');
+  assert.equal(emitted[0].text, '/clear');
+  assert.ok(emitted[1].text.startsWith('Card "Vacation state implementation"'));
+  assert.equal(informs.length, 1);
+  assert.match(informs[0].subject, /clear queued for dwight/);
+  cardSessionTick(deps, seen); // consumed — no re-fire
+  assert.equal(emitted.length, 2);
+});
+
+test('tick: restart safety holds — a doing card present at BOOT never fires', () => {
+  const tmp = tmpHive();
+  setCards(tmp, [CARD()]); // doing card already on the board at boot
+  const { deps, emitted } = fakeDeps(tmp, {
+    dwight: { sessionId: 'old', provider: 'claude' },
+  });
+  const seen = {};
+  cardSessionTick(deps, seen); // boot tick
+  cardSessionTick(deps, seen); // second tick: card SEEN doing at boot — still no action
+  assert.equal(emitted.length, 0, 'a restart never re-clears a working pane');
 });

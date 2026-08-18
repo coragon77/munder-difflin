@@ -58,6 +58,15 @@ longer drift apart. Appearance only — no functional change.
   downsampling a 512px portrait.
 
 ### Fixed
+- **Dispatch-created cards get their card-scoped conversation again.** `hive-dispatch` creates a
+  card AND flips it to doing in one command, so the card-session watcher's first observation was
+  already `doing` — the transition-only guard (`!prev` → skip) swallowed it: no clear fired, the
+  agent silently continued their PREVIOUS conversation (Toby worked ticket 3227 inside his old
+  SST chat), and the card never gained a `sessionId` to resume later. The watcher now distinguishes
+  its boot tick (snapshot-only — a restart still never re-clears a working pane, enforced by a boot
+  sentinel in the tick memory) from mid-session first sight: an unseen already-doing card created
+  between ticks is treated as the →doing transition and gets the same clear/adopt/resume decision
+  as any flip. Decision semantics otherwise unchanged.
 - **Card-session resume is provider-aware.** The blocked→doing resume path hardcoded the
   claude dialect `/resume <id>` — on pi/codex/grok/kimi/qwen/opencode that lands as a plain
   prompt (their `/resume` verbs are interactive pickers; id-carrying resume is a spawn flag).
