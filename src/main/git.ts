@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { lstat, readFile, stat, symlink } from 'node:fs/promises';
+import { cp, lstat, mkdir, readFile, stat, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { safeJoin } from './fs';
 
@@ -302,6 +302,8 @@ export async function addWorktree(
   if (mainRoot) {
     const link = await linkNodeModules(wtPath, mainRoot);
     if (!link.ok) console.error('[worktree] node_modules provisioning failed:', link.error);
+    const graph = await copyProjectGraph(wtPath, mainRoot);
+    if (!graph.ok) console.error('[worktree] graph provisioning failed:', graph.error);
   }
   return { ok: true };
 }
@@ -337,6 +339,71 @@ export async function linkNodeModules(
   try {
     await symlink(source, target, process.platform === 'win32' ? 'junction' : 'dir');
     return { ok: true, linked: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** The graphify-out entries a fresh worktree actually needs (card
+ *  agent-fix-2-provision-a-warm-g-2026-08-18). `query` reads graph.json (+
+ *  .graphify_labels.json auto-detected next to it); `update` needs
+ *  graph.json + manifest.json to engage incremental mode and reuses cache/.
+ *  Deliberately NOT copied: graph.html (viz artifact), dated snapshot dirs,
+ *  .graphify_root (records the MAIN checkout's watch path — a lie in a
+ *  worktree). Measured on this repo: ~5.2 MB copied vs ~13.9 MB whole-dir. */
+const GRAPH_PROVISION_ENTRIES = [
+  'graph.json',
+  'manifest.json',
+  '.graphify_labels.json',
+  'GRAPH_REPORT.md',
+  'cache',
+] as const;
+
+/** Best-effort warm-graph provisioning for a fresh worktree (card
+ *  agent-fix-2-provision-a-warm-g-2026-08-18). Copies the main checkout's
+ *  graphify-out functional set into the new worktree so a worker starts with
+ *  a queryable graph instead of a dead AGENTS.md pointer. COPY, never a
+ *  symlink — a symlink would race concurrent `graphify update` runs across
+ *  agents and misdescribe a branch that legitimately diverges from main.
+ *  Never clobbers a graph the worker already has; a missing or graph-less
+ *  source is the expected skip, not an error. Callers swallow failures — a
+ *  failed copy is the pre-fix status quo and must not fail a spawn. */
+export async function copyProjectGraph(
+  wtPath: string,
+  mainRoot: string,
+): Promise<{ ok: boolean; copied?: boolean; error?: string }> {
+  const destGraph = join(wtPath, 'graphify-out', 'graph.json');
+  try {
+    await lstat(destGraph);
+    return { ok: true, copied: false }; // worktree already has a graph — keep it
+  } catch {
+    /* not present — provision below */
+  }
+  const srcGraph = join(mainRoot, 'graphify-out', 'graph.json');
+  try {
+    if (!(await stat(srcGraph)).isFile()) return { ok: true, copied: false };
+  } catch (e) {
+    // No source graph (never built / non-graphify project) is the expected
+    // skip; anything else (perms, race) reports ok:false.
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return { ok: true, copied: false };
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+  try {
+    const destRoot = join(wtPath, 'graphify-out');
+    await mkdir(destRoot, { recursive: true });
+    for (const entry of GRAPH_PROVISION_ENTRIES) {
+      try {
+        await cp(join(mainRoot, 'graphify-out', entry), join(destRoot, entry), {
+          recursive: true,
+          force: false,
+          errorOnExist: false,
+        });
+      } catch (e) {
+        // Optional entries (manifest, labels, report, cache) may be absent.
+        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+      }
+    }
+    return { ok: true, copied: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
