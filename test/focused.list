@@ -136,3 +136,4 @@ test/bootstrap-on-home-set.test.cjs
 test/terminal-selection.test.cjs
 test/skills.test.cjs
 test/tool-detect.test.cjs
+test/settings-hero-card.test.cjs

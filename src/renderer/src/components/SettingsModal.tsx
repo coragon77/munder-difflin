@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react';
 import { AGENT_MODELS, type HarnessConfig } from '@/store/config';
 import { AGENT_PROVIDER_PRESETS, normalizeAgentProvider } from '@shared/agentProvider';
 import { useProviderModels } from '@/hooks/useProviderModels';
@@ -15,6 +15,8 @@ import {
 import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { UpdatesSection } from './UpdatesSection';
+import { SettingsHeroCard } from './SettingsHeroCard';
+import { heroRows, type HeroRow } from '@shared/settingsHero';
 import { Icon } from './Icon';
 import { OfficeThemePicker } from './OfficeThemePicker';
 import { McpDefaultsSettings } from './McpDefaultsSettings';
@@ -229,6 +231,50 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
     semanticMemory?: boolean;
   };
   const [keepAwake, setKeepAwake] = useState<boolean>(cfgX.strongKeepalive === true);
+
+  // ─── Settings hero card (card agent-settings-hero-card-port--2026-08-18) ──
+  // The card itself is a dumb props-driven slot; this assembles its PLACEHOLDER
+  // rows from local state (remote fetch deliberately dropped — no publisher).
+  // Refetch on every open: version/sha/registry are cheap read-only IPC and a
+  // stale floor/sha here would be confidently wrong.
+  const [heroFacts, setHeroFacts] = useState<{
+    version: string | null;
+    headSha: string | null;
+    registry: unknown;
+  }>({ version: null, headSha: null, registry: null });
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      window.cth.appInfo().then(
+        (i) => i.version,
+        () => null,
+      ),
+      window.cth.headSha().catch(() => null),
+      window.cth.hiveRegistry().catch(() => null),
+    ]).then(([version, headSha, registry]) => {
+      if (alive) setHeroFacts({ version, headSha, registry });
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const heroCardRows: HeroRow[] = useMemo(
+    () =>
+      heroRows({
+        config: {
+          godProvider: cfgX.godProvider,
+          godModel: cfgX.godModel,
+          helperDefaults: (cfgX as { helperDefaults?: { provider?: string; model?: string } })
+            .helperDefaults,
+          floorMaxAgents: cfgX.floorMaxAgents,
+        },
+        registry: heroFacts.registry,
+        version: heroFacts.version,
+        headSha: heroFacts.headSha,
+      }),
+    [cfgX, heroFacts],
+  );
+
   const toggleKeepAwake = async () => {
     const next = !keepAwake;
     setKeepAwake(next);
@@ -1438,6 +1484,18 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                   {/* GENERAL */}
                   {activeSection === 'General' && (
                     <>
+                      {/* The hero card (card agent-settings-hero-card-port--
+                          2026-08-18) — the ported slot at the very top: one
+                          quiet at-a-glance card above the settings it
+                          introduces. Contents are PLACEHOLDER until the
+                          operator decides what this slot is for. */}
+                      <SettingsHeroCard
+                        name="MUNDER DIFFLIN"
+                        version={heroFacts.version}
+                        badge="HIVE"
+                        rows={heroCardRows}
+                      />
+
                       {/* Updates — first, because "am I on the latest?" is the
                           question people open Settings to answer, and the
                           toolbar chip says nothing at all when the answer is
