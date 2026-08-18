@@ -25,6 +25,7 @@
 import { tool } from '@openai/agents-realtime';
 
 import { agentWhere, plural, rosterSpeech, vacationSummaryLine } from './roster';
+import { compareAgentOrder } from '@shared/agentOrder';
 
 // ─── spoken-prose formatting helpers ────────────────────────────────────────
 
@@ -119,6 +120,12 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
           const godName = godId ? str(obj(obj(reg.agents)[godId]).name) || godId : null;
           const lines = active
             .filter(([id]) => id !== godId)
+            .sort(([idA, a], [idB, b]) =>
+              compareAgentOrder(
+                { id: idA, name: str(obj(a).name) },
+                { id: idB, name: str(obj(b).name) },
+              ),
+            )
             .map(([, a]) => {
               const m = obj(a);
               const name = str(m.name) || 'an unnamed agent';

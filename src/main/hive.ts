@@ -51,6 +51,7 @@ import {
 import { MCP_CATALOG } from '../shared/mcpCatalog';
 import { hasInboxMonitor } from '../shared/providerAutomation';
 import { waitingLabel } from '../shared/waitingLabel';
+import { compareAgentOrder } from '../shared/agentOrder';
 import { expandTilde } from './fs';
 
 /** The subset of HarnessConfig the hive consumes for the default-MCP merge.
@@ -2962,12 +2963,21 @@ export class HiveManager {
         vacation?: unknown[];
         floor?: { maxAgents?: number; onFloor?: number; freeSeats?: number };
       };
-      const agents = Array.isArray(snap.agents) ? snap.agents : [];
+      // Display order only (card agent-monitor-lists-sort-agent-2026-08-18):
+      // god pinned first, the rest alphabetical within each group. fleet.json's
+      // own write order is untouched — this sorts the parsed copy.
+      const agents = (Array.isArray(snap.agents) ? snap.agents : [])
+        .slice()
+        .sort(compareAgentOrder);
       if (!agents.length) return null;
 
-      const pool = Array.isArray((snap as { vacation?: unknown[] }).vacation)
-        ? (snap as { vacation: Array<{ id: string; name?: string; role?: string }> }).vacation
-        : [];
+      const pool = (
+        Array.isArray((snap as { vacation?: unknown[] }).vacation)
+          ? (snap as { vacation: Array<{ id: string; name?: string; role?: string }> }).vacation
+          : []
+      )
+        .slice()
+        .sort(compareAgentOrder);
       const vacationLine = pool.length
         ? ` ON VACATION (parked, zero cost, FETCHABLE — prefer fetching a fitting one back over spawning anyone new): ` +
           `${pool.map((v) => `${v.id}${v.name ? ` "${v.name}"` : ''} (${v.role ?? 'agent'})`).join('; ')}.`

@@ -10,10 +10,13 @@
  * will think the agent is gone for good when it is only resting.
  */
 
+import { compareAgentOrder } from '@shared/agentOrder';
+
 /** The slice of an AgentDirectoryEntry the roster wording actually speaks. */
 export interface RosterRow {
   id: string;
   name: string;
+  isGod?: boolean;
   provider: string;
   status?: string;
   cwd?: string | null;
@@ -36,16 +39,18 @@ export function shortDir(p: string): string {
 
 /** Split a directory into active / vacationing / plain-archived rows. A
  *  vacationer is archived by construction; it gets its own bucket so no caller
- *  can accidentally speak it as plain archived. */
+ *  can accidentally speak it as plain archived. Each group is sorted for
+ *  display — god first, then alphabetical (card agent-monitor-lists-sort-
+ *  agent-2026-08-18) — matching the written roster's order everywhere. */
 export function splitRoster(rows: RosterRow[]): {
   active: RosterRow[];
   vacationing: RosterRow[];
   archived: RosterRow[];
 } {
   return {
-    active: rows.filter((r) => !r.archived),
-    vacationing: rows.filter((r) => r.archived && !!r.vacation),
-    archived: rows.filter((r) => r.archived && !r.vacation),
+    active: rows.filter((r) => !r.archived).sort(compareAgentOrder),
+    vacationing: rows.filter((r) => r.archived && !!r.vacation).sort(compareAgentOrder),
+    archived: rows.filter((r) => r.archived && !r.vacation).sort(compareAgentOrder),
   };
 }
 
@@ -99,7 +104,7 @@ export function agentWhere(e: RosterRow): string {
 export function vacationSummaryLine(
   rows: Array<Pick<RosterRow, 'name'> & Partial<Pick<RosterRow, 'archived' | 'vacation'>>>,
 ): string {
-  const vacationing = rows.filter((r) => r.archived && !!r.vacation);
+  const vacationing = rows.filter((r) => r.archived && !!r.vacation).sort(compareAgentOrder);
   if (!vacationing.length) return '';
   return `On vacation: ${vacationing
     .slice(0, 8)

@@ -33,6 +33,7 @@ import {
   type AgentProvider,
 } from '@/store/config';
 import { canReceiveInbox } from '@shared/agentProvider';
+import { compareAgentOrder } from '@shared/agentOrder';
 
 /** Michael's control surface. Shown instead of the plain terminal/files panel
  *  when the god agent is selected: terminal + queue, the floor roster (with
@@ -528,6 +529,10 @@ function BoardTab() {
 
 function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number } }) {
   const agents = useStore((s) => s.agents);
+  // Monitor display order: god first, rest alphabetical (card agent-monitor-
+  // lists-sort-agent-2026-08-18). Store order (the drag-reorderable office
+  // strip persists it) is not touched — this is a render-time copy.
+  const orderedAgents = useMemo(() => [...agents].sort(compareAgentOrder), [agents]);
   const select = useStore((s) => s.select);
   // Edit-setup affordance (harness-editbtn-monitor-20260817): opens the SAME
   // agent dialog as the tasks-view chips, pre-filled for this agent. Human-class
@@ -932,7 +937,7 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
       </Section>
 
       <Section title="AGENTS">
-        {agents.map((a) => {
+        {orderedAgents.map((a) => {
           const agentProvider = inferAgentProvider(a.command, a.provider);
           const agentPreset = providerPreset(agentProvider);
           const sample = samples[a.id];
@@ -1668,7 +1673,10 @@ function relAge(ms: number): string {
  *  set). Own shelf above ARCHIVED so a vacationer never reads as gone for good. */
 function VacationSection() {
   const archived = useStore((s) => s.archivedAgents);
-  const vacationers = useMemo(() => archived.filter((a) => a.vacation), [archived]);
+  const vacationers = useMemo(
+    () => archived.filter((a) => a.vacation).sort(compareAgentOrder),
+    [archived],
+  );
   // Same edit-setup affordance as the active cards (harness-gear-vacation-
   // archived-20260817): opens the shared edit dialog pre-filled (App renders
   // the one modal instance); engine edits ride the next RECALL (the recipe
@@ -1786,7 +1794,10 @@ function VacationSection() {
 
 function ArchivedSection() {
   const archived = useStore((s) => s.archivedAgents);
-  const archivedAgents = useMemo(() => archived.filter((a) => !a.vacation), [archived]);
+  const archivedAgents = useMemo(
+    () => archived.filter((a) => !a.vacation).sort(compareAgentOrder),
+    [archived],
+  );
   const removeArchivedAgent = useStore((s) => s.removeArchivedAgent);
   // Same edit-setup affordance as the active cards (harness-gear-vacation-
   // archived-20260817); engine edits ride the next restore/re-hire.
