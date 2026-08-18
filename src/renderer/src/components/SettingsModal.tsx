@@ -23,6 +23,7 @@ import { AiEnginesSettings } from './AiEnginesSettings';
 import { REALTIME_MODEL } from '@shared/realtimePricing';
 import { RealtimeDevicePicker } from '@/realtime/DevicePicker';
 import { CostHud } from '@/realtime/CostHud';
+import { SkillsTab } from './SkillsTab';
 
 export interface SettingsModalProps {
   config: HarnessConfig;
@@ -173,6 +174,7 @@ function clearLocalState(): void {
 export type Section =
   | 'General'
   | 'Agents & Models'
+  | 'Skills'
   | 'Autonomy & Budgets'
   | 'Connections'
   | 'Voice'
@@ -180,6 +182,7 @@ export type Section =
 const NAV_SECTIONS: Section[] = [
   'General',
   'Agents & Models',
+  'Skills',
   'Autonomy & Budgets',
   'Connections',
   'Voice',
@@ -1870,6 +1873,14 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                   )}
 
                   {/* AUTONOMY & BUDGETS — the safety tab */}
+                  {/* SKILLS — local inventory of what the CLIs on this machine can
+                      already do (no catalog, no install — display only) */}
+                  {activeSection === 'Skills' && (
+                    <div style={{ minHeight: 300 }}>
+                      <SkillsTab />
+                    </div>
+                  )}
+
                   {activeSection === 'Autonomy & Budgets' && (
                     <>
                       <div>

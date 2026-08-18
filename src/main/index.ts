@@ -32,7 +32,7 @@ import {
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { join, resolve, sep, basename, dirname } from 'node:path';
 import { piSessionExists } from './resumeGuard';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import { request as httpsRequest } from 'node:https';
 import { PtyManager, type SpawnOptions } from './pty';
 import { burnWindows, type BurnWindows } from './burn';
@@ -89,6 +89,7 @@ import {
   type Registry,
 } from './hive';
 import { startSessionRequestWatcher } from './sessionRequests';
+import { listLocalSkills, type LocalSkill } from './skills';
 import { shouldAdoptWorktree } from './worktreeAdopt';
 import {
   parkAgentCore,
@@ -5381,6 +5382,39 @@ ipcMain.handle('app:openExternal', async (_evt, url: unknown) => {
 ipcMain.handle('app:setLoginItem', (_evt, enabled: unknown) => {
   app.setLoginItemSettings({ openAtLogin: enabled === true });
   return app.getLoginItemSettings().openAtLogin;
+});
+
+// ─── IPC: skills (LOCAL inventory only — no catalog, no install) ────────────
+/** Skills the CLIs on this machine can already use. Scans the registered repos
+ *  plus the caller's cwd, so a project-scoped skill shows up where it applies. */
+ipcMain.handle('skills:local', (_evt, cwd: unknown): LocalSkill[] => {
+  const cfg = readConfig();
+  const cwds = [...(typeof cwd === 'string' && cwd ? [cwd] : []), ...(cfg.registeredRepos ?? [])];
+  try {
+    return listLocalSkills({ cwds, bundledDir: skillsResourceDir() });
+  } catch (e) {
+    console.error('[skills] local scan failed:', e);
+    return [];
+  }
+});
+/** Reveal a skill folder in the OS file manager. Refuses paths outside the
+ *  roots the inventory itself scans — the renderer must not be able to probe
+ *  arbitrary filesystem locations through this. */
+ipcMain.handle('skills:reveal', (_evt, path: unknown) => {
+  if (typeof path !== 'string' || !path.trim()) return { ok: false, error: 'bad request' };
+  const skillRoots = [join(homedir(), '.claude', 'skills'), join(homedir(), '.config', 'opencode')];
+  let target: string;
+  try {
+    target = resolve(path);
+  } catch {
+    return { ok: false, error: 'unreadable path' };
+  }
+  const inRoot =
+    skillRoots.some((r) => target.startsWith(resolve(r) + sep)) ||
+    (readConfig().registeredRepos ?? []).some((c) => target.startsWith(resolve(c) + sep));
+  if (!inRoot) return { ok: false, error: 'outside a managed skills directory' };
+  shell.showItemInFolder(target);
+  return { ok: true };
 });
 
 // ─── IPC: Slack integration ─────────────────────────────────────────────────
