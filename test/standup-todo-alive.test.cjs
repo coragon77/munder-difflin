@@ -262,33 +262,35 @@ test('execUpdateTask -> doing clears paused (amendment D, writer 3)', () => {
 // contract was superseded by this card.
 
 test('hive-card CLI: --paused/--resume on update; status -> doing REFUSES while paused, flips after --resume', (t) => {
-  const hiveSrc = read('src/main/hive.ts');
-  const m = /const HIVE_CARD_CLI = `([\s\S]*?)`;/.exec(hiveSrc);
-  assert.ok(m, 'embedded CLI found');
-  const cli = m[1];
-  assert.match(cli, /--paused/, 'update accepts --paused');
-  assert.match(cli, /--resume/, 'update accepts --resume');
-  // behavioral: run the extracted CLI against a temp hive root
+  // Runs the REAL generated bin/hive-card (HiveManager.ensureHive). An earlier
+  // version regex-scraped the HIVE_CARD_CLI template literal out of hive.ts,
+  // but that constant now INTERPOLATES the shared actionableCards functions
+  // into itself (card agent-actionablecards-one-shar-2026-08-18) — raw text
+  // is no longer valid JS, and the installed CLI is what ships anyway.
+  const { HiveManager } = loadTs('src/main/hive.ts');
   const home = tmpHome();
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  fs.mkdirSync(path.join(home), { recursive: true });
+  const hive = new HiveManager(() => home);
+  hive.ensureHive();
+  const root = path.join(home, 'hive');
   fs.writeFileSync(
-    path.join(home, 'tasks.json'),
+    path.join(root, 'tasks.json'),
     JSON.stringify(
       { tasks: [{ id: 'c1', title: 'A', status: 'todo', createdAt: new Date().toISOString() }] },
       null,
       2,
     ),
   );
-  const cliPath = path.join(home, 'hive-card-test.cjs');
-  fs.writeFileSync(cliPath, cli);
+  const cliPath = path.join(root, 'bin', 'hive-card');
+  assert.match(fs.readFileSync(cliPath, 'utf8'), /--paused/, 'update accepts --paused');
+  assert.match(fs.readFileSync(cliPath, 'utf8'), /--resume/, 'update accepts --resume');
   const run = (args) =>
     execFileSync(process.execPath, [cliPath, ...args], {
-      env: { ...process.env, HIVE_ROOT: home },
+      env: { ...process.env, HIVE_ROOT: root },
       encoding: 'utf8',
     }).trim();
   run(['update', 'c1', '--paused']);
-  let card = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8')).tasks[0];
+  let card = JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks[0];
   assert.equal(card.paused, true);
   // held: the doing flip must REFUSE (the primitive checks the flag)
   let refused = false;
@@ -298,13 +300,13 @@ test('hive-card CLI: --paused/--resume on update; status -> doing REFUSES while 
     refused = true;
   }
   assert.ok(refused, 'CLI doing-flip refuses a paused card');
-  card = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8')).tasks[0];
+  card = JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks[0];
   assert.equal(card.status, 'todo', 'not flipped while held');
   assert.equal(card.paused, true, 'still on hold');
   // released: the doing flip works and leaves no stale hold behind
   run(['update', 'c1', '--resume']);
   run(['status', 'c1', 'doing']);
-  card = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8')).tasks[0];
+  card = JSON.parse(fs.readFileSync(path.join(root, 'tasks.json'), 'utf8')).tasks[0];
   assert.equal(card.status, 'doing');
   assert.ok(card.paused !== true, 'no stale on-hold flag into doing');
 });

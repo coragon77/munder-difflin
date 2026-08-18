@@ -38,6 +38,10 @@ import { homedir } from 'node:os';
 import { spawnSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
 import type { AgentUsageSample } from './usage';
+// ONE definition of actionable (card agent-actionablecards-one-shar-2026-08-
+// 18) — serialized verbatim (toString) into the generated bin/ CLIs below so
+// the gate, the lister and the roster injection run identical code.
+import { actionableCards, cardHeld, renderActionableLine } from './actionableCards';
 import { COMMAND_GROUPS } from '../shared/claudeCommands';
 import {
   isClaudeProvider,
@@ -2999,6 +3003,21 @@ export class HiveManager {
               : ' — FULL: spawns are refused until a seat frees (park/fire or raise the cap).')
           : '';
 
+      // ACTIONABLE (card agent-actionablecards-one-shar-2026-08-18): god is
+      // EVENT-driven while the board is STATE — the miss this fixes was an
+      // unowned, unpaused todo sitting invisible for four turns. The SAME
+      // predicate as the hive-dispatch hold gate and `hive-card actionable`
+      // (src/main/actionableCards.ts); ids, capped, because a bare count
+      // makes god go look. INFORMATION, never a directive. A missing or
+      // corrupt ledger renders 0 — the roster line itself must not break.
+      let actionableIds: string[] = [];
+      try {
+        actionableIds = actionableCards(JSON.parse(readFileSync(join(root, 'tasks.json'), 'utf8')));
+      } catch {
+        actionableIds = [];
+      }
+      const actionableLine = renderActionableLine(actionableIds);
+
       const ago = (s: number | null | undefined): string =>
         typeof s !== 'number'
           ? 'unknown'
@@ -3048,6 +3067,9 @@ export class HiveManager {
               ((fl.freeSeats ?? 0) > 0 ? `, ${fl.freeSeats} free.` : ' — FULL.')
             : '') +
           (pool.length ? ` VACATION ${pool.length} parked (fetchable).` : '') +
+          ' ' +
+          actionableLine +
+          '.' +
           ' Detail (names, roles, spend): fleet.json.'
         );
       }
@@ -3088,7 +3110,10 @@ export class HiveManager {
         'agents you remember that are absent here have been archived or killed, so do not message them. ' +
         'Route work to someone on this list before spawning anyone new.' +
         vacationLine +
-        floorSeatsLine
+        floorSeatsLine +
+        ' ' +
+        actionableLine +
+        '.'
       );
     } catch {
       return null;
@@ -3374,6 +3399,17 @@ cards — the card is never duplicated):
 - A 'Task from the human' mail that references a card (cardId field or
   \`Card: <id>\` body line) means that card exists — \`update\` it and assign it;
   NEVER add a second card for the same task.
+
+**Ask the board what is actionable** (read-only, every pane):
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-card" actionable
+\`\`\`
+
+- Prints the ACTIONABLE line god's roster injection renders (the SAME
+  predicate: todo, not paused, not blocked, unowned — ids capped at 3 in the
+  line, the full list below it). \`ACTIONABLE: 0\` means nothing to dispatch.
+  Information, not an instruction — same deal as the injection line.
 
 All subcommands validate before writing and refuse an unparseable ledger
 instead of clobbering it. Errors explain themselves on stderr (exit 1).`;
@@ -4702,6 +4738,7 @@ function usage() {
     '  hive-card add --title <t> --status todo|doing [--notes <n>] [--assignee <id>]',
     '  hive-card status <id> <todo|doing|blocked|done> [--adopt|--fresh]',
     '  hive-card update <id> [--title <t>] [--notes <n>] [--assignee <id>] [--paused|--resume]',
+    '  hive-card actionable  # read-only: the ACTIONABLE roster line + full id list',
   ].join('\\n'));
 }
 
@@ -4745,6 +4782,18 @@ function readLedger() {
     fail('tasks.json has an unexpected shape (want {"tasks": [...]}) — refusing to write.');
   }
   return data;
+}
+
+// The read-only lister (card agent-actionablecards-one-shar-2026-08-18): the
+// SAME predicate god's per-prompt roster injection renders, serialized
+// verbatim from src/main/actionableCards.ts — the CLI answer and the
+// injection can never disagree. First line = the injected ACTIONABLE line,
+// then the full uncapped id list. No lock, no write.
+const actionableCardsFn = ${actionableCards};
+const renderActionableLineFn = ${renderActionableLine};
+function cmdActionable() {
+  const ids = actionableCardsFn(readLedger());
+  process.stdout.write([renderActionableLineFn(ids)].concat(ids).join('\\n') + '\\n');
 }
 
 function writeLedger(data) {
@@ -4955,6 +5004,7 @@ try {
   if (cmd === 'add') cmdAdd(process.argv.slice(3));
   else if (cmd === 'status') cmdStatus(process.argv.slice(3));
   else if (cmd === 'update') cmdUpdate(process.argv.slice(3));
+  else if (cmd === 'actionable') cmdActionable();
   else usage();
 } catch (e) {
   process.stderr.write('hive-card: ' + (e && e.message ? e.message : String(e)) + '\\n');
@@ -5177,6 +5227,13 @@ function readBody(flagBody) {
   return b;
 }
 
+// ONE predicate with the roster injection and hive-card actionable (card
+// agent-actionablecards-one-shar-2026-08-18): serialized verbatim from
+// src/main/actionableCards.ts — the same definition the ACTIONABLE roster
+// line filters with, not a second implementation. If gate and lister ever
+// disagree, test/actionable-cards.test.cjs fails before it can ship.
+const cardHeldFn = ${cardHeld};
+
 function main() {
 const parsed = parseArgs(process.argv.slice(2));
 const vals = parsed.vals;
@@ -5207,16 +5264,19 @@ withLock(function () {
     const card = data.tasks.find(function (t) { return t && t.id === vals.card; });
     if (!card) fail('no card with id "' + vals.card + '" in tasks.json.');
     // OPERATOR HOLDS — refused BEFORE any write (card agent-hive-dispatch-
-    // must-be-th-2026-08-18). The wording is the feature: it names the flag,
-    // names whose decision it is, and leaves exactly one sanctioned move —
-    // asking the operator. No override flag exists by design.
-    if (card.paused === true) {
-      fail('refused: card "' + card.id + '" carries paused:true — the operator has this card ON HOLD. ' +
-        'That is the operator\\'s decision, not a transient error: ask the operator to unpause it ' +
-        '(tasks tab / office UI). There is no override, and never flip a held card to doing by ' +
-        'hand-editing tasks.json — hive-dispatch is the only todo->doing path precisely so this hold cannot be worked around.');
-    }
-    if (card.status === 'blocked') {
+    // must-be-th-2026-08-18). The DECISION is cardHeldFn (above), the ONE
+    // shared predicate (card agent-actionablecards-one-shar-2026-08-18);
+    // the inner branch only picks the refusal's wording. The wording is the
+    // feature: it names the flag, names whose decision it is, and leaves
+    // exactly one sanctioned move — asking the operator. No override flag
+    // exists by design.
+    if (cardHeldFn(card)) {
+      if (card.paused === true) {
+        fail('refused: card "' + card.id + '" carries paused:true — the operator has this card ON HOLD. ' +
+          'That is the operator\\'s decision, not a transient error: ask the operator to unpause it ' +
+          '(tasks tab / office UI). There is no override, and never flip a held card to doing by ' +
+          'hand-editing tasks.json — hive-dispatch is the only todo->doing path precisely so this hold cannot be worked around.');
+      }
       fail('refused: card "' + card.id + '" is blocked (status blocked) — blocked cards wait on the operator. ' +
         'Ask the operator to unblock it. There is no override, and never flip a held card to doing by ' +
         'hand-editing tasks.json — hive-dispatch is the only todo->doing path precisely so this hold cannot be worked around.');

@@ -154,6 +154,43 @@ test('god gets the roster on SessionStart and on every prompt — nobody else do
   );
 });
 
+test('the ACTIONABLE board line rides the god-only injection (card agent-actionablecards-one-shar-2026-08-18)', async (t) => {
+  const { hive, fire } = await floor(t);
+  snapshot(hive);
+  hive.writeTasks([
+    {
+      id: 'agent-free-2026-08-18',
+      title: 'Unowned unpaused todo',
+      status: 'todo',
+      dependsOn: [],
+      priority: 3,
+      createdAt: new Date().toISOString(),
+      origin: 'human',
+    },
+    {
+      id: 'agent-held-2026-08-18',
+      title: 'Operator hold',
+      status: 'todo',
+      paused: true,
+      dependsOn: [],
+      priority: 3,
+      createdAt: new Date().toISOString(),
+      origin: 'human',
+    },
+  ]);
+  // Through the REAL hook chain (HookServer.handle → rosterContext), not
+  // just rosterContext directly: the state must reach god's additionalContext
+  // on every prompt, slim line included — the whole point of the card.
+  assert.match(
+    context(await fire('god-1', 'SessionStart')),
+    /ACTIONABLE: 1 - agent-free-2026-08-18\./,
+  );
+  assert.match(
+    context(await fire('god-1', 'UserPromptSubmit')),
+    /ACTIONABLE: 1 - agent-free-2026-08-18\./,
+  );
+});
+
 test('a queued operator steer is not swallowed by the roster', async (t) => {
   const steer = 'OPERATOR: stop and summarize.';
   const { hive, fire } = await floor(t, { steer });
