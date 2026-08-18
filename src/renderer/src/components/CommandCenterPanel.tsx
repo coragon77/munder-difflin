@@ -552,6 +552,19 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
   // is driven exactly like the model Select (modelsForProvider), never a
   // hardcoded flag list. undefined = the CLI's default effort.
   const [engineEffort, setEngineEffort] = useState<string | undefined>(undefined);
+  // DIRTY guard (card agent-engine-row-silently-disc-2026-08-18): snapshot of the
+  // PERSISTED engine config the selects seeded from. "apply" adopts the selection
+  // into it; any select that drifted marks an unsaved change that
+  // restart & continue would silently drop when the pane remounts.
+  const [savedEngine, setSavedEngine] = useState<{
+    provider: AgentProvider;
+    model?: string;
+    effort?: string;
+  }>({ provider: 'claude' });
+  const engineDirty =
+    engineProvider !== savedEngine.provider ||
+    engineModel !== savedEngine.model ||
+    engineEffort !== savedEngine.effort;
   const [restartErrors, setRestartErrors] = useState<Record<string, string>>({});
   // The harness's own default model (Settings → default model). Michael and every
   // new agent spawn on this, so the picker marks it — otherwise the only entry
@@ -579,6 +592,11 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
         setEngineProvider(c.godProvider ?? 'claude');
         setEngineModel(c.godModel);
         setEngineEffort(c.godEffort);
+        setSavedEngine({
+          provider: c.godProvider ?? 'claude',
+          model: c.godModel,
+          effort: c.godEffort,
+        });
         setDefaultModel(c.defaultModel);
       })
       .catch(() => {
@@ -1315,8 +1333,13 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                       ))}
                     </Select>
                   )}
+                  {engineDirty && (
+                    <span style={{ fontSize: 11, color: 'var(--cth-coral)' }}>
+                      unsaved — press apply
+                    </span>
+                  )}
                   <PixelButton
-                    variant="secondary"
+                    variant={engineDirty ? 'primary' : 'secondary'}
                     size="sm"
                     disabled={restarting === a.id}
                     onClick={async () => {
@@ -1334,6 +1357,13 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                         godModel: engineModel,
                         godEffort: engineEffort,
                       });
+                      // Persisted — adopt the selection into the snapshot so the row
+                      // clears its dirty state (a remount re-seeds identically).
+                      setSavedEngine({
+                        provider: engineProvider,
+                        model: engineModel,
+                        effort: engineEffort,
+                      });
                       await restartWithModel(a, engineModel, {
                         provider: engineProvider,
                         resume: false,
@@ -1348,7 +1378,16 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                     variant="secondary"
                     size="sm"
                     disabled={restarting === a.id}
-                    onClick={() => restartWithModel(a, a.model, { resume: true })}
+                    onClick={() => {
+                      if (
+                        engineDirty &&
+                        !window.confirm(
+                          'Unsaved engine changes will be discarded — restart & continue resumes the current engine+model. Press apply to keep them. Restart anyway?',
+                        )
+                      )
+                        return;
+                      void restartWithModel(a, a.model, { resume: true });
+                    }}
                   >
                     <span title="Kill and respawn Michael, resuming the current conversation — fixes a corrupted/garbled terminal without losing context">
                       restart &amp; continue
