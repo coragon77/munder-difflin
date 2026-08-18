@@ -35,6 +35,11 @@ export const GROK_COMMAND_GROUPS: CmdGroup[] = [
     items: [
       { cmd: '/model', kind: 'slash', desc: 'Switch the model used by the current session.' },
       {
+        cmd: 'grok --model grok-4.6',
+        kind: 'cli',
+        desc: 'Launch Grok with the Grok 4.6 coding model (the CLI default).',
+      },
+      {
         cmd: 'grok --model grok-4.5',
         kind: 'cli',
         desc: 'Launch Grok with the Grok 4.5 coding model.',
