@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useStore, type ToolKind, type StationKind } from '@/store/store';
+import { inferAgentProvider } from '@/store/config';
 
 // ANSI escape sequence stripper — Claude colors its tool tags with these.
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
@@ -99,6 +100,14 @@ export function usePtyParser(agentId: string) {
 
   return useCallback(
     (chunk: string) => {
+      // This parser is a Claude-TUI stopgap: its patterns (● tool lines, the
+      // "esc to interrupt" footer, claude approval prompts) never match another
+      // provider's TUI, so for them it is only a 4s idle-drift machine that
+      // fights their hook events — pi agents sat IDLE on the floor while
+      // working (card agent-hold-pi-provider-agents--2026-08-18). Hook events
+      // own their status; claude keeps both (parser refines, hooks decide).
+      const self = useStore.getState().agents.find((a) => a.id === agentId);
+      if (self && inferAgentProvider(self.command, self.provider) !== 'claude') return;
       const text = chunk.replace(ANSI_RE, '');
       if (!text.trim()) return;
 

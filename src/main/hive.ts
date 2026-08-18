@@ -5810,8 +5810,8 @@ process.stdin.on('end', () => {
 
 // ─── pi bridge extension (written to <agentDir>/.pi-agent/extensions/) ───────
 // A bundled extension for Pi (earendil-works). Pi exposes a pi.on(event,…)
-// lifecycle; this posts cth-hook-shaped payloads to HIVE_SOCK on tool_call /
-// tool_result / agent_settled AND usage as CostSample on message_end (pi has no
+// lifecycle; this posts cth-hook-shaped payloads to HIVE_SOCK on agent_start /
+// tool_call / tool_result / agent_settled AND usage as CostSample on message_end (pi has no
 // OTLP — without this, fleet.json shows a permanently blind row for pi agents),
 // and AUTO-APPROVES tool calls when the spawn's permission mode grants
 // autonomy (HIVE_AUTO_APPROVE, per-spawn — Pam guardrail #5). The
@@ -5847,6 +5847,14 @@ export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => an
   // same tool look identical (10 distinct Bash calls → "8× identical tool call").
   // tool_call DOES carry it, so stash it there and attach it on the way out.
   let lastInput: unknown = undefined;
+  // Turn-start signal: pi has no UserPromptSubmit hook, so without this the
+  // renderer status sat at its last value from prompt arrival to the FIRST
+  // tool call — every thinking phase read as idle (card
+  // agent-hold-pi-provider-agents--2026-08-18). agent_start fires when a run
+  // begins (and again per retry/auto-compact re-run — idempotent 'working').
+  pi.on('agent_start', (_event, ctx) => {
+    post({ hook_event_name: 'UserPromptSubmit', session_id: sessionOf(ctx) });
+  });
   pi.on('tool_call', (event, ctx) => {
     lastInput = event?.input;
     post({ hook_event_name: 'PreToolUse', session_id: sessionOf(ctx), tool_name: event?.toolName, tool_input: event?.input });

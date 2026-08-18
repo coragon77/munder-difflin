@@ -295,6 +295,11 @@ export function useHive(config: HarnessConfig | null): void {
   // 'stopped' the avatar is pinned to 'looping' and hook events must NOT flip it
   // back to 'working' (the flicker the spec calls out); only a genuine Stop clears it.
   const breakerLevel = useRef<Record<string, string>>({});
+  // Last hook event per agent (ms). Hook events are the authoritative liveness
+  // for bridged providers — the quiesce idle fallback (2e) consults this so a
+  // busy agent with a quiet pty (pi's long tool/subagent runs print nothing)
+  // is never flipped idle while its bridge keeps reporting real work.
+  const lastHookEventAt = useRef<Record<string, number>>({});
 
   // 1) Bootstrap the god agent (source of truth = live PTYs, to dodge restarts).
   // biome-ignore lint/correctness/useExhaustiveDependencies: spawn-once effect — only onboarding-complete + harnessHome may (re)trigger; godProvider/godModel/godRemoteControl are captured at spawn time by design
@@ -426,6 +431,7 @@ export function useHive(config: HarnessConfig | null): void {
   useEffect(() => {
     return window.cth.onHiveHookEvent((e) => {
       if (!e.agentId) return;
+      lastHookEventAt.current[e.agentId] = Date.now();
       const { updateAgent, agents } = useStore.getState();
       const self = agents.find((a) => a.id === e.agentId);
       if (!self) return;
@@ -642,8 +648,11 @@ export function useHive(config: HarnessConfig | null): void {
   //     backgrounded god gets none. This is the floor-wide, provider-agnostic backstop:
   //     it reads each live PTY's lastOutputAt (already tracked in the main process) and
   //     flips any 'working' agent quiet for QUIESCE_IDLE_MS to idle so the nudge can
-  //     drain it. Safe because a genuinely-working agent (incl. a long streaming tool)
-  //     keeps emitting bytes; a false idle self-corrects on the next hook event.
+  //     drain it. Safe because a genuinely-working agent keeps emitting bytes OR hook
+  //     events — the check below requires BOTH quiet, because a pi agent in a long
+  //     tool/subagent run posts Pre/PostToolUse steadily while its pty prints nothing
+  //     (card agent-hold-pi-provider-agents--2026-08-18); a false idle self-corrects
+  //     on the next hook event.
   useEffect(() => {
     if (!config?.onboardingComplete) return;
     const iv = setInterval(async () => {
@@ -660,6 +669,10 @@ export function useHive(config: HarnessConfig | null): void {
         const bl = breakerLevel.current[a.id];
         if (bl === 'constrained' || bl === 'stopped') continue;
         if ((bootGraceUntil.current[a.id] ?? 0) > now) continue;
+        // Hook-plane liveness wins: recent hook events mean real work even when
+        // the pty is silent (see the effect header).
+        const lastHook = lastHookEventAt.current[a.id] ?? 0;
+        if (lastHook > 0 && now - lastHook <= QUIESCE_IDLE_MS) continue;
         const last = lastOut[a.ptyId];
         if (typeof last === 'number' && last > 0 && now - last > QUIESCE_IDLE_MS) {
           updateAgent(a.id, { status: 'idle', action: 'idle', carrying: undefined });
