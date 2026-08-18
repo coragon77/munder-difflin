@@ -75,6 +75,7 @@ import {
   compareRefs,
   listWorktrees,
   checkoutRef,
+  getHead,
 } from './git';
 import { refreshProjectGraph } from './graphRefresh';
 import { retireLandedBranches } from './branchRetire';
@@ -6014,6 +6015,16 @@ ipcMain.handle('realtime:setSessionLive', (_e, live: unknown) => {
 });
 // v0.3.4: app self-knowledge for the voice get_app_info tool — version + the
 // newest CHANGELOG sections. Read-only; ships CHANGELOG.md with the app.
+// Live checkout head for the Settings hero card (card agent-settings-
+// hero-card-port--2026-08-18) — read-only, best-effort: null when the app
+// path is not a git checkout. Same root graphRefresh refreshes.
+ipcMain.handle('app:headSha', async () => {
+  try {
+    return await getHead(app.getAppPath());
+  } catch {
+    return null;
+  }
+});
 ipcMain.handle('app:info', () => {
   let changelog = '';
   for (const p of [join(app.getAppPath(), 'CHANGELOG.md'), join(process.cwd(), 'CHANGELOG.md')]) {
