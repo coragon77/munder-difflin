@@ -1,4 +1,5 @@
 import type { StatusKind } from './components/PixelBadge';
+import { waitingLabel } from '../../shared/waitingLabel';
 
 /**
  * waiting ≠ idle — DISPLAY derivation (card agent-waiting-vs-idle-display--
@@ -16,5 +17,5 @@ export function waitingBadge(
 ): { status: StatusKind; label?: string } {
   const n = typeof pending === 'number' && pending > 0 ? Math.floor(pending) : 0;
   if (!n || (status !== 'idle' && status !== 'waiting')) return { status };
-  return { status: 'waiting', label: `waiting (${n} background task${n === 1 ? '' : 's'})` };
+  return { status: 'waiting', label: waitingLabel(n) };
 }

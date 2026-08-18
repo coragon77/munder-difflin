@@ -16,7 +16,7 @@ export interface AgentCardProps {
   accent: AccentColorName;
   status: StatusKind;
   /** Pending finite background-work census — >0 upgrades an idle badge to
-   *  'waiting (N background tasks)' (waiting ≠ idle, card
+   *  'waiting (N)' (waiting ≠ idle, card
    *  agent-waiting-vs-idle-display--2026-08-17). */
   pending?: number;
   /** This agent's pty, if it has one. Only used to notice that the USER has

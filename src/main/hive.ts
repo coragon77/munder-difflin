@@ -50,6 +50,7 @@ import {
 } from '../shared/agentProvider';
 import { MCP_CATALOG } from '../shared/mcpCatalog';
 import { hasInboxMonitor } from '../shared/providerAutomation';
+import { waitingLabel } from '../shared/waitingLabel';
 import { expandTilde } from './fs';
 
 /** The subset of HarnessConfig the hive consumes for the default-MCP merge.
@@ -3041,9 +3042,7 @@ export class HiveManager {
         // census-settled with pending finite background work → say so, so god
         // routes around (or watches) a waiting agent instead of reading idle.
         if (typeof a.pendingBackgroundWork === 'number' && a.pendingBackgroundWork > 0) {
-          bits.push(
-            `waiting (${a.pendingBackgroundWork} background task${a.pendingBackgroundWork === 1 ? '' : 's'})`,
-          );
+          bits.push(waitingLabel(a.pendingBackgroundWork));
         }
         if (a.tokens) bits.push(`${Math.round(a.tokens / 1000)}k tok`);
         if (a.usd) bits.push(`$${a.usd.toFixed(2)}`);
