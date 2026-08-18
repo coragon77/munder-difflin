@@ -430,25 +430,49 @@ export async function removeWorktree(
   return { ok: false, error: res.error };
 }
 
+/** Base ref a worker's integration is measured against. The LOCAL base branch
+ *  can be arbitrarily stale: under integrationMode workers/lean the workers merge
+ *  + push from their OWN worktrees, so the live checkout's branch never advances
+ *  and already-integrated work still measures ahead of it (card
+ *  agent-fired-worker-worktree-pr-2026-08-18: every fired lean-mode worker looked
+ *  unintegrated; the inverse — a local-only, un-pushed merge — measured ahead=0
+ *  and hid real loss). Prefer the remote-tracking ref `origin/<base>`: a
+ *  best-effort fetch refreshes it first (bounded by runGit's timeout; failures
+ *  ignored — a stale `origin/<base>` can only err toward "keep", never toward
+ *  discarding un-pushed work), and only a repo WITHOUT that remote-tracking ref
+ *  (no remote / branch never pushed) falls back to the local branch. */
+async function integrationBaseRef(wtPath: string, baseBranch: string): Promise<string> {
+  await runGit(wtPath, ['fetch', '--quiet', 'origin', baseBranch]);
+  const remoteRef = `origin/${baseBranch}`;
+  const has = await runGit(wtPath, [
+    'rev-parse',
+    '--verify',
+    '--quiet',
+    `refs/remotes/${remoteRef}`,
+  ]);
+  return has.ok ? remoteRef : baseBranch;
+}
+
 /** Does this worktree hold work that must NOT be auto-discarded? `keep` is true if
- *  the working tree is dirty (uncommitted/untracked changes) OR the branch has
- *  commits the base branch doesn't (un-integrated / would-be-PR commits). Ephemeral
- *  workers never push, so "commits ahead of base" is the local proxy for "un-pushed
- *  / open PR" work. Fails SAFE: any git query we can't run is treated as "there
- *  might be work" → keep, so an uncertain state never triggers an auto-remove. */
+ *  the working tree is dirty (uncommitted/untracked changes) OR HEAD has commits
+ *  the integration base (origin-aware, see integrationBaseRef) doesn't — the proxy
+ *  for "work that never landed upstream". Fails SAFE: any git query we can't run
+ *  is treated as "there might be work" → keep, so an uncertain state never
+ *  triggers an auto-remove. */
 export async function worktreeHasUnintegratedWork(
   wtPath: string,
   baseBranch: string,
 ): Promise<{ keep: boolean; detail: string; branch: string; dirty: boolean; ahead: number }> {
+  const base = await integrationBaseRef(wtPath, baseBranch);
   const br = await getBranch(wtPath);
   const branch = 'current' in br && br.current ? br.current : '(detached)';
   // Uncommitted or untracked changes?
   const status = await runGit(wtPath, ['status', '--porcelain']);
   const dirty = status.ok ? status.stdout.trim().length > 0 : true; // unknown → assume dirty
-  // Commits on HEAD not reachable from the base branch?
+  // Commits on HEAD not reachable from the integration base?
   let ahead = 0;
   let aheadKnown = true;
-  const rl = await runGit(wtPath, ['rev-list', '--count', `${baseBranch}..HEAD`]);
+  const rl = await runGit(wtPath, ['rev-list', '--count', `${base}..HEAD`]);
   if (rl.ok) {
     const n = parseInt(rl.stdout.trim(), 10);
     ahead = Number.isFinite(n) ? n : 0;
@@ -456,7 +480,7 @@ export async function worktreeHasUnintegratedWork(
     aheadKnown = false; // unknown → assume there is work
   }
   const keep = dirty || ahead > 0 || !aheadKnown;
-  const detail = `dirty=${dirty}, commitsAheadOf(${baseBranch})=${aheadKnown ? ahead : 'unknown'}`;
+  const detail = `dirty=${dirty}, commitsAheadOf(${base})=${aheadKnown ? ahead : 'unknown'}`;
   return { keep, detail, branch, dirty, ahead };
 }
 
@@ -466,7 +490,8 @@ export async function worktreeHasUnintegratedWork(
  *
  *  Returns `gc: true` ONLY when BOTH:
  *    (1) the working tree is clean (no uncommitted/untracked changes), AND
- *    (2) the worker's content is already in `baseBranch` — proven by EITHER
+ *    (2) the worker's content already landed in the integration base
+ *        (origin-aware, see integrationBaseRef) — proven by EITHER
  *        commitsAheadOf(base) === 0 (HEAD reachable from base: fast-forward /
  *        plain merge, robust even after base advances) OR `git diff base HEAD`
  *        being empty (base's tree equals HEAD's tree: catches a SQUASH merge,
@@ -482,24 +507,25 @@ export async function worktreeIsGcSafe(
   wtPath: string,
   baseBranch: string,
 ): Promise<{ gc: boolean; detail: string }> {
+  const base = await integrationBaseRef(wtPath, baseBranch);
   // (1) Clean tree?
   const status = await runGit(wtPath, ['status', '--porcelain']);
   if (!status.ok) return { gc: false, detail: 'status query failed' };
   if (status.stdout.trim().length > 0) return { gc: false, detail: 'working tree dirty' };
   // (2a) HEAD fully reachable from base (ahead == 0)?
-  const rl = await runGit(wtPath, ['rev-list', '--count', `${baseBranch}..HEAD`]);
+  const rl = await runGit(wtPath, ['rev-list', '--count', `${base}..HEAD`]);
   if (rl.ok) {
     const n = parseInt(rl.stdout.trim(), 10);
     if (Number.isFinite(n) && n === 0)
-      return { gc: true, detail: `clean + 0 commits ahead of ${baseBranch}` };
+      return { gc: true, detail: `clean + 0 commits ahead of ${base}` };
   }
   // (2b) base tree identical to HEAD tree (squash-merge / equivalent content)?
   // `git diff --quiet <base> HEAD` → exit 0 (ok) means NO differences.
-  const diff = await runGit(wtPath, ['diff', '--quiet', baseBranch, 'HEAD']);
+  const diff = await runGit(wtPath, ['diff', '--quiet', base, 'HEAD']);
   if (diff.ok)
-    return { gc: true, detail: `clean + tree identical to ${baseBranch} (integrated/squashed)` };
+    return { gc: true, detail: `clean + tree identical to ${base} (integrated/squashed)` };
   // Either there are real un-integrated commits, or a query failed → keep.
-  return { gc: false, detail: `clean but content not yet in ${baseBranch}` };
+  return { gc: false, detail: `clean but content not yet in ${base}` };
 }
 
 // ─── v0.3.4: history / compare / checkout plumbing (git visualization) ───────
