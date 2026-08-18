@@ -51,10 +51,16 @@ export function TaskDetailOverlay() {
       : undefined;
 
   const move = async (status: HiveTask['status']) => {
-    const next = tasks.map((t) => (t.id === task.id ? { ...t, status } : t));
-    setTasks(next); // optimistic
+    // Targeted main-process read-modify-write (card agent-tasks-tab-ui-
+    // strips-card-2026-08-18) — NEVER a whole-ledger overwrite from this
+    // 5s-stale copy: that path stripped unknown fields off every card and
+    // silently reverted concurrent CLI flips. updateTaskStatus re-reads the
+    // ledger under tasks.json.lock and patches only this card; false (lock
+    // contended / card gone) reverts the optimistic flip via the next poll.
+    setTasks(tasks.map((t) => (t.id === task.id ? { ...t, status } : t))); // optimistic
     try {
-      await window.cth.hiveWriteTasks(next);
+      const res = await window.cth.hiveUpdateTaskStatus(task.id, status);
+      if (!res?.ok) void refresh();
     } catch {
       void refresh();
     }

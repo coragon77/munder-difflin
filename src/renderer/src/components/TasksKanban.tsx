@@ -77,7 +77,15 @@ function stableId(seed: string): string {
 /** Normalize whatever hive:tasks returns into a typed task array. The god
  *  writes this file by hand — every field except the shape itself is optional
  *  in practice, so EVERY consumer must go through this (exported for the
- *  detail overlay; a raw card without dependsOn once crashed it). */
+ *  detail overlay; a raw card without dependsOn once crashed it).
+ *
+ *  FIELD SURVIVAL (card agent-tasks-tab-ui-strips-card-2026-08-18): the card
+ *  SPREADS the raw entry and overrides only the normalized fields below — a
+ *  previous whitelist silently dropped sessionId, sessionMode, result, slack,
+ *  webhook and downgraded origin:'agent' to undefined, and the overlay's
+ *  whole-ledger rewrite then stripped them from tasks.json on EVERY move
+ *  (lost /resume keys, dead Slack routing). Unknown/future fields (e.g. the
+ *  upcoming paused flag) now survive any round-trip forever. */
 export function parseTasks(raw: unknown): HiveTask[] {
   const list =
     raw && typeof raw === 'object' && Array.isArray((raw as { tasks?: unknown }).tasks)
@@ -86,6 +94,7 @@ export function parseTasks(raw: unknown): HiveTask[] {
   return list
     .filter((t): t is Record<string, unknown> => !!t && typeof t === 'object')
     .map((t, i) => ({
+      ...t,
       id:
         typeof t.id === 'string' && t.id
           ? t.id
