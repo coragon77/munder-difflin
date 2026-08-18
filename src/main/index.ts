@@ -4393,7 +4393,7 @@ ipcMain.handle('config:changeHome', async (_evt, payload: unknown) => {
   try {
     detachBridge.disposeAll();
     sweepDetachSockets(join(tmpdir(), 'md-detach'));
-    ptyManager.killAll();
+    ptyManager.killAll({ immediateSweep: true });
   } catch (e) {
     console.error('[changeHome] killAll:', e);
   }
@@ -4937,7 +4937,7 @@ function teardownAndQuit(): void {
   try {
     detachBridge.disposeAll();
     sweepDetachSockets(join(tmpdir(), 'md-detach'));
-    ptyManager.killAll();
+    ptyManager.killAll({ immediateSweep: true });
   } catch (e) {
     console.error('[quit] killAll:', e);
   }
@@ -5049,7 +5049,7 @@ ipcMain.handle('app:resetAll', () => {
   try {
     detachBridge.disposeAll();
     sweepDetachSockets(join(tmpdir(), 'md-detach'));
-    ptyManager.killAll();
+    ptyManager.killAll({ immediateSweep: true });
   } catch (e) {
     console.error('[reset] killAll:', e);
   }
@@ -7433,7 +7433,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     detachBridge.disposeAll();
     sweepDetachSockets(join(tmpdir(), 'md-detach'));
-    ptyManager.killAll();
+    ptyManager.killAll({ immediateSweep: true });
     app.quit();
     // Belt-and-braces: if the quit sequence wedges anywhere downstream (e.g. a
     // modal waiting on a dead renderer — the blank-window case), the LAST window

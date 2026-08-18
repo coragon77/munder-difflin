@@ -58,6 +58,15 @@ longer drift apart. Appearance only — no functional change.
   downsampling a 512px portrait.
 
 ### Fixed
+- **Process-tree kills probe the group before SIGKILL** (port of upstream b97034b onto our
+  diverged `procKill.ts`). `hardKillTree` fired SIGKILL at the process group blind — inside the
+  4s grace window the kernel can recycle an exited group's pgid onto an unrelated process group,
+  so the blind fire could kill something else on the operator's machine. It now probes the group
+  (signal 0), no-ops when every member is gone, keeps the lone-leader fallback, and guards the
+  win32 `taskkill` path with an alive check. Quit-adjacent paths (quit, reset, changeHome,
+  window-all-closed) call `killAll({ immediateSweep: true })` — sweeping each tree synchronously
+  instead of relying on the unref'd escalation timer that never fires when the app exits first
+  (historically where orphans accumulated).
 - **godLine no longer contradicts the operator's arm-LATE decision.** "KEEP ONE ARMED" taught
   arming a watcher on the first verified renderer branch, but under worker-side integration every
   main-process push advances origin/main and silently rots the armed target. The godLine now

@@ -3,7 +3,7 @@ import type { WebContents } from 'electron';
 import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { ensureKilled } from './procKill';
+import { ensureKilled, hardKillTree } from './procKill';
 import { expandTilde } from './fs';
 import { captureFromLoginShell, userShellPath } from './shellEnv';
 
@@ -555,14 +555,20 @@ export class PtyManager {
   /** Bulk-kill every PTY for app quit / reset. This is wholesale shutdown, not
    *  individual agent lifecycle, so it suppresses the natural-exit teardown —
    *  we don't want to archive every agent or fire a storm of `git worktree
-   *  remove` while the process is tearing down. */
-  killAll() {
+   *  remove` while the process is tearing down.
+   *
+   *  `immediateSweep` is for quit-adjacent paths: the normal escalation timer
+   *  is unref'd and the app usually exits before it fires, so callers about to
+   *  quit/relaunch sweep each tree synchronously (no grace) — the guarantee
+   *  must not depend on an event loop that's about to stop. */
+  killAll(opts: { immediateSweep?: boolean } = {}) {
     this.exitHandler = null;
     for (const s of this.sessions.values()) {
       try {
         const pid = s.proc.pid;
         s.proc.kill();
-        ensureKilled(pid);
+        if (opts.immediateSweep) hardKillTree(pid);
+        else ensureKilled(pid);
       } catch {
         /* noop */
       }
