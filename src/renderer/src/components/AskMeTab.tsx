@@ -83,18 +83,11 @@ export function AskMeTab() {
     if (!text || !open || sending) return;
     setSending(task.id);
     try {
-      // 1) Document the answer ON the card.
-      const next = tasks.map((t) => {
-        if (t.id !== task.id) return t;
-        const qa = (t.humanQA ?? []).map((e) =>
-          e === open || (e.q === open.q && !e.a)
-            ? { ...e, a: text, answeredAt: new Date().toISOString() }
-            : e,
-        );
-        return { ...t, humanQA: qa };
-      });
-      await window.cth.hiveWriteTasks(next);
-      setTasks(next);
+      // 1) Document the answer ON the card. Main re-reads and patches only this
+      // open question under tasks.json.lock; never overwrite the stale ledger.
+      const saved = await window.cth.hiveResolveHumanQuestion(task.id, open.q, text);
+      if (!saved?.ok) throw new Error(saved?.error ?? 'failed to save answer');
+      await refresh();
       // 2) Tell the god, so the card gets unblocked and work continues.
       await window.cth.hiveSend(
         {
@@ -122,7 +115,7 @@ export function AskMeTab() {
   // stops returning it and the card leaves this view — the question itself stays
   // on the card, so the Q&A history is never dropped (protocol). The task stays
   // blocked on the kanban; the god can re-ask by appending a fresh humanQA entry.
-  // Reuses hiveWriteTasks (same path as the answer flow) — no new IPC.
+  // Like answers, dismissals are targeted main-process writes under the ledger lock.
   const dismiss = async (task: HiveTask) => {
     const open = openQuestion(task);
     if (!open || sending === task.id) return;
@@ -137,9 +130,11 @@ export function AskMeTab() {
     });
     setTasks(next); // optimistic — the card disappears immediately
     try {
-      await window.cth.hiveWriteTasks(next);
+      const saved = await window.cth.hiveResolveHumanQuestion(task.id, open.q);
+      if (!saved?.ok) throw new Error(saved?.error ?? 'failed to dismiss question');
+      await refresh();
     } catch {
-      setTasks(tasks); // restore on failure so the user can retry
+      void refresh(); // restore the fresh ledger so the user can retry
     }
   };
 

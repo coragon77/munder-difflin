@@ -4490,6 +4490,46 @@ ipcMain.handle('hive:writeTasks', (_evt, tasks: unknown) => {
   hive.writeTasks(tasks as HiveTask[]);
   return { ok: true };
 });
+ipcMain.handle(
+  'hive:resolveHumanQuestion',
+  (_evt, id: unknown, question: unknown, answer: unknown) => {
+    if (typeof id !== 'string' || !id || typeof question !== 'string' || !question.trim())
+      return { ok: false, error: 'invalid task or question' };
+    if (answer !== undefined && (typeof answer !== 'string' || !answer.trim()))
+      return { ok: false, error: 'invalid answer' };
+    if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
+    return hive.resolveHumanQuestion(id, question, answer as string | undefined)
+      ? { ok: true }
+      : { ok: false, error: 'open question not found or ledger busy — re-poll' };
+  },
+);
+ipcMain.handle(
+  'hive:ensureSlackCard',
+  (_evt, messageId: unknown, text: unknown, slack: unknown) => {
+    const thread =
+      slack && typeof slack === 'object'
+        ? (slack as { channel?: unknown; thread_ts?: unknown })
+        : {};
+    if (
+      typeof messageId !== 'string' ||
+      !messageId ||
+      typeof text !== 'string' ||
+      !text.trim() ||
+      typeof thread.channel !== 'string' ||
+      !thread.channel ||
+      typeof thread.thread_ts !== 'string' ||
+      !thread.thread_ts
+    )
+      return { ok: false, error: 'invalid Slack card' };
+    if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
+    return hive.ensureSlackCard(messageId, text, {
+      channel: thread.channel,
+      thread_ts: thread.thread_ts,
+    })
+      ? { ok: true }
+      : { ok: false, error: 'ledger busy — retry on the next dispatch' };
+  },
+);
 // Human-created todo cards (tasks tab): both paths read-modify-write on
 // tasks.json in the MAIN process at action time — the god edits that file
 // directly from its shell, so a stale renderer-side whole-file overwrite is

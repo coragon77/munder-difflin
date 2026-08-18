@@ -956,30 +956,12 @@ export function useHive(config: HarnessConfig | null): void {
     // reply in-thread once the card later reaches 'done'. ADDITIVE + idempotent +
     // best-effort: a failure here never affects the dispatch that already happened,
     // and only dispatched work items land here (slash commands/acks never do).
-    type SlackTaskCard = Parameters<typeof window.cth.hiveWriteTasks>[0][number];
     const ensureSlackCard = async (m: QueuedMessage): Promise<void> => {
-      const slack = m.slack;
-      if (!slack) return;
+      if (!m.slack) return;
       try {
-        const raw = await window.cth.hiveTasks();
-        const existing: SlackTaskCard[] =
-          raw && typeof raw === 'object' && Array.isArray((raw as { tasks?: unknown }).tasks)
-            ? (raw as { tasks: SlackTaskCard[] }).tasks
-            : [];
-        const id = `slack-${slack.thread_ts}-${m.id}`;
-        if (existing.some((t) => t.id === id)) return; // already promoted — no dup
-        const title = m.text.length > 80 ? `${m.text.slice(0, 79)}…` : m.text;
-        const card: SlackTaskCard = {
-          id,
-          title,
-          description: m.text,
-          status: 'todo',
-          dependsOn: [],
-          priority: 1,
-          createdAt: new Date().toISOString(),
-          slack,
-        };
-        await window.cth.hiveWriteTasks([...existing, card]);
+        // Main appends idempotently from a fresh read under tasks.json.lock;
+        // never overwrite the ledger snapshot last polled by the renderer.
+        await window.cth.hiveEnsureSlackCard(m.id, m.text, m.slack);
       } catch {
         /* best-effort: card promotion must never sink dispatch */
       }

@@ -168,6 +168,7 @@ export interface HumanQA {
   a?: string;
   askedAt?: string;
   answeredAt?: string;
+  dismissedAt?: string;
 }
 
 /** A card on the task kanban, persisted to hive/tasks.json. */
@@ -1242,6 +1243,20 @@ const api = {
   /** Overwrite the hive task ledger with the full task list and commit it. */
   hiveWriteTasks: (tasks: HiveTask[]): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:writeTasks', tasks),
+  /** Answer or dismiss one open ASK ME question under the task-ledger lock. */
+  hiveResolveHumanQuestion: (
+    id: string,
+    question: string,
+    answer?: string,
+  ): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('hive:resolveHumanQuestion', id, question, answer),
+  /** Idempotently add one dispatched Slack work item under the ledger lock. */
+  hiveEnsureSlackCard: (
+    messageId: string,
+    text: string,
+    slack: { channel: string; thread_ts: string },
+  ): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('hive:ensureSlackCard', messageId, text, slack),
   /** The human adds a todo card (origin 'human'). Main-process read-modify-write
    *  on tasks.json at action time. No wake-up — god triages at heartbeats. */
   hiveAddHumanTask: (

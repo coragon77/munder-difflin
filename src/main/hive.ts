@@ -113,6 +113,7 @@ export interface HumanQA {
   a?: string;
   askedAt?: string;
   answeredAt?: string;
+  dismissedAt?: string;
 }
 
 export interface HiveTask {
@@ -2184,6 +2185,88 @@ export class HiveManager {
     this.writeJson(join(root, 'tasks.json'), { tasks });
     this.appendLog({ kind: 'tasks', count: tasks.length });
     this.commit(`hive: tasks (${tasks.length})`);
+  }
+
+  /** Run one fresh task-ledger mutation under bin/hive-card's lock. */
+  private withTasksLock<T>(action: () => T): T | undefined {
+    const root = this.root();
+    if (!root) return undefined;
+    this.ensureHive();
+    const lockPath = join(root, 'tasks.json.lock');
+    for (let i = 0; i < 200; i++) {
+      try {
+        if (Date.now() - statSync(lockPath).mtimeMs > 10_000) rmSync(lockPath);
+      } catch {
+        /* no lock file yet */
+      }
+      try {
+        writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+      } catch {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+        continue;
+      }
+      try {
+        return action();
+      } finally {
+        try {
+          rmSync(lockPath);
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /** Resolve one still-open human question from a fresh, locked ledger read. */
+  resolveHumanQuestion(id: string, question: string, answer?: string): boolean {
+    return (
+      this.withTasksLock(() => {
+        const data = this.tasks() as { tasks: HiveTask[] };
+        const qa = data.tasks.find((task) => task?.id === id)?.humanQA;
+        if (!Array.isArray(qa)) return false;
+        for (let i = qa.length - 1; i >= 0; i--) {
+          const entry = qa[i];
+          if (entry?.q !== question || entry.a || entry.dismissedAt) continue;
+          if (answer === undefined) entry.dismissedAt = new Date().toISOString();
+          else {
+            entry.a = answer;
+            entry.answeredAt = new Date().toISOString();
+          }
+          this.writeTasks(data.tasks);
+          return true;
+        }
+        return false;
+      }) ?? false
+    );
+  }
+
+  /** Idempotently promote one dispatched Slack work item from a fresh read. */
+  ensureSlackCard(
+    messageId: string,
+    text: string,
+    slack: { channel: string; thread_ts: string },
+  ): boolean {
+    return (
+      this.withTasksLock(() => {
+        const data = this.tasks() as { tasks: HiveTask[] };
+        const id = `slack-${slack.thread_ts}-${messageId}`;
+        if (data.tasks.some((task) => task?.id === id)) return true;
+        const title = text.length > 80 ? `${text.slice(0, 79)}…` : text;
+        data.tasks.push({
+          id,
+          title,
+          description: text,
+          status: 'todo',
+          dependsOn: [],
+          priority: 1,
+          createdAt: new Date().toISOString(),
+          slack,
+        });
+        this.writeTasks(data.tasks);
+        return true;
+      }) ?? false
+    );
   }
 
   /** Slug for a human card id: lowercase, runs of non-alnum → '-'. */
