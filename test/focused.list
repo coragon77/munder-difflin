@@ -99,3 +99,4 @@ test/theme-guard.test.cjs
 test/standup-clerk-settings-toggle.test.cjs
 test/intern-defaults.test.cjs
 test/provider-models.test.cjs
+test/orient-first-rule.test.cjs
