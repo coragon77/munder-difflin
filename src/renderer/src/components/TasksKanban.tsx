@@ -3,6 +3,7 @@ import { PixelPanel } from './PixelPanel';
 import { PixelButton } from './PixelButton';
 import { PixelBadge } from './PixelBadge';
 import { Icon } from './Icon';
+import { TASK_BOARD_RESYNC_EVENT } from '@/scene/office/taskBoardReconcile';
 import { useStore, agentClassOf, displayAgentName } from '@/store/store';
 
 /** A card on the task kanban. Mirrors HiveTask in the main/preload process —
@@ -253,6 +254,14 @@ export function TasksKanban() {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
             <Icon name="gear" /> agents
           </span>
+        </PixelButton>
+        <PixelButton
+          variant="secondary"
+          size="sm"
+          title="Reload the office floor boards from the task ledger"
+          onClick={() => window.dispatchEvent(new Event(TASK_BOARD_RESYNC_EVENT))}
+        >
+          sync floor boards
         </PixelButton>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--cth-ink-300)' }}>
           urgent? dispatch it to Michael (monitor tab)

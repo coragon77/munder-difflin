@@ -19,6 +19,13 @@ import { pickSoloLine, pickExchange, type BreakSpot } from './cafeteriaLines';
 import { colors } from '@/design/tokens';
 import { loadTheme, resolveThemeMap, themeTilesetUrls } from './themeLoader';
 import { installContextLossRecovery } from './glRecovery';
+import {
+  reconcileTaskBoard,
+  taskBoardFromLedger,
+  TASK_BOARD_RESYNC_EVENT,
+  type BoardTask,
+  type LedgerTask,
+} from './taskBoardReconcile';
 import type { Tile, Facing, ErrandKind, ErrandSpot } from './themeRegistry';
 
 // The map, tileset atlases, desk-claim order, errand spots, coffee-economy
@@ -195,15 +202,21 @@ export function OfficeFloor() {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<AppWithHandles | null>(null);
   const mountIdRef = useRef(0);
-  // Bumped when the WebGL context is evicted; a dep of the effect below, so the
-  // whole scene is torn down and rebuilt through the existing mount path rather
-  // than through a second, parallel recovery routine.
-  const [glGeneration, setGlGeneration] = useState(0);
+  // Bumped when the WebGL context is evicted or the operator asks to resync the
+  // task boards. Both reuse the proven cold-start scene path instead of growing
+  // a second mutation path into scene-local state.
+  const [sceneGeneration, setSceneGeneration] = useState(0);
   // The active office theme (store mirror of config.officeTheme). Changing it
   // tears down and rebuilds the whole scene on the new map/cast (see deps below).
   const officeTheme = useStore((s) => s.officeTheme);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: glGeneration is a deliberate rebuild trigger — bumping it on WebGL context loss tears down and re-inits the whole scene
+  useEffect(() => {
+    const resyncTaskBoards = () => setSceneGeneration((generation) => generation + 1);
+    window.addEventListener(TASK_BOARD_RESYNC_EVENT, resyncTaskBoards);
+    return () => window.removeEventListener(TASK_BOARD_RESYNC_EVENT, resyncTaskBoards);
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sceneGeneration is a deliberate rebuild trigger — WebGL recovery and manual board resync tear down and re-init through the existing path
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -257,7 +270,7 @@ export function OfficeFloor() {
       // Rebuild instead. See glRecovery.ts.
       (app as AppWithHandles).__glRecovery = installContextLossRecovery(app.canvas, {
         onRebuild: () => {
-          if (mountIdRef.current === mountId) setGlGeneration((n) => n + 1);
+          if (mountIdRef.current === mountId) setSceneGeneration((generation) => generation + 1);
         },
         onGiveUp: () => {
           if (mountIdRef.current !== mountId) return;
@@ -1107,10 +1120,6 @@ export function OfficeFloor() {
       // between the two doorways spans tiles 6..12 (112px) — center it.
       const BOARD_CENTER_PAD = 15;
       const NOTE_COLORS: Record<string, number> = theme.palette.noteColors;
-      interface BoardTask {
-        status: string;
-        assignee?: string;
-      }
       const tsB = mapRenderer.tileSize;
       const boardG = new Graphics();
       boardG.eventMode = 'static';
@@ -1282,9 +1291,6 @@ export function OfficeFloor() {
       // state for that card — the redraw lands exactly when the actor acts.
       // Un-choreographable diffs (no actor on the floor, bulk edits, restarts)
       // simply redraw — animation is sugar, the ledger stays the truth.
-      interface LedgerTask extends BoardTask {
-        id: string;
-      }
       interface BoardMove {
         kind: 'pin' | 'take' | 'archive';
         taskId: string;
@@ -1355,6 +1361,7 @@ export function OfficeFloor() {
           if (mv.kind === 'take') attachCarriedNote(mv.actorId, mv.carryColor);
           // brief acting beat, then the boards update under their hands
           setTimeout(() => {
+            if (mountIdRef.current !== mountId) return;
             if (mv.kind === 'take') {
               // carry it home: the desk note appears on arrival via finishMove
               const rt2 = runtimes.get(mv.actorId);
@@ -1406,9 +1413,7 @@ export function OfficeFloor() {
               carriedNotes.delete(id);
             }
           }
-          visualTasks = new Map(
-            lastLedger.map((t) => [t.id, { status: t.status, assignee: t.assignee }]),
-          );
+          visualTasks = taskBoardFromLedger(lastLedger);
           redrawVisual();
         }
       };
@@ -1453,9 +1458,7 @@ export function OfficeFloor() {
           if (firstPoll) {
             // cold start: no theatre, just show the truth
             firstPoll = false;
-            visualTasks = new Map(
-              ledger.map((t) => [t.id, { status: t.status, assignee: t.assignee }]),
-            );
+            visualTasks = taskBoardFromLedger(ledger);
             redrawVisual();
             lastLedger = ledger;
             return;
@@ -1539,6 +1542,12 @@ export function OfficeFloor() {
           }
           if (instant) redrawVisual();
           lastLedger = ledger;
+          const choreographyInFlight = moveQueue.length > 0 || busyActors.size > 0;
+          const reconciled = reconcileTaskBoard(visualTasks, ledger, choreographyInFlight);
+          if (reconciled !== visualTasks) {
+            visualTasks = reconciled;
+            redrawVisual();
+          }
         } catch {
           /* keep the last drawing */
         }
@@ -2022,7 +2031,7 @@ export function OfficeFloor() {
       appRef.current = null;
       while (host.firstChild) host.removeChild(host.firstChild);
     };
-  }, [officeTheme, glGeneration]);
+  }, [officeTheme, sceneGeneration]);
 
   return (
     <div
