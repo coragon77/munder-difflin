@@ -10,11 +10,11 @@
  *    renderer/preload-touching branches ONLY in restart/reload windows,
  *    batched; NEVER live (HMR reload of store/hook modules can
  *    white-screen the floor — an operator merge-now request gets the risk
- *    named plus the detached alternative); a restart-window merge runs as
- *    a DETACHED setsid process armed BEFORE the close (god's pane dies
- *    with the harness), verified by log after reboot; main-process/
- *    test-only branches merge immediately; push+restart together
- *    (hardened by card godline-renderer-merge-mechanism-20260817).
+ *    named plus the detached alternative); a restart-window merge runs via
+ *    the harness-generated detached CLI armed BEFORE the close (god's pane
+ *    dies with the harness), verified by log/state after reboot;
+ *    main-process/test-only branches merge immediately; push+restart together
+ *    (hardened by card agent-lean-mode-worker-pushes--2026-08-18).
  *  - DISPATCH INTERFACE — god uses hive-dispatch for guarded card creation
  *    or adoption, assignment, recall, doing flip, and contract mail; the
  *    hand-primitives are only the documented fallback.
@@ -62,9 +62,12 @@ test('godLine carries the RENDERER-MERGE BATCHING rule', () => {
     'operator merge-now requests get the risk named + detached alternative',
   );
   assert.ok(/your pane dies with the harness/.test(p), 'god cannot act while the harness is down');
-  assert.ok(/DETACHED process BEFORE the close/.test(p));
-  assert.ok(/setsid script that polls for the harness process to disappear/.test(p));
-  assert.ok(/verify the log after reboot/.test(p));
+  assert.ok(/detached watcher BEFORE the close/.test(p));
+  assert.ok(/hive-restart-window/.test(p), 'must name the durable harness-owned CLI');
+  assert.ok(/fast-forwards the clean live checkout to origin\/main first/.test(p));
+  assert.ok(/REFUSES a target that went stale/.test(p), 'silent divergence becomes a refusal');
+  assert.ok(/restart-merge\.log/.test(p));
+  assert.ok(/status/.test(p), 'published restart-window state is inspectable');
 });
 
 test('godLine keeps one renderer watcher armed from the first verified branch', () => {
@@ -82,12 +85,11 @@ test('godLine keeps one renderer watcher armed from the first verified branch', 
 test('godLine gives the renderer watcher retarget procedure', () => {
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
   assert.ok(/new main-bound work joins the ARMED watcher's batch/.test(p));
-  assert.ok(/rebase\/cherry-pick onto the batch tip, re-gate, rewrite TARGET/.test(p));
-  assert.ok(
-    /kill the old PID \(verify with ps -p; pgrep -f self-matches the querying shell\)/.test(p),
-  );
-  assert.ok(/relaunch with setsid/.test(p));
-  assert.ok(/NEVER advance main under an armed ff-watcher/.test(p));
+  assert.ok(/rebase\/cherry-pick onto the batch tip and re-gate/.test(p));
+  assert.ok(/hive-restart-window.{0,100}retarget <target-sha>/.test(p));
+  assert.ok(/stops only the recorded PID and relaunches its replacement/.test(p));
+  assert.ok(/never use ps, pgrep, pkill, or a hand-written script/.test(p));
+  assert.ok(/Worker pushes MAY advance origin\/main while a watcher is armed/.test(p));
 });
 
 test('godLine teaches renderer watcher refusal modes and recovery', () => {
@@ -95,10 +97,12 @@ test('godLine teaches renderer watcher refusal modes and recovery', () => {
   assert.ok(/WATCHER CAN REFUSE:/.test(p));
   assert.ok(/dirty tracked worktree/.test(p));
   assert.ok(/HEAD is not on main/.test(p));
-  assert.ok(/TARGET is not a fast-forward/.test(p));
+  assert.ok(/TARGET stopped containing origin\/main/.test(p));
   assert.ok(/window missed.{0,40}<2s process blip/.test(p));
   assert.ok(
-    /ALWAYS read restart-merge\.log after reboot before reporting anything as landed/.test(p),
+    /ALWAYS read restart-merge\.log or run the CLI with `status` after reboot before reporting anything as landed/.test(
+      p,
+    ),
   );
   assert.ok(/re-arm if it refused/.test(p));
 });

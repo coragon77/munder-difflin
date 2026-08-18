@@ -4,10 +4,10 @@
  * Workers updated graphify graphs inside their worktrees, where the result is
  * private and disposable — meanwhile the MAIN checkout's graph (the one every
  * stranger reads) was the stalest copy of five. The durable home for the
- * refresh is HERE, a harness-owned main-process step at app start, not the
- * ad-hoc restart-merge watcher script (god rewrites that per batch — a hook
- * planted only there is erased on the next re-arm). The restart window exists
- * because the app is DOWN: the watcher merges only while the app is gone and
+ * refresh is HERE, a harness-owned main-process step at app start, not in the
+ * restart-window watcher (formerly an ad-hoc per-batch script, now a generated
+ * CLI). The restart window exists because the app is DOWN: the watcher merges
+ * only while the app is gone and
  * the app always starts right after, so an app-start refresh runs within
  * seconds of every watcher merge — and also covers every other path that
  * advances the main checkout (god manual merges, operator pulls) without

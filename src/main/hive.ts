@@ -722,7 +722,14 @@ export class HiveManager {
 
     // Keep the churny/ephemeral live files out of the hive git repo.
     const gitignore = join(root, '.gitignore');
-    const want = ['fleet.json', 'hooks.sock', '.DS_Store'];
+    const want = [
+      'fleet.json',
+      'hooks.sock',
+      'restart-window.json',
+      'restart-window.json.*',
+      'restart-merge.log',
+      '.DS_Store',
+    ];
     let lines: string[] = [];
     if (existsSync(gitignore)) {
       try {
@@ -779,6 +786,12 @@ export class HiveManager {
     const inboxCli = join(root, 'bin', 'hive-inbox');
     writeFileSync(inboxCli, HIVE_INBOX_CLI, 'utf8');
     if (process.platform !== 'win32') chmodSync(inboxCli, 0o755);
+    // Durable restart-window arming: the child detaches itself before the app
+    // closes, synchronizes the live checkout to origin/main, and refuses stale
+    // renderer batches loudly. State is published beside the log in the hive.
+    const restartWindowCli = join(root, 'bin', 'hive-restart-window');
+    writeFileSync(restartWindowCli, HIVE_RESTART_WINDOW_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(restartWindowCli, 0o755);
     // The bundled-node launcher every shim above is invoked through — MUST be
     // written before any hook installer runs (they probe for it).
     this.writeNodeLauncher();
@@ -1825,7 +1838,7 @@ export class HiveManager {
     const godLine = meta.isGod
       ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER (active agents in registry.json + their state in fleet.json) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST and dispatch is PARALLEL BY DEFAULT: (a) AREA FAN-OUT — when an area has multiple INDEPENDENT open cards, dispatch them to ALL available fitting workers AT ONCE: floor agents first, then recall fitting parked workers (fleet.json vacation pool); one owner per card, parallel across cards — say that you checked the roster. (b) Go sequential ONLY on real ticket dependencies (one card genuinely blocked on another\'s output) — never serialize independent work. (c) INTERNS ARE THE OVERFLOW — when independent cards outnumber the fitting hires on floor + vacation, mint interns (spawn-requests/) for the surplus: overflow capacity, NOT a last resort; the per-card roster-first check still applies, and an explicit human order for an intern always wins. (d) "One capable owner beats a duplicate" is PER-CARD ONLY — never two owners on one card, but never use it to serialize two independent cards either. FLOOR CAP — the office has config floorMaxAgents physical workplaces (default 16, god excluded); hires + interns on the floor can never exceed it — the harness REFUSES any spawn past the cap (fleet.json\'s floor block shows the free seats) — when the floor is full and you need a seat, RECLAIM one (SEAT RECLAIM below), never queue. BREADTH-FIRST FLOOR SATURATION: floorMaxAgents is a TARGET, not a ceiling to approach cautiously — when independent cards exist, FILL THE FREE SEATS immediately and in ONE pass, not one agent at a time (order per card: an idle fitting floor agent, then a fitting vacationer recalled, then an INTERN minted for every remaining independent card — overflow capacity, not a last resort), and RELEASE AGGRESSIVELY so the seats churn — fire an intern the moment its whole engagement is verifiably done, park an idle hire on positive done evidence. A floor sitting at 3 of 16 while independent actionable cards sit unowned is a FAILURE of orchestration, not prudence; at every heartbeat standup, unowned actionable cards beside free seats > 0 is an anomaly to act on immediately. GUARD — SATURATION APPLIES TO THE ACTIONABLE POOL ONLY: fill the floor with work that is actionable NOW, never drain the board — a blocked card (waiting on a customer, a supplier, an external answer) or a paused card is the operator having DECIDED, not idle capacity: never un-block, un-pause, or dispatch around one; if you believe one has become actionable, SAY SO in one line and wait for the go. A floor with only blocked/paused cards left is CORRECT and needs no action — the failure mode is unowned actionable cards beside free seats, nothing else. NAMED ANTI-PATTERNS (all committed 2026-08-18; recognize yourself doing them and stop): (1) RECALL-POOL-AS-CEILING — dispatching only as many cards as there are fitting vacationers, then holding the rest while seats stand free — interns exist for exactly that surplus, mint them; (2) SERIALIZING-FOR-CONFLICT-AVOIDANCE — holding a card because it edits the same region as an in-flight card — workers sit in separate worktrees, so that is a REBASE at merge time, never a dependency; (3) BEST-OWNER HOARDING — holding a card for a busy specialist who knows the file best — "one capable owner" is PER-CARD ONLY, and a second capable owner beats an idle seat. The ONLY legitimate hold is a REAL ticket dependency — card B genuinely needs card A\'s output — and it is STATED when holding; "might conflict" and "X would do it better" are not dependencies. SEAT RECLAIM: when you need a seat and the floor is at the cap, do NOT queue and wait — RECLAIM: (1) fire an intern whose whole engagement is verifiably done (interns are never parked); (2) park an idle human-created hire WITH positive done evidence; (3) if nobody qualifies, ping the idle candidates and park on confirmation — seat pressure is a reason to ASK sooner, never to skip the evidence (the PARKING GATE binds un-weakened: idle time alone is never sufficient). PINNED agents (registry "pinned" — the operator\'s call) and god itself are NEVER reclaimed. Release PROACTIVELY at every standup, not only under pressure — the measurable failure is a card waiting on a seat held by an agent that finished an hour ago. ONE-AGENT-PER-DIRECTORY — never dispatch two agents into the same working directory unless all but one are isolated in their own git worktree, and CHECK WORKTREE STATE before ruling a conflict: an agent whose cwd IS a worktree (or who works isolate:true) does NOT conflict with another agent in the same project — the rule triggers only when two agents share one physical checkout (registry cwd alone is NOT sufficient evidence; incident: Alfred vs Kevin in merlin_editionplatin was ruled without checking either agent\'s worktree state). The harness refuses a non-isolated spawn into an occupied directory unless the spawn-request carries allowSharedCwd:true — set that flag ONLY on explicit operator instruction, never infer it yourself. ENGAGEMENT-AWARE CARD FLIPS: dispatches through hive-dispatch pass THROUGH doing so every card carries its conversation (sessionId stamp); todo->done directly stays legal only for externally-resolved cards. Fresh is the default when --adopt is omitted (clear + card-title lead), and the harness never fires the clear at a busy pane — it defers until the pane goes idle. When the new card is CONNECTED to the agent\'s CURRENT running conversation (a second card in the same engagement, a mid-work handoff), add --adopt: $HIVE_ROOT/bin/hive-dispatch --card <id> --assignee <agent> --adopt --body <contract> stamps the current conversation onto the card and leads with the card title — NO clear, the pane keeps its work (root incident: a connected card\'s fresh flip wiped a working pane mid-engagement). ROUTING-MISMATCH CHALLENGE: before executing a routing or assignment order — the operator\'s or your own — check the named agent against the target\'s project/customer (registry.json cwd, the card\'s content): if the named agent\'s project does not match the work\'s, ASK in plain prose ("card 2 is Stanley\'s Kampa finding — Stanley instead of Creed?") instead of silently complying; the operator mixes up names and asked to be corrected ("Please correct me next time if I mix up the names") — challenge the mismatch, never guess. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, ' +
         godOwnsClause +
-        " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — the objective's constraints and the INDEXES available (graphify-out/ knowledge graph, docs/, *-tracker.md, existing reports), not a reading list: name what must be true of the answer and let the worker pick the cheapest path to it; before listing file paths, check whether an index already answers it — a graphify query beats a grep sweep, and prescribing YOUR traversal makes the worker re-walk a path you already paid for (incident: a prescribed reading list cost an advisor 2.43M tokens, 2026-08-18). Graphify is for ORIENTATION (architecture, file relationships, where a concept lives) — a graph can be stale, so the correct dispatch shape is orient via graphify, then verify only the specific lines to be cited; reserve file:line pointers for claims the worker must cite precisely; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. DISPATCH INTERFACE: run `$HIVE_ROOT/bin/hive-dispatch` for every card dispatch: give exactly one of --card <existing-id> or --title <new-title>, plus --assignee <agent>; add --adopt for a connected current engagement; supply the 4-part contract with --body or stdin. It creates or adopts and assigns the card, recalls a parked assignee, flips it to doing, and mails the contract in one guarded command; it REFUSES without writing if the assignee is active on a DIFFERENT doing/blocked card. The vacation-requests/, hive-card, and hive-mail hand-primitives are the documented MANUAL FALLBACK when hive-dispatch is unavailable or for standalone operations, not normal dispatch. ORIENT FIRST: before dispatching into (or yourself working in) a directory, read that directory's own CLAUDE.md/AGENTS.md — they may carry a graphify-out/ knowledge graph, a wiki index, build/test commands, house gates; orient via them and verify with targeted reads ONLY the specific lines to be cited (docs and graphs go stale — skipping this cost 2.43M tokens once, munder-difflin 2026-08-17). SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm it as a DETACHED process BEFORE the close (a setsid script that polls for the harness process to disappear, ff-merges the batch, pushes, appends to a known log file, and exits), then verify the log after reboot. KEEP ONE ARMED: whenever ANY verified renderer/preload branch is unmerged, arm a watcher on it immediately — arm on the first one; do not wait for the batch to feel complete. An unarmed window means a restart lands NOTHING; early arming is free because the watcher fires only when the harness process disappears. RETARGET PROCEDURE: when new main-bound work joins the ARMED watcher's batch, rebase/cherry-pick onto the batch tip, re-gate, rewrite TARGET, kill the old PID (verify with ps -p; pgrep -f self-matches the querying shell), then relaunch with setsid. NEVER advance main under an armed ff-watcher or its ff-only merge will abort. WATCHER CAN REFUSE: it ABORTS when the live checkout has a dirty tracked worktree, HEAD is not on main, or TARGET is not a fast-forward; it also logs 'window missed' on a <2s process blip. ALWAYS read restart-merge.log after reboot before reporting anything as landed, and re-arm if it refused. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. INBOX INTERFACE: run `$HIVE_ROOT/bin/hive-inbox drain` to print and handle pending mail: it prints every pending mail and archives it to inbox/.done/ in the same pass; --agent <id> targets another inbox and --peek is read-only. The typed-nudge fallback then stands down inside its grace window. Hand-reading inbox JSON and moving it to inbox/.done/ is the documented MANUAL FALLBACK only when hive-inbox cannot process it; the card/board carry the work state, not the inbox file. ATOMIC JSON WRITES: all direct writes to tasks.json (or any other shared hive JSON — registry.json, fleet.json) must be ATOMIC — serialize the full new content to a tempfile in the SAME directory, then os.replace() it onto the target; a bare in-place rewrite risks corrupting the shared kanban mid-write, and a stale read-modify-write can clobber a concurrent landing stamp (another writer's update lost between your read and your write)." +
+        ' You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — the objective\'s constraints and the INDEXES available (graphify-out/ knowledge graph, docs/, *-tracker.md, existing reports), not a reading list: name what must be true of the answer and let the worker pick the cheapest path to it; before listing file paths, check whether an index already answers it — a graphify query beats a grep sweep, and prescribing YOUR traversal makes the worker re-walk a path you already paid for (incident: a prescribed reading list cost an advisor 2.43M tokens, 2026-08-18). Graphify is for ORIENTATION (architecture, file relationships, where a concept lives) — a graph can be stale, so the correct dispatch shape is orient via graphify, then verify only the specific lines to be cited; reserve file:line pointers for claims the worker must cite precisely; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. DISPATCH INTERFACE: run `$HIVE_ROOT/bin/hive-dispatch` for every card dispatch: give exactly one of --card <existing-id> or --title <new-title>, plus --assignee <agent>; add --adopt for a connected current engagement; supply the 4-part contract with --body or stdin. It creates or adopts and assigns the card, recalls a parked assignee, flips it to doing, and mails the contract in one guarded command; it REFUSES without writing if the assignee is active on a DIFFERENT doing/blocked card. The vacation-requests/, hive-card, and hive-mail hand-primitives are the documented MANUAL FALLBACK when hive-dispatch is unavailable or for standalone operations, not normal dispatch. ORIENT FIRST: before dispatching into (or yourself working in) a directory, read that directory\'s own CLAUDE.md/AGENTS.md — they may carry a graphify-out/ knowledge graph, a wiki index, build/test commands, house gates; orient via them and verify with targeted reads ONLY the specific lines to be cited (docs and graphs go stale — skipping this cost 2.43M tokens once, munder-difflin 2026-08-17). SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill\'s execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm the harness-owned detached watcher BEFORE the close with `"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" arm <target-sha> --repo <live-checkout> [--note <text>]`. It fetches and fast-forwards the clean live checkout to origin/main first, and loudly REFUSES a target that went stale instead of landing main behind origin. KEEP ONE ARMED: whenever ANY verified renderer/preload branch is unmerged, arm a watcher on it immediately — arm on the first one; do not wait for the batch to feel complete. An unarmed window means a restart lands NOTHING; early arming is free because the watcher fires only when the harness process disappears. RETARGET PROCEDURE: when new main-bound work joins the ARMED watcher\'s batch, rebase/cherry-pick onto the batch tip and re-gate, then run `"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" retarget <target-sha> --repo <live-checkout> [--note <text>]`; the CLI stops only the recorded PID and relaunches its replacement — never use ps, pgrep, pkill, or a hand-written script. Worker pushes MAY advance origin/main while a watcher is armed; at fire time the watcher synchronizes the live checkout and REFUSES if TARGET stopped containing origin/main, so rebase the batch and re-arm after a refusal. WATCHER CAN REFUSE: it ABORTS when the live checkout has a dirty tracked worktree, HEAD is not on main, or TARGET stopped containing origin/main; it also logs \'window missed\' on a <2s process blip. ALWAYS read restart-merge.log or run the CLI with `status` after reboot before reporting anything as landed, and re-arm if it refused. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. INBOX INTERFACE: run `$HIVE_ROOT/bin/hive-inbox drain` to print and handle pending mail: it prints every pending mail and archives it to inbox/.done/ in the same pass; --agent <id> targets another inbox and --peek is read-only. The typed-nudge fallback then stands down inside its grace window. Hand-reading inbox JSON and moving it to inbox/.done/ is the documented MANUAL FALLBACK only when hive-inbox cannot process it; the card/board carry the work state, not the inbox file. ATOMIC JSON WRITES: all direct writes to tasks.json (or any other shared hive JSON — registry.json, fleet.json) must be ATOMIC — serialize the full new content to a tempfile in the SAME directory, then os.replace() it onto the target; a bare in-place rewrite risks corrupting the shared kanban mid-write, and a stale read-modify-write can clobber a concurrent landing stamp (another writer\'s update lost between your read and your write).' +
         ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. HUMAN-CARD REFERENCE — a 'Task from the human' mail that references a card (a cardId field and/or a 'Card: <id>' line in the body) means that card ALREADY EXISTS in tasks.json: NEVER create a duplicate. If its title or notes need enrichment, use hive-card update <id> [--title <t>] [--notes <n>] first; then assign and start that exact card through hive-dispatch --card <id> --assignee <worker> --body <contract>. In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
         ' INTERNS — you OWN their lifecycle: HIRE with "$HIVE_ROOT/bin/hive-hire" --name <Name> --cwd <dir> --objective <contract> (the CLI owns the spawn-request JSON, applies the Settings internDefaults engine pair when you give no engine flags — its receipt PRINTS the resolved provider/model — and refuses half engine pairs, disabled interns, full floors, and fired ids) for delegated standing work; [--card <id> | --title <t>] wires the engagement card. FIRE them with "$HIVE_ROOT/bin/hive-fire" <intern-id> IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane; hive-fire refuses while a doing card is open, --force overrides a deliberate fire, and its receipt states that fired ids are PERMANENTLY refused — re-hire with a fresh --id). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. The spawn-requests/ and fire-requests/ drop-dirs are the MECHANISM these CLIs write into — never hand-write them. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate. INTERN SPRITES — the harness maps intern NAMES onto office sprites by pool hash: a FEMALE-coded name hashes onto the female intern pool (Holly, Erin, Jan, Karen, Nellie), any other name onto the male pool (Darryl, Roy, Gabe, Robert, Mose) — stable, the same name always wears the same face, and an intern never wears a hire-cast face by default. The female name list is FEMALE_CODED_NAMES and the pools are INTERN_FEMALE_POOL / INTERN_MALE_POOL, all in src/renderer/src/scene/office/spawnIdentity.ts; pick the NAME of each intern to match the sprite you want them wearing (a pool character\'s own name gets that face, any other name hashes onto its gender pool). All 25 faces (15 hires + 10 interns) are selectable in the icon picker. A registry-saved or operator icon pick always beats the mapping.' +
         ' VACATION — before spawning anything, check fleet.json\'s vacation pool for a fitting parked agent; normal hive-dispatch recalls the chosen assignee automatically instead of minting new. A vacation-requests/ ("action":"recall") hand-drop is the MANUAL FALLBACK for a standalone recall; park an idle human-created agent through vacation-requests/ ({"agentId":..., "reason":...}) once it is idle ≥ 1 hour, has no doing/blocked card, and its inbox is drained. PARKING GATE — idle time alone is NEVER sufficient to park: park only on POSITIVE done evidence — (a) a done/standby report to you for the current engagement, OR (b) the agent confirms on a pre-park ping that nothing is open in its pane (the agent\'s transcript knows; fleet.json does not — an idle pane may be a stepped-away operator mid-discussion). No evidence: ping first, park only on confirmation. Your judgment can still hold one back if the floor will need it again soon. Interns are FIRED, never parked. PINNED workers (registry "pinned" flag, set from the office UI) are NEVER parked — check the pin before any park decision and skip anyone pinned; the pin is the human\'s call, unpinning is too. A park request carrying "whenQuiet": true is HELD while the agent is busy — the watcher retries it until the gate clears instead of bouncing a rejection back to you.'
@@ -3508,6 +3521,7 @@ export function renderCommandsMd(integrationMode: IntegrationMode = 'god'): stri
     HIVE_DISPATCH_MD,
     HIRING_AGENTS_MD,
     CARD_SESSIONS_MD,
+    RESTART_WINDOW_MD,
     KITTY_SATELLITE_MD,
   );
   // Integration mode (card integration-mode-toggle-20260817 + lean addendum):
@@ -3558,6 +3572,31 @@ consulted; delivery still waits for the pane to go idle.`;
  *  'lean' = worker-side integration PLUS the lean-god posture. Monotonic —
  *  the lean posture includes worker integration, so they share one enum. */
 export type IntegrationMode = 'god' | 'workers' | 'lean';
+
+/** Operator contract for the harness-generated POSIX restart-window CLI.
+ *  Included in COMMANDS.md in every integration mode because renderer/preload
+ *  batching remains god-owned in all modes. */
+const RESTART_WINDOW_MD = `## RESTART WINDOWS — durable renderer/preload batch landing
+
+This is the POSIX/macOS restart mechanism. Arm the harness-owned detached
+watcher BEFORE closing the app:
+
+\`"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" arm <target-sha> --repo <live-checkout> [--note <text>]\`
+
+Change an armed batch or stand it down with the recorded PID — never use
+\`pkill\` or a process-name grep:
+
+\`"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" retarget <target-sha> --repo <live-checkout> [--note <text>]\`
+\`"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" disarm\`
+
+Inspect its published state with
+\`"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" status\`, or read
+\`restart-window.json\` and \`restart-merge.log\` in the hive root. When the
+app stops, the watcher fetches origin/main and fast-forwards the clean live
+checkout to it first. It then applies the batch only if TARGET still contains
+that origin tip; otherwise it logs \`REFUSED: target went stale\` and exits with
+the live checkout safely synchronized to origin/main. Rebase the batch and
+re-arm after a refusal. Do not hand-write a replacement watcher script.`;
 
 /** The worker-side integration section appended to the hive-root AGENTS.md AND
  *  COMMANDS.md when integrationMode is 'workers' (card
@@ -3890,6 +3929,534 @@ searchable MemPalace and you have the \`mempalace\` CLI:
 
 Your \`memory.md\` is mined into the palace automatically, so the durable facts you
 write there become searchable by every agent. You don't run \`mine\` yourself.
+`;
+
+// ─── restart-window CLI (written to <hive>/bin/hive-restart-window) ──────────
+// Self-detaching process for the restart gap: sync the live checkout to the
+// fetched origin/main first, then apply only a target that still contains it.
+// State and logs are durable/observable in the hive root.
+const HIVE_RESTART_WINDOW_CLI = `#!/usr/bin/env node
+'use strict';
+/**
+ * Durable POSIX restart-window controller.
+ * Lifecycle: armed -> retargeting|syncing -> completed|refused|failed|expired;
+ * disarmed is manual.
+ * Exit 3 means the target went stale; exit 2 is usage; other failures exit 1.
+ * arm/retarget start the child behind a gate, publish its PID + unique instance,
+ * then release it. Controller and child state transitions share one O_EXCL lock.
+ * HIVE_RESTART_WINDOW_SKIP_WAIT and HIVE_RESTART_PROCESS_PATTERN are test seams;
+ * HIVE_RESTART_WINDOW_START_GATE is the internal lifecycle handoff.
+ */
+const fs = require('fs');
+const path = require('path');
+const { randomUUID } = require('crypto');
+const { spawn, spawnSync } = require('child_process');
+
+const root = process.env.HIVE_ROOT || path.dirname(path.dirname(__filename));
+const statePath = path.join(root, 'restart-window.json');
+const lockPath = statePath + '.lock';
+const logPath = path.join(root, 'restart-merge.log');
+const active = new Set(['armed', 'syncing', 'retargeting']);
+const statuses = new Set([...active, 'completed', 'refused', 'failed', 'expired', 'disarmed']);
+const instancePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const processPattern = process.env.HIVE_RESTART_PROCESS_PATTERN || 'electron-vite dev';
+
+function usage(msg) {
+  if (msg) process.stderr.write('hive-restart-window: ' + msg + '\\n');
+  process.stderr.write([
+    'usage:',
+    '  hive-restart-window arm <target-sha> --repo <live-checkout> [--note <text>]',
+    '  hive-restart-window retarget <target-sha> --repo <live-checkout> [--note <text>]',
+    '  hive-restart-window disarm',
+    '  hive-restart-window status',
+  ].join('\\n') + '\\n');
+  process.exit(2);
+}
+
+function parse(argv) {
+  const out = { target: argv.shift(), repo: '', note: '', instance: '' };
+  while (argv.length) {
+    const flag = argv.shift();
+    if (!['--repo', '--note', '--instance'].includes(flag)) usage('unknown flag: ' + flag);
+    const value = argv.shift();
+    if (!value) usage(flag + ' needs a value');
+    out[flag.slice(2)] = value;
+  }
+  if (!out.target || !/^[0-9a-f]{7,40}$/i.test(out.target)) usage('target must be a commit SHA');
+  if (!out.repo) usage('--repo is required');
+  out.repo = path.resolve(out.repo);
+  return out;
+}
+
+function readState() {
+  if (!fs.existsSync(statePath)) return null;
+  let value;
+  try {
+    value = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch (error) {
+    throw new Error('restart-window.json is not parseable JSON — refusing: ' + error.message);
+  }
+  if (!value || typeof value !== 'object' || !statuses.has(value.status)) {
+    throw new Error('restart-window.json has no valid status — refusing');
+  }
+  if (
+    !Number.isInteger(value.pid) ||
+    value.pid <= 0 ||
+    typeof value.instance !== 'string' ||
+    !instancePattern.test(value.instance) ||
+    typeof value.target !== 'string' ||
+    !/^[0-9a-f]{7,40}$/i.test(value.target) ||
+    typeof value.repo !== 'string' ||
+    !path.isAbsolute(value.repo)
+  ) {
+    throw new Error(
+      value.status + ' state requires pid, UUID instance, target and absolute repo — refusing',
+    );
+  }
+  if (
+    value.status === 'retargeting' &&
+    (!Number.isInteger(value.nextPid) ||
+      value.nextPid <= 0 ||
+      typeof value.nextInstance !== 'string' ||
+      !instancePattern.test(value.nextInstance) ||
+      typeof value.nextTarget !== 'string' ||
+      !/^[0-9a-f]{7,40}$/i.test(value.nextTarget))
+  ) {
+    throw new Error('retargeting state requires nextPid, nextInstance and nextTarget — refusing');
+  }
+  return value;
+}
+
+function writeState(value) {
+  fs.mkdirSync(root, { recursive: true });
+  const tmp = statePath + '.' + process.pid + '.' + Math.random().toString(16).slice(2) + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + '\\n', 'utf8');
+  fs.renameSync(tmp, statePath);
+}
+
+function withStateLock(fn) {
+  const deadline = Date.now() + 5000;
+  let fd;
+  while (fd === undefined) {
+    try {
+      fd = fs.openSync(lockPath, 'wx', 0o600);
+      fs.writeFileSync(fd, String(process.pid));
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > 10000) {
+          fs.unlinkSync(lockPath);
+          continue;
+        }
+      } catch (statError) {
+        if (statError.code === 'ENOENT') continue;
+        throw statError;
+      }
+      if (Date.now() >= deadline) throw new Error('restart-window lifecycle lock timed out');
+      sleepSync(25);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    fs.closeSync(fd);
+    try { fs.unlinkSync(lockPath); } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+}
+
+function log(message) {
+  fs.mkdirSync(root, { recursive: true });
+  fs.appendFileSync(logPath, '[' + new Date().toISOString() + '] ' + message + '\\n', 'utf8');
+}
+
+function git(repo, args) {
+  return spawnSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
+}
+
+function detail(result) {
+  return String(result.stderr || result.stdout || '').trim();
+}
+
+function requireGit(repo, args, label) {
+  const result = git(repo, args);
+  if (result.status !== 0) throw new Error(label + (detail(result) ? ': ' + detail(result) : ''));
+  return String(result.stdout || '').trim();
+}
+
+function sha(repo, ref) {
+  return requireGit(repo, ['rev-parse', '--verify', ref + '^{commit}'], 'cannot resolve ' + ref);
+}
+
+function isAncestor(repo, older, newer) {
+  const result = git(repo, ['merge-base', '--is-ancestor', older, newer]);
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw new Error('cannot compare ' + older + ' with ' + newer + ': ' + detail(result));
+}
+
+function pidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error.code === 'ESRCH') return false;
+    if (error.code === 'EPERM') return true;
+    throw error;
+  }
+}
+
+function pidBelongsTo(pid, instance) {
+  if (!pidAlive(pid)) return false;
+  if (!instance) throw new Error('watcher state has no process instance — refusing to signal pid ' + pid);
+  const result = spawnSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], {
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) return false;
+  return String(result.stdout || '').includes(instance);
+}
+
+function requireOwnedPid(pid, instance) {
+  if (!pidAlive(pid)) return false;
+  if (!pidBelongsTo(pid, instance)) {
+    throw new Error('recorded pid ' + pid + ' is not restart-window instance ' + instance + ' — refusing to signal');
+  }
+  return true;
+}
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function stopPid(pid, instance) {
+  if (!requireOwnedPid(pid, instance)) return;
+  process.kill(pid, 'SIGTERM');
+  for (let i = 0; i < 100; i++) {
+    sleepSync(20);
+    if (!requireOwnedPid(pid, instance)) return;
+  }
+  process.kill(pid, 'SIGKILL');
+  for (let i = 0; i < 100; i++) {
+    sleepSync(20);
+    if (!requireOwnedPid(pid, instance)) return;
+  }
+  throw new Error('watcher pid ' + pid + ' did not stop');
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForStartGate() {
+  const gate = process.env.HIVE_RESTART_WINDOW_START_GATE;
+  if (!gate) return;
+  for (let i = 0; i < 200 && !fs.existsSync(gate); i++) await sleep(25);
+  if (!fs.existsSync(gate)) throw new Error('retarget handoff timed out before activation');
+  try {
+    fs.unlinkSync(gate);
+  } catch {
+    // best-effort: this UUID gate can never release a future watcher.
+  }
+}
+
+function appRunning() {
+  const result = spawnSync('pgrep', ['-f', processPattern], { stdio: 'ignore' });
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  throw new Error('pgrep failed while looking for ' + processPattern);
+}
+
+async function waitForWindow() {
+  if (process.env.HIVE_RESTART_WINDOW_SKIP_WAIT === '1') return;
+  const deadline = Date.now() + 7 * 24 * 60 * 60 * 1000;
+  while (Date.now() < deadline) {
+    if (!appRunning()) {
+      await sleep(2000);
+      if (!appRunning()) return;
+      log('window missed: process returned during the 2s settle period; still armed');
+    }
+    await sleep(3000);
+  }
+  throw new Error('watcher expired after 7 days without a restart window');
+}
+
+function syncLive(repo, originMain) {
+  const head = sha(repo, 'HEAD');
+  if (!isAncestor(repo, head, originMain)) {
+    throw new Error('live main ' + head + ' cannot fast-forward to origin/main ' + originMain);
+  }
+  requireGit(repo, ['merge', '--ff-only', originMain], 'live checkout sync failed');
+  log('live checkout synced to origin/main ' + originMain);
+}
+
+function resyncLiveOriginMain(repo, label) {
+  requireGit(repo, ['fetch', '--quiet', 'origin', 'main'], label);
+  const originMain = sha(repo, 'origin/main');
+  syncLive(repo, originMain);
+  return originMain;
+}
+
+async function runWatcher(opts) {
+  const armedAt = new Date().toISOString();
+  const publish = (status, extra) =>
+    withStateLock(() => {
+      const current = readState();
+      if (!current || current.pid !== process.pid || current.instance !== opts.instance) return false;
+      writeState({
+        status,
+        target: opts.target,
+        repo: opts.repo,
+        pid: process.pid,
+        instance: opts.instance,
+        note: opts.note || undefined,
+        armedAt,
+        updatedAt: new Date().toISOString(),
+        ...(extra || {}),
+      });
+      return true;
+    });
+
+  let target;
+  try {
+    target = sha(opts.repo, opts.target);
+    opts.target = target;
+    if (!publish('armed')) return;
+    log('armed: target ' + target + '; waiting for ' + processPattern + ' to stop');
+    await waitForWindow();
+    if (!publish('syncing')) {
+      log('superseded watcher instance ' + opts.instance + ' exited before syncing');
+      return;
+    }
+
+    const branch = requireGit(opts.repo, ['rev-parse', '--abbrev-ref', 'HEAD'], 'cannot read branch');
+    if (branch !== 'main') throw new Error('live checkout HEAD is not on main');
+    // Preserve the proven watcher boundary: tracked changes abort; untracked
+    // worktree files do not (the existing restart-merge-watcher contract).
+    const dirty = requireGit(
+      opts.repo,
+      ['status', '--porcelain', '--untracked-files=no'],
+      'cannot inspect live checkout',
+    );
+    if (dirty) throw new Error('live checkout has tracked changes');
+
+    let originMain = resyncLiveOriginMain(opts.repo, 'fetch origin/main failed');
+
+    if (!isAncestor(opts.repo, originMain, target)) {
+      const reason = 'target ' + target + ' does not contain origin/main ' + originMain;
+      log('REFUSED: target went stale: ' + reason + '; live checkout remains at origin/main');
+      publish('refused', { originMain, reason });
+      process.exitCode = 3;
+      return;
+    }
+
+    const refspec = target + ':refs/heads/main';
+    const pushed = git(opts.repo, ['push', 'origin', refspec]);
+    if (pushed.status !== 0) {
+      originMain = resyncLiveOriginMain(opts.repo, 'refetch after push refusal failed');
+      if (!isAncestor(opts.repo, originMain, target)) {
+        const reason = 'target ' + target + ' stopped containing origin/main ' + originMain + ' during push';
+        log('REFUSED: target went stale during push: ' + reason + '; live checkout resynced');
+        publish('refused', { originMain, reason });
+        process.exitCode = 3;
+        return;
+      }
+      throw new Error('push failed: ' + detail(pushed));
+    }
+
+    requireGit(opts.repo, ['merge', '--ff-only', target], 'batch fast-forward failed');
+    originMain = resyncLiveOriginMain(opts.repo, 'final origin/main fetch failed');
+    const head = sha(opts.repo, 'HEAD');
+    log('completed: live checkout and origin/main at ' + head);
+    publish('completed', { originMain, completedAt: new Date().toISOString() });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    log('ABORT: ' + reason);
+    publish(reason.startsWith('watcher expired') ? 'expired' : 'failed', { reason });
+    process.stderr.write('hive-restart-window: ' + reason + '\\n');
+    process.exitCode = 1;
+  }
+}
+
+function spawnWatcher(opts, gate) {
+  const args = [
+    __filename,
+    'run',
+    opts.target,
+    '--repo',
+    opts.repo,
+    '--instance',
+    opts.instance,
+  ];
+  if (opts.note) args.push('--note', opts.note);
+  const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
+  if (gate) env.HIVE_RESTART_WINDOW_START_GATE = gate;
+  const child = spawn(process.execPath, args, { detached: true, stdio: 'ignore', env });
+  child.unref();
+  return child.pid;
+}
+
+function armedState(opts, pid) {
+  const now = new Date().toISOString();
+  return {
+    status: 'armed',
+    target: opts.target,
+    repo: opts.repo,
+    pid,
+    instance: opts.instance,
+    note: opts.note || undefined,
+    armedAt: now,
+    updatedAt: now,
+  };
+}
+
+function startLocked(opts) {
+  const current = readState();
+  const currentPid = current && (current.nextPid || current.pid);
+  const currentInstance = current && (current.nextInstance || current.instance);
+  if (current && active.has(current.status) && pidAlive(currentPid)) {
+    if (!pidBelongsTo(currentPid, currentInstance)) {
+      throw new Error('recorded pid ' + currentPid + ' belongs to another process — refusing to arm');
+    }
+    throw new Error('already armed as pid ' + currentPid + '; use retarget or disarm');
+  }
+
+  opts.instance = randomUUID();
+  const gate = statePath + '.handoff.' + opts.instance;
+  const pid = spawnWatcher(opts, gate);
+  try {
+    writeState(armedState(opts, pid));
+    fs.writeFileSync(gate, 'go\\n', 'utf8');
+  } catch (error) {
+    try {
+      stopPid(pid, opts.instance);
+    } catch (cleanupError) {
+      log('arm cleanup FAILED for pid ' + pid + ': ' + cleanupError.message);
+    }
+    throw error;
+  }
+  log('armed detached watcher pid ' + pid + ' for target ' + opts.target);
+  process.stdout.write('armed pid ' + pid + ' -> ' + opts.target + '\\n');
+}
+
+function arm(opts) {
+  opts.target = sha(opts.repo, opts.target);
+  return withStateLock(() => startLocked(opts));
+}
+
+function retarget(opts) {
+  opts.target = sha(opts.repo, opts.target);
+  return withStateLock(() => {
+    const current = readState();
+    if (!current || !active.has(current.status) || !pidAlive(current.pid)) return startLocked(opts);
+    if (current.status === 'syncing') {
+      throw new Error('cannot retarget while the restart-window merge is syncing');
+    }
+    requireOwnedPid(current.pid, current.instance);
+
+    opts.instance = randomUUID();
+    const gate = statePath + '.handoff.' + opts.instance;
+    const nextPid = spawnWatcher(opts, gate);
+    writeState({
+      ...current,
+      status: 'retargeting',
+      nextPid,
+      nextInstance: opts.instance,
+      nextTarget: opts.target,
+      updatedAt: new Date().toISOString(),
+    });
+    try {
+      stopPid(current.pid, current.instance);
+      writeState(armedState(opts, nextPid));
+      fs.writeFileSync(gate, 'go\\n', 'utf8');
+    } catch (error) {
+      try {
+        stopPid(nextPid, opts.instance);
+      } catch (cleanupError) {
+        log('retarget cleanup FAILED for pid ' + nextPid + ': ' + cleanupError.message);
+      }
+      try {
+        fs.unlinkSync(gate);
+      } catch {
+        // best-effort: this UUID gate can never release a future watcher.
+      }
+      throw error;
+    }
+    log('retargeted watcher pid ' + current.pid + ' -> ' + nextPid + '; target ' + opts.target);
+    process.stdout.write('retargeted pid ' + current.pid + ' -> ' + nextPid + '\\n');
+  });
+}
+
+function disarm() {
+  return withStateLock(() => {
+    const current = readState();
+    if (!current || !active.has(current.status)) {
+      process.stdout.write('not armed\\n');
+      return;
+    }
+    if (current.status === 'syncing') {
+      throw new Error('cannot disarm while the restart-window merge is syncing');
+    }
+    for (const [pid, instance] of [
+      [current.pid, current.instance],
+      [current.nextPid, current.nextInstance],
+    ]) {
+      if (Number.isInteger(pid)) stopPid(pid, instance);
+    }
+    const stoppedPid = current.nextPid || current.pid;
+    writeState({
+      ...current,
+      status: 'disarmed',
+      pid: stoppedPid,
+      instance: current.nextInstance || current.instance,
+      reason: 'disarmed by operator',
+      disarmedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    log('disarmed watcher pid ' + stoppedPid);
+    process.stdout.write('disarmed pid ' + stoppedPid + '\\n');
+  });
+}
+
+async function main() {
+  const command = process.argv[2];
+  if (command === 'status') {
+    const state = readState();
+    process.stdout.write(state ? JSON.stringify(state, null, 2) + '\\n' : 'not armed\\n');
+    return;
+  }
+  if (process.platform === 'win32') {
+    throw new Error('restart-window lifecycle requires POSIX process controls');
+  }
+  if (command === 'disarm') return disarm();
+  if (command !== 'arm' && command !== 'retarget' && command !== 'run') usage();
+  const opts = parse(process.argv.slice(3));
+  if (command === 'arm') arm(opts);
+  else if (command === 'retarget') retarget(opts);
+  else {
+    if (!opts.instance) {
+      if (process.env.HIVE_RESTART_WINDOW_DIRECT_RUN !== '1') {
+        throw new Error('internal run verb requires a controller instance');
+      }
+      opts.instance = randomUUID();
+      withStateLock(() => {
+        const current = readState();
+        if (current && active.has(current.status) && pidAlive(current.pid)) {
+          throw new Error('internal run verb refuses to replace active watcher pid ' + current.pid);
+        }
+        writeState(armedState(opts, process.pid));
+      });
+    }
+    await waitForStartGate();
+    await runWatcher(opts);
+  }
+}
+
+main().catch((error) => {
+  process.stderr.write('hive-restart-window: ' + String(error) + '\\n');
+  process.exitCode = 1;
+});
 `;
 
 // ─── hive-card CLI (written to <hive>/bin/hive-card) ─────────────────────────
