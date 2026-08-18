@@ -7,6 +7,8 @@ import type { IntegrationRecord, IntegrationTemplate } from '../shared/integrati
 export type { IntegrationRecord, IntegrationTemplate } from '../shared/integrations';
 import type { UpdateStatus } from '../shared/updateState';
 export type { UpdateStatus } from '../shared/updateState';
+import type { ToolStatus } from '../shared/toolCatalog';
+export type { ToolStatus } from '../shared/toolCatalog';
 import type {
   ContextRule,
   ContextTriggerConfig,
@@ -928,6 +930,9 @@ const api = {
 
   // ─── Semantic memory (MemPalace CLI) ─────────────────────────────────────
   memoryStatus: (): Promise<MemoryStatus> => ipcRenderer.invoke('hive:memoryStatus'),
+  /** Live status of the external tools the harness leans on (Prerequisites
+   *  panel). Detection is a pure PATH walk + bounded async version probes. */
+  toolsStatus: (): Promise<ToolStatus[]> => ipcRenderer.invoke('tools:status'),
   searchMemory: (
     query: string,
     wing?: string,

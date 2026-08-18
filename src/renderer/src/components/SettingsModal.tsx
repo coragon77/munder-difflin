@@ -18,6 +18,7 @@ import { UpdatesSection } from './UpdatesSection';
 import { Icon } from './Icon';
 import { OfficeThemePicker } from './OfficeThemePicker';
 import { McpDefaultsSettings } from './McpDefaultsSettings';
+import { SetupPanel } from './SetupPanel';
 import { IntegrationsRegistry } from './IntegrationsRegistry';
 import { AiEnginesSettings } from './AiEnginesSettings';
 import { REALTIME_MODEL } from '@shared/realtimePricing';
@@ -176,7 +177,8 @@ export type Section =
   | 'Autonomy & Budgets'
   | 'Connections'
   | 'Voice'
-  | 'Memory & Knowledge';
+  | 'Memory & Knowledge'
+  | 'Prerequisites';
 const NAV_SECTIONS: Section[] = [
   'General',
   'Agents & Models',
@@ -184,6 +186,7 @@ const NAV_SECTIONS: Section[] = [
   'Connections',
   'Voice',
   'Memory & Knowledge',
+  'Prerequisites',
 ];
 
 export function SettingsModal({ config, onClose, initialSection }: SettingsModalProps) {
@@ -2815,6 +2818,12 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                       </div>
                     </>
                   )}
+
+                  {/* PREREQUISITES — live status of the tools the harness
+                      leans on (detection only; install commands are copyable
+                      text, nothing dispatches an install — card
+                      agent-prerequisites-panel-live-2026-08-18). */}
+                  {activeSection === 'Prerequisites' && <SetupPanel />}
 
                   {/* CONNECTIONS — everything external (MCP + Slack + webhook + REST) */}
                   {activeSection === 'Connections' && (
