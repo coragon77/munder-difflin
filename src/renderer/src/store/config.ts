@@ -303,13 +303,13 @@ export const CRUSH_MODELS: ModelOption[] = [
  *  `provider/model` slug (thinking via a `:high` suffix). Curated BYOK suggestions;
  *  free-text editable. // TODO-verify exact live slugs (humanQA). */
 export const PI_MODELS: ModelOption[] = [
+  // DISCOVERY is the catalog (useProviderModels → `pi --list-models`, card
+  // agent-harness-provider-model-l-2026-08-17): pi's model list is auth-scoped
+  // and operator-configured. This static entry is only the FAILURE fallback —
+  // the CLI default, never a hardcoded suggestion (god-pi-switch follow-up:
+  // the old hardcoded list preselected sonnet on installs that never
+  // configured it).
   { id: undefined, label: 'default' },
-  { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5 (Anthropic)' },
-  { id: 'anthropic/claude-opus-4-1', label: 'Claude Opus (Anthropic)' },
-  { id: 'openai/gpt-5', label: 'GPT-5 (OpenAI)' },
-  { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro (Google)' },
-  { id: 'groq/llama-3.3-70b', label: 'Llama 3.3 70B (Groq)' },
-  { id: 'local/llama3', label: 'Local · OpenAI-compatible (set base-URL)' },
 ];
 
 /** Models offered when an agent runs on GitHub Copilot (`copilot`). Copilot's
@@ -423,13 +423,14 @@ export function buildSpawnCommand(
   // Stale-dialect guard (deputy card god-pi-switch-2026-08-18): a model id
   // from ANOTHER provider's dialect — a claude-* godModel surviving a god
   // engine switch — is stale config, never intent: `pi --model claude-opus-5`
-  // dies at boot. Fall back to the target provider's recommended
-  // orchestrator model, else the CLI's own default (no flag). Bare `claude-*`
-  // ids only exist in the claude dialect (pi spells them `anthropic/claude-*`),
-  // so the prefix test has no false positives.
+  // dies at boot. DROP it: pi's default model is the operator's own pi
+  // config (follow-up: substituting a recommendation re-injected sonnet on
+  // installs that never configured it). Bare `claude-*` ids only exist in
+  // the claude dialect (pi spells them `anthropic/claude-*`), so the prefix
+  // test has no false positives.
   let effectiveModel = model;
   if (model && provider !== 'claude' && /^claude-/.test(model.trim())) {
-    effectiveModel = preset.recommendedOrchestratorModel;
+    effectiveModel = undefined;
   }
   // Claude keeps the user's configured defaultCommand; custom falls back to it
   // too; every other provider (codex, grok, kimi, agy) uses its preset binary so the app

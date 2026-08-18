@@ -479,7 +479,10 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // `bridge` is set (NOT the legacy hookBridge) — bridgeOf returns preset.bridge
     // first, so a hookBridge:'pi' would be dead weight + force a second union widening.
     bridge: { kind: 'hooks', shim: 'pi', deliversSteers: true },
-    recommendedOrchestratorModel: 'anthropic/claude-sonnet-4-5',
+    // NO recommendedOrchestratorModel (god-pi-switch-2026-08-18 follow-up): pi's
+    // default model is the OPERATOR's own pi config, and the auth-scoped catalog
+    // comes from `pi --list-models` discovery (useProviderModels) — a preset
+    // guess here preselected sonnet in every picker and injected it via apply.
     // Verified on the installed pi (2026-08-18): `--thinking <level>` accepts
     // off|minimal|low|medium|high|xhigh|max (7 — pi adds off+minimal vs
     // claude). The explicit flag over the --model "provider/id:<thinking>"

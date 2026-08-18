@@ -4,12 +4,8 @@ import { PixelButton } from './PixelButton';
 import { Icon, type IconName } from './Icon';
 import { SpritePortrait } from './SpritePortrait';
 import { ProviderLogo } from './ProviderLogo';
-import {
-  AGENT_PROVIDER_PRESETS,
-  modelsForProvider,
-  type AgentProvider,
-  type HarnessConfig,
-} from '@/store/config';
+import { useProviderModels } from '@/hooks/useProviderModels';
+import { AGENT_PROVIDER_PRESETS, type AgentProvider, type HarnessConfig } from '@/store/config';
 import { canReceiveInbox, providerPreset } from '@shared/agentProvider';
 
 export interface OnboardingWizardProps {
@@ -109,6 +105,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const [godModel, setGodModel] = useState<string | undefined>(
     providerPreset('claude').recommendedOrchestratorModel,
   );
+  // Discovered models for the chosen engine (god-pi-switch follow-up): pi's
+  // catalog is auth-scoped (`pi --list-models`), never a hardcoded list.
+  const godModelOptions = useProviderModels(godProvider);
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
@@ -611,7 +610,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                     onChange={(e) => setGodModel(e.target.value || undefined)}
                     style={inputStyle}
                   >
-                    {modelsForProvider(godProvider).map((m) => (
+                    {godModelOptions.map((m) => (
                       <option key={m.label} value={m.id ?? ''}>
                         {m.label}
                       </option>
