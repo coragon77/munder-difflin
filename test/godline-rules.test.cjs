@@ -65,6 +65,42 @@ test('godLine carries the RENDERER-MERGE BATCHING rule', () => {
   assert.ok(/verify the log after reboot/.test(p));
 });
 
+test('godLine keeps one renderer watcher armed from the first verified branch', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/KEEP ONE ARMED: whenever ANY verified renderer\/preload branch is unmerged/.test(p));
+  assert.ok(/arm on the first one; do not wait for the batch to feel complete/.test(p));
+  assert.ok(/An unarmed window means a restart lands NOTHING/.test(p));
+  assert.ok(
+    /early arming is free because the watcher fires only when the harness process disappears/.test(
+      p,
+    ),
+  );
+});
+
+test('godLine gives the renderer watcher retarget procedure', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/new main-bound work joins the ARMED watcher's batch/.test(p));
+  assert.ok(/rebase\/cherry-pick onto the batch tip, re-gate, rewrite TARGET/.test(p));
+  assert.ok(
+    /kill the old PID \(verify with ps -p; pgrep -f self-matches the querying shell\)/.test(p),
+  );
+  assert.ok(/relaunch with setsid/.test(p));
+  assert.ok(/NEVER advance main under an armed ff-watcher/.test(p));
+});
+
+test('godLine teaches renderer watcher refusal modes and recovery', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/WATCHER CAN REFUSE:/.test(p));
+  assert.ok(/dirty tracked worktree/.test(p));
+  assert.ok(/HEAD is not on main/.test(p));
+  assert.ok(/TARGET is not a fast-forward/.test(p));
+  assert.ok(/window missed.{0,40}<2s process blip/.test(p));
+  assert.ok(
+    /ALWAYS read restart-merge\.log after reboot before reporting anything as landed/.test(p),
+  );
+  assert.ok(/re-arm if it refused/.test(p));
+});
+
 test('godLine carries the ARCHIVE-ON-READ rule', () => {
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
   assert.ok(/ARCHIVE-ON-READ:/.test(p), 'god briefing must carry the ARCHIVE-ON-READ rule');
