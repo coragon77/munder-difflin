@@ -135,3 +135,4 @@ test/settings-helper-reopen.test.cjs
 test/bootstrap-on-home-set.test.cjs
 test/terminal-selection.test.cjs
 test/skills.test.cjs
+test/tool-detect.test.cjs

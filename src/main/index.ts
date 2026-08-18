@@ -105,6 +105,7 @@ import { HookServer } from './hooks';
 import { CircuitBreaker, type BreakerInput } from './breaker';
 import type { UsageProvider } from './usage';
 import { MemoryManager } from './memory';
+import { toolsStatus } from './toolStatus';
 import { KnowledgeManager } from './knowledge';
 import { MemoryReflector, type ReflectSettings } from './reflect';
 import { PersistStore } from './db';
@@ -4772,6 +4773,16 @@ ipcMain.handle('hive:memoryStatus', () => {
   memory.resetBinCache();
   return memory.status();
 });
+
+// ─── IPC: prerequisites panel (live status of the tools we lean on) ─────────
+// Detection is a pure PATH walk + bounded async version probes — it can never
+// hang the main process (card agent-prerequisites-panel-live-2026-08-18).
+ipcMain.handle('tools:status', () =>
+  toolsStatus(() => {
+    memory.resetBinCache();
+    return memory.status();
+  }),
+);
 ipcMain.handle('hive:searchMemory', (_evt, query: unknown, wing: unknown) => {
   if (typeof query !== 'string' || !query.trim())
     return { ok: false, output: '', error: 'empty query' };
