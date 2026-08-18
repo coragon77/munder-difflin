@@ -35,9 +35,15 @@ export interface ScheduledMission {
    *  the numbers anywhere else — they will drift. */
   autoCompact?: boolean;
   lastFiredAt?: number;
+  /** todo-unattended dedup state (card agent-every-non-paused-todo-ke-2026-
+   *  08-18): the card ids escalated as todo-unattended at the previous
+   *  standup fire, so an old backlog card escalates ONCE, not hourly. Written
+   *  by the standup clerk every fire (same read-modify-write as lastFiredAt). */
+  escalatedTodos?: string[];
   /** When true, a due fire is silently skipped while the floor is quiet
-   *  (no non-god agent active since the last fire AND no tasks.json card
-   *  in 'doing' or 'blocked'). */
+   *  (no non-god agent active since the last fire AND nothing in the ledger
+   *  that counts: no 'doing'/'blocked' card and no NON-PAUSED todo — card
+   *  agent-every-non-paused-todo-ke-2026-08-18). */
   skipWhenFloorQuiet?: boolean;
   /** Mission flavor. Absent ⇒ 'dispatch' (the classic interval-dispatch mission,
    *  e.g. the ops standup). 'heartbeat' (Lane A #1) is a context-aware beat: it

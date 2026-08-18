@@ -1255,6 +1255,12 @@ const api = {
     status: 'todo' | 'doing' | 'blocked' | 'done',
   ): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:updateTaskStatus', id, status),
+  /** Set/clear ONE card's on-hold flag (card agent-every-non-paused-todo-ke-
+   *  2026-08-18): a paused todo stays in the todo column but stops counting
+   *  toward the quiet-floor predicate and the todo-unattended anomaly. Same
+   *  locked targeted write as hiveUpdateTaskStatus. */
+  hiveSetTaskPaused: (id: string, paused: boolean): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('hive:setTaskPaused', id, paused),
 
   // ─── Scheduled missions (recurring auto-dispatch) ──────────────────────────
   listMissions: (): Promise<ScheduledMission[]> => ipcRenderer.invoke('missions:list'),

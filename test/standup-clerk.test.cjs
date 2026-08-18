@@ -85,7 +85,11 @@ test('a busy but healthy floor escalates nothing (god stays silent)', () => {
     [agent(), agent({ id: 'jim', name: 'Jim', lastActiveSecAgo: 120 })],
     [
       { id: 'c-1', title: 'ship it', status: 'doing', assignee: 'pam' },
-      { id: 'c-2', title: 'later', status: 'todo' },
+      // A todo on a HEALTHY busy floor is mid-dispatch — young (age-gated);
+      // an old/un-dated one escalates as todo-unattended (every non-paused
+      // todo keeps the standup alive, card agent-every-non-paused-todo-ke-
+      // 2026-08-18).
+      { id: 'c-2', title: 'later', status: 'todo', createdAt: new Date().toISOString() },
       { id: 'c-3', title: 'shipped', status: 'done', assignee: 'jim' },
     ],
   );
@@ -248,7 +252,10 @@ test('the clerk reuses the existing one-shot machinery (no new spawn path)', () 
   assert.match(src, /runHiddenClaude/, 'reuses hiddenClaude.ts');
   const fn = src.slice(src.indexOf('async function runStandupClerk'));
   assert.ok(fn.length > 0, 'the clerk runner exists');
-  const body = fn.slice(0, 2600);
+  // The window must reach past hive.send (near the function's end) — it grew
+  // with the amendment-A dedup block; keep it just past the current function
+  // end (~3.7k) so the asserts stay INSIDE runStandupClerk.
+  const body = fn.slice(0, 4096);
   assert.match(body, /detectAnomalies\(/, 'escalation is decided deterministically');
   assert.match(body, /STANDUP_CLERK_MODEL/, 'haiku-class model override');
   assert.match(body, /summarizeAnomalies\(/, 'LLM failure falls back to the deterministic report');

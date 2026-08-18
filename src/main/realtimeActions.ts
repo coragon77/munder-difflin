@@ -552,7 +552,12 @@ function execUpdateTask(deps: RealtimeActionDeps, a: Record<string, unknown>): A
   const valid = ['todo', 'doing', 'blocked', 'done'];
   if (status && !valid.includes(status))
     return { ok: false, spoken: `"${status}" isn't a valid status.` };
-  if (status) card.status = status as HiveTask['status'];
+  if (status) {
+    card.status = status as HiveTask['status'];
+    // Amendment D (card agent-every-non-paused-todo-ke-2026-08-18): a resumed
+    // card must not carry a stale on-hold flag into doing.
+    if (card.status === 'doing' && card.paused) card.paused = undefined;
+  }
   if (str(a.result)) card.result = str(a.result);
   if (str(a.assignee)) card.assignee = str(a.assignee);
   deps.hiveWriteTasks(tasks);

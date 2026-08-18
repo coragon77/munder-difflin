@@ -35,6 +35,13 @@ export interface HiveTask {
   /** Set when the HUMAN created this card from the tasks tab. Gates the UI's
    *  delete control (only human-origin cards, only while still 'todo'). */
   origin?: 'human';
+  /** ON-HOLD / reference-only opt-out (card agent-every-non-paused-todo-ke-
+   *  2026-08-18): a paused todo stays in the todo column, visible, but stops
+   *  counting toward the quiet-floor standup predicate and the todo-
+   *  unattended anomaly. Orthogonal to assignment. Set/cleared one click on
+   *  the card face (or the labeled toggle in this detail view); a →doing
+   *  flip clears it server-side (auto-resume). */
+  paused?: boolean;
 }
 
 /** The card's currently open question for the human, if any. An entry the human
@@ -129,6 +136,7 @@ export function parseTasks(raw: unknown): HiveTask[] {
             }))
         : undefined,
       origin: t.origin === 'human' ? 'human' : undefined,
+      paused: t.paused === true ? true : undefined,
     }));
 }
 
@@ -186,6 +194,24 @@ export function TasksKanban() {
       setAddError(e instanceof Error ? e.message : String(e));
     }
   }, [newTitle, newNotes, refresh]);
+
+  // On-hold reference opt-out (card agent-every-non-paused-todo-ke-2026-08-
+  // 18): one click on the todo card face — the pause flag keeps the card
+  // visible but stops it counting toward the standup's quiet-floor predicate
+  // and its todo-unattended anomaly. Targeted main-process write under the
+  // ledger lock (never a renderer whole-ledger overwrite); the next poll
+  // reconciles any failure.
+  const togglePaused = useCallback(
+    async (t: HiveTask) => {
+      try {
+        const res = await window.cth.hiveSetTaskPaused(t.id, !t.paused);
+        if (res?.ok) await refresh();
+      } catch {
+        /* next poll heals it */
+      }
+    },
+    [refresh],
+  );
 
   useEffect(() => {
     refresh();
@@ -433,6 +459,7 @@ export function TasksKanban() {
                     accent={col.accent}
                     assigneeName={nameFor(t.assignee)}
                     onOpen={() => openTaskDetail(t.id)}
+                    onTogglePaused={col.key === 'todo' ? () => void togglePaused(t) : undefined}
                   />
                 ))}
               </div>
@@ -454,11 +481,15 @@ function TaskCard({
   accent,
   assigneeName,
   onOpen,
+  onTogglePaused,
 }: {
   task: HiveTask;
   accent: string;
   assigneeName?: string;
   onOpen: () => void;
+  /** Present only in the TODO column (amendment E): one click puts a
+   *  reference-only card on hold — it stops keeping the standup alive. */
+  onTogglePaused?: () => void;
 }) {
   return (
     <div style={{ position: 'relative', display: 'flex' }}>
@@ -475,7 +506,7 @@ function TaskCard({
           border: 'none',
           cursor: 'pointer',
           textAlign: 'left',
-          background: 'var(--cth-paper-100)',
+          background: task.paused ? 'var(--cth-cream-200)' : 'var(--cth-paper-100)',
           boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
         }}
       >
@@ -511,11 +542,26 @@ function TaskCard({
           >
             {task.title}
           </span>
+          {task.paused && (
+            <span
+              style={{
+                alignSelf: 'flex-start',
+                fontFamily: 'var(--cth-font-display)',
+                fontSize: 8,
+                padding: '1px 4px 0',
+                background: 'var(--cth-lemon)',
+                color: 'var(--cth-ink-900)',
+                boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+              }}
+            >
+              ON HOLD
+            </span>
+          )}
           {assigneeName && (
             <span
               style={{
                 fontSize: 10,
-                color: 'var(--cth-ink-500)',
+                color: task.paused ? 'var(--cth-ink-300)' : 'var(--cth-ink-500)',
                 fontFamily: 'var(--cth-font-display)',
               }}
             >
@@ -542,6 +588,34 @@ function TaskCard({
           </span>
         )}
       </button>
+      {onTogglePaused && (
+        <button
+          onClick={onTogglePaused}
+          title={
+            task.paused
+              ? 'on hold — resume: counts toward the standup again'
+              : 'put on hold — reference-only card, stops counting toward the standup'
+          }
+          style={{
+            position: 'absolute',
+            top: 3,
+            right: 3,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 18,
+            height: 16,
+            padding: 0,
+            border: 'none',
+            cursor: 'pointer',
+            background: task.paused ? 'var(--cth-lemon)' : 'var(--cth-paper-200)',
+            boxShadow: 'inset 0 0 0 1px var(--cth-ink-300)',
+            color: 'var(--cth-ink-700)',
+          }}
+        >
+          <Icon name={task.paused ? 'play' : 'pause'} />
+        </button>
+      )}
     </div>
   );
 }
@@ -563,6 +637,8 @@ export function TaskDetail({
   onAssign,
   onClose,
   onDelete,
+  onTogglePaused,
+  togglePausedLabel,
 }: {
   task: HiveTask;
   all: HiveTask[];
@@ -573,6 +649,11 @@ export function TaskDetail({
   /** Delete this card — only offered for human-origin todo cards (enforced
    *  again in the main process; god-created and picked-up cards survive). */
   onDelete?: () => void;
+  /** The labeled on-hold toggle (amendment E, secondary control — the
+   *  one-click version sits on the card face itself). The label text comes
+   *  from the host overlay so the wording lives with the action. */
+  onTogglePaused?: () => void;
+  togglePausedLabel?: string;
 }) {
   const col = COLUMNS.find((c) => c.key === task.status) ?? COLUMNS[0];
   // Belt + suspenders: parseTasks normalizes these, but the ledger is a
@@ -837,6 +918,14 @@ export function TaskDetail({
                   <Icon name="arrow-right" /> assign
                 </span>
               </PixelButton>
+              {onTogglePaused && task.status === 'todo' && (
+                <PixelButton variant="secondary" size="sm" onClick={onTogglePaused}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <Icon name={task.paused ? 'play' : 'pause'} />
+                    {togglePausedLabel ?? (task.paused ? 'resume' : 'on hold')}
+                  </span>
+                </PixelButton>
+              )}
               <PixelButton variant="ghost" size="sm" onClick={onClose}>
                 close
               </PixelButton>

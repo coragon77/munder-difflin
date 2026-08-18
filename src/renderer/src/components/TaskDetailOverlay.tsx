@@ -57,9 +57,24 @@ export function TaskDetailOverlay() {
     // silently reverted concurrent CLI flips. updateTaskStatus re-reads the
     // ledger under tasks.json.lock and patches only this card; false (lock
     // contended / card gone) reverts the optimistic flip via the next poll.
+    // The →doing flip clears `paused` server-side (auto-resume).
     setTasks(tasks.map((t) => (t.id === task.id ? { ...t, status } : t))); // optimistic
     try {
       const res = await window.cth.hiveUpdateTaskStatus(task.id, status);
+      if (!res?.ok) void refresh();
+    } catch {
+      void refresh();
+    }
+  };
+
+  // The labeled on-hold toggle (card agent-every-non-paused-todo-ke-2026-08-
+  // 18, amendment E secondary control — the one-click pause glyph sits on
+  // the card face in the kanban). Same targeted-write discipline as move():
+  // main re-reads the ledger under the lock and patches only this card.
+  const togglePaused = async () => {
+    setTasks(tasks.map((t) => (t.id === task.id ? { ...t, paused: !t.paused } : t))); // optimistic
+    try {
+      const res = await window.cth.hiveSetTaskPaused(task.id, !task.paused);
       if (!res?.ok) void refresh();
     } catch {
       void refresh();
@@ -100,6 +115,8 @@ export function TaskDetailOverlay() {
       onAssign={assign}
       onClose={closeTaskDetail}
       onDelete={() => void del()}
+      onTogglePaused={() => void togglePaused()}
+      togglePausedLabel={task.paused ? 'resume' : 'set on hold'}
     />
   );
 }

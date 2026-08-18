@@ -162,6 +162,7 @@ import {
   boardLine,
   clerkPrompt,
   detectAnomalies,
+  ledgerDisqualifiesQuiet,
   standupTarget,
   summarizeAnomalies,
 } from './standup';
@@ -940,8 +941,12 @@ function clearMissionTimers(): void {
  *  means BOTH: (a) no agent other than god has activity newer than `since` —
  *  the same telemetry usage timestamps `writeFleetSnapshot` turns into
  *  fleet.json's `lastActiveSecAgo` (registry decides who counts: archived and
- *  god are excluded) — and (b) tasks.json parses with no card in 'doing' or
- *  'blocked'. NOT the heartbeat's isFloorQuiet: that one watches coordination
+ *  god are excluded) — and (b) the ledger holds nothing that counts: no
+ *  'doing'/'blocked' card and no non-paused todo (card
+ *  agent-every-non-paused-todo-ke-2026-08-18: every todo keeps the standup
+ *  alive; on-hold reference cards opt out via `paused`). The ledger half is
+ *  `ledgerDisqualifiesQuiet` (standup.ts) — one predicate, clerk and scheduler
+ *  agree. NOT the heartbeat's isFloorQuiet: that one watches coordination
  *  file mtimes for a threshold; this one asks "did anything move since the last
  *  fire". Any read/parse failure (or no hive root) = NOT quiet — fail toward
  *  firing rather than silently dropping a due dispatch. */
@@ -955,8 +960,10 @@ function floorQuietSince(since: number): boolean {
   const root = hive.root();
   if (!root) return false;
   try {
-    const t = JSON.parse(readFileSync(join(root, 'tasks.json'), 'utf8')) as { tasks?: HiveTask[] };
-    return !(t.tasks ?? []).some((x) => x?.status === 'doing' || x?.status === 'blocked');
+    const t = JSON.parse(readFileSync(join(root, 'tasks.json'), 'utf8')) as {
+      tasks?: HiveTask[];
+    };
+    return !ledgerDisqualifiesQuiet(t);
   } catch {
     return false; // missing/corrupt tasks.json → fire, don't skip on a guess
   }
@@ -992,7 +999,35 @@ async function runStandupClerk(): Promise<void> {
     }
   };
   const cfg = readConfig();
-  const anomalies = detectAnomalies(readJson('fleet.json'), readJson('tasks.json'), cfg);
+  // Amendment A dedup (card agent-every-non-paused-todo-ke-2026-08-18):
+  // todo-unattended escalates ONCE per episode — a card id escalated at the
+  // previous standup stays suppressed. The id-set rides the mission config
+  // (the same record already read-modify-written for lastFiredAt). What gets
+  // persisted is EVERY currently-qualifying id (a second pass with an EMPTY
+  // dedup set), NOT just this cycle's report: a suppressed card dropped from
+  // the set would be re-escalated on the ALTERNATING hour (nag halved, not
+  // removed). A card leaves the set only when it stops qualifying (fixed,
+  // paused, dep-waiting, too young again) — if it qualifies later, it
+  // escalates again as a NEW episode. Restricted to the new kind — the
+  // rare-urgent kinds stay hourly on purpose.
+  const fleetJson = readJson('fleet.json');
+  const tasksJson = readJson('tasks.json');
+  const escalatedBefore =
+    (cfg.missions ?? []).find((m) => m.id === OPS_STANDUP_MISSION.id)?.escalatedTodos ?? [];
+  const anomalies = detectAnomalies(fleetJson, tasksJson, cfg, undefined, escalatedBefore);
+  const qualifying = detectAnomalies(fleetJson, tasksJson, cfg, undefined, [])
+    .filter((a) => a.kind === 'todo-unattended')
+    .map((a) => a.subject);
+  try {
+    const current = readConfig().missions ?? [];
+    writeConfig({
+      missions: current.map((m) =>
+        m.id === OPS_STANDUP_MISSION.id ? { ...m, escalatedTodos: qualifying } : m,
+      ),
+    });
+  } catch {
+    /* dedup persistence is best-effort — worst case one repeat mail */
+  }
   // The clerk's "done" back to the scheduler: the cycle is recorded in the hive
   // log (and lastFiredAt is stamped by the caller) whether or not god hears.
   try {
@@ -4501,6 +4536,16 @@ ipcMain.handle('hive:updateTaskStatus', (_evt, id: unknown, status: unknown) => 
     return { ok: false, error: 'invalid status' };
   if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
   return hive.updateTaskStatus(id, status as HiveTask['status'])
+    ? { ok: true }
+    : { ok: false, error: 'card not found or ledger busy — re-poll' };
+});
+// Pause/resume a card (on-hold reference opt-out, card agent-every-non-
+// paused-todo-ke-2026-08-18): same locked targeted write as updateTaskStatus.
+ipcMain.handle('hive:setTaskPaused', (_evt, id: unknown, paused: unknown) => {
+  if (typeof id !== 'string' || !id) return { ok: false, error: 'invalid id' };
+  if (typeof paused !== 'boolean') return { ok: false, error: 'invalid paused flag' };
+  if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
+  return hive.setTaskPaused(id, paused)
     ? { ok: true }
     : { ok: false, error: 'card not found or ledger busy — re-poll' };
 });
