@@ -116,3 +116,4 @@ test/engine-row-dirty-guard.test.cjs
 test/engine-row-save-only.test.cjs
 test/waiting-label-single-source.test.cjs
 test/pi-floor-status.test.cjs
+test/pi-subagent-token-attribution.test.cjs
