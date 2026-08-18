@@ -49,6 +49,23 @@ export function buildSpawnEnv(
     COLORTERM: 'truecolor',
     // Help apps that look for a real interactive shell
     FORCE_COLOR: '1',
+    // A GUI-launched Electron app inherits NO locale from the session
+    // (`launchctl getenv LANG` empty on macOS; desktop .desktop on Linux
+    // similar), so without this every child runs in the C/POSIX locale and
+    // any locale-sensitive tool decodes UTF-8 bytes as something else —
+    // mojibake painted into the grid and reproduced by copy. This terminal
+    // IS UTF-8 (xterm.js + Unicode11), so say so.
+    //
+    // LC_CTYPE only, deliberately: it is the character-encoding category.
+    // LC_ALL would also override collation/date formatting for every user
+    // who never exported a locale. A locale the user really set wins.
+    // (upstream dfeb2de, ported into buildSpawnEnv for our fork)
+    ...(process.platform === 'win32'
+      ? {}
+      : {
+          LANG: inherited.LANG ?? 'en_US.UTF-8',
+          LC_CTYPE: inherited.LC_ALL ?? inherited.LC_CTYPE ?? inherited.LANG ?? 'en_US.UTF-8',
+        }),
     // Per-agent hive identity (AGENT_ID, HIVE_ROOT, …) when provided.
     ...(extra ?? {}),
   } as Record<string, string>;
