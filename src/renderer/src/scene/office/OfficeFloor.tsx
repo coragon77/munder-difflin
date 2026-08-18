@@ -240,7 +240,8 @@ export function OfficeFloor() {
     pausedRef.current = paused;
     const ticker = appRef.current?.ticker;
     if (!ticker) return; // app.init() hasn't created it yet — init() applies it
-    if (paused) ticker.stop(); else ticker.start();
+    if (paused) ticker.stop();
+    else ticker.start();
   }, [paused]);
 
   useEffect(() => {

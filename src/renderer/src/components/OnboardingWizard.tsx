@@ -163,9 +163,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   // #140's normalizeHiveHome()/expandTilde() were built to absorb: it is expanded
   // at the config-write boundary AND at ensureHarnessHome's mkdir, so every
   // downstream reader still sees one absolute path. No new IPC surface.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run-once default suggestion on first mount
   useEffect(() => {
     if (!home) setHome('~/HarnessAgents');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pickHome = async () => {
