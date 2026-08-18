@@ -485,6 +485,17 @@ export function TasksKanban() {
 // assignee. Everything else (the full contract, deps, controls) lives in the
 // detail view a click away: a kanban card can carry a title at most.
 
+/** Shared layout rule for the card's right-edge markers/controls: in-flow in
+ *  the card row, right side, vertically centered, and the title/notes column
+ *  shrinks so text flows around it. The '?' marker and the pause toggle BOTH
+ *  read this — one position rule, so the two can never disagree (card agent-
+ *  tasks-tab-render-the-pau-2026-08-18). */
+const CARD_RIGHT_SLOT = {
+  alignSelf: 'center',
+  marginRight: 6,
+  flexShrink: 0,
+} as const;
+
 function TaskCard({
   task,
   accent,
@@ -501,7 +512,18 @@ function TaskCard({
   onTogglePaused?: () => void;
 }) {
   return (
-    <div style={{ position: 'relative', display: 'flex' }}>
+    // The card's visual chrome (paper + ring) lives on the wrapper so the
+    // pause toggle can sit IN-FLOW beside the open-button as a sibling — the
+    // same right-slot treatment as the '?' marker (was: an absolute overlay
+    // pinned top-right that the title flowed under, not around).
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'stretch',
+        background: task.paused ? 'var(--cth-cream-200)' : 'var(--cth-paper-100)',
+        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+      }}
+    >
       <button
         onClick={onOpen}
         title="open task details"
@@ -515,8 +537,7 @@ function TaskCard({
           border: 'none',
           cursor: 'pointer',
           textAlign: 'left',
-          background: task.paused ? 'var(--cth-cream-200)' : 'var(--cth-paper-100)',
-          boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+          background: 'transparent',
         }}
       >
         <span
@@ -582,9 +603,7 @@ function TaskCard({
           <span
             title="waiting on YOUR answer — see the ASK ME tab"
             style={{
-              alignSelf: 'center',
-              marginRight: 6,
-              flexShrink: 0,
+              ...CARD_RIGHT_SLOT,
               fontFamily: 'var(--cth-font-display)',
               fontSize: 10,
               padding: '2px 5px 1px',
@@ -606,9 +625,7 @@ function TaskCard({
               : 'put on hold — reference-only card, stops counting toward the standup'
           }
           style={{
-            position: 'absolute',
-            top: 3,
-            right: 3,
+            ...CARD_RIGHT_SLOT,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
