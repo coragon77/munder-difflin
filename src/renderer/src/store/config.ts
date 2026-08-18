@@ -420,6 +420,17 @@ export function buildSpawnCommand(
   provider: AgentProvider = inferAgentProvider(config.defaultCommand),
 ): string {
   const preset = providerPreset(provider);
+  // Stale-dialect guard (deputy card god-pi-switch-2026-08-18): a model id
+  // from ANOTHER provider's dialect — a claude-* godModel surviving a god
+  // engine switch — is stale config, never intent: `pi --model claude-opus-5`
+  // dies at boot. Fall back to the target provider's recommended
+  // orchestrator model, else the CLI's own default (no flag). Bare `claude-*`
+  // ids only exist in the claude dialect (pi spells them `anthropic/claude-*`),
+  // so the prefix test has no false positives.
+  let effectiveModel = model;
+  if (model && provider !== 'claude' && /^claude-/.test(model.trim())) {
+    effectiveModel = preset.recommendedOrchestratorModel;
+  }
   // Claude keeps the user's configured defaultCommand; custom falls back to it
   // too; every other provider (codex, grok, kimi, agy) uses its preset binary so the app
   // works even without Claude installed.
@@ -430,10 +441,10 @@ export function buildSpawnCommand(
         ? config.defaultCommand || ''
         : preset.defaultCommand;
   let cmd = base;
-  if (preset.supportsModel && model && preset.modelFlag) {
+  if (preset.supportsModel && effectiveModel && preset.modelFlag) {
     // Quote model values that contain whitespace (agy labels like
     // "Gemini 3.1 Pro (High)") so the command tokenizer keeps them one arg.
-    const m = /\s/.test(model) ? `"${model}"` : model;
+    const m = /\s/.test(effectiveModel) ? `"${effectiveModel}"` : effectiveModel;
     cmd = `${cmd} ${preset.modelFlag} ${m}`;
   }
   // Permission mode: see the doc comment above — the flag rides ARGV via

@@ -271,6 +271,10 @@ test('god co-terminal passes an explicit path token straight through', () => {
   withTempXdg((cfgPath) => {
     writeFileSync(cfgPath, JSON.stringify({ defaultCommand: '/opt/engines/claude' }));
     // resolveCommand's own contract: path-like tokens come back untouched.
+    // (god-pi-switch-2026-08-18): the engine now resolves from config
+    // godProvider (absent → claude), so a claude-at-a-path defaultCommand gets
+    // the SAME unattended-orchestrator flags as bare `claude` — the old
+    // parts[0]-sniff sent a path-form claude to the satellite naked.
     const seen = [];
     const { file, args } = godCommand((c) => {
       seen.push(c);
@@ -278,7 +282,7 @@ test('god co-terminal passes an explicit path token straight through', () => {
     });
     assert.deepEqual(seen, ['/opt/engines/claude']);
     assert.equal(file, '/opt/engines/claude');
-    assert.deepEqual(args, [], 'a non-claude first token gets no permission-mode argv');
+    assert.deepEqual(args, ['--permission-mode', 'auto', '--disallowedTools', 'AskUserQuestion']);
   });
 });
 

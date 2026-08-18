@@ -125,3 +125,4 @@ test/actionable-cards.test.cjs
 test/floor-status-sync.test.cjs
 test/orphan-sweep.test.cjs
 test/hidden-helpers.test.cjs
+test/god-pi-switch.test.cjs
