@@ -46,6 +46,11 @@ const REMOTE_CONTROL_SETTLE_MS = 1500;
 // PreToolUse/Stop refreshes status on the next event. Checked on QUIESCE_POLL_MS.
 const QUIESCE_IDLE_MS = 12000;
 const QUIESCE_POLL_MS = 4000;
+// Upper bound on how long a single tool may hold the quiesce off: bash runs,
+// subagents and monitors legitimately run minutes, but a bridge that dies
+// mid-tool must not pin its agent 'working' forever — after this the quiesce
+// treats the in-flight marker as stale and drifts the agent idle as before.
+const INFLIGHT_TOOL_STALE_MS = 30 * 60_000;
 // After a god/agent spawn, hold off the inbox-wake + queue-drain typers for this
 // long while the readiness handshake + provider-specific boot sequence runs.
 const BOOT_GRACE_MS = 35_000;
@@ -300,6 +305,15 @@ export function useHive(config: HarnessConfig | null): void {
   // busy agent with a quiet pty (pi's long tool/subagent runs print nothing)
   // is never flipped idle while its bridge keeps reporting real work.
   const lastHookEventAt = useRef<Record<string, number>>({});
+  // PreToolUse → (tool runs) → PostToolUse: while a tool is IN FLIGHT the agent
+  // may legitimately emit nothing for the tool's whole duration — a pi agent's
+  // pty prints nothing during a tool run and its hook plane goes quiet between
+  // the pair (verified live: gaps of 121s–5166s mid-work, card
+  // agent-floor-status-out-of-sync-2026-08-18). The quiesce fallback (2e)
+  // consults this so a long tool is not misread as a dead turn.
+  // Cleared on PostToolUse and on a genuine Stop; aged out by staleness so a
+  // bridge that dies mid-tool still eventually drains.
+  const inflightToolAt = useRef<Record<string, number>>({});
 
   // 1) Bootstrap the god agent (source of truth = live PTYs, to dodge restarts).
   // biome-ignore lint/correctness/useExhaustiveDependencies: spawn-once effect — only onboarding-complete + harnessHome may (re)trigger; godProvider/godModel/godRemoteControl are captured at spawn time by design
@@ -453,6 +467,7 @@ export function useHive(config: HarnessConfig | null): void {
         if (!breakerArmed)
           updateAgent(e.agentId, { status: 'working', action: 'resumed', carrying: undefined });
       } else if (e.event === 'PreToolUse' && e.tool) {
+        inflightToolAt.current[e.agentId] = Date.now();
         const m = stationForTool(e.tool);
         if (!breakerArmed)
           updateAgent(e.agentId, {
@@ -463,6 +478,9 @@ export function useHive(config: HarnessConfig | null): void {
           });
         useStore.getState().bumpToolCount(e.agentId); // usage proxy for the command center
       } else if (e.event === 'PostToolUse' || e.event === 'UserPromptSubmit') {
+        // A tool just finished — the in-flight marker (set by PreToolUse) is
+        // consumed here; UserPromptSubmit clears any stale carry-over too.
+        delete inflightToolAt.current[e.agentId];
         // A turn is in progress (prompt submitted / tool just finished) — keep
         // it working so it doesn't flicker idle between tool calls.
         if (!breakerArmed) updateAgent(e.agentId, { status: 'working' });
@@ -477,6 +495,9 @@ export function useHive(config: HarnessConfig | null): void {
         if (!breakerArmed)
           updateAgent(e.agentId, { status: 'idle', action: 'idle', carrying: undefined });
       } else if (e.event === 'Stop' || e.event === 'SubagentStop') {
+        // Turn over — no tool is in flight anymore (the quiesce marker ages
+        // out here even if PostToolUse was missed).
+        delete inflightToolAt.current[e.agentId];
         // A blocked Stop means the agent is being re-engaged to process its
         // inbox — it's NOT idle, so keep it working until it genuinely stops.
         if (e.blocked) {
@@ -648,10 +669,12 @@ export function useHive(config: HarnessConfig | null): void {
   //     backgrounded god gets none. This is the floor-wide, provider-agnostic backstop:
   //     it reads each live PTY's lastOutputAt (already tracked in the main process) and
   //     flips any 'working' agent quiet for QUIESCE_IDLE_MS to idle so the nudge can
-  //     drain it. Safe because a genuinely-working agent keeps emitting bytes OR hook
-  //     events — the check below requires BOTH quiet, because a pi agent in a long
-  //     tool/subagent run posts Pre/PostToolUse steadily while its pty prints nothing
-  //     (card agent-hold-pi-provider-agents--2026-08-18); a false idle self-corrects
+  //     drain it. Safe because a genuinely-working agent keeps emitting bytes OR
+  //     hook events — the check below requires BOTH quiet (and additionally
+  //     skips agents with a tool in flight, whose pair brackets can be minutes
+  //     apart), because a pi agent in a long tool/subagent run posts Pre/PostToolUse
+  //     steadily while its pty prints nothing (card
+  //     agent-hold-pi-provider-agents--2026-08-18); a false idle self-corrects
   //     on the next hook event.
   useEffect(() => {
     if (!config?.onboardingComplete) return;
@@ -673,6 +696,13 @@ export function useHive(config: HarnessConfig | null): void {
         // the pty is silent (see the effect header).
         const lastHook = lastHookEventAt.current[a.id] ?? 0;
         if (lastHook > 0 && now - lastHook <= QUIESCE_IDLE_MS) continue;
+        // A tool IN FLIGHT (PreToolUse without its PostToolUse yet) also wins:
+        // a long tool run legitimately emits nothing on either plane for its
+        // whole duration — pi's pty is fully silent during tools (verified:
+        // 25s+ dead air in a live probe) and hook events only bracket the pair.
+        // Stale after 30min so a bridge that dies mid-tool still drains.
+        const inflight = inflightToolAt.current[a.id];
+        if (inflight && now - inflight <= INFLIGHT_TOOL_STALE_MS) continue;
         const last = lastOut[a.ptyId];
         if (typeof last === 'number' && last > 0 && now - last > QUIESCE_IDLE_MS) {
           updateAgent(a.id, { status: 'idle', action: 'idle', carrying: undefined });

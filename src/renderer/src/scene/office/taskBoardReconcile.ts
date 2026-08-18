@@ -35,3 +35,19 @@ export function reconcileTaskBoard(
     );
   return matchesLedger ? current : expected;
 }
+
+/**
+ * May this actor be CHOREOGRAPHED for a card move (walk to the boards), or
+ * must the board update instantly instead?
+ *
+ * Only free-to-move agents walk: a busy one (mid-turn, thinking, compacting,
+ * breaker-pinned, or waiting on the human at the door) must not leave its desk
+ * for theatre — its body belongs to its work. Without this guard a dispatch
+ * fan-out marches god (pinner of every new card) plus every assignee to the
+ * board stands at once, and the floor reads "working agents standing around
+ * the top of the map while every desk sits empty" (card
+ * agent-floor-status-out-of-sync-2026-08-18).
+ */
+export function canChoreograph(status: string | undefined): boolean {
+  return status === 'idle' || status === 'waiting' || status === 'success';
+}

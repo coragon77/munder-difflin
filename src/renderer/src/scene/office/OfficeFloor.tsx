@@ -20,6 +20,7 @@ import { colors } from '@/design/tokens';
 import { loadTheme, resolveThemeMap, themeTilesetUrls } from './themeLoader';
 import { installContextLossRecovery } from './glRecovery';
 import {
+  canChoreograph,
   reconcileTaskBoard,
   taskBoardFromLedger,
   TASK_BOARD_RESYNC_EVENT,
@@ -1520,8 +1521,17 @@ export function OfficeFloor() {
                   thought: 'this one is stuck 😤',
                 };
             }
+            // The actor's own state wins over the theatre: a busy agent
+            // (working, thinking, breaker-pinned, waiting on the human) keeps
+            // its body at its desk and the card updates instantly. Otherwise a
+            // dispatch fan-out walks god (pinner of every new card) plus all
+            // assignees to the board stands together — the "everyone standing
+            // at the top, desks empty" regression (card
+            // agent-floor-status-out-of-sync-2026-08-18).
+            const actorFree = mv ? canChoreograph(agentById(mv.actorId)?.status) : false;
             if (
               mv &&
+              actorFree &&
               !busyActors.has(mv.actorId) &&
               !moveQueue.some((q) => q.actorId === mv!.actorId)
             ) {
