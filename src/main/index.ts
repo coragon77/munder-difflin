@@ -4491,6 +4491,19 @@ ipcMain.handle('hive:deleteHumanTask', (_evt, id: unknown) => {
     ? { ok: true }
     : { ok: false, error: "not a human-origin 'todo' card" };
 });
+// Targeted status move (card agent-tasks-tab-ui-strips-card-2026-08-18): the
+// tasks tab's move button must NOT whole-file overwrite the ledger from its
+// stale copy — main re-reads tasks.json under the CLI's lock and patches one
+// card, so unknown fields survive everywhere and concurrent writers coexist.
+ipcMain.handle('hive:updateTaskStatus', (_evt, id: unknown, status: unknown) => {
+  if (typeof id !== 'string' || !id) return { ok: false, error: 'invalid id' };
+  if (!['todo', 'doing', 'blocked', 'done'].includes(status as string))
+    return { ok: false, error: 'invalid status' };
+  if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
+  return hive.updateTaskStatus(id, status as HiveTask['status'])
+    ? { ok: true }
+    : { ok: false, error: 'card not found or ledger busy — re-poll' };
+});
 ipcMain.handle('hive:setArchived', (_evt, id: unknown, archived: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
   if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };

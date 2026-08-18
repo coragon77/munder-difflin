@@ -1247,6 +1247,14 @@ const api = {
   /** Delete a human-origin card — only while it is still 'todo'. */
   hiveDeleteHumanTask: (id: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:deleteHumanTask', id),
+  /** Move ONE card (targeted read-modify-write under the CLI's ledger lock —
+   *  never a renderer whole-file overwrite; unknown fields survive, card
+   *  agent-tasks-tab-ui-strips-card-2026-08-18). */
+  hiveUpdateTaskStatus: (
+    id: string,
+    status: 'todo' | 'doing' | 'blocked' | 'done',
+  ): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('hive:updateTaskStatus', id, status),
 
   // ─── Scheduled missions (recurring auto-dispatch) ──────────────────────────
   listMissions: (): Promise<ScheduledMission[]> => ipcRenderer.invoke('missions:list'),

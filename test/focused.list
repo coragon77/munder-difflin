@@ -104,3 +104,4 @@ test/graph-refresh.test.cjs
 test/recall-cardsession-hold.test.cjs
 test/worktree-graph-provision.test.cjs
 test/intern-hire-fire.test.cjs
+test/tasks-tab-field-survival.test.cjs

@@ -31,6 +31,7 @@ import {
   copyFileSync,
   chmodSync,
   cpSync,
+  unlinkSync,
 } from 'node:fs';
 import { join, dirname, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
@@ -2211,7 +2212,7 @@ export class HiveManager {
     return task;
   }
 
-  /** The human deletes their OWN card — only while it is an untouched todo
+  /** Human deletes their OWN card — only while it is an untouched todo
    *  (origin 'human' AND status 'todo'). God-created cards and anything the
    *  hive already picked up survive. Read-modify-write at action time. */
   deleteHumanTask(id: string): boolean {
@@ -2220,6 +2221,53 @@ export class HiveManager {
     if (!card || card.origin !== 'human' || card.status !== 'todo') return false;
     this.writeTasks(data.tasks.filter((t) => t?.id !== id));
     return true;
+  }
+
+  /** Flip ONE card's status from a FRESH read (card agent-tasks-tab-ui-
+   *  strips-card-2026-08-18): the tasks tab's move button used to rewrite the
+   *  WHOLE ledger from a sanitized 5s-stale renderer copy — stripping unknown
+   *  fields (sessionId, slack routing, …) off every card AND reverting any
+   *  concurrent CLI flip. This is the addHumanTask pattern applied to moves:
+   *  read the ledger NOW, patch the one card, write it back — under the same
+   *  tasks.json.lock bin/hive-card takes (O_EXCL + 10s stale takeover), so a
+   *  CLI writer mid-flight is never clobbered and is never clobbered by us.
+   *  Returns false when the card vanished or the lock is contended (caller
+   *  re-polls; the optimistic UI flip reverts via the next poll either way). */
+  updateTaskStatus(id: string, status: HiveTask['status']): boolean {
+    const root = this.root();
+    if (!root) return false;
+    const lockPath = join(root, 'tasks.json.lock');
+    for (let i = 0; i < 200; i++) {
+      // Stale takeover — mirrors bin/hive-card's withLock (crashed holder).
+      try {
+        const st = statSync(lockPath);
+        if (Date.now() - st.mtimeMs > 10_000) unlinkSync(lockPath);
+      } catch {
+        /* no lock file yet */
+      }
+      try {
+        writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+      } catch {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25); // sleep 25ms
+        continue;
+      }
+      try {
+        const data = this.tasks() as { tasks: HiveTask[] };
+        const card = data.tasks.find((t) => t?.id === id);
+        if (!card) return false; // vanished under us — never mint
+        if (card.status === status) return true; // no write, no commit
+        card.status = status;
+        this.writeTasks(data.tasks);
+        return true;
+      } finally {
+        try {
+          unlinkSync(lockPath);
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+    return false; // lock stayed contended ~5s — caller re-polls
   }
   memory(id: string): string {
     const p = join(this.agentDir(id), 'memory.md');
