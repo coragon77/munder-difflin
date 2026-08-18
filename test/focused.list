@@ -109,3 +109,4 @@ test/restart-window.test.cjs
 test/command-center-effort.test.cjs
 test/tasks-tab-field-survival.test.cjs
 test/task-board-reconcile.test.cjs
+test/standup-todo-alive.test.cjs

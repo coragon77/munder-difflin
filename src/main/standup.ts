@@ -18,14 +18,25 @@
  *    line and the mail body god actually reads.
  *
  * The quiet-floor skip (`skipWhenFloorQuiet`, 13c6f7d) is upstream of all of
- * this and unchanged: a quiet floor never reaches the clerk.
+ *  this and unchanged in MECHANISM: a quiet floor never reaches the clerk.
+ *  What "quiet" MEANS changed (card agent-every-non-paused-todo-ke-2026-08-
+ *  18): any NON-PAUSED todo keeps the floor non-quiet — the backlog IS what
+ *  the standup watches. Reference-only cards opt out via the per-card paused
+ *  flag, and the 'todo-unattended' anomaly below (age-gated, dep-skipping,
+ *  deduped per card id by the caller) is what the standup reports for the
+ *  todos that kept it alive.
  */
 
 /** Where a due ops-standup goes. */
 export type StandupTarget = 'clerk' | 'god';
 
-/** The four escalation conditions. Anything else is the floor working. */
-export type AnomalyKind = 'stalled' | 'blocked-unowned' | 'breaker-armed' | 'over-budget';
+/** The escalation conditions. Anything else is the floor working. */
+export type AnomalyKind =
+  | 'stalled'
+  | 'blocked-unowned'
+  | 'breaker-armed'
+  | 'over-budget'
+  | 'todo-unattended';
 
 export interface Anomaly {
   kind: AnomalyKind;
@@ -52,6 +63,16 @@ export interface StandupTask {
   title?: string;
   status?: string;
   assignee?: string;
+  /** Deps that must be DONE before this card is actionable — a dep-waiting
+   *  todo is correctly waiting, not unattended. */
+  dependsOn?: string[];
+  /** Age-gate input: only todos older than STALLED_SEC escalate as
+   *  todo-unattended — younger ones are presumed mid-dispatch. Missing
+   *  counts (cannot prove young; fail toward surfacing). */
+  createdAt?: string;
+  /** Reference-only opt-out: a paused todo neither keeps the floor non-quiet
+   *  nor escalates. Absent = not paused. */
+  paused?: boolean;
 }
 
 export interface StandupBudgets {
@@ -61,8 +82,28 @@ export interface StandupBudgets {
 
 /** Idle time that turns "working" into "stalled" for an agent holding a doing
  *  card: half the hourly standup interval, so a stall is caught on the first
- *  standup after it starts rather than the second. */
+ *  standup after it starts rather than the second. Also the age gate for
+ *  todo-unattended — same "presumed mid-dispatch" horizon. */
 export const STALLED_SEC = 1800;
+
+/** The quiet-floor LEDGER half (card agent-every-non-paused-todo-ke-2026-08-
+ *  18): a ledger with any card in 'doing'/'blocked' OR any NON-PAUSED 'todo'
+ *  is NOT quiet — every todo counts, assigned or not (an assigned todo nobody
+ *  works is the dispatch-that-never-happened case). Paused (on-hold,
+ *  reference-only) todos opt out. Unparseable input ⇒ NOT quiet: the caller
+ *  fails toward firing, never silently skipping a due dispatch. */
+export function ledgerDisqualifiesQuiet(tasks: unknown): boolean {
+  const list = (tasks as { tasks?: unknown })?.tasks;
+  if (!Array.isArray(list)) return true; // cannot prove quiet — fire
+  return list.some((x) => {
+    if (!x || typeof x !== 'object') return true; // unparseable card — fire
+    const s = (x as { status?: unknown }).status;
+    if (s === 'doing' || s === 'blocked') return true;
+    if (s === 'todo') return (x as { paused?: unknown }).paused !== true;
+    if (s === 'done') return false;
+    return true; // unknown status — cannot prove quiet
+  });
+}
 
 /** Cheap by design — the whole point of the card. */
 export const STANDUP_CLERK_MODEL = 'claude-haiku-4-5-20251001';
@@ -88,6 +129,12 @@ export function detectAnomalies(
   tasks: unknown,
   budgets: StandupBudgets,
   stalledSec = STALLED_SEC,
+  /** Card ids escalated as todo-unattended at the PREVIOUS standup (amendment
+   *  A: once-per-card dedup, so an old backlog escalates ONE mail not hourly
+   *  ones). Restricted to todo-unattended — stalled/blocked-unowned/breaker/
+   *  over-budget stay hourly by design (repetition is a feature for rare
+   *  urgent states). Persisted by the caller on the mission config. */
+  escalatedBefore: string[] = [],
 ): Anomaly[] {
   const agents = asArray<FleetAgent>((fleet as { agents?: unknown })?.agents).filter(
     (a) => a && typeof a.id === 'string',
@@ -134,6 +181,51 @@ export function detectAnomalies(
         detail: `card ${c.id}${c.title ? ` ("${c.title}")` : ''} is blocked with no assignee`,
       });
     }
+  }
+
+  // (2b) todo-unattended (card agent-every-non-paused-todo-ke-2026-08-18): a
+  // non-paused todo that keeps the floor alive — the backlog the standup now
+  // watches. ONE kind for BOTH shapes: unassigned AND assigned-but-idle (the
+  // assignee's last activity is older than the gate, same ingredients as the
+  // stalled block). Skips: paused cards (reference-only opt-out), todos with
+  // unmet dependsOn (dep-waiting is correct waiting; the dependency card
+  // itself counts upstream), todos younger than the gate (presumed
+  // mid-dispatch), and — via escalatedBefore — cards already escalated at the
+  // previous standup (once-per-card, no hourly nag).
+  const statusById = new Map(cards.map((c) => [c.id, c.status ?? 'todo']));
+  const escalated = new Set(escalatedBefore);
+  for (const c of cards) {
+    if (c.status !== 'todo' || c.paused === true) continue;
+    if (escalated.has(c.id)) continue;
+    // Unmet dependency: any dep that is not done keeps this card correctly
+    // waiting. Unknown dep ids count as unmet (fail toward quiet here — a
+    // wrong "unattended" would nag god hourly for a well-behaved card).
+    if ((c.dependsOn ?? []).some((d) => statusById.get(d) !== 'done')) continue;
+    // Age gate: younger than the stall horizon = presumed mid-dispatch.
+    const created = typeof c.createdAt === 'string' ? Date.parse(c.createdAt) : NaN;
+    if (!Number.isNaN(created) && Date.now() - created < stalledSec * 1000) continue;
+    const owner = c.assignee?.trim();
+    if (owner) {
+      const a = byId.get(owner);
+      if (a) {
+        const idle = a.lastActiveSecAgo;
+        // Owner active (or no telemetry yet / waiting on background work) →
+        // dispatch is plausibly happening; not unattended.
+        if (typeof idle !== 'number' || idle <= stalledSec) continue;
+        if ((a.pendingBackgroundWork ?? 0) > 0) continue;
+        out.push({
+          kind: 'todo-unattended',
+          subject: c.id,
+          detail: `todo ${c.id}${c.title ? ` ("${c.title}")` : ''} assigned to ${a.name ?? a.id} but idle ${mins(idle)} — dispatch never started`,
+        });
+        continue;
+      }
+    }
+    out.push({
+      kind: 'todo-unattended',
+      subject: c.id,
+      detail: `todo ${c.id}${c.title ? ` ("${c.title}")` : ''} has no active owner`,
+    });
   }
 
   // (3) breaker-armed — anything above 'healthy' means the breaker already acted.
