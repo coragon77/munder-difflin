@@ -34,7 +34,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const loadTs = require('./load-ts.cjs');
 
-const { HiveManager } = loadTs('src/main/hive.ts');
+const { HiveManager, hiveRootAgentsMd } = loadTs('src/main/hive.ts');
 
 // TS `private` is compile-time only — erased by transpile, reachable at runtime.
 const injectedPrompt = HiveManager.prototype['injectedPrompt'];
@@ -231,6 +231,110 @@ test('godLine carries the ROUTING-MISMATCH CHALLENGE rule', () => {
   assert.ok(/ASK in plain prose/.test(p), 'the mismatch response is a plain question');
   assert.ok(/instead of silently complying|rather than silently complying/.test(p));
   assert.ok(/Stanley/.test(p) || /instead\?/.test(p), 'shows the ask shape (name the right agent)');
+});
+
+// ── BREADTH-FIRST FLOOR SATURATION (card agent-anchor-breadth-first-flo-2026-08-18)
+//
+// Operator directive 2026-08-18: floorMaxAgents is a TARGET, not a ceiling —
+// fill free seats in one pass (idle floor agent → recalled vacationer →
+// interns for the surplus), release aggressively (reclaim, never queue), and
+// saturate ONLY the actionable pool — blocked/paused cards are the operator's
+// decisions, not idle capacity. Amendment 1 names the three anti-patterns god
+// committed hours before the directive; amendment 2 keeps the parking gate
+// un-weakened; amendment 3 is the guard on the fill rule.
+
+test('godLine carries the BREADTH-FIRST FLOOR SATURATION rule', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/BREADTH-FIRST FLOOR SATURATION:/.test(p), 'the rule must be named');
+  assert.ok(/TARGET, not a ceiling/.test(p), 'the cap is reframed as a target');
+  assert.ok(/FILL THE FREE SEATS/.test(p), 'fill, immediately');
+  assert.ok(/in ONE pass/.test(p), 'one pass, not one agent at a time');
+  assert.ok(/FAILURE of orchestration/.test(p), 'an under-filled floor is a failure');
+  assert.ok(
+    /free seats > 0.{0,200}unowned.{0,40}actionable|unowned.{0,40}actionable.{0,80}free seats/.test(
+      p,
+    ),
+    'the standup anomaly is stated: free seats beside unowned actionable cards',
+  );
+  // stale FLOOR CAP tail contradicted the reclaim duty
+  assert.ok(
+    !/queue the card until one opens/.test(p),
+    'FLOOR CAP no longer tells god to queue for a seat',
+  );
+});
+
+test('saturation names the three anti-patterns and the only legitimate hold', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/RECALL-POOL-AS-CEILING/.test(p), 'anti-pattern 1: recall pool is not the ceiling');
+  assert.ok(
+    /SERIALIZING-FOR-CONFLICT-AVOIDANCE/.test(p),
+    'anti-pattern 2: same-region edits are a rebase, not a dependency',
+  );
+  assert.ok(/BEST-OWNER HOARDING/.test(p), 'anti-pattern 3: no holding cards for specialists');
+  assert.ok(
+    /ONLY legitimate hold is a REAL ticket dependency/.test(p),
+    'holds require a real dependency',
+  );
+  assert.ok(
+    /are not dependencies/.test(p),
+    '"might conflict" / "X would do it better" are refused as holds',
+  );
+});
+
+test('saturation release half: RECLAIM a seat, parking gate un-weakened', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/SEAT RECLAIM:/.test(p), 'the reclaim rule must be named');
+  assert.ok(/do NOT queue and wait/.test(p), 'a needed seat is reclaimed, never queued for');
+  assert.ok(
+    /fire an intern whose whole engagement is verifiably done/.test(p),
+    'reclaim step 1: fire done interns first',
+  );
+  assert.ok(/park an idle human-created hire/.test(p), 'reclaim step 2: park idle hires');
+  assert.ok(
+    /ping the idle candidates and park on confirmation/.test(p),
+    'reclaim step 3: no evidence → ping first',
+  );
+  assert.ok(
+    /idle time alone is never sufficient/.test(p),
+    'the parking gate is restated, not weakened',
+  );
+  assert.ok(/PINNED/.test(p) && /NEVER reclaimed/.test(p), 'pinned agents + god are exempt');
+  assert.ok(
+    /PROACTIVELY at every standup/.test(p),
+    'release happens at standups, not only under pressure',
+  );
+});
+
+test('saturation guard: ACTIONABLE pool only, blocked/paused are decisions', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/SATURATION APPLIES TO THE ACTIONABLE POOL ONLY/.test(p), 'the guard is named');
+  assert.ok(
+    /ACTIONABLE POOL ONLY:[\s\S]{0,600}never un-block, un-pause/.test(p),
+    'the guard rides the fill rule and forbids revisiting operator decisions',
+  );
+  assert.ok(
+    /SAY SO in one line and wait for the go|say so in one line and wait for the go/i.test(p),
+    'a maybe-actionable card goes to the operator, not the floor',
+  );
+  assert.ok(
+    /only blocked\/paused cards left is CORRECT/.test(p),
+    'an empty-looking floor of blocked/paused cards needs no action',
+  );
+});
+
+test('HIVE_ROOT_AGENTS_MD floor cap is a target and reclaims instead of queueing', () => {
+  const md = hiveRootAgentsMd(false);
+  assert.ok(/TARGET, not a ceiling/.test(md), 'the engine-neutral cap text reframes the cap');
+  assert.ok(
+    !/queue the card until one opens/.test(md),
+    'the root AGENTS.md no longer tells god to queue for a seat',
+  );
+  assert.ok(/RECLAIM/.test(md), 'reclaim-on-demand is stated');
+  assert.ok(
+    /parking gate.{0,80}un-weakened|un-weakened.{0,80}parking gate/i.test(md),
+    'the reclaim text defers to the parking gate',
+  );
+  assert.ok(/NOT saturation fuel/.test(md), 'blocked/paused cards are excluded from the fill pool');
 });
 
 test('godLine carries the PARALLEL-DISPATCH + FLOOR-CAP policy', () => {
