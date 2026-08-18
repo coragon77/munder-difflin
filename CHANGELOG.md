@@ -58,6 +58,12 @@ longer drift apart. Appearance only — no functional change.
   downsampling a 512px portrait.
 
 ### Fixed
+- **Restart-window watcher no longer reports "completed" on the checkout sha alone.** The
+  live app runs the built `out/main/index.js`, which a relaunch racing the merge left pre-merge
+  while the checkout already sat at the target (false "landed", 2026-08-18). The watcher now
+  rebuilds the live checkout after the merge and reports `completed` only once a fresh
+  `out/main/index.js` build of the merged tree exists; a failed or stale build reports `failed`
+  with the build error through the existing ABORT channel.
 - `docs/llms.txt` advertised 0.4.1 two releases after the fact. `tools/check-release-links.cjs`
   now checks it, so it cannot silently drift again.
 - README version badge and status note had been stuck at 0.4.0 since two releases ago.

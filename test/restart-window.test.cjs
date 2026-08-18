@@ -67,16 +67,21 @@ function setup(t) {
       env: { ...process.env, HIVE_ROOT: root, ...env },
       encoding: 'utf8',
     });
-  const run = (target) =>
+  const run = (target, env = {}) =>
     command(['run', target, '--repo', live], {
       HIVE_RESTART_WINDOW_DIRECT_RUN: '1',
       HIVE_RESTART_WINDOW_SKIP_WAIT: '1',
+      ...env,
     });
   const state = () => JSON.parse(fs.readFileSync(path.join(root, 'restart-window.json'), 'utf8'));
   const log = () => fs.readFileSync(path.join(root, 'restart-merge.log'), 'utf8');
 
   return { root, cli, live, worker, remote, command, run, state, log };
 }
+
+// Test seam for the watcher's build step: stand in for `npm run build` by
+// producing exactly the artifact the completion verdict requires.
+const BUILD_OK = "mkdir -p out/main && echo 'post-merge bundle' > out/main/index.js";
 
 test('ensureHive ships an executable hive-restart-window CLI', { skip: !POSIX }, (t) => {
   const s = setup(t);
@@ -107,22 +112,67 @@ test('stale target is refused loudly after the live checkout syncs to origin/mai
   assert.match(s.state().reason, new RegExp(`${staleTarget}.*origin/main ${originTip}`));
 });
 
-test('current target advances both origin/main and the live checkout', { skip: !POSIX }, (t) => {
-  const s = setup(t);
-
+// The 2026-08-18 incident shape: a target that is current on origin/main, a
+// clean live checkout, and a watcher whose completion verdict must depend on
+// the BUILT artifact, not the checkout sha. Shared by the build-gate tests.
+function landableTarget(s) {
   commit(s.worker, 'worker.txt', 'worker\n', 'worker landing');
   git(s.worker, 'push', 'origin', 'main');
   git(s.live, 'fetch', 'origin', 'main');
   git(s.live, 'switch', '-c', 'renderer-batch', 'origin/main');
   const target = commit(s.live, 'batch.txt', 'batch\n', 'renderer batch');
   git(s.live, 'switch', 'main');
+  return target;
+}
 
-  const r = s.run(target);
+test('current target advances both origin/main and the live checkout', { skip: !POSIX }, (t) => {
+  const s = setup(t);
+  const target = landableTarget(s);
+
+  const r = s.run(target, { HIVE_RESTART_WINDOW_BUILD_CMD: BUILD_OK });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(git(s.live, 'rev-parse', 'HEAD'), target);
   assert.equal(git(s.remote, 'rev-parse', 'refs/heads/main'), target);
   assert.equal(s.state().status, 'completed');
   assert.match(s.log(), /completed: live checkout and origin\/main at/);
+  assert.ok(
+    fs.existsSync(path.join(s.live, 'out', 'main', 'index.js')),
+    'completion certifies a built artifact, not just the checkout sha',
+  );
+  assert.match(s.log(), /live build verified: out\/main\/index\.js rebuilt/);
+});
+
+test('a pre-merge build is never called complete — stale out/main/index.js fails loudly', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  const target = landableTarget(s);
+
+  // The live checkout already ran a build: out/main/index.js predates the merge.
+  fs.mkdirSync(path.join(s.live, 'out', 'main'), { recursive: true });
+  fs.writeFileSync(path.join(s.live, 'out', 'main', 'index.js'), 'pre-merge build\n', 'utf8');
+
+  // A build step that "succeeds" without rebuilding the artifact is the false
+  // "landed" report of 2026-08-18 (checkout at target, bundle pre-merge).
+  const r = s.run(target, { HIVE_RESTART_WINDOW_BUILD_CMD: 'true' });
+  assert.notEqual(r.status, 0, 'a stale build must never be reported complete');
+  assert.equal(git(s.live, 'rev-parse', 'HEAD'), target, 'the merge itself still landed');
+  assert.equal(s.state().status, 'failed');
+  assert.match(s.state().reason, /out\/main\/index\.js was not rebuilt after the merge/);
+  assert.match(s.log(), /ABORT: out\/main\/index\.js was not rebuilt after the merge/);
+});
+
+test('a failed build step reports failed with the build error, never completed', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  const target = landableTarget(s);
+
+  const r = s.run(target, { HIVE_RESTART_WINDOW_BUILD_CMD: 'echo bundle-boom >&2; exit 3' });
+  assert.notEqual(r.status, 0);
+  assert.equal(s.state().status, 'failed');
+  assert.match(s.state().reason, /live build failed \(exit 3\): bundle-boom/);
+  assert.match(s.log(), /ABORT: live build failed/);
 });
 
 test('dirty live checkout aborts without moving main or origin/main', { skip: !POSIX }, (t) => {
