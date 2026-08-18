@@ -2,14 +2,19 @@
 /**
  * Steer delivery gate (card agent-operator-steers-for-pi-a-2026-08-18):
  * takeSteer() is DESTRUCTIVE — a steer consumed at a hook boundary is gone
- * from the queue and rides the socket response as additionalContext. Bridges
- * that never read that response (opencode plugin, qwen/crush proxy) would
- * silently DROP every steer. So HookServer must only consume for providers
+ * from the queue and rides the socket response as additionalContext. A
+ * provider with NO delivering bridge would silently DROP every steer. So
+ * HookServer must only consume for providers
  * whose bridge reads the response and injects the context; for every other
  * provider the steer STAYS QUEUED (visible via pendingSteers) and the loss is
  * surfaced LOUDLY — desktop notify + hive log, once per episode.
  *
  * Run with `node --test test/steer-delivery-gate.test.cjs`.
+ *
+ * Card agent-opencode-qwen-crush-agen-2026-08-18 widened the delivering set:
+ * the opencode plugin (system.transform injection) and the qwen/crush proxy
+ * sidecar (next-request injection) now read the response too; only providers
+ * with NO delivering bridge (kimi/copilot/custom) keep steers queued + loud.
  */
 
 const test = require('node:test');
@@ -83,14 +88,16 @@ async function floor(t, agents) {
 
 const context = (res) => res?.hookSpecificOutput?.additionalContext ?? '';
 
-test('predicate: response-reading bridges deliver, fire-and-forget ones do not', () => {
+test('predicate: response-reading bridges deliver, bridgeless providers do not', () => {
   // Response readers: claude natively, codex/grok/agy shims read + translate,
-  // pi extension reads + injects via pi.sendMessage.
-  for (const p of ['claude', 'codex', 'grok', 'antigravity', 'pi']) {
+  // pi extension reads + injects via pi.sendMessage, the opencode plugin reads
+  // + injects via experimental.chat.system.transform, and the qwen/crush proxy
+  // sidecar reads + injects into the next upstream request.
+  for (const p of ['claude', 'codex', 'grok', 'antigravity', 'pi', 'opencode', 'qwen', 'crush']) {
     assert.equal(bridgeDeliversHookContext(p), true, `${p} reads the hook response`);
   }
-  // Fire-and-forget (or no bridge at all): consuming a steer would drop it.
-  for (const p of ['opencode', 'qwen', 'crush', 'kimi', 'copilot', 'custom', undefined]) {
+  // No bridge at all: consuming a steer would drop it.
+  for (const p of ['kimi', 'copilot', 'custom', undefined]) {
     assert.equal(bridgeDeliversHookContext(p), false, `${p} cannot receive a consumed steer`);
   }
 });
@@ -116,14 +123,14 @@ test('a steer for a response-reading agent is consumed and returned as context',
   );
 });
 
-test('a steer for a fire-and-forget agent is NOT consumed — it stays queued', async (t) => {
-  const { control, fire } = await floor(t, [{ id: 'oc-1', name: 'Ollie', provider: 'opencode' }]);
-  control.steer('oc-1', 'OPERATOR: stop the refactor.');
+test('a steer for a bridgeless agent is NOT consumed — it stays queued', async (t) => {
+  const { control, fire } = await floor(t, [{ id: 'cp-1', name: 'Coby', provider: 'copilot' }]);
+  control.steer('cp-1', 'OPERATOR: stop the refactor.');
 
-  const res = await fire('oc-1', 'PostToolUse', { tool_name: 'bash' });
-  assert.equal(context(res), '', 'nothing is handed to a bridge that never reads it');
+  const res = await fire('cp-1', 'PostToolUse', { tool_name: 'bash' });
+  assert.equal(context(res), '', 'nothing is handed to a provider with no delivering bridge');
   assert.equal(
-    control.snapshot('oc-1').pendingSteers,
+    control.snapshot('cp-1').pendingSteers,
     1,
     'the steer survives, visible in the queue',
   );
@@ -132,12 +139,12 @@ test('a steer for a fire-and-forget agent is NOT consumed — it stays queued', 
 test('the undeliverable steer is surfaced LOUDLY — once per episode', async (t) => {
   shown.length = 0;
   const { control, fire, logLines } = await floor(t, [
-    { id: 'qwen-1', name: 'Quinn', provider: 'qwen' },
+    { id: 'cp-2', name: 'Coby', provider: 'copilot' },
   ]);
-  control.steer('qwen-1', 'OPERATOR: circuit breaker — constrain.');
+  control.steer('cp-2', 'OPERATOR: circuit breaker — constrain.');
 
-  await fire('qwen-1', 'PostToolUse', { tool_name: 'shell' });
-  await fire('qwen-1', 'PostToolUse', { tool_name: 'shell' });
+  await fire('cp-2', 'PostToolUse', { tool_name: 'shell' });
+  await fire('cp-2', 'PostToolUse', { tool_name: 'shell' });
 
   const loud = shown.filter((n) =>
     /cannot receive.*steer|steer.*cannot/i.test(`${n.title} ${n.body}`),
@@ -145,22 +152,22 @@ test('the undeliverable steer is surfaced LOUDLY — once per episode', async (t
   assert.equal(loud.length, 1, 'one desktop notification per episode, not one per hook');
   const logged = logLines().filter((l) => l.kind === 'steer_undeliverable');
   assert.equal(logged.length, 1, 'a durable hive-log record names the agent');
-  assert.equal(logged[0].agentId, 'qwen-1');
+  assert.equal(logged[0].agentId, 'cp-2');
 });
 
 test('the loud episode clears once the queue drains (next steer notifies again)', async (t) => {
   shown.length = 0;
-  const { control, fire } = await floor(t, [{ id: 'oc-2', name: 'Ollie', provider: 'opencode' }]);
+  const { control, fire } = await floor(t, [{ id: 'cp-3', name: 'Coby', provider: 'copilot' }]);
 
-  control.steer('oc-2', 'first steer');
-  await fire('oc-2', 'PostToolUse', { tool_name: 'bash' });
-  control.clearSteers('oc-2'); // operator dropped the backlog
-  await fire('oc-2', 'PostToolUse', { tool_name: 'bash' }); // next hook sees the drain
-  control.steer('oc-2', 'second steer');
-  await fire('oc-2', 'PostToolUse', { tool_name: 'bash' });
+  control.steer('cp-3', 'first steer');
+  await fire('cp-3', 'PostToolUse', { tool_name: 'bash' });
+  control.clearSteers('cp-3'); // operator dropped the backlog
+  await fire('cp-3', 'PostToolUse', { tool_name: 'bash' }); // next hook sees the drain
+  control.steer('cp-3', 'second steer');
+  await fire('cp-3', 'PostToolUse', { tool_name: 'bash' });
 
   assert.equal(shown.length, 2, 'a fresh episode after the queue drained notifies again');
-  assert.equal(control.snapshot('oc-2').pendingSteers, 1);
+  assert.equal(control.snapshot('cp-3').pendingSteers, 1);
 });
 
 test('unknown agents (no registry entry) are treated as undeliverable, never consumed', async (t) => {

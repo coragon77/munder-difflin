@@ -49,12 +49,13 @@ export type AgentProvider =
  *               and `inboxDelivery` is how mail reaches it ('terminal' work-order
  *               handoff today; 'serve' reserved for a future HTTP push path). */
 export type BridgeDescriptor =
-  | { kind: 'hooks'; shim: 'agy' | 'codex' | 'pi' | 'opencode' | 'grok' }
+  | { kind: 'hooks'; shim: 'agy' | 'codex' | 'pi' | 'opencode' | 'grok'; deliversSteers?: boolean }
   | {
       kind: 'proxy';
       api: 'openai' | 'anthropic';
       baseUrlEnv: string;
       inboxDelivery: 'terminal' | 'serve';
+      deliversSteers?: boolean;
     };
 
 export interface AgentProviderPreset {
@@ -101,7 +102,14 @@ export interface AgentProviderPreset {
    *  `hookBridge`). Set explicitly only for PROXY-tier providers (qwen) that
    *  have no hook file to install; agy/codex leave it undefined and `bridgeOf`
    *  derives `{kind:'hooks'}` from their `hookBridge`. claude/custom leave it
-   *  undefined (no bridge). Prefer `bridgeOf(provider)` over reading this directly. */
+   *  undefined (no bridge). Prefer `bridgeOf(provider)` over reading this directly.
+   *
+   *  `deliversSteers` (card agent-opencode-qwen-crush-agen-2026-08-18):
+   *  whether this bridge READS the HookServer's socket response and injects
+   *  returned additionalContext (consumed operator steers) into the running
+   *  session — the capability `bridgeDeliversHookContext` exposes. Set true
+   *  ONLY when the shim/sidecar code actually performs the injection; a future
+   *  bridge defaults to false so it can never silently drop a consumed steer. */
   bridge?: BridgeDescriptor;
   /** The model the GOD orchestrator ("Michael") defaults to when this provider
    *  powers it — surfaced as the picker default and the advisory "give Michael a
@@ -335,6 +343,11 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
       api: 'openai',
       baseUrlEnv: 'OPENAI_BASE_URL',
       inboxDelivery: 'terminal',
+      // The sidecar's synthesized PostToolUse is bidirectional: it reads the
+      // steer the HookServer consumed and injects it into the next upstream
+      // request as a synthetic user message (card agent-opencode-qwen-crush-
+      // agen-2026-08-18).
+      deliversSteers: true,
     },
     canReceiveInbox: true,
     // gemini-cli style interactive-orient flag. // TODO-verify
@@ -370,10 +383,13 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // interception. Modeled as a `hooks` bridge with a new `opencode` shim so it
     // reuses the existing hooks dispatch arm (installOpenCodePlugin, sibling of
     // installCodexHooks). The config-injection proxy is the documented fallback only.
-    bridge: { kind: 'hooks', shim: 'opencode' },
-    // god-eligible. NOTE: the plugin bridge is architecturally verified (event surface
-    // + payload contract) but its live runtime (auto-load + session.idle firing +
-    // injection) is UNVERIFIED pending BYOK keys / a local LLM. The renderer idle
+    bridge: { kind: 'hooks', shim: 'opencode', deliversSteers: true },
+    // god-eligible. NOTE: the plugin bridge's hook surface is VERIFIED against
+    // the installed opencode 1.1.55 binary (embedded plugin doc + trigger sites:
+    // tool.execute.before/after, session.idle, chat.message,
+    // experimental.chat.system.transform), but its live runtime (auto-load +
+    // event firing + injection) is UNVERIFIED pending BYOK keys / a local LLM.
+    // The renderer idle
     // inbox-wake nudge (useHive.ts) is the guaranteed fallback so a god still drains.
     canReceiveInbox: true,
     initialPromptFlag: '--prompt', // opencode --prompt "<orchestrator/worker brief>"
@@ -413,6 +429,10 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
       api: 'openai',
       baseUrlEnv: 'CRUSH_PROXY_BASE_URL',
       inboxDelivery: 'terminal',
+      // Same proxy-tier steer path as qwen: bidirectional PostToolUse + inject
+      // into the next upstream request (card agent-opencode-qwen-crush-agen-
+      // 2026-08-18).
+      deliversSteers: true,
     },
     // OpenAI-WIRE default so the out-of-box Crush god routes through the proxy
     // cleanly (the proxy serves one wire-shape; an anthropic/* default would route to
@@ -458,7 +478,7 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // HOOKS bridge via the new `pi` shim (installPiHooks). NOTE: only the structured
     // `bridge` is set (NOT the legacy hookBridge) — bridgeOf returns preset.bridge
     // first, so a hookBridge:'pi' would be dead weight + force a second union widening.
-    bridge: { kind: 'hooks', shim: 'pi' },
+    bridge: { kind: 'hooks', shim: 'pi', deliversSteers: true },
     recommendedOrchestratorModel: 'anthropic/claude-sonnet-4-5',
     // Verified on the installed pi (2026-08-18): `--thinking <level>` accepts
     // off|minimal|low|medium|high|xhigh|max (7 — pi adds off+minimal vs
@@ -767,24 +787,28 @@ export function inferAgentProvider(command: string | undefined, explicit?: unkno
 export function bridgeOf(provider: AgentProvider | undefined): BridgeDescriptor | undefined {
   const preset = providerPreset(provider ?? 'claude');
   if (preset.bridge) return preset.bridge;
-  if (preset.hookBridge) return { kind: 'hooks', shim: preset.hookBridge };
+  // Every legacy hookBridge shim (agy/codex/grok) reads the socket response and
+  // translates it back to its CLI, so the derived descriptor delivers steers.
+  if (preset.hookBridge) return { kind: 'hooks', shim: preset.hookBridge, deliversSteers: true };
   return undefined;
 }
 
 /** Whether the provider's hook bridge READS the HookServer's socket response and
  *  injects returned additionalContext into the conversation — i.e. whether a steer
- *  CONSUMED at a hook boundary can actually be DELIVERED. claude reads the response
- *  natively; the codex/grok/agy shims read and translate it; the pi extension reads
- *  it and injects via pi.sendMessage({deliverAs:'steer'}). Proxy-tier (qwen/crush)
- *  and opencode's plugin post fire-and-forget; kimi/copilot/custom have no bridge
- *  at all — consuming a steer for those would silently drop it (card
- *  agent-operator-steers-for-pi-a-2026-08-18). HookServer gates takeSteer() on
- *  this; everything else keeps the steer queued and surfaces the backlog. */
+ *  CONSUMED at a hook boundary can actually be DELIVERED. Reads the descriptor's
+ *  `deliversSteers` capability (card agent-opencode-qwen-crush-agen-2026-08-18
+ *  made it descriptor-driven instead of a shim switch): claude reads the response
+ *  natively; the codex/grok/agy shims read and translate it; the pi extension
+ *  injects via pi.sendMessage({deliverAs:'steer'}); the opencode plugin injects
+ *  into the next LLM call's system prompt (experimental.chat.system.transform,
+ *  trigger verified on opencode 1.1.55); the qwen/crush proxy sidecar injects a
+ *  synthetic user message into the next upstream request. kimi/copilot/custom
+ *  have no delivering bridge — HookServer keeps their steers queued and surfaces
+ *  the backlog (card agent-operator-steers-for-pi-a-2026-08-18). */
 export function bridgeDeliversHookContext(provider: AgentProvider | undefined): boolean {
   if (!provider) return false;
   if (isClaudeProvider(provider)) return true;
-  const desc = bridgeOf(provider);
-  return desc?.kind === 'hooks' && desc.shim !== 'opencode';
+  return bridgeOf(provider)?.deliversSteers === true;
 }
 
 export function defaultCommandForProvider(provider: AgentProvider, fallback = ''): string {

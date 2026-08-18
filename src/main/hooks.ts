@@ -377,11 +377,15 @@ export class HookServer {
     //
     // takeSteer() is DESTRUCTIVE, so consume ONLY when the agent's bridge reads
     // this very response and injects the context (card agent-operator-steers-
-    // for-pi-a-2026-08-18): the pi extension does (pi.sendMessage steer),
-    // claude/codex/grok/agy natively or via their shims. Fire-and-forget bridges
-    // (opencode plugin, qwen/crush proxy) would silently DROP a consumed steer —
-    // for those it STAYS QUEUED (pendingSteers keeps it visible in the control
-    // strip) and the backlog is surfaced loudly once per episode.
+    // for-pi-a-2026-08-18): claude natively, codex/grok/agy via their shims, pi
+    // via pi.sendMessage(deliverAs:'steer'), opencode via the plugin's
+    // experimental.chat.system.transform injection, qwen/crush via the proxy
+    // sidecar's next-request injection (card agent-opencode-qwen-crush-agen-
+    // 2026-08-18) — the capability lives in bridgeDeliversHookContext. A
+    // provider with NO delivering bridge (kimi/copilot/custom) would silently
+    // DROP a consumed steer — for those it STAYS QUEUED (pendingSteers keeps it
+    // visible in the control strip) and the backlog is surfaced loudly once per
+    // episode.
     let steer: string | null = null;
     if (
       !syntheticWake &&

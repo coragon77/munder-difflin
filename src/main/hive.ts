@@ -6047,16 +6047,52 @@ export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => an
 // after + session.idle. The session.idle→Stop keeps status in step (→ idle) so the
 // renderer idle inbox-wake nudge delivers mail. ESM (OpenCode runs on Bun). Fully
 // wrapped. LIVE-UNVERIFIED (plugin auto-load + session.idle firing need BYOK keys).
+//
+// STEER DELIVERY (card agent-opencode-qwen-crush-agen-2026-08-18, sibling of the
+// pi fix 6b432b6): post() is BIDIRECTIONAL — HookServer consumes queued operator
+// steers at the hook boundary and returns them as additionalContext; the plugin
+// stashes them and injects them into the NEXT LLM call via
+// experimental.chat.system.transform (mutate output.system in place). Both hook
+// surfaces + trigger shapes VERIFIED against the installed opencode 1.1.55
+// binary (embedded plugin doc + the LLMRequestPrep/agent-loop trigger sites).
 const OPENCODE_PLUGIN = `import { createConnection } from 'node:net';
 const SOCK = process.env.HIVE_SOCK;
 const AGENT = process.env.AGENT_ID || null;
+// A steer consumed at a hook boundary lands here and rides the NEXT LLM call's
+// system prompt. Accumulate in case two boundaries fire before the next call.
+let pendingSteer = null;
 function post(payload) {
   try {
     if (!SOCK) return;
     payload.agent_id = payload.agent_id || AGENT;
     const c = createConnection(SOCK, () => { try { c.end(JSON.stringify(payload) + '\\n'); } catch (e) {} });
+    // READ THE RESPONSE: the old fire-and-forget post ended the connection
+    // unread, so a steer the HookServer consumed for an opencode agent was
+    // silently dropped — operator saw 'accepted', the agent never got it, and
+    // the circuit breaker could not reach a looping opencode agent.
+    let resp = '';
+    if (c.setEncoding) c.setEncoding('utf8');
+    c.on('data', (d) => { resp += d; });
+    c.on('end', () => {
+      try {
+        const out = JSON.parse(resp || '{}').hookSpecificOutput;
+        const text = out && out.additionalContext;
+        if (text) pendingSteer = pendingSteer ? pendingSteer + '\\n\\n' + text : text;
+      } catch (e) {}
+    });
     c.on('error', () => {});
   } catch (e) {}
+}
+function promptOf(output) {
+  try {
+    const parts = (output && output.parts) || [];
+    const texts = [];
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (p && p.type === 'text' && typeof p.text === 'string' && p.text.trim()) texts.push(p.text);
+    }
+    return texts.length ? texts.join('\\n') : undefined;
+  } catch (e) { return undefined; }
 }
 export const HiveBridge = async () => {
   // OpenCode exposes call args only as tool.execute.before's output.args; after
@@ -6066,6 +6102,12 @@ export const HiveBridge = async () => {
   return {
     event: async (input) => {
       try { if (input && input.event && input.event.type === 'session.idle') post({ hook_event_name: 'Stop' }); } catch (e) {}
+    },
+    // Turn-start boundary (opencode's UserPromptSubmit analog, trigger shape
+    // verified on the 1.1.55 binary): the earliest steer-consume window of the
+    // turn, with the prompt text so the synthetic-wake gate can classify it.
+    'chat.message': async (input, output) => {
+      try { post({ hook_event_name: 'UserPromptSubmit', session_id: input && input.sessionID, prompt: promptOf(output) }); } catch (e) {}
     },
     'tool.execute.before': async (input, output) => {
       try {
@@ -6079,6 +6121,17 @@ export const HiveBridge = async () => {
         const toolInput = input?.callID ? toolInputs.get(input.callID) ?? null : null;
         if (input?.callID) toolInputs.delete(input.callID);
         post({ hook_event_name: 'PostToolUse', tool_name: input && (input.tool || input.name), tool_input: toolInput });
+      } catch (e) {}
+    },
+    // Mid-run steer delivery: fires in LLMRequestPrep before EVERY LLM call
+    // (trigger verified on the 1.1.55 binary — output.system is the system-
+    // prompt string array, mutated in place). The steer rides exactly one LLM
+    // call — same deliver-once semantics as pi's sendMessage(deliverAs:'steer').
+    'experimental.chat.system.transform': async (input, output) => {
+      try {
+        if (!pendingSteer || !output || !Array.isArray(output.system)) return;
+        output.system.push('<hive-steer>\\n' + pendingSteer + '\\n</hive-steer>');
+        pendingSteer = null;
       } catch (e) {}
     }
   };
@@ -6096,6 +6149,14 @@ export default HiveBridge;
 // citizen. NEVER logs bodies or keys; the captured body is parsed in-memory and
 // dropped. Idle is heuristic: a turn that ends with no tool call and no new request
 // within an ~800ms debounce → Stop (a new request cancels it).
+//
+// STEER DELIVERY (card agent-opencode-qwen-crush-agen-2026-08-18, sibling of the
+// pi fix 6b432b6): the synthesized PostToolUse is BIDIRECTIONAL — HookServer
+// consumes the queued operator steer and returns it as additionalContext — and
+// the sidecar injects it into the NEXT chat request as a synthetic trailing user
+// message (openai wire) / text block appended to the trailing user message
+// (anthropic wire, keeps role alternation valid). Mid-run delivery without any
+// hook surface; delivered once, never logged.
 const PROXY_BRIDGE_SHIM = `#!/usr/bin/env node
 'use strict';
 const http = require('http');
@@ -6126,6 +6187,29 @@ function emit(payload) {
   if (!SOCK) return;
   try {
     const c = net.createConnection(SOCK, function () { c.end(JSON.stringify(payload) + '\\n'); });
+    c.on('error', function () {});
+  } catch (e) {}
+}
+
+// Bidirectional emit for the steer-consume boundary: HookServer returns the
+// consumed operator steer as hookSpecificOutput.additionalContext on the socket
+// response. Stash it; the next chat request carries it upstream (see the
+// createServer handler). Fire-and-forget emit() stays for pure telemetry.
+let pendingSteer = null;
+function emitAsk(payload) {
+  if (!SOCK) return;
+  try {
+    const c = net.createConnection(SOCK, function () { try { c.end(JSON.stringify(payload) + '\\n'); } catch (e) {} });
+    let resp = '';
+    c.setEncoding('utf8');
+    c.on('data', function (d) { resp += d; });
+    c.on('end', function () {
+      try {
+        const out = JSON.parse(resp || '{}').hookSpecificOutput;
+        const text = out && out.additionalContext;
+        if (text) pendingSteer = pendingSteer ? pendingSteer + '\\n\\n' + text : text;
+      } catch (e) {}
+    });
     c.on('error', function () {});
   } catch (e) {}
 }
@@ -6247,7 +6331,10 @@ function parseAndEmit(bodyStr, isSse) {
   if (toolCalls.length) {
     cancelStop(); // a tool call means the turn continues
     for (let i = 0; i < toolCalls.length; i++) {
-      emit({ hook_event_name: 'PostToolUse', agent_id: AGENT_ID, session_id: SESSION, tool_name: toolCalls[i].name, tool_input: toolCalls[i].input });
+      // Bidirectional: this boundary is where HookServer consumes a queued
+      // operator steer; the response's additionalContext is stashed and rides
+      // the next chat request upstream.
+      emitAsk({ hook_event_name: 'PostToolUse', agent_id: AGENT_ID, session_id: SESSION, tool_name: toolCalls[i].name, tool_input: toolCalls[i].input });
     }
   } else {
     armStop();
@@ -6277,27 +6364,73 @@ const server = http.createServer(function (req, res) {
     path: target.pathname + target.search,
     headers: headers
   };
-  const upReq = lib.request(opts, function (upRes) {
-    res.writeHead(upRes.statusCode || 502, upRes.headers);
-    const ct = String((upRes.headers['content-type'] || ''));
-    const wantParse = ct.indexOf('json') !== -1 || ct.indexOf('event-stream') !== -1;
-    const isSse = ct.indexOf('event-stream') !== -1;
-    const chunks = [];
-    let total = 0;
-    upRes.on('data', function (chunk) {
-      res.write(chunk); // stream straight through to the CLI
-      if (wantParse && total < 4194304) { chunks.push(chunk); total += chunk.length; }
+  const send = function (bodyBuf) {
+    if (bodyBuf) {
+      // The buffered body replaces the stream: fix length framing.
+      opts.headers['content-length'] = String(bodyBuf.length);
+      delete opts.headers['transfer-encoding'];
+    }
+    const upReq = lib.request(opts, function (upRes) {
+      res.writeHead(upRes.statusCode || 502, upRes.headers);
+      const ct = String((upRes.headers['content-type'] || ''));
+      const wantParse = ct.indexOf('json') !== -1 || ct.indexOf('event-stream') !== -1;
+      const isSse = ct.indexOf('event-stream') !== -1;
+      const chunks = [];
+      let total = 0;
+      upRes.on('data', function (chunk) {
+        res.write(chunk); // stream straight through to the CLI
+        if (wantParse && total < 4194304) { chunks.push(chunk); total += chunk.length; }
+      });
+      upRes.on('end', function () {
+        res.end();
+        if (wantParse && chunks.length) {
+          try { parseAndEmit(Buffer.concat(chunks).toString('utf8'), isSse); } catch (e) {}
+        }
+      });
+      upRes.on('error', function () { try { res.end(); } catch (e) {} });
     });
-    upRes.on('end', function () {
-      res.end();
-      if (wantParse && chunks.length) {
-        try { parseAndEmit(Buffer.concat(chunks).toString('utf8'), isSse); } catch (e) {}
+    upReq.on('error', function () { try { res.statusCode = 502; res.end('proxy: upstream error'); } catch (e) {} });
+    if (bodyBuf) upReq.end(bodyBuf);
+    else req.pipe(upReq);
+  };
+  // Steer injection: a steer consumed at the synthesized PostToolUse boundary
+  // rides the NEXT chat request as a synthetic trailing user message. Buffer
+  // the body only when a steer is pending AND the request can carry one —
+  // everything else keeps the zero-copy pipe. ponytail: full-body buffer,
+  // no streaming rewrite — loopback bodies are transient; add streaming if a
+  // >100MB session ever makes this bite.
+  const reqCt = String(req.headers['content-type'] || '');
+  const canInject = pendingSteer !== null && req.method === 'POST' && reqCt.indexOf('json') !== -1 && !req.headers['content-encoding'];
+  if (!canInject) { send(null); return; }
+  const reqChunks = [];
+  req.on('data', function (d) { reqChunks.push(d); });
+  req.on('end', function () {
+    const raw = Buffer.concat(reqChunks);
+    let body = null;
+    try {
+      const parsed = JSON.parse(raw.toString('utf8'));
+      if (parsed && Array.isArray(parsed.messages) && parsed.messages.length) {
+        if (API === 'anthropic') {
+          // Anthropic requires strict user/assistant alternation: append the
+          // steer as a text block on the trailing user message (a tool_result
+          // turn ends with one); only push a fresh user message when there is
+          // none to extend.
+          const last = parsed.messages[parsed.messages.length - 1];
+          if (last && last.role === 'user') {
+            if (typeof last.content === 'string') last.content = [{ type: 'text', text: last.content }];
+            if (Array.isArray(last.content)) last.content.push({ type: 'text', text: pendingSteer });
+          } else {
+            parsed.messages.push({ role: 'user', content: [{ type: 'text', text: pendingSteer }] });
+          }
+        } else {
+          parsed.messages.push({ role: 'user', content: pendingSteer });
+        }
+        body = Buffer.from(JSON.stringify(parsed), 'utf8');
+        pendingSteer = null;
       }
-    });
-    upRes.on('error', function () { try { res.end(); } catch (e) {} });
+    } catch (e) {} // not JSON / not a chat request: keep the steer, forward as-is
+    send(body || raw);
   });
-  upReq.on('error', function () { try { res.statusCode = 502; res.end('proxy: upstream error'); } catch (e) {} });
-  req.pipe(upReq);
 });
 
 server.on('error', function () {

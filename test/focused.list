@@ -118,3 +118,5 @@ test/waiting-label-single-source.test.cjs
 test/pi-floor-status.test.cjs
 test/burn-window.test.cjs
 test/agent-order.test.cjs
+test/opencode-bridge-steer-inject.test.cjs
+test/proxy-bridge-steer-inject.test.cjs
