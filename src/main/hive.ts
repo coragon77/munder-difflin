@@ -2194,58 +2194,24 @@ export class HiveManager {
     this.commit(`hive: tasks (${tasks.length})`);
   }
 
-  /** Run one fresh task-ledger mutation under bin/hive-card's lock. */
-  private withTasksLock<T>(action: () => T): T | undefined {
-    const root = this.root();
-    if (!root) return undefined;
-    this.ensureHive();
-    const lockPath = join(root, 'tasks.json.lock');
-    for (let i = 0; i < 200; i++) {
-      try {
-        if (Date.now() - statSync(lockPath).mtimeMs > 10_000) rmSync(lockPath);
-      } catch {
-        /* no lock file yet */
-      }
-      try {
-        writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
-      } catch {
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
-        continue;
-      }
-      try {
-        return action();
-      } finally {
-        try {
-          rmSync(lockPath);
-        } catch {
-          /* best-effort */
-        }
-      }
-    }
-    return undefined;
-  }
-
   /** Resolve one still-open human question from a fresh, locked ledger read. */
   resolveHumanQuestion(id: string, question: string, answer?: string): boolean {
-    return (
-      this.withTasksLock(() => {
-        const data = this.tasks() as { tasks: HiveTask[] };
-        const qa = data.tasks.find((task) => task?.id === id)?.humanQA;
-        if (!Array.isArray(qa)) return false;
-        for (let i = qa.length - 1; i >= 0; i--) {
-          const entry = qa[i];
-          if (entry?.q !== question || entry.a || entry.dismissedAt) continue;
-          if (answer === undefined) entry.dismissedAt = new Date().toISOString();
-          else {
-            entry.a = answer;
-            entry.answeredAt = new Date().toISOString();
-          }
-          this.writeTasks(data.tasks);
-          return true;
+    return this.withLedgerLock((tasks) => {
+      const qa = tasks.find((task) => task?.id === id)?.humanQA;
+      if (!Array.isArray(qa)) return false;
+      for (let i = qa.length - 1; i >= 0; i--) {
+        const entry = qa[i];
+        if (entry?.q !== question || entry.a || entry.dismissedAt) continue;
+        if (answer === undefined) entry.dismissedAt = new Date().toISOString();
+        else {
+          entry.a = answer;
+          entry.answeredAt = new Date().toISOString();
         }
-        return false;
-      }) ?? false
-    );
+        this.writeTasks(tasks);
+        return true;
+      }
+      return false;
+    });
   }
 
   /** Idempotently promote one dispatched Slack work item from a fresh read. */
@@ -2254,26 +2220,23 @@ export class HiveManager {
     text: string,
     slack: { channel: string; thread_ts: string },
   ): boolean {
-    return (
-      this.withTasksLock(() => {
-        const data = this.tasks() as { tasks: HiveTask[] };
-        const id = `slack-${slack.thread_ts}-${messageId}`;
-        if (data.tasks.some((task) => task?.id === id)) return true;
-        const title = text.length > 80 ? `${text.slice(0, 79)}…` : text;
-        data.tasks.push({
-          id,
-          title,
-          description: text,
-          status: 'todo',
-          dependsOn: [],
-          priority: 1,
-          createdAt: new Date().toISOString(),
-          slack,
-        });
-        this.writeTasks(data.tasks);
-        return true;
-      }) ?? false
-    );
+    return this.withLedgerLock((tasks) => {
+      const id = `slack-${slack.thread_ts}-${messageId}`;
+      if (tasks.some((task) => task?.id === id)) return true;
+      const title = text.length > 80 ? `${text.slice(0, 79)}…` : text;
+      tasks.push({
+        id,
+        title,
+        description: text,
+        status: 'todo',
+        dependsOn: [],
+        priority: 1,
+        createdAt: new Date().toISOString(),
+        slack,
+      });
+      this.writeTasks(tasks);
+      return true;
+    });
   }
 
   /** Slug for a human card id: lowercase, runs of non-alnum → '-'. */
@@ -2367,13 +2330,17 @@ export class HiveManager {
     });
   }
 
-  /** Shared exclusive ledger lock (O_EXCL create + 10s stale takeover + ~5s
-   *  bounded retry) — the SAME discipline bin/hive-card's withLock uses, so
-   *  main-process writers and the CLI never clobber each other. `fn` receives
-   *  the freshly-read task array; return its value (false = refused/missing). */
+  /** THE single tasks.json lock helper for main-process writers (O_EXCL
+   *  create + 10s stale takeover + ~5s bounded retry) — the SAME discipline
+   *  bin/hive-card's withLock uses, so main-process writers and the CLI never
+   *  clobber each other. Do NOT add a second lock helper for tasks.json — one
+   *  file, one lock path (card agent-two-parallel-tasks-json--2026-08-18
+   *  unified a duplicate helper onto this one). `fn` receives the freshly-read
+   *  task array; return its value (false = refused/missing). */
   private withLedgerLock<T>(fn: (tasks: HiveTask[]) => T): T | false {
     const root = this.root();
     if (!root) return false;
+    this.ensureHive();
     const lockPath = join(root, 'tasks.json.lock');
     for (let i = 0; i < 200; i++) {
       // Stale takeover — mirrors bin/hive-card's withLock (crashed holder).
