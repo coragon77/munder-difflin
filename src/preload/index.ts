@@ -6,6 +6,7 @@ export type { HireManifest } from '../shared/hire';
 import type { IntegrationRecord, IntegrationTemplate } from '../shared/integrations';
 export type { IntegrationRecord, IntegrationTemplate } from '../shared/integrations';
 import type { UpdateStatus } from '../shared/updateState';
+import type { LocalSkill } from '../main/skills';
 export type { UpdateStatus } from '../shared/updateState';
 import type {
   ContextRule,
@@ -156,6 +157,8 @@ export interface AgentDirectoryEntry {
   contextLimit: number | null;
   contextPct: number | null;
 }
+
+export type { LocalSkill } from '../main/skills';
 
 export interface AgentDirectory {
   godId: string | null;
@@ -1345,6 +1348,12 @@ const api = {
   /** Toggle macOS "Open at Login". Resolves to the resulting state (no prompt). */
   setLoginItem: (enabled: boolean): Promise<boolean> =>
     ipcRenderer.invoke('app:setLoginItem', enabled),
+  /** LOCAL skills inventory — what the coding agents on this machine can
+   *  already use. No catalog, no install: display only. */
+  skillsLocal: (cwd?: string): Promise<LocalSkill[]> => ipcRenderer.invoke('skills:local', cwd),
+  /** Reveal a skill folder in the OS file manager (refused outside roots). */
+  skillsReveal: (path: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('skills:reveal', path),
 
   // ─── Agent lifecycle (archival) ─────────────────────────────────────────────
   /** Archive/unarchive a hive agent in the registry. Closing a terminal tab
