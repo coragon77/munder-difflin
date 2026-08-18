@@ -86,10 +86,18 @@ async function spawnGraphifyUpdate(repoRoot: string, home: string): Promise<void
  *  throws, never blocks a caller that fire-and-forgets. */
 export async function refreshProjectGraph(
   repoRoot: string,
-  deps: { gitHead?: GitHead; runUpdate?: (repoRoot: string, home: string) => Promise<void>; home?: string } = {},
+  deps: {
+    gitHead?: GitHead;
+    runUpdate?: (repoRoot: string, home: string) => Promise<void>;
+    home?: string;
+  } = {},
 ): Promise<{ ran: boolean; reason: string }> {
   const head = await (deps.gitHead ?? getHead)(repoRoot);
-  if (!head) return { ran: false, reason: 'no-head (not a repo or git unavailable) — skipping graph refresh' };
+  if (!head)
+    return {
+      ran: false,
+      reason: 'no-head (not a repo or git unavailable) — skipping graph refresh',
+    };
   let builtAt: string | null | undefined;
   try {
     const raw = await readFile(join(repoRoot, 'graphify-out', 'graph.json'), 'utf8');
@@ -102,7 +110,10 @@ export async function refreshProjectGraph(
     // Absent graph: out of scope — this refreshes, it doesn't first-build
     // (first builds can be slow; the card targets staleness of an existing
     // graph).
-    return { ran: false, reason: 'no-graph — nothing to refresh (first build stays a manual step)' };
+    return {
+      ran: false,
+      reason: 'no-graph — nothing to refresh (first build stays a manual step)',
+    };
   }
   if (!isGraphStale(builtAt, head)) return { ran: false, reason: 'fresh (graph tracks HEAD)' };
   const home = deps.home ?? process.env.HOME ?? '';
