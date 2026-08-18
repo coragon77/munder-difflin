@@ -101,3 +101,4 @@ test/intern-defaults.test.cjs
 test/provider-models.test.cjs
 test/orient-first-rule.test.cjs
 test/graph-refresh.test.cjs
+test/recall-cardsession-hold.test.cjs

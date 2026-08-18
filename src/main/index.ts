@@ -6929,6 +6929,11 @@ function bootstrapHiveServices(): void {
       );
     },
     emit: paneCommandEmit,
+    // Pane-liveness gate (agent-recalled-pane-resumes-it-2026-08-18): a doing-flip
+    // for a PARKED assignee holds pending until the recall spawn is up — the
+    // queue channel cannot reach a cardless agent, so firing early silently
+    // dropped the card-scoped clear + lead (see CardSessionDeps.ptyForAgent).
+    ptyForAgent,
     stampCard: (cardId, sessionId) => hive.stampCard(cardId, sessionId),
     informGod,
   });

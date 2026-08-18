@@ -195,6 +195,19 @@ export interface CardSessionDeps {
    *  pane-restarting command (clear/resume) is deferred while busy
    *  (engagement-aware flips 2026-08-17: never fire /new at a busy pane). */
   busy(agentId: string): boolean;
+  /** PTY id of the agent's live pane, or undefined when none is open
+   *  (card agent-recalled-pane-resumes-it-2026-08-18). A →doing flip for an
+   *  assignee with NO pane — the dispatch-to-a-PARKED-agent path, where the
+   *  recall spawn lands seconds AFTER the flip — must HOLD the transition
+   *  pending exactly like a busy pane: the emit channel's renderer half
+   *  (useHive 5c) silently DROPS messages for agents with no floor card, so
+   *  emitting here "succeeds" (a window is alive) while the clear + lead
+   *  vanish and the watcher consumes the transition — the recalled pane then
+   *  resumes its OWN old conversation, no fresh card conversation starts, the
+   *  inbox monitor never re-arms, and the dispatch sits unread until a
+   *  standup notices. Optional only so legacy test fakes keep compiling; main
+   *  always wires it. */
+  ptyForAgent?(agentId: string): string | undefined;
   /** Broadcast to the renderer's queue gate (same channel as session-requests).
    *  The marker rides along so the queue-drain can stale-drop at delivery. */
   emit(agentId: string, text: string, marker?: CardSessionMarker): boolean;
@@ -258,6 +271,18 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
   const failed = new Set<string>();
   const deferredIds = new Set<string>();
   for (const a of actions) {
+    // PANE-LESS HOLD (agent-recalled-pane-resumes-it-2026-08-18): same pending
+    // semantics as the busy-defer below — an assignee with no live pane cannot
+    // receive anything through the queue channel (the renderer drops messages
+    // for cardless agents), so firing here would silently lose the card-scoped
+    // clear + lead and consume the transition. Hold and re-decide each tick;
+    // the recall/restore/revive spawn brings the pane up and the held action
+    // fires into it (a /clear typed after a recall-resume still wins — resume
+    // is argv, the clear is just input).
+    if (deps.ptyForAgent !== undefined && !deps.ptyForAgent(a.agentId)) {
+      deferredIds.add(a.cardId);
+      continue;
+    }
     if (a.deferred) {
       // Busy pane: hold the transition pending (no emit, no mail — the mode is
       // stated when it FIRES). Next tick re-decides against the live pane.
