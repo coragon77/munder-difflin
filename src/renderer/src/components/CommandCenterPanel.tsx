@@ -15,7 +15,7 @@ import { acquireTerminal, disposeTerminal, resetTerminal } from './terminalPool'
 import { terminalInstanceKey } from './terminalRecovery';
 import { Icon } from './Icon';
 import { MemoryGraphPanel } from './MemoryGraphPanel';
-import { useFleetTelemetry } from '@/hooks/useTelemetry';
+import { useFleetTelemetry, useBurnWindow } from '@/hooks/useTelemetry';
 import { waitingBadge } from '@/statusLabel';
 import { COMMAND_GROUPS } from '@shared/claudeCommands';
 import { useStore, triggerHistoryVisible, agentClassOf, type Agent } from '@/store/store';
@@ -539,6 +539,8 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
   // standalone Fleet tab folded in here so the roster shows identity + controls
   // AND live cost/usage in one place).
   const { samples, spark, rate, lastTool, breakers } = useFleetTelemetry();
+  // Ledger-backed 5h burn per agent — the restart-honest lens (see hook).
+  const burnWindow = useBurnWindow();
   const [repos, setRepos] = useState<string[]>([]);
   // Floor-wide token budget (drives the breaker); also the token-meter denominator.
   const [tokenCap, setTokenCap] = useState<number | undefined>(undefined);
@@ -1097,6 +1099,22 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                   }}
                 >
                   {fmtTokens(tokens)}
+                </span>
+                <span
+                  title={`Tokens burned in the trailing ${Math.round((burnWindow?.windowMs ?? 3_600_000 * 5) / 3_600_000)}h window (cost-ledger backed; survives restarts). — = no rows in window (unknown, not zero). CUMULATIVE and the bar above restart-empty; this number does not.`}
+                  style={{
+                    fontFamily: 'var(--cth-font-mono)',
+                    fontSize: 11,
+                    color: 'var(--cth-ink-500)',
+                    width: 64,
+                    textAlign: 'right',
+                    flexShrink: 0,
+                  }}
+                >
+                  5h{' '}
+                  {burnWindow && burnWindow.agents[a.id] !== undefined
+                    ? fmtTokens(burnWindow.agents[a.id])
+                    : '—'}
                 </span>
                 <div
                   title={`CUMULATIVE session usage: ${tokens.toLocaleString()} of ${denom.toLocaleString()} tokens${agentCap ? ' (agent limit)' : ' (floor budget)'} — not the context window`}

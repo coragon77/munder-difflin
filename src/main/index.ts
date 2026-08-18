@@ -34,6 +34,7 @@ import { join, resolve, sep, basename, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { request as httpsRequest } from 'node:https';
 import { PtyManager, type SpawnOptions } from './pty';
+import { burnWindows, type BurnWindows } from './burn';
 import { resolveCommand as resolveCliCommand } from './shellEnv';
 import { initAutoUpdater } from './updater';
 import { RealtimeFloorWatcher } from './realtimeFloorWatcher';
@@ -494,6 +495,16 @@ const breaker = new CircuitBreaker(() => {
 // Michael reads + the breaker beat, so guardrails + monitoring work even when the
 // heartbeat mission is disabled (it ships off).
 let fleetTimer: ReturnType<typeof setInterval> | null = null;
+/** The operator's usage-budget window (5h) — the burn indicator's span. */
+const BURN_WINDOW_MS = 5 * 60 * 60 * 1000;
+/** Latest ledger-backed burn windows (refreshed by the 8s fleet snapshot tick;
+ * starts as unknown — never fabricate a zero before the first tick). */
+let burnState: BurnWindows = {
+  windowMs: BURN_WINDOW_MS,
+  agents: {},
+  total: null,
+  rowsKept: 0,
+};
 let breakerBeatTimer: ReturnType<typeof setInterval> | null = null;
 // Feed the breaker's api_error-storm trip from Oscar's OTel api_error spans —
 // Jim's one breaker input with no on-branch source (telemetry.onApiError seam).
@@ -1742,6 +1753,11 @@ function writeFleetSnapshot(): void {
     const snap = telemetry.snapshot();
     const usageById = new Map(snap.usage.map((u) => [u.agentId, u]));
     const now = Date.now();
+    // Ledger-backed trailing-window burn (card agent-rolling-window-token-bur-
+    // 2026-08-18): unlike the in-memory snapshot above, this survives app
+    // restarts unchanged — the in-memory lens is what read 0.00 while tokens
+    // climbed on 2026-08-18. Cached for the IPC poll below; the tick is 8s.
+    burnState = burnWindows(join(hive.root() ?? '', 'cost-ledger.jsonl'), BURN_WINDOW_MS, now);
     const agents = Object.entries(reg.agents)
       // `archived` is liveness, `retired` is a fire — a fired agent must never be
       // listed as floor capacity, even if some path flips archived back off.
@@ -1761,6 +1777,9 @@ function writeFleetSnapshot(): void {
           usd: u ? Number(u.usd.toFixed(4)) : 0,
           lastTool: spans.length ? spans[spans.length - 1].tool : null,
           lastActiveSecAgo: u ? Math.round((now - u.ts) / 1000) : null,
+          // Trailing-window burn from the ledger; null = no rows in window
+          // (UNKNOWN — never rendered as zero, see burn.ts).
+          burn5h: burnState.agents[id] ?? null,
           inboxBacklog: hive.inboxBacklog(id),
           // Honest telemetry for god + the operator: 0 = truly idle, >0 = the
           // agent is WAITING on that many finite background tasks (waiting ≠
@@ -1790,6 +1809,7 @@ function writeFleetSnapshot(): void {
       ts: now,
       agents,
       vacation,
+      burn: { windowMs: BURN_WINDOW_MS, total: burnState.total },
       floor: {
         ...floorSeats(reg),
         internsEnabled: spawnSwitches(internCfg).interns,
@@ -3999,6 +4019,10 @@ ipcMain.handle('pty:kill', (_evt, id: string) => {
   return res;
 });
 ipcMain.handle('pty:list', () => ptyManager.list());
+// Ledger-backed rolling burn window for the renderer fleet grid (card
+// agent-rolling-window-token-bur-2026-08-18). Served from the 8s snapshot
+// cache — the file itself is only read on that tick, never per poll.
+ipcMain.handle('hive:burnWindow', () => burnState);
 
 // Resolve a pasted Claude session id to the cwd it originally ran in, so the Add
 // Agent dialog can auto-fill the folder for a resume (#2 zero-step resume). Reads

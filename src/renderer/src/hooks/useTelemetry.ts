@@ -210,3 +210,39 @@ export function useAgentSpans(agentId: string): ToolSpan[] {
 
   return spans;
 }
+
+/** Shape mirrors the main-side BurnWindows (src/main/burn.ts), via preload. */
+export interface BurnWindowState {
+  windowMs: number;
+  agents: Record<string, number>;
+  total: number | null;
+  rowsKept: number;
+}
+
+/**
+ * Trailing-window (5h) token burn per agent, LEDGER-BACKED (card
+ * agent-rolling-window-token-bur-2026-08-18) — deliberately NOT derived from
+ * the in-memory stream above, which restarts empty and reads as a false zero.
+ * Absent agent = no rows in window = unknown (render "—", never 0).
+ */
+export function useBurnWindow(pollMs = 30_000): BurnWindowState | null {
+  const [burn, setBurn] = useState<BurnWindowState | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const fetch = (): void => {
+      window.cth
+        .burnWindow()
+        .then((b) => {
+          if (alive) setBurn(b);
+        })
+        .catch(() => {});
+    };
+    fetch();
+    const iv = setInterval(fetch, pollMs);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [pollMs]);
+  return burn;
+}

@@ -695,6 +695,15 @@ const api = {
       hasOutput: boolean;
     }>
   > => ipcRenderer.invoke('pty:list'),
+  /** Ledger-backed trailing-window (5h) token burn per agent — null/absent =
+   *  no rows in window (UNKNOWN, never zero). Survives app restarts because it
+   *  reads cost-ledger.jsonl, not the in-memory collector. */
+  burnWindow: (): Promise<{
+    windowMs: number;
+    agents: Record<string, number>;
+    total: number | null;
+    rowsKept: number;
+  }> => ipcRenderer.invoke('hive:burnWindow'),
   /** Resolve a Claude session id to the cwd it originally ran in (Add Agent
    *  resume auto-fill), or null if the id is invalid/unknown. */
   resolveSessionCwd: (sessionId: string): Promise<string | null> =>
