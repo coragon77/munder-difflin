@@ -34,12 +34,10 @@ import {
   closeSync,
 } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { runHiddenClaude } from './hiddenClaude';
+import { runHiddenHelper, type ResolvedHelperEngine } from './hiddenHelpers';
 
 /** Total memory.md budget — mirrors the janitor's CONTEXT_BUDGET_BYTES (128 KB). */
 const BUDGET_BYTES = 131_072;
-/** Cheap tail-summarizer (DECIDED by god). The verify gate covers quality. */
-const CONDENSE_MODEL = 'claude-haiku-4-5';
 /** Hard cap so a wedged headless run can't stall the reflect loop. */
 const DEFAULT_TIMEOUT_MS = 180_000;
 
@@ -113,14 +111,15 @@ export class MemoryReflector {
 
   /**
    * @param getHome      Lazily resolve harnessHome so reflection follows config.
-   * @param getCommand   The base `claude` command (only its binary name is used).
+   * @param getHelperEngine Resolved hidden-helper engine (provider+model+command,
+   *                          from resolveHelperEngine — follows Settings live).
    * @param getMemoryEnv Extra env (the shared MemPalace path) merged into the call.
    * @param getSettings  Reflect tunables (interval + thresholds), read each tick.
    * @param appendLog    Sink for `condense`/`condense-abort` events (hive log.jsonl).
    */
   constructor(
     private getHome: () => string | null,
-    private getCommand: () => string,
+    private getHelperEngine: () => ResolvedHelperEngine,
     private getMemoryEnv: () => Record<string, string>,
     private getSettings: () => ReflectSettings,
     private appendLog: (event: Record<string, unknown>) => void,
@@ -340,10 +339,9 @@ export class MemoryReflector {
       pinned?.trim() || '(none)',
     ].join('\n');
 
-    const result = await runHiddenClaude(prompt, {
-      model: CONDENSE_MODEL,
+    const result = await runHiddenHelper(prompt, {
+      engine: this.getHelperEngine(),
       cwd: home,
-      command: this.getCommand(),
       // Pure text transform — must never touch the repo or shell out. The
       // AskUserQuestion deny is the same absolute rule as pane spawns (card
       // block-askuserquestion-20260817) — this explicit list overrides

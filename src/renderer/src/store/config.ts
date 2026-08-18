@@ -153,6 +153,9 @@ export interface HarnessConfig {
   /** DEFAULT provider/CLI + model for intern spawns — request fields still
    *  win (resolution in src/main/internDefaults.ts). Mirrors src/main/config.ts. */
   internDefaults?: { provider?: AgentProvider; model?: string };
+  /** Hidden-helper engine (standup clerk + memory condenser). Mirrors
+   *  src/main/config.ts helperDefaults; resolution in src/main/hiddenHelpers.ts. */
+  helperDefaults?: { provider?: AgentProvider; model?: string };
   circuitBreaker?: CircuitBreakerConfig;
   /** Enterprise Knowledge Graph (multimodal context for agents). Default OFF. */
   knowledgeGraph?: KnowledgeGraphConfig;

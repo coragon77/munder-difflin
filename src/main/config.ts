@@ -2,7 +2,7 @@ import { app } from 'electron';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
-import { providerPreset, type AgentProvider } from '../shared/agentProvider';
+import { providerPreset, CLAUDE_HELPER_MODEL, type AgentProvider } from '../shared/agentProvider';
 import { defaultMcpDefaults } from '../shared/mcpCatalog';
 import { expandTilde } from './fs';
 import type { IntegrationRecord } from '../shared/integrations';
@@ -320,6 +320,14 @@ export interface HarnessConfig {
    *  fallbacks — god's per-intern overrides always win. Unset fields keep
    *  today's behavior; ephemeral workers never read this. */
   internDefaults?: { provider?: AgentProvider; model?: string };
+  /** Engine for the harness's own HIDDEN one-shot helpers (standup clerk,
+   *  memory condenser). Resolution in src/main/hiddenHelpers.ts:
+   *   helperDefaults > godProvider (the onboarding driver choice) > 'claude'.
+   *   Model: helperDefaults.model > claude's haiku-class helper constant >
+   *   the CLI's own default (pi runs with NO --model flag). Settings →
+   *   Autonomy & Budgets (next to the standup clerk switch). Unset keeps
+   *   today's behavior exactly. */
+  helperDefaults?: { provider?: AgentProvider; model?: string };
   /** Physical workplaces on the office floor — the hard ceiling on hires +
    *  interns ON THE FLOOR at once (god excluded; the office ships 16 desks).
    *  Operator-downsizable (Settings → Autonomy & Budgets, 1..16). Enforced in
@@ -776,7 +784,7 @@ export function resetConfig(): HarnessConfig {
  *  src/renderer/src/store/config.ts. */
 const MODEL_GOD = 'claude-opus-4-8'; // orchestration — highest capability
 const MODEL_WORKER = 'claude-sonnet-4-6'; // general execution
-const MODEL_HELPER = 'claude-haiku-4-5-20251001'; // narrow, cheap helpers
+const MODEL_HELPER = CLAUDE_HELPER_MODEL; // narrow, cheap helpers (single source)
 
 /** Minimal structural shape for tiering — a subset of AgentMeta so config.ts
  *  stays free of a hive.ts import. */

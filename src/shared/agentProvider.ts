@@ -561,6 +561,13 @@ export function normalizeAgentProvider(value: unknown): AgentProvider | undefine
   return isAgentProvider(value) ? value : undefined;
 }
 
+/** The haiku-class model the harness's own HIDDEN helpers (standup clerk,
+ *  memory condenser) default to when the helper engine is claude — narrow,
+ *  cheap, read-only work. Lives HERE (not config.ts) so both config.ts
+ *  (modelForRole) and hiddenHelpers.ts (helper resolution) import it without
+ *  pulling electron/node-pty into each other's load graph. */
+export const CLAUDE_HELPER_MODEL = 'claude-haiku-4-5-20251001';
+
 export function providerPreset(provider: AgentProvider): AgentProviderPreset {
   return AGENT_PROVIDER_PRESETS.find((p) => p.id === provider) ?? AGENT_PROVIDER_PRESETS[0];
 }

@@ -158,9 +158,8 @@ import type { TaskCard, InboxMessage } from './realtimeCompletionWatcher';
 import { TelemetryCollector } from './telemetry';
 import { vacationBusy } from './vacationBusy';
 import { PendingWorkTracker } from './pendingWork';
-import { runHiddenClaude } from './hiddenClaude';
+import { resolveHelperEngine, runHiddenHelper } from './hiddenHelpers';
 import {
-  STANDUP_CLERK_MODEL,
   boardLine,
   clerkPrompt,
   detectAnomalies,
@@ -553,7 +552,7 @@ function reflectSettings(): ReflectSettings {
 // (Haiku tail-summary, backup→verify→atomic-swap) so it never grows unbounded.
 const reflector = new MemoryReflector(
   () => readConfig().harnessHome,
-  () => readConfig().defaultCommand ?? 'claude',
+  () => resolveHelperEngine(readConfig()),
   () => memory.env(),
   reflectSettings,
   (event) => {
@@ -991,7 +990,7 @@ function floorQuietSince(since: number): boolean {
  *      `detectAnomalies` — a healthy floor means no mail, no board line and no
  *      spawn at all (an LLM asked to confirm "all fine" is a bill for silence);
  *   2. only when something IS wrong does the clerk run, through the existing
- *      hidden one-shot machinery (`runHiddenClaude`, read-only), to turn the
+ *      hidden one-shot machinery (`runHiddenHelper`, read-only), to turn the
  *      findings into the prose god reads;
  *   3. the harness delivers — board line + `request` to god (the same act and
  *      sender the classic standup used, so every downstream wake/FYI filter
@@ -1056,10 +1055,9 @@ async function runStandupClerk(): Promise<void> {
   const facts = summarizeAnomalies(anomalies);
   let report = facts;
   try {
-    const res = await runHiddenClaude(clerkPrompt(root, anomalies), {
-      model: STANDUP_CLERK_MODEL,
+    const res = await runHiddenHelper(clerkPrompt(root, anomalies), {
+      engine: resolveHelperEngine(cfg),
       cwd: root,
-      command: cfg.defaultCommand,
       // Read-only: the clerk judges and writes, the harness delivers. Same
       // AskUserQuestion deny as every other hidden session (card
       // block-askuserquestion-20260817) — an explicit list overrides the default.
