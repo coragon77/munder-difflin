@@ -15,10 +15,12 @@
  *    with the harness), verified by log after reboot; main-process/
  *    test-only branches merge immediately; push+restart together
  *    (hardened by card godline-renderer-merge-mechanism-20260817).
- *  - ARCHIVE-ON-READ — god moves a read inbox mail to inbox/.done/
- *    IMMEDIATELY before acting, so the typed-nudge fallback stands down
- *    inside its grace window; the card/board carry work state, not the
- *    inbox file.
+ *  - DISPATCH INTERFACE — god uses hive-dispatch for guarded card creation
+ *    or adoption, assignment, recall, doing flip, and contract mail; the
+ *    hand-primitives are only the documented fallback.
+ *  - INBOX INTERFACE — god uses hive-inbox drain to print and archive mail
+ *    in one pass; hand-moving JSON to inbox/.done/ is only the documented
+ *    fallback. The card/board carry work state, not the inbox file.
  *  - ATOMIC JSON WRITES — every direct god write to tasks.json (or any
  *    shared hive JSON) goes through a tempfile in the same directory plus
  *    os.replace() onto the target, so a crash mid-write cannot corrupt the
@@ -101,12 +103,61 @@ test('godLine teaches renderer watcher refusal modes and recovery', () => {
   assert.ok(/re-arm if it refused/.test(p));
 });
 
-test('godLine carries the ARCHIVE-ON-READ rule', () => {
-  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
-  assert.ok(/ARCHIVE-ON-READ:/.test(p), 'god briefing must carry the ARCHIVE-ON-READ rule');
-  assert.ok(/to inbox\/\.done\/ IMMEDIATELY, before acting/.test(p));
-  assert.ok(/stands down inside its grace window/.test(p));
-  assert.ok(/card\/board carry the work state, not the inbox file/.test(p));
+test('godLine teaches hive-dispatch as the guarded dispatch interface', () => {
+  const prompt = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/DISPATCH INTERFACE:/.test(prompt), 'the guarded dispatch interface is named');
+  assert.ok(/\$HIVE_ROOT\/bin\/hive-dispatch/.test(prompt), 'names the dispatch CLI');
+  assert.ok(
+    /give exactly one of --card <existing-id> or --title <new-title>/.test(prompt),
+    'requires exactly one card selector',
+  );
+  assert.ok(/--assignee/.test(prompt), 'names the assignee flag');
+  assert.ok(/--adopt/.test(prompt), 'names the connected-engagement flag');
+  assert.ok(/--body[^.]+stdin/.test(prompt), 'accepts the contract by flag or stdin');
+  assert.ok(
+    /\(1\) OBJECTIVE[\s\S]{0,3000}\(2\) OUTPUT[\s\S]{0,3000}\(3\) TOOLS[\s\S]{0,3000}\(4\) BOUNDARIES/.test(
+      prompt,
+    ),
+    'preserves the 4-part dispatch contract without owning the TOOLS wording',
+  );
+  assert.ok(
+    /creates or adopts and assigns the card, recalls a parked assignee, flips it to doing, and mails the contract/.test(
+      prompt,
+    ),
+    'teaches the guarded create/adopt, assign, recall, doing, and mail flow',
+  );
+  assert.ok(
+    /REFUSES[^.]+DIFFERENT[^.]+doing\/blocked card/.test(prompt),
+    'teaches the conflicting-card guard',
+  );
+  assert.ok(
+    /vacation-requests\/, hive-card, and hive-mail[^.]+FALLBACK/.test(prompt),
+    'manual dispatch primitives are demoted to fallback',
+  );
+  assert.ok(
+    !/hive-card status <id> doing/.test(prompt),
+    'the old manual doing-flip command is gone',
+  );
+});
+
+test('godLine teaches hive-inbox drain as the archive-on-read interface', () => {
+  const prompt = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/INBOX INTERFACE:/.test(prompt), 'the inbox interface is named');
+  assert.ok(/\$HIVE_ROOT\/bin\/hive-inbox drain/.test(prompt), 'names the drain command');
+  assert.ok(
+    /prints[^.]+archives[^.]+inbox\/\.done\//.test(prompt),
+    'drain prints and archives in one pass',
+  );
+  assert.ok(/--agent <id>/.test(prompt), 'god can target another inbox');
+  assert.ok(
+    /Hand-reading[\s\S]{0,200}MANUAL FALLBACK/.test(prompt),
+    'hand archiving is only the fallback',
+  );
+  assert.ok(
+    /card\/board carry the work state, not the inbox file/.test(prompt),
+    'archive-on-read does not replace the work ledger',
+  );
+  assert.ok(!/ARCHIVE-ON-READ:/.test(prompt), 'the old hand-archive instruction is gone');
 });
 
 test('godLine carries the ATOMIC JSON WRITES rule', () => {
@@ -147,13 +198,16 @@ test('godLine carries the ENGAGEMENT-AWARE CARD FLIPS rule', () => {
     'flips pass through doing so every card carries a session',
   );
   assert.ok(/todo->done|todo→done/.test(p), 'todo->done stays legal for externally-resolved cards');
-  assert.ok(/--fresh/.test(p), 'names the fresh default');
+  assert.ok(/Fresh is the default when --adopt is omitted/.test(p), 'names the fresh default');
   assert.ok(/--adopt/.test(p), 'names the adopt flag');
   assert.ok(
     /connected to the agent's CURRENT/.test(p) || /CONNECTED/.test(p),
     'defines when to adopt: a connected/running engagement',
   );
-  assert.ok(/hive-card status <id> doing --adopt/.test(p), 'gives the exact command');
+  assert.ok(
+    /hive-dispatch --card <id> --assignee <agent> --adopt --body <contract>/.test(p),
+    'gives the exact guarded dispatch command',
+  );
   assert.ok(
     /never fires the clear at a busy pane|never fire .{0,30}busy pane/.test(p),
     'states the idle-gated clear',
