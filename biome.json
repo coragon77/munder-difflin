@@ -12,12 +12,9 @@
       "!package-lock.json",
       "!build",
       "!docs",
-      "!blog",
       "!hive",
-      "!landing-remotion",
       "!prototypes",
-      "!resources",
-      "!seo"
+      "!resources"
     ]
   },
   "formatter": {
