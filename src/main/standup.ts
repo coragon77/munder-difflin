@@ -13,7 +13,7 @@
  *    floor spawns NOTHING at all (an LLM asked to say "all fine" is a bill for
  *    silence). It also guarantees a real escalation survives an LLM that times
  *    out — `summarizeAnomalies` is the fallback text.
- *  - The CLERK (a hidden one-shot, `runHiddenClaude`) writes the prose: it sees
+ *  - The CLERK (a hidden one-shot, `runHiddenHelper`) writes the prose: it sees
  *    the same fleet.json / tasks.json and turns the findings into the board
  *    line and the mail body god actually reads.
  *
@@ -107,8 +107,9 @@ export function ledgerDisqualifiesQuiet(tasks: unknown): boolean {
   });
 }
 
-/** Cheap by design — the whole point of the card. */
-export const STANDUP_CLERK_MODEL = 'claude-haiku-4-5-20251001';
+/** Cheap by design — the whole point of the card. The clerk's ENGINE (and
+ *  model) is resolved at call time by src/main/hiddenHelpers.ts: Settings'
+ *  helperDefaults > godProvider > claude-with-haiku. */
 
 /** Routing decision. Unset ⇒ clerk (default ON per operator); only an explicit
  *  `false` restores the old wake-god-every-hour dispatch. */

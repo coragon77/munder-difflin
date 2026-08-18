@@ -335,6 +335,30 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
       /* surfaced by reopening settings — next flip retries */
     }
   };
+  // Hidden-helper engine (standup clerk + memory condenser): the engine for
+  // the harness's own headless one-shots. Blank provider = the onboarding god
+  // engine; blank model = haiku-class on claude, the CLI's own default on pi
+  // (resolution in src/main/hiddenHelpers.ts). Only claude + pi have a
+  // hidden one-shot runner — the picker stays to those two.
+  const [helperProvider, setHelperProvider] = useState(cfgX.helperDefaults?.provider ?? '');
+  const [helperModel, setHelperModel] = useState(cfgX.helperDefaults?.model ?? '');
+  const helperEngineProvider =
+    normalizeAgentProvider(helperProvider) ?? cfgX.godProvider ?? 'claude';
+  const helperModelOptions = useProviderModels(helperEngineProvider);
+  const writeHelperDefaults = async (provider: string, model: string) => {
+    setHelperProvider(provider);
+    setHelperModel(model);
+    try {
+      await window.cth.updateConfig({
+        helperDefaults: {
+          provider: provider || undefined,
+          model: model.trim() || undefined,
+        },
+      } as Partial<HarnessConfig>);
+    } catch {
+      /* surfaced by reopening settings — next flip retries */
+    }
+  };
   // SDD subagent authorization (card sdd-authorization-switch-20260816): ON
   // writes the operator-authorization line (scoped to skill execution) into the
   // generated AGENTS.md + agent briefings; main regenerates AGENTS.md on flip.
@@ -2737,6 +2761,105 @@ export function SettingsModal({ config, onClose, initialSection }: SettingsModal
                         >
                           {standupClerk ? 'on' : 'off'}
                         </PixelButton>
+                      </div>
+
+                      {/* Hidden-helper engine: what the standup clerk above
+                           and the memory condenser run on. Blank follows the
+                           god engine; pick Pi to free the helpers from the
+                           Anthropic API. Only engines with a hidden one-shot
+                           runner are offered (src/main/hiddenHelpers.ts). */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span
+                          title="Engine for the harness's hidden one-shots (standup clerk, memory condense)."
+                          style={{
+                            fontSize: 12,
+                            lineHeight: '16px',
+                            color: 'var(--cth-ink-900)',
+                          }}
+                        >
+                          Hidden helper engine
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            lineHeight: '16px',
+                            color: 'var(--cth-ink-500)',
+                          }}
+                        >
+                          Cheap one-shot assistants run here — blank follows the god engine (
+                          {helperEngineProvider}); blank model = engine default.
+                        </span>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                          <select
+                            value={helperProvider}
+                            onChange={(e) => void writeHelperDefaults(e.target.value, helperModel)}
+                            title="Engine for hidden helpers — the god engine's provider when blank"
+                            style={{
+                              ...slackInputStyle,
+                              width: 'auto',
+                              minWidth: 120,
+                            }}
+                          >
+                            <option value="">god engine</option>
+                            <option value="claude">Claude</option>
+                            <option value="pi">Pi</option>
+                          </select>
+                          <input
+                            value={helperModel}
+                            onChange={(e) =>
+                              void writeHelperDefaults(helperProvider, e.target.value)
+                            }
+                            placeholder="model id (blank = engine default)"
+                            title="Model for hidden helpers — pick a chip below or type any id"
+                            style={{ ...slackInputStyle, flex: 1, minWidth: 160 }}
+                          />
+                        </div>
+                        {/* Model chips — same visible-by-construction pattern as
+                            the intern defaults above. */}
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                          <button
+                            onClick={() => void writeHelperDefaults(helperProvider, '')}
+                            title="No pinned model — claude keeps its haiku-class default, pi uses its own config"
+                            style={{
+                              ...chipStyle,
+                              boxShadow: !helperModel
+                                ? 'inset 0 0 0 1.5px var(--cth-ink-500)'
+                                : 'inset 0 0 0 1px var(--cth-ink-100)',
+                            }}
+                          >
+                            engine default
+                          </button>
+                          {helperModel && !helperModelOptions.some((m) => m.id === helperModel) && (
+                            <button
+                              onClick={() => void writeHelperDefaults(helperProvider, '')}
+                              title="Configured model — not in the current list. Click to clear."
+                              style={{
+                                ...chipStyle,
+                                boxShadow: 'inset 0 0 0 1.5px var(--cth-ink-500)',
+                              }}
+                            >
+                              {helperModel} (configured)
+                            </button>
+                          )}
+                          {helperModelOptions.map((m) => {
+                            const active = helperModel === (m.id ?? '');
+                            return (
+                              <button
+                                key={m.id ?? m.label}
+                                onClick={() => void writeHelperDefaults(helperProvider, m.id ?? '')}
+                                title={m.id ?? 'engine default model'}
+                                style={{
+                                  ...chipStyle,
+                                  boxShadow: active
+                                    ? 'inset 0 0 0 1.5px var(--cth-ink-500)'
+                                    : 'inset 0 0 0 1px var(--cth-ink-100)',
+                                }}
+                              >
+                                {m.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       <div style={{ height: 2, background: 'var(--cth-ink-300)' }} />

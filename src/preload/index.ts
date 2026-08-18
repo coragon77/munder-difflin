@@ -339,6 +339,9 @@ export interface HarnessConfig {
    *  off); routes the hourly ops standup to the cheap clerk instead of god
    *  (f415122). Mirrors src/main/config.ts + standup.ts. */
   standupClerk?: boolean;
+  /** Hidden-helper engine (standup clerk + memory condenser). Mirrors
+   *  src/main/config.ts helperDefaults; resolution in src/main/hiddenHelpers.ts. */
+  helperDefaults?: { provider?: AgentProvider; model?: string };
   /** Auto-update from GitHub releases (default ON; Settings → General). */
   autoUpdate?: boolean;
   /** Anonymous product analytics (default ON, opt-out; see TELEMETRY.md).

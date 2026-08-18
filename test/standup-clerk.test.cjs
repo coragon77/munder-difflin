@@ -29,15 +29,8 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const loadTs = require('./load-ts.cjs');
 
-const {
-  standupTarget,
-  detectAnomalies,
-  summarizeAnomalies,
-  clerkPrompt,
-  boardLine,
-  STANDUP_CLERK_MODEL,
-  STALLED_SEC,
-} = loadTs('src/main/standup.ts');
+const { standupTarget, detectAnomalies, summarizeAnomalies, clerkPrompt, boardLine, STALLED_SEC } =
+  loadTs('src/main/standup.ts');
 
 const read = (...p) => readFileSync(join(__dirname, '..', ...p), 'utf8');
 
@@ -214,8 +207,9 @@ test('clerkPrompt carries the facts and forbids side effects', () => {
   assert.match(p, /breaker/i);
 });
 
-test('the clerk model is haiku-class', () => {
-  assert.match(STANDUP_CLERK_MODEL, /haiku/);
+test('the clerk model follows the resolved helper engine (claude default is haiku-class)', () => {
+  const { resolveHelperEngine } = loadTs('src/main/hiddenHelpers.ts');
+  assert.match(String(resolveHelperEngine({}).model), /haiku/);
 });
 
 // ── wiring (index.ts source pins) ───────────────────────────────────────────
@@ -249,7 +243,7 @@ test('scheduler: the clerk path is ops-standup only, and OFF keeps the god send'
 
 test('the clerk reuses the existing one-shot machinery (no new spawn path)', () => {
   const src = read('src/main/index.ts');
-  assert.match(src, /runHiddenClaude/, 'reuses hiddenClaude.ts');
+  assert.match(src, /runHiddenHelper/, 'dispatches through the engine-neutral helper runner');
   const fn = src.slice(src.indexOf('async function runStandupClerk'));
   assert.ok(fn.length > 0, 'the clerk runner exists');
   // The window must reach past hive.send (near the function's end) — it grew
@@ -257,7 +251,7 @@ test('the clerk reuses the existing one-shot machinery (no new spawn path)', () 
   // end (~3.7k) so the asserts stay INSIDE runStandupClerk.
   const body = fn.slice(0, 4096);
   assert.match(body, /detectAnomalies\(/, 'escalation is decided deterministically');
-  assert.match(body, /STANDUP_CLERK_MODEL/, 'haiku-class model override');
+  assert.match(body, /resolveHelperEngine\(/, 'engine resolved from Settings/god engine');
   assert.match(body, /summarizeAnomalies\(/, 'LLM failure falls back to the deterministic report');
   assert.match(body, /hive\.send\(/, 'god is mailed only from the escalation path');
 });

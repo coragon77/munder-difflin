@@ -29,7 +29,11 @@ import { resolveCommand } from './shellEnv';
 import {
   DEFAULT_HIRE_PERMISSION_MODE,
   disallowedToolsArgs,
+  isClaudeProvider,
+  normalizeAgentProvider,
   permissionModeArgs,
+  providerPreset,
+  type AgentProvider,
   type HirePermissionMode,
 } from '../shared/agentProvider';
 
@@ -82,10 +86,12 @@ async function firstWindowId(socket: string, kitty: string): Promise<string | nu
   return null;
 }
 
-/** The satellite's FIRST window is the god's co-terminal: the configured
- *  default engine (e.g. `claude`) in the hive cwd. Same memory/inbox/roster
- *  files as the in-app god session — a second process, not a shared transcript.
- *  Falls back to a plain shell when no engine/hive is configured.
+/** The satellite's FIRST window is the god's co-terminal: the GOD ENGINE
+ *  (config.godProvider — deputy card god-pi-switch-2026-08-18; claude keeps
+ *  the operator's defaultCommand compat, every other provider uses its preset
+ *  binary) in the hive cwd. Same memory/inbox/roster files as the in-app god
+ *  session — a second process, not a shared transcript. Falls back to a plain
+ *  shell when no engine/hive is configured.
  *
  *  The engine binary is resolved to an absolute path through the SAME
  *  login-shell resolver the PTYs use (`shellEnv.resolveCommand`): kitty is
@@ -107,10 +113,17 @@ export function godCommand(resolve: (command: string) => string = resolveCommand
     if (!existsSync(cfgPath)) return { file: 'bash', args: [], cwd: null };
     const cfg = JSON.parse(readFileSync(cfgPath, 'utf8')) as {
       defaultCommand?: string;
+      godProvider?: AgentProvider;
       harnessHome?: string | null;
     };
-    const cmd = (cfg.defaultCommand ?? '').trim() || 'bash';
-    const parts = cmd.split(/\s+/);
+    // God engine resolution mirrors the in-app god boot (useHive): godProvider
+    // drives the co-terminal; claude keeps the operator's defaultCommand.
+    const provider = normalizeAgentProvider(cfg.godProvider) ?? 'claude';
+    const base =
+      provider === 'claude'
+        ? (cfg.defaultCommand ?? '').trim() || 'bash'
+        : (providerPreset(provider).defaultCommand ?? 'bash');
+    const parts = base.split(/\s+/);
     const hive = cfg.harnessHome ?? null;
     // God co-terminal mirrors the in-app god's resolution (card
     // god-boot-ignores-permission-mode-20260816): his REGISTRY record's stored
@@ -129,16 +142,17 @@ export function godCommand(resolve: (command: string) => string = resolveCommand
         /* no/bad registry → default */
       }
     }
-    if (parts[0] === 'claude' && !parts.includes('--permission-mode')) {
-      parts.push(
-        ...permissionModeArgs(parts.join(' '), 'claude', godMode ?? DEFAULT_HIRE_PERMISSION_MODE),
-      );
-    }
+    // Unattended orchestrator — permission prompts in the satellite window
+    // answer nobody. permissionModeArgs is provider-aware (pi bypass →
+    // --approve; providers without an autonomous flag get nothing).
+    parts.push(
+      ...permissionModeArgs(parts.join(' '), provider, godMode ?? DEFAULT_HIRE_PERMISSION_MODE),
+    );
     // Same absolute deny as every other claude spawn (card
     // block-askuserquestion-20260817): god's satellite co-terminal must not
     // modal either — an unattended pane nobody can answer. Idempotent against
     // a config defaultCommand that already carries the deny.
-    if (parts[0] === 'claude') {
+    if (isClaudeProvider(provider)) {
       parts.push(...disallowedToolsArgs(parts.join(' '), 'claude'));
     }
     // Claude at the hive root finds the god's memory/board/inbox via its cwd.
