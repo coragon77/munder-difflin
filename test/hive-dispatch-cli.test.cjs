@@ -271,6 +271,88 @@ test('blocked cards also count as active; done/todo cards do not', {
   assert.equal(ok.code, 0, 'done assignments do not block a fresh dispatch');
 });
 
+test('refuses a PAUSED target card — names the hold, tells god to ask the operator, writes nothing', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  s.hive.writeTasks([
+    {
+      id: 'agent-held-card-2026-08-18',
+      title: 'Held by the operator',
+      status: 'todo',
+      paused: true,
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      origin: 'human',
+    },
+  ]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const r = s.run('--card', 'agent-held-card-2026-08-18', '--assignee', 'worker-1', '--body', 'c');
+  assert.notEqual(r.code, 0, 'refused');
+  assert.match(r.stderr, /paused:true/, 'refusal names the flag');
+  assert.match(r.stderr, /operator/i, 'refusal points at the operator, not a retry');
+  assert.match(r.stderr, /no override/i, 'refusal says there is no override to reach for');
+  assert.doesNotMatch(r.stderr, /retry|try again|later/i, 'must not read as transient');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger byte-identical');
+  assert.deepEqual(s.outboxMails(), [], 'no mail queued');
+  assert.deepEqual(s.recallRequests(), [], 'no recall queued');
+});
+
+test('refuses a BLOCKED target card — same gate, writes nothing', { skip: !POSIX }, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  s.hive.writeTasks([
+    {
+      id: 'agent-blocked-target-2026-08-18',
+      title: 'Waiting on the operator',
+      status: 'blocked',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      origin: 'human',
+    },
+  ]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const r = s.run(
+    '--card',
+    'agent-blocked-target-2026-08-18',
+    '--assignee',
+    'worker-1',
+    '--body',
+    'c',
+  );
+  assert.notEqual(r.code, 0, 'refused');
+  assert.match(r.stderr, /blocked/, 'refusal names the status');
+  assert.match(r.stderr, /operator/i, 'refusal points at the operator, not a retry');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger byte-identical');
+  assert.deepEqual(s.outboxMails(), [], 'no mail queued');
+});
+
+test('an UNPAUSED todo card still dispatches (the gate is the flag, not the todo status)', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  s.hive.writeTasks([
+    {
+      id: 'agent-free-card-2026-08-18',
+      title: 'Free to dispatch',
+      status: 'todo',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      origin: 'human',
+    },
+  ]);
+  const r = s.run('--card', 'agent-free-card-2026-08-18', '--assignee', 'worker-1', '--body', 'c');
+  assert.equal(r.code, 0, 'an unheld todo card dispatches normally');
+  assert.equal(s.tasks().find((c) => c.id === 'agent-free-card-2026-08-18').status, 'doing');
+});
+
 test('stdin carries the contract when --body is absent', {
   skip: !POSIX,
 }, (t) => {

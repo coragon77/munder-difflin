@@ -14,8 +14,12 @@
  *   B: anomaly kind 'todo-unattended': skips dep-waiting todos, covers
  *      unassigned AND assigned-idle in one kind, age-gated.
  *   C: godLine's quiet-floor sentence + sibling doc contracts updated.
- *   D: the ->doing flip clears paused in ALL THREE writers (hive-card
- *      cmdStatus, overlay move / updateTaskStatus, execUpdateTask).
+ *   D: the ->doing flip and paused — SUPERSEDED by card
+ *      agent-hive-dispatch-must-be-th-2026-08-18: both CLIs REFUSE the doing
+ *      flip on a paused card (the operator hold, checked in the primitive);
+ *      the two operator-facing writers (overlay updateTaskStatus,
+ *      execUpdateTask) keep the auto-resume — the operator is the unpause
+ *      authority.
  *   E: pause toggle ON THE CARD FACE (one click), overlay toggle secondary.
  *   F: the four reference cards' pausing is god's data step — NOT here.
  */
@@ -249,7 +253,15 @@ test('execUpdateTask -> doing clears paused (amendment D, writer 3)', () => {
   );
 });
 
-test('hive-card CLI: --paused/--resume on update; status -> doing clears paused (amendment D, writer 1)', (t) => {
+// ——— D (card agent-hive-dispatch-must-be-th-2026-08-18): the doing flip on
+// a PAUSED card now REFUSES in both CLIs (hive-card cmdStatus, hive-dispatch)
+// — the operator hold lives in the primitive, and the old silent auto-resume
+// was exactly the bypass. The two operator-facing writers (overlay
+// updateTaskStatus, voice execUpdateTask) keep the auto-resume: the operator
+// IS the unpause authority. Amendment D's original three-writer auto-resume
+// contract was superseded by this card.
+
+test('hive-card CLI: --paused/--resume on update; status -> doing REFUSES while paused, flips after --resume', (t) => {
   const hiveSrc = read('src/main/hive.ts');
   const m = /const HIVE_CARD_CLI = `([\s\S]*?)`;/.exec(hiveSrc);
   assert.ok(m, 'embedded CLI found');
@@ -278,13 +290,23 @@ test('hive-card CLI: --paused/--resume on update; status -> doing clears paused 
   run(['update', 'c1', '--paused']);
   let card = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8')).tasks[0];
   assert.equal(card.paused, true);
+  // held: the doing flip must REFUSE (the primitive checks the flag)
+  let refused = false;
+  try {
+    run(['status', 'c1', 'doing']);
+  } catch {
+    refused = true;
+  }
+  assert.ok(refused, 'CLI doing-flip refuses a paused card');
+  card = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8')).tasks[0];
+  assert.equal(card.status, 'todo', 'not flipped while held');
+  assert.equal(card.paused, true, 'still on hold');
+  // released: the doing flip works and leaves no stale hold behind
+  run(['update', 'c1', '--resume']);
   run(['status', 'c1', 'doing']);
   card = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8')).tasks[0];
   assert.equal(card.status, 'doing');
-  assert.ok(card.paused === undefined || card.paused === false, 'CLI doing-flip clears paused');
-  run(['update', 'c1', '--resume']);
-  card = JSON.parse(fs.readFileSync(path.join(home, 'tasks.json'), 'utf8')).tasks[0];
-  assert.ok(card.paused !== true, 'resume clears the flag');
+  assert.ok(card.paused !== true, 'no stale on-hold flag into doing');
 });
 
 // ——— E: the UI — one click on the card face, overlay secondary ———————————

@@ -154,6 +154,39 @@ test('status: moves an existing card and validates inputs', { skip: !POSIX }, as
   assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched after rejections');
 });
 
+// ——— operator holds vs the doing flip (card agent-hive-dispatch-must-be-th-
+// 2026-08-18): a paused card is the operator's hold — the doing flip must
+// refuse it, not silently auto-resume it. blocked->doing stays legal (the
+// humanQA resume flow: god unblocks a card once the human answered).
+
+test("status doing on a PAUSED card refuses — the hold is the operator's, nothing written", {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const id = s.run('add', '--title', 'Held card', '--status', 'todo').trim();
+  s.run('update', id, '--paused');
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const r = s.runFail('status', id, 'doing');
+  assert.notEqual(r.code, 0, 'refused');
+  assert.match(r.stderr, /paused:true/, 'refusal names the flag');
+  assert.match(r.stderr, /operator/i, 'refusal points at the operator');
+  const card = s.tasks().find((c) => c.id === id);
+  assert.equal(card.status, 'todo', 'card not flipped');
+  assert.equal(card.paused, true, 'still on hold');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
+});
+
+test('status doing on a BLOCKED card still works — the humanQA resume flow stays legal', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const id = s.run('add', '--title', 'Blocked card', '--status', 'todo').trim();
+  s.run('status', id, 'blocked');
+  s.run('status', id, 'doing');
+  assert.equal(s.tasks().find((c) => c.id === id).status, 'doing', 'resume via doing flip works');
+});
+
 // ——— engagement-aware flips (2026-08-17): status doing --adopt / --fresh ————
 // --adopt marks the card sessionMode:'adopt' (the watcher leads + stamps the
 // assignee's CURRENT conversation, NO clear); --fresh is the explicit spelling

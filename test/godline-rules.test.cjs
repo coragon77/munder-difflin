@@ -144,6 +144,31 @@ test('godLine teaches hive-dispatch as the guarded dispatch interface', () => {
   );
 });
 
+test('godLine pins hive-dispatch as the ONLY todo->doing path with the paused/blocked gate', () => {
+  // Card agent-hive-dispatch-must-be-th-2026-08-18: god dispatched a
+  // paused card (hpt-import-amazon-testdata-20260817) because the rule
+  // lived in prose he reasoned past, and the todo->doing flip was also
+  // reachable by hand-editing tasks.json with a python one-liner. The gate
+  // moves into the PRIMITIVE (hive-dispatch refuses paused/blocked cards)
+  // and the briefing must teach BOTH: only path + no hand-edits.
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/ONLY todo->doing path/.test(p), 'names hive-dispatch as the ONLY todo->doing path');
+  assert.ok(
+    /never flip a card to doing by hand/i.test(p) || /NEVER hand-flip/.test(p),
+    'bans the hand-made doing flip',
+  );
+  assert.ok(/python|one-liner|jq/i.test(p), 'names the one-liner habit the ban closes off');
+  assert.ok(
+    /target card is paused \(paused:true\) or blocked/.test(p),
+    'teaches the paused/blocked target-card refusal',
+  );
+  assert.ok(/no override/i.test(p) || /NO override/.test(p), 'there is no override flag to teach');
+  assert.ok(
+    /ask the operator to (unpause|release|unblock)/i.test(p),
+    'the sanctioned move is asking the operator',
+  );
+});
+
 test('godLine teaches hive-inbox drain as the archive-on-read interface', () => {
   const prompt = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
   assert.ok(/INBOX INTERFACE:/.test(prompt), 'the inbox interface is named');
@@ -499,5 +524,25 @@ test('godLine TOOLS clause keeps the graphify calibration', () => {
   assert.ok(
     /reserve file:line pointers for claims the worker must cite precisely/.test(p),
     'file:line pointers remain legal for precise citations',
+  );
+});
+
+test('hive-root AGENTS.md pins hive-dispatch as the only todo->doing gate', () => {
+  // Same card as the godLine pin: a rule that lives only in god's memory or
+  // only in the godLine does not survive a fresh install's floor briefing —
+  // the hive-root AGENTS.md (every agent reads it, god included) must carry
+  // the gate too.
+  const md = hiveRootAgentsMd(false);
+  assert.ok(
+    /hive-dispatch is the ONLY todo->doing\s+path/.test(md),
+    'the AGENTS.md floor rules name the only todo->doing path',
+  );
+  assert.ok(
+    /refuses paused.blocked cards itself|refuses paused and blocked cards/.test(md),
+    'the primitive-level gate is stated',
+  );
+  assert.ok(
+    /never\s+flip a card to doing by hand|never .*hand-edit.*doing/i.test(md),
+    'the hand-edit flip is banned in the floor rules',
   );
 });
