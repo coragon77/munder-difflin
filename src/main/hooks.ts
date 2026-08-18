@@ -19,6 +19,7 @@ import type { ControlRegistry } from './control';
 import type { CircuitBreaker } from './breaker';
 import type { TelemetryCollector } from './telemetry';
 import type { PendingWorkTracker } from './pendingWork';
+import { waitingLabel } from '../shared/waitingLabel';
 import { estimateCostUsd } from './pricing';
 
 interface HookPayload {
@@ -319,7 +320,7 @@ export class HookServer {
       this.notify(
         agentId ?? 'Agent',
         pendingWorkCount && pendingWorkCount > 0
-          ? `finished — waiting (${pendingWorkCount} background task${pendingWorkCount === 1 ? '' : 's'})`
+          ? `finished — ${waitingLabel(pendingWorkCount)}`
           : 'finished — idle',
       );
       this.emit(agentId, event, p, false, pendingWorkCount);

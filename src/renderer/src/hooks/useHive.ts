@@ -29,6 +29,7 @@ import {
 } from '@/components/terminalPool';
 import { deliverWithAcknowledgement } from './queueDelivery';
 import { cardSessionActionStillValid, type CardSnapshotLike } from '../../../shared/cardSessions';
+import { waitingLabel } from '../../../shared/waitingLabel';
 import { spawnIdentity } from '@/scene/office/spawnIdentity';
 
 const GOD_ID = 'god';
@@ -490,7 +491,7 @@ export function useHive(config: HarnessConfig | null): void {
           if (waiting > 0) {
             updateAgent(e.agentId, {
               status: 'waiting',
-              action: `waiting (${waiting} background task${waiting === 1 ? '' : 's'})`,
+              action: waitingLabel(waiting),
               carrying: undefined,
               pending: waiting,
             });

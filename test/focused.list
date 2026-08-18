@@ -112,3 +112,4 @@ test/task-board-reconcile.test.cjs
 test/standup-todo-alive.test.cjs
 test/tasks-lock-unified.test.cjs
 test/worktree-stale-base-verdict.test.cjs
+test/waiting-label-single-source.test.cjs
