@@ -565,6 +565,11 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
     engineProvider !== savedEngine.provider ||
     engineModel !== savedEngine.model ||
     engineEffort !== savedEngine.effort;
+  // SAVE ONLY (card agent-command-center-save-with-2026-08-18): set when "save only"
+  // persisted the selection without restarting — drives the "takes effect on next
+  // restart" hint so the row never LOOKS applied. Cleared by the remount any
+  // restart causes (the panel re-seeds with the saved config now live).
+  const [savedForNextRestart, setSavedForNextRestart] = useState(false);
   const [restartErrors, setRestartErrors] = useState<Record<string, string>>({});
   // The harness's own default model (Settings → default model). Michael and every
   // new agent spawn on this, so the picker marks it — otherwise the only entry
@@ -1333,11 +1338,15 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                       ))}
                     </Select>
                   )}
-                  {engineDirty && (
+                  {engineDirty ? (
                     <span style={{ fontSize: 11, color: 'var(--cth-coral)' }}>
                       unsaved — press apply
                     </span>
-                  )}
+                  ) : savedForNextRestart ? (
+                    <span style={{ fontSize: 11, color: 'var(--cth-ink-700)' }}>
+                      saved — takes effect on next restart
+                    </span>
+                  ) : null}
                   <PixelButton
                     variant={engineDirty ? 'primary' : 'secondary'}
                     size="sm"
@@ -1371,6 +1380,31 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                     }}
                   >
                     {restarting === a.id ? 'restarting…' : 'apply'}
+                  </PixelButton>
+                  {/* SAVE ONLY (card agent-command-center-save-with-2026-08-18): persist the
+                    selection WITHOUT restarting — provider/model/effort are all read at spawn
+                    (spawnAgentCore), so the next spawn picks them up while the current
+                    conversation stays alive. */}
+                  <PixelButton
+                    variant="secondary"
+                    size="sm"
+                    disabled={restarting === a.id || !engineDirty}
+                    title="Persist provider/model/effort without restarting — takes effect at Michael's next spawn; the current conversation stays alive"
+                    onClick={async () => {
+                      await window.cth.updateConfig({
+                        godProvider: engineProvider,
+                        godModel: engineModel,
+                        godEffort: engineEffort,
+                      });
+                      setSavedEngine({
+                        provider: engineProvider,
+                        model: engineModel,
+                        effort: engineEffort,
+                      });
+                      setSavedForNextRestart(true);
+                    }}
+                  >
+                    save only
                   </PixelButton>
                   {/* Redraw a garbled terminal without losing the thread (resume the
                     SAME engine+model). Kept here since the god has no per-agent row above. */}

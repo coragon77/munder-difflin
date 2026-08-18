@@ -113,3 +113,4 @@ test/standup-todo-alive.test.cjs
 test/tasks-lock-unified.test.cjs
 test/worktree-stale-base-verdict.test.cjs
 test/engine-row-dirty-guard.test.cjs
+test/engine-row-save-only.test.cjs
