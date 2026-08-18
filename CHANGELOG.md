@@ -58,6 +58,12 @@ longer drift apart. Appearance only — no functional change.
   downsampling a 512px portrait.
 
 ### Fixed
+- **godLine no longer contradicts the operator's arm-LATE decision.** "KEEP ONE ARMED" taught
+  arming a watcher on the first verified renderer branch, but under worker-side integration every
+  main-process push advances origin/main and silently rots the armed target. The godLine now
+  teaches ARM LATE (hold the branch, one final-tip report, arm at restart imminence), names the
+  accepted cost (a restart before the ping lands nothing), and adds the post-push check
+  `git merge-base --is-ancestor origin/main <armed-target>` — armed is never "will land".
 - **Restart-window watcher no longer reports "completed" on the checkout sha alone.** The
   live app runs the built `out/main/index.js`, which a relaunch racing the merge left pre-merge
   while the checkout already sat at the target (false "landed", 2026-08-18). The watcher now

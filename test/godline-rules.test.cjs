@@ -70,16 +70,25 @@ test('godLine carries the RENDERER-MERGE BATCHING rule', () => {
   assert.ok(/status/.test(p), 'published restart-window state is inspectable');
 });
 
-test('godLine keeps one renderer watcher armed from the first verified branch', () => {
+test('godLine teaches ARM LATE — the operator decision that overrides keep-one-armed', () => {
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
-  assert.ok(/KEEP ONE ARMED: whenever ANY verified renderer\/preload branch is unmerged/.test(p));
-  assert.ok(/arm on the first one; do not wait for the batch to feel complete/.test(p));
-  assert.ok(/An unarmed window means a restart lands NOTHING/.test(p));
+  assert.ok(!/KEEP ONE ARMED/.test(p), 'the contradicted keep-one-armed rule must be gone');
+  assert.ok(/ARM LATE/.test(p), 'must teach arm-late by name');
   assert.ok(
-    /early arming is free because the watcher fires only when the harness process disappears/.test(
-      p,
-    ),
+    /renderer worker HOLDS its branch and reports its final tip ONCE/.test(p),
+    'worker holds the branch; one final-tip report',
   );
+  assert.ok(/when a restart is actually imminent/.test(p), 'arming happens at imminence');
+  assert.ok(/rebase \+ gate \+ push once/.test(p), 'single rebase+gate+push at ping time');
+  assert.ok(
+    /restart lands NOTHING/.test(p) && /ACCEPTED COST/.test(p),
+    'the accepted cost of arm-late is stated, not hidden',
+  );
+  assert.ok(
+    /merge-base --is-ancestor origin\/main <armed-target>/.test(p),
+    'after every main-process push the armed target is checked against origin/main',
+  );
+  assert.ok(/armed is never 'will land'/.test(p), 'the arm silently rotting is named');
 });
 
 test('godLine gives the renderer watcher retarget procedure', () => {
