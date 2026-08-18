@@ -20,6 +20,7 @@ import { waitingBadge } from '@/statusLabel';
 import { COMMAND_GROUPS } from '@shared/claudeCommands';
 import { useStore, triggerHistoryVisible, agentClassOf, type Agent } from '@/store/store';
 import { usePtyParser } from '@/hooks/usePtyParser';
+import { useProviderModels } from '@/hooks/useProviderModels';
 import {
   buildSpawnCommand,
   decodeProviderModel,
@@ -577,6 +578,12 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
   // restart" hint so the row never LOOKS applied. Cleared by the remount any
   // restart causes (the panel re-seeds with the saved config now live).
   const [savedForNextRestart, setSavedForNextRestart] = useState(false);
+  // Discovered pi models (god-pi-switch follow-up): pi's catalog is auth-scoped
+  // (`pi --list-models` via useProviderModels) — the engine row, the per-agent
+  // picker and the known-model check all read THIS, never the static list.
+  // Every other provider keeps its static list (the discovery cache's scope).
+  const piModelOptions = useProviderModels('pi');
+  const modelsFor = (p: AgentProvider) => (p === 'pi' ? piModelOptions : modelsForProvider(p));
   const [restartErrors, setRestartErrors] = useState<Record<string, string>>({});
   // The harness's own default model (Settings → default model). Michael and every
   // new agent spawn on this, so the picker marks it — otherwise the only entry
@@ -962,9 +969,7 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
           const hasSpark = sparkSeries.some((v) => v > 0);
           const rateVal = Math.round(rate[a.id] ?? 0);
           const rateLabel = rateVal > 0 ? `${fmtTokens(rateVal)}/m` : 'rate';
-          const currentModelKnown = modelsForProvider(agentProvider).some(
-            (model) => model.id === a.model,
-          );
+          const currentModelKnown = modelsFor(agentProvider).some((model) => model.id === a.model);
           return (
             <div
               key={a.id}
@@ -1258,7 +1263,7 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                     )}
                     {modelProvidersForAgent(a.isGod).map((preset) => (
                       <optgroup key={preset.id} label={preset.label}>
-                        {modelsForProvider(preset.id).map((model) => {
+                        {modelsFor(preset.id).map((model) => {
                           // `defaultModel` is a Claude model id, so it can only mark
                           // an entry in the Claude group.
                           const isHarnessDefault =
@@ -1341,7 +1346,7 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                     disabled={restarting === a.id}
                     onChange={(v) => setEngineModel(v || undefined)}
                   >
-                    {modelsForProvider(engineProvider).map((m) => (
+                    {modelsFor(engineProvider).map((m) => (
                       <option key={m.label} value={m.id ?? ''}>
                         {m.label}
                       </option>

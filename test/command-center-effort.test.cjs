@@ -155,8 +155,9 @@ test('CommandCenterPanel: EFFORT Select between model Select and apply, driven b
   // rides the apply path — same updateConfig as provider+model
   assert.match(p, /godEffort: engineEffort/, 'apply persists godEffort');
   // placement: between the model Select and the apply button — the effort
-  // Select appears after modelsForProvider and before the apply PixelButton.
-  const modelSel = p.indexOf('modelsForProvider(engineProvider)');
+  // Select appears after the model select (modelsFor — pi-discovered, god-pi-
+  // switch follow-up) and before the apply PixelButton.
+  const modelSel = p.indexOf('modelsFor(engineProvider)');
   const effortSel = p.indexOf('engineEffort ??');
   const apply = p.indexOf("restarting === a.id ? 'restarting…' : 'apply'");
   assert.ok(

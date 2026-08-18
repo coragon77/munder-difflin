@@ -128,3 +128,4 @@ test/hidden-helpers.test.cjs
 test/god-pi-switch.test.cjs
 test/pi-resume-guard.test.cjs
 test/engine-row-save-scoping.test.cjs
+test/pi-models-dynamic.test.cjs

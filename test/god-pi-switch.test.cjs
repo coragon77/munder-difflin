@@ -35,11 +35,11 @@ const read = (...p) => readFileSync(join(__dirname, '..', ...p), 'utf8');
 
 // ——— (1) stale-model guard in buildSpawnCommand ——————————————————————————
 
-test('a claude-dialect godModel on a pi spawn falls back to the pi recommendation', () => {
+test('a claude-dialect godModel on a pi spawn falls back to the CLI default', () => {
   const cmd = buildSpawnCommand({ defaultCommand: 'claude' }, 'claude-opus-5', 'pi');
   assert.ok(cmd.startsWith('pi'), `command starts with pi: ${cmd}`);
   assert.ok(!cmd.includes('claude-opus-5'), `stale model dropped: ${cmd}`);
-  assert.match(cmd, /--model anthropic\//, 'pi recommended orchestrator model applied');
+  assert.ok(!cmd.includes('--model'), `no model forced — the CLI default rules: ${cmd}`);
 });
 
 test('a matching model still passes through untouched (guard is dialect-aware, not a blanket drop)', () => {
