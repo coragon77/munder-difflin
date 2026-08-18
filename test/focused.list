@@ -129,3 +129,4 @@ test/god-pi-switch.test.cjs
 test/pi-resume-guard.test.cjs
 test/engine-row-save-scoping.test.cjs
 test/pi-models-dynamic.test.cjs
+test/hive-cli-live-root-guard.test.cjs

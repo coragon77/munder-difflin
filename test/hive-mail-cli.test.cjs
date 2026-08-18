@@ -65,8 +65,9 @@ test('happy path: envelope autofilled, file named <id>.json, stdout is exactly o
   );
 
   assert.match(out, /^queued [^\s]+\.json\n$/, 'exactly one line: queued <id>.json');
-  const id = out.trim().slice('queued '.length, -'.json'.length);
-  const file = path.join(s.outbox, `${id}.json`);
+  const file = out.trim().slice('queued '.length);
+  assert.ok(file.startsWith(s.outbox + path.sep), 'receipt names the full outbox path');
+  const id = path.basename(file, '.json');
   assert.ok(fs.existsSync(file), 'the file is named after the generated id');
 
   const msg = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -102,7 +103,9 @@ test('--conversation and --in-reply-to carried; requires_reply derives from act'
     '--in-reply-to',
     'god-meredith-ask-20260817',
   );
-  const id = out.trim().slice('queued '.length, -'.json'.length);
+  const file = out.trim().slice('queued '.length);
+  assert.ok(file.startsWith(s.outbox + path.sep), 'receipt names the full outbox path');
+  const id = path.basename(file, '.json');
   const msg = JSON.parse(fs.readFileSync(path.join(s.outbox, `${id}.json`), 'utf8'));
   assert.equal(msg.conversation, 'conv-card-42');
   assert.equal(msg.in_reply_to, 'god-meredith-ask-20260817');
@@ -152,7 +155,9 @@ test('router integration: a CLI-written mail routes into the inbox and archives 
   });
 
   const out = s.run('--to', 'god-1', '--act', 'inform', '--subject', 'FYI', '--body', 'all green');
-  const id = out.trim().slice('queued '.length, -'.json'.length);
+  const file = out.trim().slice('queued '.length);
+  assert.ok(file.startsWith(s.outbox + path.sep), 'receipt names the full outbox path');
+  const id = path.basename(file, '.json');
 
   const routed = s.hive.routeOnce();
   assert.equal(routed, 1, 'the router accepted the CLI-written envelope');

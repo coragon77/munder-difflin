@@ -4725,6 +4725,41 @@ main().catch((error) => {
 // exclusive O_EXCL lock (stale takeover, same pattern as the usage cache in
 // HOOK_SHIM); the payload lands in a same-dir tempfile and renames onto
 // tasks.json, so readers never parse a half-written ledger.
+// Serialized into EVERY generated bin/ CLI below (card agent-hive-mail-
+// silently-destr-2026-08-18): refuse a HIVE_ROOT that is not a LIVE hive,
+// BEFORE any mkdir/write. The incident: `HIVE_ROOT=/…/HarnessAgents` (missing
+// `/hive`) let the CLIs mkdir a PHANTOM hive and queue real mail into an
+// outbox no router polls — receipts looked normal, delivery never happened,
+// zero trace in the real hive; it read as "mail silently destroyed in
+// transit". Two independent agents hit it the same day. Liveness proof:
+// (a) a CLI generated into <hive>/bin requires HIVE_ROOT to be THAT hive;
+// (b) any root must carry registry.json (ensureHive's bootstrap invariant).
+// Plain-JS string: no backticks, no ${, no imports — interpolates cleanly.
+const ASSERT_LIVE_HIVE = `function assertLiveHive(root) {
+  var cliName = path.basename(process.argv[1] || 'hive-cli');
+  function refuse(msg) {
+    process.stderr.write(cliName + ': ' + msg + '\\n');
+    process.exit(1);
+  }
+  var selfDir = path.dirname(process.argv[1] || '');
+  if (path.basename(selfDir) === 'bin' && fs.existsSync(path.join(path.dirname(selfDir), 'registry.json'))) {
+    var selfHive = path.dirname(selfDir);
+    if (path.resolve(root) !== path.resolve(selfHive)) {
+      refuse(
+        'refused: HIVE_ROOT="' + root + '" does not match the hive this CLI was generated into ("' + selfHive + '"). ' +
+        'Writing there lands mail/cards in a hive the router never drains — silently undeliverable ' +
+        '(incident 2026-08-18: 7 mails were "lost" this exact way). ' +
+        'Unset HIVE_ROOT (the pane env already carries the correct value) or set it to "' + selfHive + '".');
+    }
+  }
+  if (!fs.existsSync(path.join(root, 'registry.json'))) {
+    refuse(
+      'refused: HIVE_ROOT="' + root + '" has no registry.json — that is not a live hive ' +
+      '(classic cause: missing the "/hive" suffix). Refusing to write where nothing would ever be delivered.');
+  }
+}
+`;
+
 const HIVE_CARD_CLI = `#!/usr/bin/env node
 'use strict';
 const fs = require('fs');
@@ -4749,6 +4784,8 @@ if (!root) {
   process.stderr.write('hive-card: HIVE_ROOT is not set — run this from inside a hive agent pane.\\n');
   process.exit(1);
 }
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
 const ledgerPath = path.join(root, 'tasks.json');
 const lockPath = ledgerPath + '.lock';
 
@@ -5040,6 +5077,8 @@ if (!root || !from) {
   process.stderr.write('hive-mail: HIVE_ROOT and AGENT_ID must be set — run this from inside a hive agent pane.\\n');
   process.exit(1);
 }
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
 
 function parseFlags(argv) {
   const out = {};
@@ -5094,7 +5133,7 @@ const file = path.join(outbox, id + '.json');
 const tmp = file + '.tmp-' + process.pid;
 fs.writeFileSync(tmp, JSON.stringify(msg, null, 2), 'utf8');
 fs.renameSync(tmp, file);
-process.stdout.write('queued ' + id + '.json\\n');
+process.stdout.write('queued ' + file + '\\n');
 `;
 
 // ─── hive-dispatch (written to <hive>/bin/hive-dispatch) ───────────────────────
@@ -5140,6 +5179,8 @@ if (!root || !from) {
   process.stderr.write('hive-dispatch: HIVE_ROOT and AGENT_ID must be set — run this from inside a hive agent pane.\\n');
   process.exit(1);
 }
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
 const ledgerPath = path.join(root, 'tasks.json');
 const lockPath = ledgerPath + '.lock';
 
@@ -5393,6 +5434,8 @@ if (!root) {
   process.stderr.write('hive-hire: HIVE_ROOT must be set — run this from inside a hive agent pane.\\n');
   process.exit(1);
 }
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
 
 const VALUE_FLAGS = ['name', 'objective', 'cwd', 'id', 'provider', 'model', 'card', 'title'];
 function parseArgs(argv) {
@@ -5572,6 +5615,8 @@ if (!root) {
   process.stderr.write('hive-fire: HIVE_ROOT must be set — run this from inside a hive agent pane.\\n');
   process.exit(1);
 }
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
 
 function readJson(file, orNull) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
@@ -5656,6 +5701,8 @@ if (!root) {
   process.stderr.write('hive-inbox: HIVE_ROOT is not set — run this from inside a hive agent pane.\\n');
   process.exit(1);
 }
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
 if (process.argv[2] !== 'drain') usage();
 
 let agent;
@@ -5748,6 +5795,8 @@ if (!root) {
   process.stderr.write('hive-new: HIVE_ROOT is not set — run this from inside a hive agent pane.\\n');
   process.exit(1);
 }
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
 
 const args = process.argv.slice(2);
 let agentId = null;

@@ -89,10 +89,7 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 
-// The constants are module-private in hive.ts; the EMITTED script is what
-// ships, so extract it the way bootstrap does — from the constant via a tiny
-// eval shim over the source (kept in sync by the syntax + behavior pins).
-function cliSource(name) {
+function templateOf(name) {
   const src = read('src/main/hive.ts');
   const at = src.indexOf(`const ${name} = \``);
   assert.ok(at > 0, `${name} constant exists in src/main/hive.ts`);
@@ -105,6 +102,17 @@ function cliSource(name) {
     .slice(at + src.slice(at).indexOf('`') + 1, end)
     .split('\\\\n')
     .join('\\n');
+}
+
+// The CLI templates interpolate the shared live-hive guard (card
+// agent-hive-mail-silently-destr-2026-08-18) — splice its evaluated body in
+// where the raw token appears, mirroring template evaluation.
+const GUARD_TOKEN = '${' + 'ASSERT_LIVE_HIVE}';
+function cliSource(name) {
+  const raw = templateOf(name);
+  return raw.includes(GUARD_TOKEN)
+    ? raw.split(GUARD_TOKEN).join(templateOf('ASSERT_LIVE_HIVE'))
+    : raw;
 }
 
 function withFakeHive(fn) {
