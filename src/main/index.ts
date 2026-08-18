@@ -74,6 +74,7 @@ import {
   listWorktrees,
   checkoutRef,
 } from './git';
+import { refreshProjectGraph } from './graphRefresh';
 import {
   HiveManager,
   deriveSpawnLabel,
@@ -7127,6 +7128,14 @@ app.whenReady().then(() => {
   // Same for the Telegram reply helper: stable path, no secret, file only exists
   // while the endpoint runs (absent → helper degrades to "not running").
   process.env.MD_TELEGRAM_REPLY_CONFIG = telegramReplyConfigPath();
+  // Project-root graphify refresh (card agent-harness-graphify-graph-f-2026-
+  // 08-18): workers' graph updates die inside their worktrees, so the MAIN
+  // checkout's graph — the one strangers read — decayed. Refresh it at app
+  // start: restart-window merges happen only while the app is DOWN, so this
+  // runs seconds after every merge, covers manual merges/pulls too, and never
+  // touches the watcher's merge+push window. Fire-and-forget, best-effort —
+  // refreshProjectGraph swallows every failure into a logged reason.
+  void refreshProjectGraph(app.getAppPath());
   // Satellite Kitty: export KITTY_LISTEN_ON + KITTY_WINDOW_ID so the user's
   // handoff skills (pi-handoff/claude-handoff) work inside agent PTYs exactly
   // as they do in a real Kitty pane — splits land in the satellite window.

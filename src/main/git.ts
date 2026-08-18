@@ -81,6 +81,14 @@ export async function getBranch(cwd: string): Promise<GitBranchInfo | { error: s
   return { current: name, detached: false };
 }
 
+/** Full HEAD sha of `cwd`, or null when cwd isn't a git repo / git fails. */
+export async function getHead(cwd: string): Promise<string | null> {
+  const res = await runGit(cwd, ['rev-parse', 'HEAD']);
+  if (!res.ok) return null;
+  const sha = res.stdout.trim();
+  return /^[0-9a-f]{7,40}$/.test(sha) ? sha : null;
+}
+
 export async function getStatus(cwd: string): Promise<GitStatus | { error: string }> {
   const res = await runGit(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
   if (!res.ok) return { error: res.error };
