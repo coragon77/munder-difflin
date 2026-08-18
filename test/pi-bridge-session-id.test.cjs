@@ -61,6 +61,10 @@ async function loadExtension(posts, sessionId) {
   };
   sink = (payload) => posts.push(JSON.parse(payload.slice(0, payload.lastIndexOf('}') + 1)));
   process.env.HIVE_SOCK = '/fake/hive.sock';
+  // Hermetic env: the extension reconciles child session files from
+  // PI_CODING_AGENT_DIR — a real agent dir inherited from the ambient env
+  // (these tests run INSIDE a pi agent) would leak real sessions in.
+  process.env.PI_CODING_AGENT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-hermetic-'));
   const mod = await import(pathToFileURL(extFile).href);
   const handlers = {};
   const pi = {

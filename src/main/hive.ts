@@ -5826,12 +5826,17 @@ process.stdin.on('end', () => {
 // (pi has no OTLP — without this, fleet.json shows a permanently blind row for
 // pi agents), READS the socket response and injects returned additionalContext
 // (queued operator steers) via pi.sendMessage({deliverAs:'steer'}), and
+// reconciles pi.agent CHILD session usage into the same CostSample plane
+// (children are launch-resolved without this bridge and their usage never
+// reaches the parent bus — see the reconciliation block in the template), and
 // AUTO-APPROVES tool calls when the spawn's permission mode grants autonomy
 // (HIVE_AUTO_APPROVE, per-spawn — Pam guardrail #5). The agent_settled→Stop
 // keeps the harness status in step (→ idle) so the renderer idle inbox-wake
 // nudge can deliver mail. Fully wrapped so a wrong API guess can never break
 // the spawn. Event shapes verified against pi 0.84.
 const PI_EXTENSION = `import net from 'node:net';
+import fs from 'node:fs';
+import path from 'node:path';
 const SOCK = process.env.HIVE_SOCK;
 const AGENT = process.env.AGENT_ID ?? null;
 // The session id comes from ctx.sessionManager.getSessionId() — the documented
@@ -5874,9 +5879,132 @@ function post(payload: Record<string, unknown>): void {
     c.on('error', () => {});
   } catch {}
 }
+// CHILD-USAGE RECONCILIATION (card agent-pi-subagent-tokens-may-b-2026-08-18).
+// pi.agent children are spawned launch-resolved (runtime extension ONLY — the
+// hive bridge never loads inside them), and their per-message usage never
+// re-emits on the parent's message_end bus: a child burning 16M tokens
+// (mostly cacheRead — each child re-reads the parent's context) was INVISIBLE
+// to fleet.json, so half the floor's cost was unaccounted. The session files
+// are the canonical record (children share PI_CODING_AGENT_DIR/sessions/), so
+// reconcile them: baseline every file that exists at load (nothing posted for
+// history), then post each file's GROWTH as one CostSample per scan, keyed by
+// the child's own session id, excluding this session's own file (its usage
+// already flows via message_end). Deltas are persisted in a cursor file, so a
+// parent restart never double-posts. Read-only for the worker — measurement
+// only, never behaviour.
+const PI_DIR_ENV = 'PI_CODING_AGENT_DIR';
+const LOAD_TS = Date.now();
+let MY_SESSION: string | null = null;
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const ZERO = { i: 0, o: 0, cr: 0, cc: 0 };
+// Read per scan (not captured at load) so the environment is honoured even if
+// it is set after module load — the harness always sets it before spawn, but
+// a late-set env must not silently disable reconciliation.
+function piDir(): string | null {
+  try { return process.env[PI_DIR_ENV] ?? null; } catch { return null; }
+}
+function readCursors(dir: string): Record<string, typeof ZERO> {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'hive-bridge-cursors.json'), 'utf8')); } catch { return {}; }
+}
+function writeCursors(dir: string, c: Record<string, typeof ZERO>): void {
+  try {
+    const tmp = path.join(dir, 'hive-bridge-cursors.tmp');
+    fs.writeFileSync(tmp, JSON.stringify(c), 'utf8');
+    fs.renameSync(tmp, path.join(dir, 'hive-bridge-cursors.json'));
+  } catch { /* cursors are best-effort; a lost cursor re-baselines, never lies */ }
+}
+function sumFile(p: string): { tot: typeof ZERO; model: string } {
+  const tot = { i: 0, o: 0, cr: 0, cc: 0 };
+  let model = '';
+  try {
+    const lines = fs.readFileSync(p, 'utf8').split('\n');
+    for (const line of lines) {
+      if (!line) continue;
+      let e: any;
+      try { e = JSON.parse(line); } catch { continue; }
+      const m = e?.message;
+      if (e?.type !== 'message' || !m || (m.role !== 'assistant' && m.role !== 'toolResult')) continue;
+      if (m.responseModel) model = m.responseModel;
+      const u = m.usage;
+      if (!u) continue;
+      tot.i += u.input ?? 0; tot.o += u.output ?? 0;
+      tot.cr += u.cacheRead ?? 0; tot.cc += u.cacheWrite ?? 0;
+    }
+  } catch { /* unreadable file: treat as zero-growth */ }
+  return { tot, model };
+}
+const FILE_TS_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z_/;
+function fileBornAfter(p: string, loadTs: number): boolean {
+  // pi names session files by CREATION time (…T11-00-00-000Z_<uuid>.jsonl), so
+  // the filename — not mtime — decides "born after load": a resumed session
+  // carries its original creation stamp (huge history, fresh mtime) and must
+  // baseline, never post; only a genuinely new file may post its full totals.
+  const m2 = FILE_TS_RE.exec(p);
+  if (!m2) return false; // unparseable name: safe default = history
+  const iso =
+    m2[1] + '-' + m2[2] + '-' + m2[3] + 'T' + m2[4] + ':' + m2[5] + ':' + m2[6] + '.' + m2[7] + 'Z';
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t >= loadTs : false;
+}
+function scanChildUsage(): void {
+  try {
+    const dir = piDir();
+    if (!dir) return;
+    const sessRoot = path.join(dir, 'sessions');
+    if (!fs.existsSync(sessRoot)) return;
+    const cursors = readCursors(dir);
+    let dirty = false;
+    for (const dir of fs.readdirSync(sessRoot)) {
+      const d = path.join(sessRoot, dir);
+      let files: string[] = [];
+      try { files = fs.readdirSync(d); } catch { continue; }
+      for (const f of files) {
+        if (!f.endsWith('.jsonl')) continue;
+        const sessId = UUID_RE.exec(f)?.[0];
+        // Own-session files are excluded (message_end already reports them);
+        // pre-load files are baselined by the first scan, which records their
+        // CURRENT totals without posting, so history never double-flows.
+        if (MY_SESSION && sessId === MY_SESSION) continue;
+        const p = path.join(d, f);
+        const key = dir + '/' + f;
+        const prev = cursors[key];
+        if (!prev && !fileBornAfter(f, LOAD_TS)) { cursors[key] = sumFile(p).tot; dirty = true; continue; }
+        const { tot, model } = sumFile(p);
+        if (!prev) {
+          // First sight of a file born after load = a fresh child session: its
+          // full totals are unreported growth (nothing baselined it), so post them.
+          cursors[key] = tot; dirty = true;
+          if (SOCK && sessId) {
+            post({
+              hook_event_name: 'CostSample',
+              session_id: sessId,
+              model,
+              input: tot.i, output: tot.o, cache_read: tot.cr, cache_creation: tot.cc
+            });
+          }
+          continue;
+        }
+        const di = tot.i - prev.i, doo = tot.o - prev.o, dcr = tot.cr - prev.cr, dcc = tot.cc - prev.cc;
+        if (di <= 0 && doo <= 0 && dcr <= 0 && dcc <= 0) continue;
+        cursors[key] = tot; dirty = true;
+        if (!SOCK) continue;
+        post({
+          hook_event_name: 'CostSample',
+          session_id: sessId,
+          model,
+          input: di, output: doo, cache_read: dcr, cache_creation: dcc
+        });
+      }
+    }
+    if (dirty) writeCursors(dir, cursors);
+  } catch { /* reconciliation must never break the turn */ }
+}
 // Pi extension shape (pi 0.84): ESM default export, structural ExtensionAPI.
 export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => any) => void; sendMessage?: (message: any, options?: any) => void }) {
   PI = pi;
+  scanChildUsage(); // baseline whatever history exists, post nothing
+  const childScanTimer = setInterval(() => { try { scanChildUsage(); } catch {} }, 60_000);
+  childScanTimer.unref?.(); // never hold the process open for reconciliation
   // The breaker's loop detector keys on tool_name + tool_input. pi's tool_result
   // event carries no input, so a PostToolUse without one made every call of the
   // same tool look identical (10 distinct Bash calls → "8× identical tool call").
@@ -5888,6 +6016,7 @@ export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => an
   // agent-hold-pi-provider-agents--2026-08-18). agent_start fires when a run
   // begins (and again per retry/auto-compact re-run — idempotent 'working').
   pi.on('agent_start', (_event, ctx) => {
+    MY_SESSION = sessionOf(ctx) ?? MY_SESSION;
     post({ hook_event_name: 'UserPromptSubmit', session_id: sessionOf(ctx) });
   });
   pi.on('tool_call', (event, ctx) => {
@@ -5901,7 +6030,10 @@ export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => an
   // auto-compact) — settled means pi will not continue on its own. That is the
   // hive's Stop = "terminal went idle, deliver mail".
   pi.on('agent_settled', (_event, ctx) => {
-    post({ hook_event_name: 'Stop', session_id: sessionOf(ctx) });
+    const s = sessionOf(ctx);
+    MY_SESSION = s ?? MY_SESSION;
+    post({ hook_event_name: 'Stop', session_id: s });
+    scanChildUsage(); // children that finished during this turn report now
   });
   // Token usage: pi reports per-message usage on message_end (assistant
   // messages carry the model turn, toolResult messages carry subagent/summary
