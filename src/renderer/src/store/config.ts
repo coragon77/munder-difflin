@@ -82,6 +82,10 @@ export interface HarnessConfig {
    *  'claude' / 'claude-opus-4-8'. Mirrors src/main/config.ts. */
   godProvider?: AgentProvider;
   godModel?: string;
+  /** Thinking effort GOD runs at — provider-specific flag+vocabulary from the
+   *  preset (claude --effort, pi --thinking). unset = CLI default. Mirrors
+   *  src/main/config.ts. */
+  godEffort?: string;
   /** Per-server consent for the default MCP bundle, keyed by catalog id (mirrors
    *  src/main/config.ts; seeded from MCP_CATALOG). */
   mcpDefaults?: { [id: string]: { enabled: boolean } };

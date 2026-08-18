@@ -547,6 +547,11 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
   const [restarting, setRestarting] = useState<string | null>(null);
   const [engineProvider, setEngineProvider] = useState<AgentProvider>('claude');
   const [engineModel, setEngineModel] = useState<string | undefined>(undefined);
+  // EFFORT (card agent-command-center-engine-ro-2026-08-18): god's thinking
+  // effort — provider-specific flag+vocabulary from the preset, so the Select
+  // is driven exactly like the model Select (modelsForProvider), never a
+  // hardcoded flag list. undefined = the CLI's default effort.
+  const [engineEffort, setEngineEffort] = useState<string | undefined>(undefined);
   const [restartErrors, setRestartErrors] = useState<Record<string, string>>({});
   // The harness's own default model (Settings → default model). Michael and every
   // new agent spawn on this, so the picker marks it — otherwise the only entry
@@ -573,6 +578,7 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
         setAgentTokenCaps(c.agentTokenCaps ?? {});
         setEngineProvider(c.godProvider ?? 'claude');
         setEngineModel(c.godModel);
+        setEngineEffort(c.godEffort);
         setDefaultModel(c.defaultModel);
       })
       .catch(() => {
@@ -1268,6 +1274,13 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                       setEngineProvider(p);
                       const preset = AGENT_PROVIDER_PRESETS.find((x) => x.id === p);
                       setEngineModel(preset?.recommendedOrchestratorModel);
+                      // Effort vocabularies are provider-specific: a level the
+                      // new provider doesn't take (pi's 'off' under claude)
+                      // would be silently dropped at spawn — re-seed to default
+                      // so the dropdown never shows a value that won't apply.
+                      if (engineEffort && !preset?.effort?.levels.includes(engineEffort)) {
+                        setEngineEffort(undefined);
+                      }
                     }}
                   >
                     {AGENT_PROVIDER_PRESETS.filter((p) => canReceiveInbox(p.id)).map((p) => (
@@ -1288,6 +1301,20 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                       </option>
                     ))}
                   </Select>
+                  {providerPreset(engineProvider).effort && (
+                    <Select
+                      value={engineEffort ?? ''}
+                      disabled={restarting === a.id}
+                      onChange={(v) => setEngineEffort(v || undefined)}
+                    >
+                      <option value="">effort: default</option>
+                      {providerPreset(engineProvider).effort!.levels.map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
                   <PixelButton
                     variant="secondary"
                     size="sm"
@@ -1305,6 +1332,7 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                       await window.cth.updateConfig({
                         godProvider: engineProvider,
                         godModel: engineModel,
+                        godEffort: engineEffort,
                       });
                       await restartWithModel(a, engineModel, {
                         provider: engineProvider,

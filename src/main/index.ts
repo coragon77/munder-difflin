@@ -192,6 +192,7 @@ import {
   commandCarriesModel,
   permissionModeArgs,
   disallowedToolsArgs,
+  godEffortArgs,
   prependCommandTail,
   providerPreset,
   installInfoForProvider,
@@ -3464,6 +3465,21 @@ async function spawnAgentCore(
   {
     const denyArgs = disallowedToolsArgs([opts.command, ...(opts.args ?? [])].join(' '), provider);
     if (denyArgs.length) opts.args = [...(opts.args ?? []), ...denyArgs];
+  }
+  // ── GOD THINKING EFFORT (card agent-command-center-engine-ro-2026-08-18) ────
+  // God's engine-row EFFORT dropdown rides opts.args like the two blocks above
+  // (never the command string — tails are dropped at spawn). godEffortArgs
+  // drops unknown/wrongly-cased values (claude warns-and-ignores them) and
+  // yields to a flag already on the line. Providers without an effort spec
+  // (codex/agy/qwen/…) get nothing. Non-god spawns never see a flag.
+  {
+    const effortArgs = godEffortArgs(
+      [opts.command, ...(opts.args ?? [])].join(' '),
+      provider,
+      opts.hive?.isGod ? readConfig().godEffort : undefined,
+      opts.hive?.isGod === true,
+    );
+    if (effortArgs.length) opts.args = [...(opts.args ?? []), ...effortArgs];
   }
   // ── Missing engine CLI → run its installer visibly (pre-spawn) ───────────────
   // If the agent's engine binary (claude/codex/…) isn't installed, spawning it
