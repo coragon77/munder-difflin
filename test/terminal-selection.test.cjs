@@ -4,15 +4,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const loadTs = require('./load-ts.cjs');
 
-const {
-  sanitizeTerminalSelection,
-  stripLeadingRail
-} = loadTs('src/renderer/src/components/terminalSelection.ts');
+const { sanitizeTerminalSelection, stripLeadingRail } = loadTs(
+  'src/renderer/src/components/terminalSelection.ts',
+);
 
 test('the reported paste: Claude Code blockquote rail is dropped', () => {
   assert.equal(
     sanitizeTerminalSelection('▎ Munder Difflin — clones for you and your team, working 24/7.'),
-    'Munder Difflin — clones for you and your team, working 24/7.'
+    'Munder Difflin — clones for you and your team, working 24/7.',
   );
 });
 
@@ -20,13 +19,14 @@ test('every line of a multi-line quote loses its rail', () => {
   const copied = [
     '▎ Munder Difflin is live on Product Hunt today.',
     '▎',
-    '▎ Free, open source, local-first.'
+    '▎ Free, open source, local-first.',
   ].join('\n');
-  assert.equal(sanitizeTerminalSelection(copied), [
-    'Munder Difflin is live on Product Hunt today.',
-    '',
-    'Free, open source, local-first.'
-  ].join('\n'));
+  assert.equal(
+    sanitizeTerminalSelection(copied),
+    ['Munder Difflin is live on Product Hunt today.', '', 'Free, open source, local-first.'].join(
+      '\n',
+    ),
+  );
 });
 
 test('indent survives, nested rails do not', () => {
@@ -36,8 +36,10 @@ test('indent survives, nested rails do not', () => {
 });
 
 test('CRLF selections keep their carriage return', () => {
-  assert.equal(sanitizeTerminalSelection('▎ line one\r\n▎\r\n▎ line two\r\n'),
-    'line one\r\n\r\nline two\r\n');
+  assert.equal(
+    sanitizeTerminalSelection('▎ line one\r\n▎\r\n▎ line two\r\n'),
+    'line one\r\n\r\nline two\r\n',
+  );
 });
 
 test('block art and bar charts are left alone (bars run together)', () => {
@@ -56,8 +58,10 @@ test('a mixed selection strips only the rail, never the tree indent', () => {
   // The tree lines must survive even though the selection DOES contain a rail,
   // so this walks the regex instead of the "no rail anywhere" fast path.
   const copied = ['▎ the layout is:', '├── src', '│   └── main', '└── test'].join('\n');
-  assert.equal(sanitizeTerminalSelection(copied),
-    ['the layout is:', '├── src', '│   └── main', '└── test'].join('\n'));
+  assert.equal(
+    sanitizeTerminalSelection(copied),
+    ['the layout is:', '├── src', '│   └── main', '└── test'].join('\n'),
+  );
 });
 
 test('a rail in the middle of a line is content, not a gutter', () => {
