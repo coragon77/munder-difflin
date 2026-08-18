@@ -255,3 +255,51 @@ test('INBOX WAKE keeps the system-FYI filter across the rewrite', () => {
   );
   assert.match(p, /System FYI notices are skipped on purpose/, 'prose keeps the filter note');
 });
+
+// TOOLS clause of the 4-part dispatch contract (card
+// agent-godline-tools-clause-inv-2026-08-18). Root incident: the old
+// wording — "what to use or avoid, and any references to read instead of
+// re-deriving" — invited god to list FILE PATHS, his own traversal; an
+// expensive advisor then re-walked that path for 2.43M tokens while a
+// graphify-out/ knowledge graph answered it with one query. The clause must
+// name the objective + available INDEXES and leave the traversal to the
+// worker — WITHOUT overcorrecting into "always graphify": graphs go stale,
+// so line-precise cited claims still get a targeted read.
+test('godLine TOOLS clause names INDEXES, not a reading list', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(
+    /TOOLS — the objective's constraints and the INDEXES available/.test(p),
+    'clause names the objective + the indexes instead of "what to use or avoid"',
+  );
+  assert.ok(/graphify-out\/ knowledge graph/.test(p), 'names the knowledge-graph index');
+  assert.ok(/not a reading list/, 'says explicitly it is not a reading list');
+  assert.ok(
+    /let the worker pick the cheapest path to it/.test(p),
+    'traversal choice belongs to the worker',
+  );
+  assert.ok(
+    !/what to use or avoid, and any references to read instead of re-deriving/.test(p),
+    'the path-prescribing wording is gone',
+  );
+});
+
+test('godLine TOOLS clause keeps the graphify calibration', () => {
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/a graphify query beats a grep sweep/.test(p), 'index-over-sweep nudge');
+  assert.ok(
+    /re-walk a path you already paid for/.test(p),
+    'names the double-cost anti-pattern (paying for exploration twice)',
+  );
+  // do not overcorrect into "always graphify": graphs are for orientation and
+  // can be stale — line-precise cited claims still need a targeted read
+  assert.ok(/ORIENTATION \(architecture, file relationships/.test(p), 'graph = orientation');
+  assert.ok(/a graph can be stale/.test(p), 'staleness warning survives');
+  assert.ok(
+    /verify only the specific lines to be cited/.test(p),
+    'correct dispatch shape: orient via graphify, then verify the cited lines',
+  );
+  assert.ok(
+    /reserve file:line pointers for claims the worker must cite precisely/.test(p),
+    'file:line pointers remain legal for precise citations',
+  );
+});
