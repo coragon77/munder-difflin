@@ -31,6 +31,7 @@ import {
 } from 'node:fs';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { join, resolve, sep, basename, dirname } from 'node:path';
+import { piSessionExists } from './resumeGuard';
 import { tmpdir } from 'node:os';
 import { request as httpsRequest } from 'node:https';
 import { PtyManager, type SpawnOptions } from './pty';
@@ -3823,9 +3824,23 @@ async function spawnAgentCore(
     if (sid && rf) {
       const args = opts.args ?? [];
       if (!args.includes(rf)) {
-        args.push(rf, sid);
-        opts.args = args;
-        didResume = true;
+        // pi resume guard (god-pi-switch-2026-08-18): the recorded sessionId is
+        // provider-dialect state — after an engine switch it is the OLD CLI's id,
+        // and `pi --resume <claude-uuid>` exits 1 at boot (live incident). Only
+        // attach the flag when the agent's OWN pi sessions tree has the sid;
+        // otherwise start fresh (warn) — same posture as the claude/codex guards.
+        if (
+          provider === 'pi' &&
+          opts.hive?.id &&
+          !piSessionExists(join(hive.root()!, 'agents', opts.hive.id), sid)
+        ) {
+          console.warn(`[resume] pi session "${sid}" not found — starting fresh`);
+          if (typedSid) resumeNotFound = true;
+        } else {
+          args.push(rf, sid);
+          opts.args = args;
+          didResume = true;
+        }
       }
     } else if (sid && rsub) {
       // Subcommand form (Codex): `codex resume [OPTIONS] [SESSION_ID]` — the

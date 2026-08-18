@@ -29,10 +29,10 @@ test('savedForNextRestart flag exists, starts false, remount is its clearing eve
   );
 });
 
-test('save only persists ALL THREE keys and never restarts', () => {
+test('save only persists provider/model/effort and never restarts', () => {
   const p = panel();
   // The button block: anchor on its unique title, run to its closing tag.
-  const start = p.indexOf('Persist provider/model/effort without restarting');
+  const start = p.indexOf('Persist without restarting');
   assert.ok(start > 0, 'the save-only button exists with an explicit title');
   const open = p.lastIndexOf('<PixelButton', start);
   const block = p.slice(open, p.indexOf('</PixelButton>', start));
