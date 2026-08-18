@@ -1361,7 +1361,14 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                       ))}
                     </Select>
                   )}
-                  {engineDirty ? (
+                  {engineProvider !== savedEngine.provider ? (
+                    <span
+                      style={{ fontSize: 11, color: 'var(--cth-coral)' }}
+                      title="A different engine can't resume this conversation — apply restarts with a fresh session; save only defers effort alone."
+                    >
+                      engine switch needs apply — save only defers effort
+                    </span>
+                  ) : engineDirty ? (
                     <span style={{ fontSize: 11, color: 'var(--cth-coral)' }}>
                       unsaved — press apply
                     </span>
@@ -1405,25 +1412,37 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                     {restarting === a.id ? 'restarting…' : 'apply'}
                   </PixelButton>
                   {/* SAVE ONLY (card agent-command-center-save-with-2026-08-18): persist the
-                    selection WITHOUT restarting — provider/model/effort are all read at spawn
-                    (spawnAgentCore), so the next spawn picks them up while the current
-                    conversation stays alive. */}
+                    selection WITHOUT restarting. SCOPED (god-pi-switch-2026-08-18): only
+                    EFFORT is truly deferrable — a deferred provider switch leaves the
+                    registry's claude-era sessionId aimed at a pi spawn (boot crash),
+                    and a new-provider model id is foreign dialect. When the provider
+                    select is dirty, save only persists effort and the row says why:
+                    engine switches need apply (fresh session — by design). */}
                   <PixelButton
                     variant="secondary"
                     size="sm"
                     disabled={restarting === a.id || !engineDirty}
-                    title="Persist provider/model/effort without restarting — takes effect at Michael's next spawn; the current conversation stays alive"
+                    title="Persist without restarting — effort only while an engine switch is pending; engine switches need apply (a different engine can't resume this conversation)"
                     onClick={async () => {
-                      await window.cth.updateConfig({
-                        godProvider: engineProvider,
-                        godModel: engineModel,
-                        godEffort: engineEffort,
-                      });
-                      setSavedEngine({
-                        provider: engineProvider,
-                        model: engineModel,
-                        effort: engineEffort,
-                      });
+                      const engineSwitchPending = engineProvider !== savedEngine.provider;
+                      await window.cth.updateConfig(
+                        engineSwitchPending
+                          ? { godEffort: engineEffort }
+                          : {
+                              godProvider: engineProvider,
+                              godModel: engineModel,
+                              godEffort: engineEffort,
+                            },
+                      );
+                      setSavedEngine(
+                        engineSwitchPending
+                          ? { ...savedEngine, effort: engineEffort }
+                          : {
+                              provider: engineProvider,
+                              model: engineModel,
+                              effort: engineEffort,
+                            },
+                      );
                       setSavedForNextRestart(true);
                     }}
                   >
