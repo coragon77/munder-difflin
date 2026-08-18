@@ -31,7 +31,9 @@ const { readFileSync } = require('node:fs');
 const loadTs = require('./load-ts.cjs');
 
 const { getHead } = loadTs('src/main/git.ts');
-const { isGraphStale, refreshProjectGraph, graphifyCandidates } = loadTs('src/main/graphRefresh.ts');
+const { isGraphStale, refreshProjectGraph, graphifyCandidates } = loadTs(
+  'src/main/graphRefresh.ts',
+);
 
 // ── isGraphStale ───────────────────────────────────────────────────────────
 
@@ -55,7 +57,10 @@ function makeTree(builtAtCommit) {
   const repo = join(tmp, 'repo');
   mkdirSync(join(repo, 'graphify-out'), { recursive: true });
   if (builtAtCommit !== undefined) {
-    writeFileSync(join(repo, 'graphify-out', 'graph.json'), JSON.stringify({ built_at_commit: builtAtCommit }));
+    writeFileSync(
+      join(repo, 'graphify-out', 'graph.json'),
+      JSON.stringify({ built_at_commit: builtAtCommit }),
+    );
   }
   return { tmp, repo };
 }
@@ -181,7 +186,19 @@ test('getHead resolves HEAD in a real repo, null outside', async () => {
     const repo = join(tmp, 'repo');
     mkdirSync(repo);
     execFileSync('git', ['-C', repo, 'init', '-b', 'main', '-q']);
-    execFileSync('git', ['-C', repo, '-c', 'user.email=t@t.local', '-c', 'user.name=t', 'commit', '--allow-empty', '-m', 'init', '-q']);
+    execFileSync('git', [
+      '-C',
+      repo,
+      '-c',
+      'user.email=t@t.local',
+      '-c',
+      'user.name=t',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'init',
+      '-q',
+    ]);
     const head = await getHead(repo);
     assert.match(head, /^[0-9a-f]{40}$/, 'full sha');
     const outside = await getHead(tmp);
