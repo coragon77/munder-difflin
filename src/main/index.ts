@@ -1815,10 +1815,18 @@ function writeFleetSnapshot(): void {
     // receipt) from ONE authoritative near-live file instead of reaching into
     // the app's config store from a shell script.
     const internCfg = readConfig();
+    // MAIL-STALL BACKSTOP (card agent-hive-mail-silently-destr-2026-08-18):
+    // detect outbox backlogs older than the router horizon, log once per
+    // episode, surface in the snapshot (god's roster injection renders it),
+    // and SELF-HEAL — routeOnce() from this 8s tick is a backstop router for
+    // the frozen-timer class (system-sleep precedent). routeOnce is fully
+    // synchronous, so this cannot interleave with the router's own tick.
+    const mailStall = hive.mailBackstop();
     hive.writeFleetSnapshot({
       ts: now,
       agents,
       vacation,
+      mailStall,
       burn: { windowMs: BURN_WINDOW_MS, total: burnState.total },
       floor: {
         ...floorSeats(reg),
@@ -1826,6 +1834,15 @@ function writeFleetSnapshot(): void {
         internDefaults: internCfg.internDefaults ?? null,
       },
     });
+    // Self-heal half of the backstop: a detected stall means the 1.5s router
+    // loop is not draining — flush it from here (sync, so no interleave).
+    if (mailStall.length > 0) {
+      try {
+        hive.routeOnce();
+      } catch {
+        /* the next tick retries */
+      }
+    }
   } catch (e) {
     console.error('[fleet] snapshot failed:', e);
   }

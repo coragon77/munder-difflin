@@ -442,6 +442,20 @@ export function redactSecrets(text: unknown): string {
 
 // ─── HiveManager ────────────────────────────────────────────────────────────
 
+/** A stalled outbox (card agent-hive-mail-silently-destr-2026-08-18): mails
+ *  older than the stall horizon still sitting in a REAL outbox — the
+ *  frozen-router shape (system-sleep precedent). As damaging as loss: a
+ *  done-report arriving 100 minutes late missed its decision. */
+export interface MailStall {
+  agentId: string;
+  count: number;
+  oldestSecAgo: number;
+}
+
+/** Default horizon: the router ticks every ~1.5s, so 120s means ~80 missed
+ *  ticks — definitely not a busy loop, definitely a stall. */
+export const MAIL_STALL_WARN_SEC = 120;
+
 export class HiveManager {
   /**
    * @param getHome  Lazily resolve harnessHome so the hive follows config changes.
@@ -1969,6 +1983,77 @@ export class HiveManager {
     return msg;
   }
 
+  /** Scan every agent's outbox for mail older than `warnSec` (by the mail's
+   *  own created_at, falling back to mtime). Pure detection — no logging, no
+   *  side effects; the fleet tick owns the once-per-episode log. */
+  outboxStalls(warnSec = MAIL_STALL_WARN_SEC): MailStall[] {
+    const root = this.root();
+    if (!root) return [];
+    const agentsDir = join(root, 'agents');
+    if (!existsSync(agentsDir)) return [];
+    const now = Date.now();
+    const out: MailStall[] = [];
+    for (const id of this.agentIds()) {
+      const dir = join(agentsDir, id, 'outbox');
+      if (!existsSync(dir)) continue;
+      let count = 0;
+      let oldest = 0;
+      for (const f of readdirSync(dir)) {
+        if (!f.endsWith('.json')) continue;
+        const full = join(dir, f);
+        let ts: number;
+        try {
+          ts = Date.parse(
+            (JSON.parse(readFileSync(full, 'utf8')) as { created_at?: string }).created_at ?? '',
+          );
+        } catch {
+          ts = NaN;
+        }
+        if (!Number.isFinite(ts)) {
+          try {
+            ts = statSync(full).mtimeMs;
+          } catch {
+            continue;
+          }
+        }
+        const ageSec = (now - ts) / 1000;
+        if (ageSec > warnSec) {
+          count++;
+          oldest = Math.max(oldest, ageSec);
+        }
+      }
+      if (count > 0) out.push({ agentId: id, count, oldestSecAgo: Math.round(oldest) });
+    }
+    return out;
+  }
+
+  /** The fleet-tick backstop: detect stalls, LOG once per episode (deduped —
+   *  an hourly nag would train god to skim it), reset when the backlog
+   *  drains so a NEW stall is a NEW episode. The caller (8s tick) also calls
+   *  routeOnce() when non-empty — a self-healing backstop router for the
+   *  frozen-timer class the sleep incident documented. */
+  mailBackstop(warnSec = MAIL_STALL_WARN_SEC): MailStall[] {
+    const stalls = this.outboxStalls(warnSec);
+    const stalledIds = new Set(stalls.map((s) => s.agentId));
+    for (const id of [...this.mailStallLogged]) {
+      if (!stalledIds.has(id)) this.mailStallLogged.delete(id); // episode ended
+    }
+    for (const s of stalls) {
+      if (this.mailStallLogged.has(s.agentId)) continue;
+      this.mailStallLogged.add(s.agentId);
+      this.appendLog({
+        kind: 'mail_stall',
+        agentId: s.agentId,
+        count: s.count,
+        oldestSecAgo: s.oldestSecAgo,
+        note: 'outbox mail stalled past the router horizon — backstop engaged',
+      });
+    }
+    return stalls;
+  }
+
+  private readonly mailStallLogged = new Set<string>();
+
   private routeMessage(msg: HiveMessage): void {
     if (msg.hops > HOP_CAP) {
       // loop guard — drop a runaway message rather than let agents ping-pong.
@@ -2970,6 +3055,7 @@ export class HiveManager {
         }>;
         vacation?: unknown[];
         floor?: { maxAgents?: number; onFloor?: number; freeSeats?: number };
+        mailStall?: Array<{ agentId: string; count: number; oldestSecAgo: number }>;
       };
       // Display order only (card agent-monitor-lists-sort-agent-2026-08-18):
       // god pinned first, the rest alphabetical within each group. fleet.json's
@@ -3017,6 +3103,20 @@ export class HiveManager {
         actionableIds = [];
       }
       const actionableLine = renderActionableLine(actionableIds);
+
+      // MAIL STALLED (card agent-hive-mail-silently-destr-2026-08-18, god's
+      // revised DoD): a backlog silently sitting in a REAL outbox is as
+      // damaging as loss — the fleet tick's backstop (mailBackstop) detects,
+      // logs once per episode, and self-heals via routeOnce; this line makes
+      // the REMAINING stall visible to god every prompt. INFORMATION, not an
+      // instruction — same contract as the ACTIONABLE line.
+      const mailStallLine = (snap.mailStall ?? []).length
+        ? ` MAIL STALLED: ${snap
+            .mailStall!.map(
+              (s) => `${s.agentId} ${s.oldestSecAgo}s (${s.count} mail${s.count === 1 ? '' : 's'})`,
+            )
+            .join(', ')}.`
+        : '';
 
       const ago = (s: number | null | undefined): string =>
         typeof s !== 'number'
@@ -3069,6 +3169,7 @@ export class HiveManager {
           (pool.length ? ` VACATION ${pool.length} parked (fetchable).` : '') +
           ' ' +
           actionableLine +
+          mailStallLine +
           '.' +
           ' Detail (names, roles, spend): fleet.json.'
         );
@@ -3113,6 +3214,7 @@ export class HiveManager {
         floorSeatsLine +
         ' ' +
         actionableLine +
+        mailStallLine +
         '.'
       );
     } catch {
