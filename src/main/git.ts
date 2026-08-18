@@ -3,11 +3,14 @@ import { cp, lstat, mkdir, readFile, stat, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { safeJoin } from './fs';
 
-/** Run git in `cwd` with `args`. Returns stdout text or an error. */
-function runGit(
+/** Run git in `cwd` with `args`. Returns stdout text or an error. `env`
+ *  supplements (never replaces) the process env — used for the temp-index
+ *  trick in branchRetire (GIT_INDEX_FILE) without touching the real index. */
+export function runGit(
   cwd: string,
   args: string[],
   timeoutMs = 8000,
+  env?: Record<string, string>,
 ): Promise<
   | {
       ok: true;
@@ -16,7 +19,7 @@ function runGit(
   | { ok: false; error: string }
 > {
   return new Promise((resolve) => {
-    const proc = spawn('git', args, { cwd });
+    const proc = spawn('git', args, { cwd, env: env ? { ...process.env, ...env } : process.env });
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {

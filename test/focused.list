@@ -120,3 +120,4 @@ test/burn-window.test.cjs
 test/agent-order.test.cjs
 test/opencode-bridge-steer-inject.test.cjs
 test/proxy-bridge-steer-inject.test.cjs
+test/branch-retire.test.cjs

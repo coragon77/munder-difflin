@@ -76,6 +76,7 @@ import {
   checkoutRef,
 } from './git';
 import { refreshProjectGraph } from './graphRefresh';
+import { retireLandedBranches } from './branchRetire';
 import {
   HiveManager,
   deriveSpawnLabel,
@@ -7294,6 +7295,16 @@ app.whenReady().then(() => {
   // touches the watcher's merge+push window. Fire-and-forget, best-effort —
   // refreshProjectGraph swallows every failure into a logged reason.
   void refreshProjectGraph(app.getAppPath());
+  // Automatic branch retirement (card agent-archive-tag-the-5-delete-2026-08-18):
+  // cherry-picked batch landings leave source branches looking unmerged forever,
+  // which rotted the unmerged list into noise (five content-verified branches
+  // had to be deleted by hand). Same seam and contract as the graph refresh —
+  // runs seconds after every restart-window landing, covers worker pushes and
+  // manual merges too, fire-and-forget, never throws. Retires a branch ONLY on
+  // an exact proof (tree-equality / reverse-apply), archive-tag-first, never a
+  // worktree-held tip, never on a heuristic; unsure branches are logged, not
+  // touched.
+  void retireLandedBranches(app.getAppPath());
   // Satellite Kitty: export KITTY_LISTEN_ON + KITTY_WINDOW_ID so the user's
   // handoff skills (pi-handoff/claude-handoff) work inside agent PTYs exactly
   // as they do in a real Kitty pane — splits land in the satellite window.
