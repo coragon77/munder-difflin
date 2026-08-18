@@ -204,6 +204,7 @@ import {
   type HirePermissionMode,
 } from '../shared/agentProvider';
 import { buildMissingCliScript, chooseInstallRung } from './cliInstall';
+import { orphanedAgentIds } from './orphanSweep';
 import { detectNodeVersion, nodeIsUsable, resolveNodeInstaller } from './nodeInstall';
 import {
   CODEX_REMOTE_SOCKET_RELATIVE,
@@ -1300,26 +1301,35 @@ function syncContextTriggers(): void {
   }
 }
 
-/** Startup migration (#57/#58): archive every agent entry that is `archived:false`
- *  but has NO live PTY. This runs in bootstrapHiveServices, BEFORE the renderer can
- *  respawn anything, so at this point NO agent owns a PTY — every `archived:false`
- *  entry is therefore a stale carry-over from a prior session that quit/crashed
- *  WITHOUT archiving (e.g. the pre-acc13a3 'assistant' Dwight entry). Left as-is
- *  they have no live PTY, so the breaker beat steers them and the steer bounces to
- *  GOD as a requires_reply GOD can't clear → inbox flood.
+/** Startup migration (#57/#58): archive STALE agent entries — `archived:false` with
+ *  no live PTY WHILE a sibling agent demonstrably runs. The decision core and its
+ *  incident history live in orphanSweep.ts; this is the wiring only.
  *
- *  "No live PTY" = ptyForAgent(id) === undefined (ptyToAgent is populated only at
- *  spawn and pruned on teardown). God is never archived. A user's real agents are
- *  unaffected: the "restore team" flow respawns them through ensureAgent, which
- *  re-clears `archived` — restorability does not depend on the archived flag. */
+ *  Two rules the 2026-08-18 incident pinned (43 agents archived from one start,
+ *  vacation pool included):
+ *   • ZERO live PTYs archives NOBODY — `ptyToAgent` is process-local and spawned
+ *     only, so at boot it is always empty; that state means "nothing is running
+ *     yet", never "everyone is dead".
+ *   • A parked agent (`vacation:true`) is exempt outright, even in the divergent
+ *     `archived:false` state pre-M2 unarchive paths could leave behind.
+ *
+ *  The sweep still has a reason to exist: bootstrapHiveServices also re-runs
+ *  mid-session (config:changeHome recover-in-place), where live PTYs exist and a
+ *  PTY-less non-parked entry really is a stale carry-over that would otherwise
+ *  bounce breaker steers to GOD (the original #57/#58 inbox flood). A user's real
+ *  agents are unaffected either way: the "restore team" flow respawns them
+ *  through ensureAgent, which re-clears `archived` — restorability never depended
+ *  on this sweep. */
 function archiveOrphanedAgents(): void {
   if (!hive.enabled()) return;
   try {
     const reg = hive.registry();
-    for (const [id, a] of Object.entries(reg.agents)) {
-      if (a.archived) continue;
-      if (id === reg.godId) continue; // god is never archived
-      if (ptyForAgent(id)) continue; // has a live PTY → genuinely active
+    const live = new Set(ptyToAgent.values());
+    if (live.size === 0) {
+      console.log('[migration] no live PTYs — nothing is running yet, orphan sweep skipped');
+      return;
+    }
+    for (const id of orphanedAgentIds(reg, live)) {
       hive.setArchived(id, true); // stale archived:false orphan → archive
       console.log('[migration] archived orphaned agent (no live PTY):', id);
     }

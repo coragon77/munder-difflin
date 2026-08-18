@@ -123,3 +123,4 @@ test/proxy-bridge-steer-inject.test.cjs
 test/branch-retire.test.cjs
 test/actionable-cards.test.cjs
 test/floor-status-sync.test.cjs
+test/orphan-sweep.test.cjs
