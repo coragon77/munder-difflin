@@ -15,6 +15,16 @@ export interface ProviderContextCommands {
   compact: string | null;
   /** Discard-and-restart. `null` = same. */
   clear: string | null;
+  /** Resume a PRIOR session BY ID, typed into the LIVE pane. `null` = this
+   *  engine cannot do that unattended (card agent-card-resume-must-be-prov-
+   *  2026-08-18): either its /resume verb is an INTERACTIVE PICKER that takes
+   *  no id (pi, codex, grok, kimi, qwen, antigravity — typing "/resume <uuid>"
+   *  there lands as a prompt or wedges the pane on a modal), or resume is
+   *  SPAWN-ONLY (every non-claude engine: `pi --resume <id>`, `codex resume
+   *  <id>`, `grok|kimi|qwen --resume <id>`, `opencode -s <id>`, `agy
+   *  --conversation <id>`). Callers must SKIP and surface, never fall back to
+   *  the claude dialect. */
+  resume: string | null;
   /**
    * Whether the TUI parses text AFTER the compact command as a focus
    * instruction. When false the focus is DROPPED rather than typed: a CLI whose
@@ -27,6 +37,7 @@ export interface ProviderContextCommands {
 const NO_CONTEXT_COMMANDS: ProviderContextCommands = {
   compact: null,
   clear: null,
+  resume: null,
   compactTakesFocus: false,
 };
 
@@ -49,8 +60,10 @@ const NO_CONTEXT_COMMANDS: ProviderContextCommands = {
 const CONTEXT_COMMANDS: Record<AgentProvider, ProviderContextCommands> = {
   // claudeCommands.ts:34,37 (this repo's own catalog): `/compact` takes a focus
   // ("usage: /compact keep the auth decisions"), `/clear` starts a fresh
-  // conversation and reclaims the window.
-  claude: { compact: '/compact', clear: '/clear', compactTakesFocus: true },
+  // conversation and reclaims the window. RESUME: `/resume <query>`
+  // (claudeCommands.ts:40-43) is the ONE typable id-carrying resume in the
+  // fleet — the query can be the recorded sessionId, matched exactly.
+  claude: { compact: '/compact', clear: '/clear', resume: '/resume', compactTakesFocus: true },
 
   // Codex 0.137.0 binary, TUI slash-command description table:
   //   "summarize conversation to prevent hitting the context limit"  → /compact
@@ -59,8 +72,11 @@ const CONTEXT_COMMANDS: Record<AgentProvider, ProviderContextCommands> = {
   // The binary is right and that catalog is incomplete (see report).
   // compactTakesFocus stays FALSE: codex's own `Usage: /…` strings spell out an
   // argument for every command that takes one (/goal, /raw, /mcp, /keymap,
-  // /ide, /sandbox-add-read-dir) and /compact has none.
-  codex: { compact: '/compact', clear: '/clear', compactTakesFocus: false },
+  // /ide, /sandbox-add-read-dir) and /compact has none. RESUME: the binary
+  // embeds tui/src/resume_picker.rs — the TUI /resume ("resume a saved chat",
+  // binary strings) opens a PICKER and spells no argument for it; id-resume is
+  // the SPAWN subcommand `codex resume <SESSION_ID>` (codex resume --help).
+  codex: { compact: '/compact', clear: '/clear', resume: null, compactTakesFocus: false },
 
   // Grok binary ships its own docs inline (04-slash-commands.md):
   //   "/compact [context] — Compress conversation history… Optionally specify
@@ -68,14 +84,22 @@ const CONTEXT_COMMANDS: Record<AgentProvider, ProviderContextCommands> = {
   //   "/new — Start a new session, clearing the current conversation.
   //    Aliases: /clear"
   // `/new` is the documented spelling (and what grokCommands.ts:13 already
-  // records), so prefer it over the alias.
-  grok: { compact: '/compact', clear: '/new', compactTakesFocus: true },
+  // records), so prefer it over the alias. RESUME: xAI's own command table
+  // (docs.x.ai/build/modes-and-commands, read 2026-08-18) lists `/resume` —
+  // "Resume a previous session" — with NO argument (argued commands there show
+  // syntax, e.g. `/rename <title>`); id-resume is the spawn flag
+  // `grok --resume <session-id>` (docs.x.ai/build/features/sessions). null.
+  grok: { compact: '/compact', clear: '/new', resume: null, compactTakesFocus: true },
 
   // Moonshot kimi-cli slash-command reference: `/compact` accepts appended
   // custom instructions ("/compact preserve database-related discussions");
   // `/clear` (alias /reset) "Clear the current session's context and start a
   // new conversation". NB `/new` there forks a session rather than discarding.
-  kimi: { compact: '/compact', clear: '/clear', compactTakesFocus: true },
+  // RESUME: Moonshot's own session guide (moonshotai.github.io/kimi-cli/en/
+  // guides/sessions.html, read 2026-08-18): "Enter /sessions (or /resume) to
+  // view all sessions … use arrow keys to select" — a PICKER; id-resume is the
+  // spawn flag `kimi --resume <id>` (same page). null.
+  kimi: { compact: '/compact', clear: '/clear', resume: null, compactTakesFocus: true },
 
   // antigravity.google/docs/cli/reference (Google's own command table):
   //   "/clear  (/new)  — Clear the terminal and reset active conversation
@@ -86,8 +110,11 @@ const CONTEXT_COMMANDS: Record<AgentProvider, ProviderContextCommands> = {
   // That reference lists NO compaction verb at all (zero hits for compact /
   // compress / summarize), and the shipped `agy` binary has no such literal
   // either — agy compacts AUTOMATICALLY when the window fills ("# Resuming from
-  // a compaction"). Nothing to type, so: null.
-  antigravity: { compact: null, clear: '/clear', compactTakesFocus: false },
+  // a compaction"). Nothing to type, so: null. RESUME: the same reference —
+  // `/resume` (aliases /switch, /conversation) "Open the conversation picker
+  // overlay to select and load previous threads" (read 2026-08-18) — a PICKER;
+  // id-resume is the spawn flag `--conversation <id>` (agentProvider preset).
+  antigravity: { compact: null, clear: '/clear', resume: null, compactTakesFocus: false },
 
   // qwen-code's bundled cli.js, verbatim:
   //   compressCommand = { name:"compress", altNames:["summarize"],
@@ -97,8 +124,12 @@ const CONTEXT_COMMANDS: Record<AgentProvider, ProviderContextCommands> = {
   //   clearCommand    = { name:"clear", altNames:["reset","new"],
   //     description "Clear conversation history and free up context." }
   // It is `/compress`, NOT `/compact`: qwen dropped upstream gemini-cli's
-  // `compact` altName, so `/compact` would land as plain text here.
-  qwen: { compact: '/compress', clear: '/clear', compactTakesFocus: true },
+  // `compact` altName, so `/compact` would land as plain text here. RESUME:
+  // Qwen's own command docs (qwenlm.github.io/qwen-code-docs/en/users/features/
+  // commands/, read 2026-08-18): `/resume` — "Resume a previous conversation
+  // session", usage examples bare (`/resume` or `/continue`, no id);
+  // id-resume is the spawn flag `qwen --resume <id>` (their headless docs).
+  qwen: { compact: '/compress', clear: '/clear', resume: null, compactTakesFocus: true },
 
   // opencode binary's command registry, verbatim:
   //   { title:"Compact session", value:"session.compact",
@@ -109,14 +140,22 @@ const CONTEXT_COMMANDS: Record<AgentProvider, ProviderContextCommands> = {
   // compactTakesFocus is false.
   // `/clear` does NOT exist in the binary (zero literals); the fresh-session
   // verb is `/new` — matched exactly (`t.trim().toLowerCase()==="/new"`).
-  opencode: { compact: '/compact', clear: '/new', compactTakesFocus: false },
+  // RESUME: the registry's full slash list (binary, read 2026-08-18): agents,
+  // compact, connect, copy, editor, exit, export, fork, help, mcps, models,
+  // new, redo, rename, sessions, share, skills, status, themes, thinking,
+  // timeline, timestamps, undo, unshare — NO resume verb; `/sessions` is a
+  // list picker. Id-resume is spawn-only (`opencode -s <id>` / `-c`, --help).
+  opencode: { compact: '/compact', clear: '/new', resume: null, compactTakesFocus: false },
 
   // Crush has NO typed slash commands at all. Its own binary strings show
   // "Summarize Session" / "New Session" as ctrl+p COMMAND-PALETTE rows, and the
   // hint "/ or ctrl+p" means a leading `/` OPENS that palette rather than
   // submitting a command. Typing "/compact" would filter a modal and leave it
   // open, swallowing everything queued behind it. Nothing safe to type: null.
-  // (Crush's compact/clear are reachable only over its HTTP API.)
+  // (Crush's compact/clear are reachable only over its HTTP API.) RESUME:
+  // same shape — session resume is the Ctrl+S picker ("Press Ctrl+S to select
+  // a past session to resume", github.com/charmbracelet/crush), and typed
+  // slash commands do not exist there at all (issue #2199 requests them).
   crush: NO_CONTEXT_COMMANDS,
 
   // pi's dist/core/slash-commands.js, verbatim:
@@ -124,7 +163,14 @@ const CONTEXT_COMMANDS: Record<AgentProvider, ProviderContextCommands> = {
   //   { name:"new",     description:"Start a new session" }
   // and docs/compaction.md: "trigger manually with `/compact [instructions]`,
   // where optional instructions focus the summary". There is no `/clear`.
-  pi: { compact: '/compact', clear: '/new', compactTakesFocus: true },
+  // RESUME: the registry lists { name:"resume", description:"Resume a
+  // different session" } but the interactive handler matches EXACTLY
+  // (`if (text === "/resume")` → showSessionSelector(), dist/modes/interactive/
+  // interactive-mode.js) — a PICKER, no argument; `/import <path.jsonl>` takes
+  // a path but pops an interactive confirm dialog ("Replace current session
+  // with …?") an unattended pane cannot answer. Id-resume is the spawn flag
+  // `pi --resume <id>` / `--continue` (pi --help). null.
+  pi: { compact: '/compact', clear: '/new', resume: null, compactTakesFocus: true },
 
   // Copilot's INTERACTIVE mode does have `/compact [FOCUS-INSTRUCTIONS]` and
   // `/clear` — but this app never runs it interactively. The preset spawns it in

@@ -60,6 +60,11 @@ export interface CardSessionAction {
    *  adopts that young conversation instead of queuing a redundant clear that
    *  would later wipe it). */
   command: string;
+  /** Present ONLY when the card's conversation could not be resumed because
+   *  the assignee's provider has NO typable id-carrying resume (picker or
+   *  spawn-flag only). The tick mails god (card, agent, provider, sessionId)
+   *  and types NOTHING — never a fallback to the claude dialect. */
+  noResume?: { provider: AgentProvider | undefined; sessionId: string };
   /** Typed right AFTER the command: leads the conversation so the CLI names
    *  it after the card (naming amendment). */
   label: string;
@@ -119,6 +124,7 @@ export function cardSessionDecisions(
     let command: string | null = null;
     let session: string | undefined;
     let kind: CardSessionAction['kind'];
+    let noResume: CardSessionAction['noResume'] | undefined;
     if (card.sessionMode === 'adopt' && live) {
       // EXPLICIT adopt (hive-card status <id> doing --adopt): the assignee's
       // current conversation IS this card's engagement (connected card, mid-work
@@ -144,9 +150,20 @@ export function cardSessionDecisions(
       command = c.ok ? c.command : null;
       kind = 'clear';
     } else if (card.sessionId !== live) {
-      // Paused earlier, different conversation live now → resume the card's own.
+      // Paused earlier, different conversation live now → resume the card's
+      // own. Provider-aware like the clear path: a provider whose only resume
+      // is a picker or a spawn flag gets NO typed command (typing "/resume
+      // <uuid>" into such a REPL lands as a prompt) — a noResume marker the
+      // tick turns into god-mail, never a claude-dialect fallback.
       session = card.sessionId;
-      command = `/resume ${card.sessionId}`;
+      const c = composeSessionCommand(
+        { verb: 'resume', sessionId: card.sessionId },
+        providers[card.assignee],
+      );
+      command = c.ok ? c.command : '';
+      noResume = c.ok
+        ? undefined
+        : { provider: providers[card.assignee], sessionId: card.sessionId };
       kind = 'resume';
     } else {
       continue; // already in this card's conversation — nothing to steer
@@ -165,6 +182,7 @@ export function cardSessionDecisions(
       command,
       label: `Card "${title}" — this conversation is scoped to that kanban card; read your hive inbox for the full dispatch and act on it now.`,
       session,
+      ...(noResume ? { noResume } : {}),
       ...(deferred ? { deferred: true } : {}),
     });
   }
@@ -271,6 +289,18 @@ export function cardSessionTick(deps: CardSessionDeps, seen: CardSeen): void {
   const failed = new Set<string>();
   const deferredIds = new Set<string>();
   for (const a of actions) {
+    // NO TYPABLE RESUME (agent-card-resume-must-be-prov-2026-08-18): the
+    // assignee's engine has no id-carrying typable resume — do not type
+    // anything (a picker verb would wedge the pane; a fallback dialect lands
+    // as a prompt). Mail god with everything needed to steer the pane by hand
+    // and consume the transition (retrying would re-mail every tick).
+    if (a.noResume) {
+      deps.informGod(
+        `[card-session] resume NOT possible for ${a.agentId} (${a.noResume.provider ?? 'claude'})`,
+        `Card "${a.cardTitle}" (${a.cardId}) needs its recorded conversation ${a.noResume.sessionId} resumed in ${a.agentId}'s pane, but provider ${a.noResume.provider ?? 'claude'} has no typable id-carrying resume (its /resume is an interactive picker, or resume is a spawn-only flag). NOTHING was typed — the card lead below was also skipped. Steer the pane by hand: restart the engine with its resume flag/spawn form naming ${a.noResume.sessionId}, or have the agent /clear and re-drain its inbox for the card.`,
+      );
+      continue;
+    }
     // PANE-LESS HOLD (agent-recalled-pane-resumes-it-2026-08-18): same pending
     // semantics as the busy-defer below — an assignee with no live pane cannot
     // receive anything through the queue channel (the renderer drops messages

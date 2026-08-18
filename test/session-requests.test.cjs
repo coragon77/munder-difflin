@@ -43,6 +43,24 @@ test('compose: resume carries the sessionId verbatim', () => {
   );
 });
 
+test('compose: resume is provider-aware — a provider with no typable resume is refused', () => {
+  // pi's /resume opens an interactive session picker and takes no id; typing
+  // "/resume <uuid>" there lands as a prompt. The table must say null so the
+  // caller skips instead of typing the claude dialect into a foreign REPL.
+  for (const p of ['pi', 'codex', 'grok', 'kimi', 'qwen', 'opencode', 'crush']) {
+    const r = composeSessionCommand({ agentId: 'x', verb: 'resume', sessionId: 'abc' }, p);
+    assert.equal(r.ok, false, `${p} must not get a typed resume command`);
+    if (!r.ok) assert.match(r.reason, new RegExp(`provider "${p}" has no typable resume`));
+  }
+});
+
+test('compose: undefined provider defaults to claude resume semantics', () => {
+  assert.deepEqual(
+    composeSessionCommand({ agentId: 'x', verb: 'resume', sessionId: 'abc' }, undefined),
+    { ok: true, command: '/resume abc' },
+  );
+});
+
 test('compose: bad verb is rejected', () => {
   const r = composeSessionCommand({ agentId: 'x', verb: 'restart' }, 'claude');
   assert.equal(r.ok, false);

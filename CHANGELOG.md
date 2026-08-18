@@ -58,6 +58,14 @@ longer drift apart. Appearance only — no functional change.
   downsampling a 512px portrait.
 
 ### Fixed
+- **Card-session resume is provider-aware.** The blocked→doing resume path hardcoded the
+  claude dialect `/resume <id>` — on pi/codex/grok/kimi/qwen/opencode that lands as a plain
+  prompt (their `/resume` verbs are interactive pickers; id-carrying resume is a spawn flag).
+  `ProviderContextCommands` gains a `resume` field (only claude has a typable id-carrying
+  resume — every entry cites the engine's own command surface), both hardcoded call sites route
+  through `composeSessionCommand`, and a provider with no typable resume types NOTHING: the
+  card transition mails god the card, agent, provider and sessionId for manual steering instead
+  of ever falling back to the claude dialect.
 - **Hive services no longer stay dead for the whole first run after onboarding** (intent-port of
   the fix inside upstream 1b821b3). `bootstrapHiveServices()` runs once at app-ready and
   early-returns while `harnessHome` is null — exactly the state a fresh install boots in. Onboarding

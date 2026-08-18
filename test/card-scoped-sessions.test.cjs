@@ -72,6 +72,42 @@ test('PAUSED card returning (stamp ≠ live session) → /resume <stamp> + lead'
   assert.equal(a.command, '/resume card-session-uuid');
 });
 
+test('resume on a provider with no typable resume (pi) → no command, a noResume marker instead', () => {
+  // pi /resume is a picker; typing "/resume <uuid>" lands as a prompt. The
+  // engine must produce NOTHING typeable and flag it so the tick mails god.
+  const [a] = cardSessionDecisions(
+    [CARD({ sessionId: 'card-session-uuid' })],
+    { 'card-1': { status: 'todo' } },
+    { dwight: 'a-different-live-session' },
+    { dwight: 'pi' },
+  );
+  assert.equal(a.kind, 'resume');
+  assert.equal(a.command, '', 'nothing may be typed into a picker-only REPL');
+  assert.equal(a.noResume?.provider, 'pi');
+  assert.equal(a.noResume?.sessionId, 'card-session-uuid');
+});
+
+test('tick: noResume mails god once with card/agent/provider/sessionId, types nothing, consumes the transition', () => {
+  const tmp = tmpHive();
+  setCards(tmp, [CARD({ sessionId: 'card-session-uuid', status: 'todo' })]);
+  const { deps, emitted, informs } = fakeDeps(tmp, {
+    dwight: { sessionId: 'some-other-live', provider: 'pi' },
+  });
+  const seen = {};
+  cardSessionTick(deps, seen); // snapshot
+  setCards(tmp, [CARD({ sessionId: 'card-session-uuid' })]); // → doing
+  cardSessionTick(deps, seen);
+  assert.equal(emitted.length, 0, 'no command, no lead — nothing may be typed');
+  assert.equal(informs.length, 1, 'exactly one notice, no per-tick spam');
+  assert.match(informs[0].subject, /resume NOT possible/);
+  const all = informs[0].subject + informs[0].body;
+  for (const needle of ['card-1', 'dwight', 'pi', 'card-session-uuid']) {
+    assert.ok(all.includes(needle), `notice must name ${needle}: ${all}`);
+  }
+  cardSessionTick(deps, seen); // next tick: transition consumed, no repeat mail
+  assert.equal(informs.length, 1);
+});
+
 test('card whose session is already live → no-op (already in that conversation)', () => {
   const actions = cardSessionDecisions(
     [CARD({ sessionId: 'live-now' })],

@@ -136,3 +136,27 @@ test('continuous TUI repainting cannot block terminal readiness', () => {
   assert.equal(terminalReadyToReceive(true, 500, 'codex'), true);
   assert.equal(terminalReadyToReceive(undefined, 500, 'codex'), true);
 });
+
+// — the resume table (card agent-card-resume-must-be-prov-2026-08-18) —
+
+test('only claude has a typable id-carrying resume; every other provider is null', () => {
+  assert.equal(contextCommandsForProvider('claude').resume, '/resume');
+  for (const p of [
+    'pi',
+    'codex',
+    'grok',
+    'kimi',
+    'qwen',
+    'opencode',
+    'antigravity',
+    'crush',
+    'copilot',
+    'custom',
+  ]) {
+    assert.equal(
+      contextCommandsForProvider(p).resume,
+      null,
+      `${p}: picker-only or spawn-flag-only resume must be null, never a guessed verb`,
+    );
+  }
+});

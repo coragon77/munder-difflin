@@ -55,10 +55,11 @@ export function sessionRequestsDir(root: string): string {
 }
 
 /** Validate the request shape and compose the slash command to queue.
- *  Pure — no fs, no deps — so it is directly unit-testable. `clear` uses the
- *  shared provider table (grok's clear is `/new`, not `/clear`); `resume` is
- *  claude TUI semantics (`/resume <sessionId>`, exact-UUID acceptance is a
- *  verify-after-integrate item on the card). */
+ *  Pure — no fs, no deps — so it is directly unit-testable. `clear` AND `resume`
+ *  use the shared provider table (grok's clear is `/new`, not `/clear`; only
+ *  claude has a typable id-carrying resume — every other engine resumes via a
+ *  spawn flag or an interactive picker, so the compose refuses rather than
+ *  typing the claude dialect into a foreign REPL). */
 export function composeSessionCommand(
   raw: SessionRequest,
   provider: AgentProvider | undefined,
@@ -75,13 +76,16 @@ export function composeSessionCommand(
     return { ok: false, reason: '"resume" requires a "sessionId"' };
   if (verb === 'clear' && sessionId)
     return { ok: false, reason: '"clear" takes no "sessionId" (resume-only field)' };
-  if (verb === 'resume') return { ok: true, command: `/resume ${sessionId}` };
   // Undefined provider = the app's default engine (claude), matching
   // readConfig().defaultCommand's fallback.
-  const cmd = contextCommandsForProvider(provider ?? 'claude').clear;
+  const cmds = contextCommandsForProvider(provider ?? 'claude');
+  const cmd = verb === 'resume' ? cmds.resume : cmds.clear;
   return cmd
-    ? { ok: true, command: cmd }
-    : { ok: false, reason: `provider "${provider ?? 'claude'}" has no clear command` };
+    ? { ok: true, command: verb === 'resume' ? `${cmd} ${sessionId}` : cmd }
+    : {
+        ok: false,
+        reason: `provider "${provider ?? 'claude'}" has no typable ${verb} command`,
+      };
 }
 
 /** Move a processed request out of the queue so it's never reprocessed
