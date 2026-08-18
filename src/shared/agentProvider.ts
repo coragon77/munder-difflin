@@ -771,6 +771,22 @@ export function bridgeOf(provider: AgentProvider | undefined): BridgeDescriptor 
   return undefined;
 }
 
+/** Whether the provider's hook bridge READS the HookServer's socket response and
+ *  injects returned additionalContext into the conversation — i.e. whether a steer
+ *  CONSUMED at a hook boundary can actually be DELIVERED. claude reads the response
+ *  natively; the codex/grok/agy shims read and translate it; the pi extension reads
+ *  it and injects via pi.sendMessage({deliverAs:'steer'}). Proxy-tier (qwen/crush)
+ *  and opencode's plugin post fire-and-forget; kimi/copilot/custom have no bridge
+ *  at all — consuming a steer for those would silently drop it (card
+ *  agent-operator-steers-for-pi-a-2026-08-18). HookServer gates takeSteer() on
+ *  this; everything else keeps the steer queued and surfaces the backlog. */
+export function bridgeDeliversHookContext(provider: AgentProvider | undefined): boolean {
+  if (!provider) return false;
+  if (isClaudeProvider(provider)) return true;
+  const desc = bridgeOf(provider);
+  return desc?.kind === 'hooks' && desc.shim !== 'opencode';
+}
+
 export function defaultCommandForProvider(provider: AgentProvider, fallback = ''): string {
   if (provider === 'custom') return fallback;
   return providerPreset(provider).defaultCommand || fallback;

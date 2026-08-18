@@ -42,7 +42,9 @@ async function loadExtension(reply) {
       const conn = {
         handlers: {},
         end(payload) {
-          posts.push(JSON.parse(payload.replace(/\n$/, '')));
+          // The template literal's '\\n' lands as a LITERAL backslash-n in the
+          // extracted source (same escape dance as opencode-bridge-tool-input).
+          posts.push(JSON.parse(payload.replace(/\\n$/, '')));
           // The real HookServer writes one JSON response, then ends the
           // connection — replay that after the payload lands.
           queueMicrotask(() => {
@@ -98,16 +100,16 @@ test('an empty hook response injects nothing', async () => {
 });
 
 test('a steer arriving on the turn-start (UserPromptSubmit) post is injected too', async () => {
-  // Ada's floor-status branch (fix/pi-floor-status-idle-20260818) adds an
-  // agent_start -> UserPromptSubmit post; steers consumed at THAT boundary
-  // must ride the same injection path.
+  // Ada's floor-status branch (merged: agent_start -> UserPromptSubmit) widened
+  // the consume window to turn start; steers consumed at THAT boundary must ride
+  // the same injection path.
   const steer = 'OPERATOR: circuit breaker — slow down.';
   const { pi, sent } = await loadExtension(
     JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: steer } }),
   );
-  pi.handlers.agent_start?.({}, { sessionManager: { getSessionId: () => 's1' } });
+  assert.ok(pi.handlers.agent_start, 'the bridge posts a turn-start UserPromptSubmit');
+  pi.handlers.agent_start({}, { sessionManager: { getSessionId: () => 's1' } });
   await settle();
-  // agent_start only exists once Ada's branch lands; on main the steer arrives
-  // via whichever boundary posts — assert injection IFF the event exists.
-  if (pi.handlers.agent_start) assert.equal(sent.length, 1);
+  assert.equal(sent.length, 1, 'the turn-start steer is injected like any other');
+  assert.equal(sent[0].message.content, steer);
 });

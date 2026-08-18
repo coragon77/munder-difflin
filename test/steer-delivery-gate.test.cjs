@@ -51,8 +51,15 @@ const CONFIG = { notifications: true };
 
 async function floor(t, agents) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'md-steer-gate-'));
-  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const hive = new HiveManager(() => home);
+  // ensureAgent() for a PROXY-tier provider (qwen below) starts the real
+  // hive-proxy.cjs sidecar with a bound loopback listener — production spawn
+  // behavior that would keep this test child alive forever (and with it the
+  // whole `node --test` run). Tear every sidecar down before the tmpdir goes.
+  t.after(() => {
+    hive.stopAllProxyBridges();
+    fs.rmSync(home, { recursive: true, force: true });
+  });
   for (const a of agents) await hive.ensureAgent({ cwd: home, ...a });
   const control = new ControlRegistry();
   const server = new HookServer(hive, () => null, () => CONFIG, control, undefined);
@@ -60,7 +67,7 @@ async function floor(t, agents) {
     server.handle({ agent_id, hook_event_name, session_id: 's1', ...extra });
   const logLines = () =>
     fs
-      .readFileSync(path.join(home, 'log.jsonl'), 'utf8')
+      .readFileSync(path.join(hive.root(), 'log.jsonl'), 'utf8')
       .trim()
       .split('\n')
       .filter(Boolean)
@@ -136,6 +143,7 @@ test('the loud episode clears once the queue drains (next steer notifies again)'
   control.steer('oc-2', 'first steer');
   await fire('oc-2', 'PostToolUse', { tool_name: 'bash' });
   control.clearSteers('oc-2'); // operator dropped the backlog
+  await fire('oc-2', 'PostToolUse', { tool_name: 'bash' }); // next hook sees the drain
   control.steer('oc-2', 'second steer');
   await fire('oc-2', 'PostToolUse', { tool_name: 'bash' });
 

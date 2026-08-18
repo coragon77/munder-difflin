@@ -21,6 +21,7 @@ import type { TelemetryCollector } from './telemetry';
 import type { PendingWorkTracker } from './pendingWork';
 import { waitingLabel } from '../shared/waitingLabel';
 import { estimateCostUsd } from './pricing';
+import { bridgeDeliversHookContext } from '../shared/agentProvider';
 
 interface HookPayload {
   hook_event_name?: string;
@@ -71,6 +72,11 @@ export class HookServer {
    *  get_agent_detail / list_agents) can report "how full is each agent's context"
    *  without depending on a renderer round-trip. */
   private contextById = new Map<string, { tokens: number; limit: number; ts: number }>();
+  /** agentId → already surfaced a loud "steer backlog cannot be delivered" notice
+   *  for the CURRENT episode (card agent-operator-steers-for-pi-a-2026-08-18).
+   *  Cleared when a hook sees the backlog drained, so a FRESH steer after a
+   *  clear/delivery notifies again instead of staying silent. */
+  private steerBacklogNotified = new Set<string>();
 
   constructor(
     private hive: HiveManager,
@@ -368,6 +374,14 @@ export class HookServer {
     // next eligible hook (no fragile typing into the TUI). Delivered once.
     // Merged with the roster line below so the two injections never displace each
     // other (only ONE additionalContext can be returned per hook).
+    //
+    // takeSteer() is DESTRUCTIVE, so consume ONLY when the agent's bridge reads
+    // this very response and injects the context (card agent-operator-steers-
+    // for-pi-a-2026-08-18): the pi extension does (pi.sendMessage steer),
+    // claude/codex/grok/agy natively or via their shims. Fire-and-forget bridges
+    // (opencode plugin, qwen/crush proxy) would silently DROP a consumed steer —
+    // for those it STAYS QUEUED (pendingSteers keeps it visible in the control
+    // strip) and the backlog is surfaced loudly once per episode.
     let steer: string | null = null;
     if (
       !syntheticWake &&
@@ -375,7 +389,21 @@ export class HookServer {
       agentId &&
       this.control
     ) {
-      steer = this.control.takeSteer(agentId) ?? null;
+      if (bridgeDeliversHookContext(this.hive.providerOf(agentId))) {
+        steer = this.control.takeSteer(agentId) ?? null;
+        if (steer) this.steerBacklogNotified.delete(agentId);
+      } else {
+        const backlog = this.control.snapshot(agentId).pendingSteers;
+        if (backlog === 0) this.steerBacklogNotified.delete(agentId);
+        else if (!this.steerBacklogNotified.has(agentId)) {
+          this.steerBacklogNotified.add(agentId);
+          this.hive.appendLog({ kind: 'steer_undeliverable', agentId, backlog });
+          this.notify(
+            agentId,
+            'cannot receive mid-run steering — the queued steer is held in the queue, not dropped.',
+          );
+        }
+      }
     }
 
     // Keep god's roster CURRENT. fleet.json is always fresh on disk, but god's

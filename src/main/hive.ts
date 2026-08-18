@@ -2903,6 +2903,17 @@ export class HiveManager {
     }
   }
 
+  /** The provider this agent was hired on (registry). Undefined for unknown
+   *  agents — callers that gate on provider capabilities must treat that as
+   *  "capability absent", never as a default. */
+  providerOf(agentId: string): AgentProvider | undefined {
+    try {
+      return this.registry().agents[agentId]?.provider;
+    } catch {
+      return undefined;
+    }
+  }
+
   /**
    * A compact, one-shot LIVE ROSTER line built from `fleet.json` — injected into
    * god's context as `additionalContext` on SessionStart and every
@@ -5811,13 +5822,15 @@ process.stdin.on('end', () => {
 // ─── pi bridge extension (written to <agentDir>/.pi-agent/extensions/) ───────
 // A bundled extension for Pi (earendil-works). Pi exposes a pi.on(event,…)
 // lifecycle; this posts cth-hook-shaped payloads to HIVE_SOCK on agent_start /
-// tool_call / tool_result / agent_settled AND usage as CostSample on message_end (pi has no
-// OTLP — without this, fleet.json shows a permanently blind row for pi agents),
-// and AUTO-APPROVES tool calls when the spawn's permission mode grants
-// autonomy (HIVE_AUTO_APPROVE, per-spawn — Pam guardrail #5). The
-// agent_settled→Stop keeps the harness status in step (→ idle) so the renderer
-// idle inbox-wake nudge can deliver mail. Fully wrapped so a wrong API guess can
-// never break the spawn. Event shapes verified against pi 0.84.
+// tool_call / tool_result / agent_settled AND usage as CostSample on message_end
+// (pi has no OTLP — without this, fleet.json shows a permanently blind row for
+// pi agents), READS the socket response and injects returned additionalContext
+// (queued operator steers) via pi.sendMessage({deliverAs:'steer'}), and
+// AUTO-APPROVES tool calls when the spawn's permission mode grants autonomy
+// (HIVE_AUTO_APPROVE, per-spawn — Pam guardrail #5). The agent_settled→Stop
+// keeps the harness status in step (→ idle) so the renderer idle inbox-wake
+// nudge can deliver mail. Fully wrapped so a wrong API guess can never break
+// the spawn. Event shapes verified against pi 0.84.
 const PI_EXTENSION = `import net from 'node:net';
 const SOCK = process.env.HIVE_SOCK;
 const AGENT = process.env.AGENT_ID ?? null;
@@ -5832,16 +5845,38 @@ function sessionOf(ctx: any): string | undefined {
 // Pi auto-approves tools in non-interactive runs unless an extension blocks, so
 // HIVE_AUTO_APPROVE needs no enforcement here — the floor's auto-state only gates
 // whether the hive spawns pi with autonomy flags at all (agentProvider.ts).
+// Pi reference captured at load time so the socket reader in post() can inject
+// steers from any handler.
+let PI: any = null;
 function post(payload: Record<string, unknown>): void {
   try {
     if (!SOCK) return;
     payload.agent_id = payload.agent_id ?? AGENT;
     const c = net.createConnection(SOCK, () => { try { c.end(JSON.stringify(payload) + '\\n'); } catch {} });
+    // READ THE RESPONSE: HookServer consumes queued operator steers at the hook
+    // boundary and returns them as additionalContext. The old fire-and-forget
+    // post ended the connection unread, so every consumed steer was silently
+    // dropped — operator saw 'accepted', the agent never got it, and the
+    // circuit breaker's steer/constrain message could not reach a looping pi
+    // agent (card agent-operator-steers-for-pi-a-2026-08-18). Injected as a
+    // custom message with deliverAs:'steer': mid-run it lands before the next
+    // LLM call (agent.steer); idle, pi appends it to the session context so it
+    // rides into the next turn. Never lost either way.
+    let resp = '';
+    c.setEncoding('utf8');
+    c.on('data', (d) => { resp += d; });
+    c.on('end', () => {
+      try {
+        const ctx = JSON.parse(resp || '{}')?.hookSpecificOutput?.additionalContext;
+        if (ctx && PI) PI.sendMessage({ customType: 'hive-steer', content: ctx, display: true }, { deliverAs: 'steer' });
+      } catch {}
+    });
     c.on('error', () => {});
   } catch {}
 }
 // Pi extension shape (pi 0.84): ESM default export, structural ExtensionAPI.
-export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => any) => void }) {
+export default function (pi: { on: (ev: string, fn: (event: any, ctx: any) => any) => void; sendMessage?: (message: any, options?: any) => void }) {
+  PI = pi;
   // The breaker's loop detector keys on tool_name + tool_input. pi's tool_result
   // event carries no input, so a PostToolUse without one made every call of the
   // same tool look identical (10 distinct Bash calls → "8× identical tool call").
