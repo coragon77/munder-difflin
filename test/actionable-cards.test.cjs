@@ -24,6 +24,8 @@ const loadTs = require('./load-ts.cjs');
 
 const { HiveManager } = loadTs('src/main/hive.ts');
 const { actionableCards, cardHeld, renderActionableLine } = loadTs('src/main/actionableCards.ts');
+const { depWaiting } = loadTs('src/main/actionableCards.ts');
+const { detectAnomalies } = loadTs('src/main/standup.ts');
 
 const POSIX = process.platform !== 'win32';
 
@@ -84,6 +86,69 @@ test('cardHeld: paused:true or status blocked — the operator hold', () => {
   assert.equal(cardHeld(card('a', { status: 'doing' })), false);
   assert.equal(cardHeld(card('a', { paused: 'yes' })), false); // strictly true, not truthy
   assert.equal(cardHeld(null), false);
+});
+
+// ── dependsOn: the fifth condition (card agent-actionablecards-fold-dep-
+// 2026-08-18) — a dep-waiting todo is CORRECTLY WAITING, not actionable ──
+
+test('actionableCards: a todo whose deps are all done is actionable; a dep still open is not', () => {
+  const tasks = [
+    card('dep-a', { status: 'done' }),
+    card('dep-b', { status: 'doing', assignee: 'w1' }),
+    card('ready', { dependsOn: ['dep-a'] }), // dep done → actionable
+    card('waiting', { dependsOn: ['dep-a', 'dep-b'] }), // dep doing → waiting
+    card('waiting-unknown', { dependsOn: ['no-such-card'] }), // unknown dep → waiting
+  ];
+  assert.deepEqual(actionableCards({ tasks }), ['ready']);
+});
+
+test('depWaiting mirrors the standup interpretation: only done satisfies, unknown deps are unmet', () => {
+  const statusById = new Map([
+    ['dep-done', 'done'],
+    ['dep-todo', 'todo'],
+    ['dep-doing', 'doing'],
+    ['dep-blocked', 'blocked'],
+  ]);
+  assert.equal(depWaiting(card('a', { dependsOn: ['dep-done'] }), statusById), false);
+  assert.equal(depWaiting(card('a', { dependsOn: ['dep-done', 'dep-todo'] }), statusById), true);
+  assert.equal(depWaiting(card('a', { dependsOn: ['dep-doing'] }), statusById), true);
+  assert.equal(depWaiting(card('a', { dependsOn: ['dep-blocked'] }), statusById), true);
+  assert.equal(
+    depWaiting(card('a', { dependsOn: ['ghost'] }), statusById),
+    true,
+    'unknown dep id = unmet',
+  );
+  assert.equal(depWaiting(card('a', { dependsOn: [] }), statusById), false);
+  assert.equal(depWaiting(card('a'), statusById), false, 'missing dependsOn = no deps');
+  assert.equal(
+    depWaiting(card('a', { dependsOn: 'bogus' }), statusById),
+    false,
+    'junk (non-array) = no deps, never throws',
+  );
+});
+
+test('equality pin: listed ⟺ not depWaiting, across the whole dep-state matrix', () => {
+  const states = ['done', 'todo', 'doing', 'blocked'];
+  for (const s of states) {
+    const tasks = [card(`dep-x`, { status: s }), card('c', { dependsOn: ['dep-x'] })];
+    const statusById = new Map(tasks.map((c) => [c.id, c.status]));
+    const listed = actionableCards({ tasks }).includes('c');
+    assert.equal(listed, !depWaiting(tasks[1], statusById), `dep ${s}: listed=${listed}`);
+    assert.equal(listed, s === 'done', `dep ${s}: only done makes the card actionable`);
+  }
+});
+
+test('same-input agreement with the standup: a card the standup treats as dep-waiting is not listed', () => {
+  const tasks = [card('dep-open', { status: 'todo' }), card('c', { dependsOn: ['dep-open'] })];
+  const anomalies = detectAnomalies({ agents: [] }, { tasks }, {}, 1, []).filter(
+    (a) => a.kind === 'todo-unattended' && a.subject === 'c',
+  );
+  assert.equal(anomalies.length, 0, 'standup: dep-waiting todo is correctly waiting (no anomaly)');
+  assert.deepEqual(
+    actionableCards({ tasks }),
+    ['dep-open'],
+    'lister agrees: c is waiting, dep-open itself is actionable',
+  );
 });
 
 // ── the rendered line (wording is part of the feature) ──────────────────
@@ -190,6 +255,29 @@ test('owned todos stay gate-LEGAL by design (assign-then-dispatch flow) — pinn
   s.writeRegistry(WORKERS);
   const r = s.run('hive-dispatch', '--card', 'owned-todo', '--assignee', 'worker-2', '--body', 'c');
   assert.equal(r.code, 0, `owned todo is dispatchable: ${r.stderr}`);
+});
+
+test('dep-waiting todos stay gate-LEGAL — a dependency is an engineering fact, not an operator hold (pinned asymmetry #2)', {
+  skip: !POSIX,
+}, (t) => {
+  // God's read, adopted: refuses are reserved for the OPERATOR's holds
+  // (paused/blocked). A dep is between CARDS; god may legitimately stake a
+  // claim early (dispatch with a wait-for-the-dep boundary) — the gate must
+  // not take that orchestration option away.
+  const s = setup(t, {
+    tasks: [card('dep-open'), card('dep-waiting', { dependsOn: ['dep-open'] })],
+  });
+  s.writeRegistry(WORKERS);
+  const r = s.run(
+    'hive-dispatch',
+    '--card',
+    'dep-waiting',
+    '--assignee',
+    'worker-1',
+    '--body',
+    'c',
+  );
+  assert.equal(r.code, 0, `dep-waiting todo is dispatchable: ${r.stderr}`);
 });
 
 // ── CLI lister: hive-card actionable ────────────────────────────────────
@@ -323,4 +411,47 @@ test('rosterContext: a missing or corrupt tasks.json still renders the roster', 
   const r = s.hive.rosterContext();
   assert.ok(r, 'roster still renders');
   assert.match(r, /ACTIONABLE: 0/);
+});
+
+// ── dep-waiting through the injection and the CLI (fold-dep card) ────────
+
+test('rosterContext: a dep-waiting todo drops out of the ACTIONABLE line; its open dep does not', async (t) => {
+  const s = setup(t, {
+    tasks: [card('dep-open'), card('dep-waiting', { dependsOn: ['dep-open'] })],
+  });
+  await s.hive.ensureAgent({
+    id: 'god-1',
+    name: 'Michael',
+    provider: 'claude',
+    cwd: s.root,
+    isGod: true,
+  });
+  s.hive.writeFleetSnapshot({
+    ts: Date.now(),
+    agents: [{ id: 'god-1', name: 'Michael', isGod: true }],
+  });
+  const expected = 'ACTIONABLE: 1 - dep-open';
+  assert.ok(s.hive.rosterContext().includes(expected), 'full block excludes the dep-waiting card');
+  assert.ok(!s.hive.rosterContext().includes('dep-waiting'), 'the waiting card itself is absent');
+  s.hive.rosterContext('god-1');
+  assert.ok(s.hive.rosterContext('god-1').includes(expected), 'slim line agrees');
+});
+
+test('hive-card actionable: dep-waiting cards excluded, dep-satisfied listed', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t, {
+    tasks: [
+      card('dep-open'),
+      card('dep-waiting', { dependsOn: ['dep-open'] }),
+      card('ready', { dependsOn: [] }),
+    ],
+  });
+  const r = s.run('hive-card', 'actionable');
+  assert.equal(r.code, 0);
+  assert.deepEqual(r.stdout.trim().split('\n'), [
+    'ACTIONABLE: 2 - dep-open, ready',
+    'dep-open',
+    'ready',
+  ]);
 });

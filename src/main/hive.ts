@@ -3407,9 +3407,11 @@ cards — the card is never duplicated):
 \`\`\`
 
 - Prints the ACTIONABLE line god's roster injection renders (the SAME
-  predicate: todo, not paused, not blocked, unowned — ids capped at 3 in the
-  line, the full list below it). \`ACTIONABLE: 0\` means nothing to dispatch.
-  Information, not an instruction — same deal as the injection line.
+  predicate: todo, not paused, not blocked, unowned, deps done — ids capped
+  at 3 in the line, the full list below it). \`ACTIONABLE: 0\` means nothing
+  to dispatch. Information, not an instruction — same deal as the injection
+  line. A dep-waiting todo stays dispatchable (a dependency is not an
+  operator hold); it is just correctly waiting, so it is not listed.
 
 All subcommands validate before writing and refuse an unparseable ledger
 instead of clobbering it. Errors explain themselves on stderr (exit 1).`;

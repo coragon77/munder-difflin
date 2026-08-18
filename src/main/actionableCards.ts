@@ -17,11 +17,15 @@
  * SELF-CONTAINED BY DESIGN: these functions have no imports and do not call
  * each other — hive.ts serializes them verbatim (Function.prototype
  * .toString) into the generated bin/ CLIs, so main process, gate and lister
- * run byte-identical code even through the bundler's renames. The one
- * deliberate asymmetry: an OWNED todo is excluded here (someone is already
- * on it) but still gate-legal — `hive-card update --assignee` + dispatch is
- * a documented flow, and re-dispatch re-notifies. Held cards (paused /
- * blocked) have ZERO asymmetry: excluded here, refused there.
+ * run byte-identical code even through the bundler's renames. (depWaiting's
+ * expression is inlined into actionableCards for exactly that reason; the
+ * equality is pinned by test.) The TWO deliberate asymmetries, both pinned
+ * by test: an OWNED todo is excluded here (someone is already on it) but
+ * still gate-legal — `hive-card update --assignee` + dispatch is a
+ * documented flow; a DEP-WAITING todo is excluded (correctly waiting) but
+ * still gate-legal — a dependency is an engineering fact between cards, not
+ * an operator hold, and early stake-a-claim dispatch stays god's call. Held
+ * cards (paused / blocked) have ZERO asymmetry: excluded here, refused there.
  */
 
 /** The operator's hold on a card: paused:true or status blocked. */
@@ -30,17 +34,49 @@ export function cardHeld(t: unknown): boolean {
   return !!c && typeof c === 'object' && (c.paused === true || c.status === 'blocked');
 }
 
+/**
+ * The standup's dep-waiting interpretation, promoted to the ONE shared
+ * definition (card agent-actionablecards-fold-dep-2026-08-18): a dep is
+ * satisfied only when its card is 'done'; anything else (todo/doing/blocked,
+ * unknown dep id) keeps the card CORRECTLY WAITING. standup.ts imports THIS
+ * — there is no second interpretation. Junk (non-array) dependsOn reads as
+ * no deps rather than throwing: the injection must survive a corrupt ledger.
+ */
+export function depWaiting(t: unknown, statusById: Map<string, string>): boolean {
+  const c = t as { dependsOn?: unknown } | null;
+  const deps = Array.isArray(c?.dependsOn) ? (c!.dependsOn as string[]) : [];
+  return deps.some((d) => statusById.get(d) !== 'done');
+}
+
 /** The single definition of actionable — ids of dispatchable, unowned todos. */
 export function actionableCards(data: unknown): string[] {
   const list = (data as { tasks?: unknown } | null | undefined)?.tasks;
   if (!Array.isArray(list)) return [];
-  const ids: string[] = [];
+  // Statuses for the dep check — same shape the standup feeds depWaiting.
+  const statusById = new Map<string, string>();
+  const rows: Array<{
+    id: string;
+    status?: unknown;
+    paused?: unknown;
+    assignee?: unknown;
+    dependsOn?: unknown;
+  }> = [];
   for (const t of list) {
-    const c = t as { id?: unknown; status?: unknown; paused?: unknown; assignee?: unknown } | null;
+    const c = t as { id?: unknown } | null;
     if (!c || typeof c !== 'object' || typeof c.id !== 'string') continue;
+    rows.push(c as never);
+    statusById.set(c.id, (c as { status?: unknown }).status as string);
+  }
+  const ids: string[] = [];
+  for (const c of rows) {
     if (c.status !== 'todo') continue; // blocked/doing/done are not backlog
     if (c.paused === true) continue; // operator hold
     if (typeof c.assignee === 'string' && c.assignee.trim() !== '') continue; // owned
+    // Dep-waiting is CORRECTLY WAITING, not actionable — the same expression
+    // as depWaiting() above, inlined because this function is serialized
+    // verbatim into the generated bin/ CLIs (pinned equal by test).
+    const deps = Array.isArray(c.dependsOn) ? (c.dependsOn as string[]) : [];
+    if (deps.some((d) => statusById.get(d) !== 'done')) continue;
     ids.push(c.id);
   }
   return ids;

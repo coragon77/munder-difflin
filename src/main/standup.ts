@@ -27,6 +27,8 @@
  *  todos that kept it alive.
  */
 
+import { depWaiting } from './actionableCards';
+
 /** Where a due ops-standup goes. */
 export type StandupTarget = 'clerk' | 'god';
 
@@ -198,9 +200,11 @@ export function detectAnomalies(
     if (c.status !== 'todo' || c.paused === true) continue;
     if (escalated.has(c.id)) continue;
     // Unmet dependency: any dep that is not done keeps this card correctly
-    // waiting. Unknown dep ids count as unmet (fail toward quiet here — a
-    // wrong "unattended" would nag god hourly for a well-behaved card).
-    if ((c.dependsOn ?? []).some((d) => statusById.get(d) !== 'done')) continue;
+    // waiting. The interpretation lives in ONE place now — depWaiting in
+    // actionableCards.ts (card agent-actionablecards-fold-dep-2026-08-18) —
+    // the same function the ACTIONABLE roster line filters with, so the
+    // standup and god's injection can never disagree on what is waiting.
+    if (depWaiting(c, statusById)) continue;
     // Age gate: younger than the stall horizon = presumed mid-dispatch.
     const created = typeof c.createdAt === 'string' ? Date.parse(c.createdAt) : NaN;
     if (!Number.isNaN(created) && Date.now() - created < stalledSec * 1000) continue;
