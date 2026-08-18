@@ -105,3 +105,4 @@ test/recall-cardsession-hold.test.cjs
 test/worktree-graph-provision.test.cjs
 test/intern-hire-fire.test.cjs
 test/restart-window.test.cjs
+test/command-center-effort.test.cjs

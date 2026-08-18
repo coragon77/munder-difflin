@@ -231,6 +231,12 @@ export interface HarnessConfig {
   /** The model GOD runs on. Unset falls back to the provider preset's
    *  `recommendedOrchestratorModel`, then MODEL_GOD. Default 'claude-opus-4-8'. */
   godModel?: string;
+  /** Thinking effort GOD runs at (card agent-command-center-engine-ro-
+   *  2026-08-18) — provider-specific flag+vocabulary from the provider preset
+   *  (claude --effort, pi --thinking). unset = the CLI's default effort; an
+   *  unknown value is dropped at spawn (claude warns-and-ignores rather than
+   *  failing). God-only: workers keep the CLI default. */
+  godEffort?: string;
   /** Per-server consent state for the default MCP bundle, keyed by catalog id.
    *  Seeded from MCP_CATALOG (safe-readonly ON, write/secret OFF); the user flips
    *  these in Settings. A server is wired into an agent only when enabled here. */

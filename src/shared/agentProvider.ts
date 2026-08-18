@@ -109,6 +109,14 @@ export interface AgentProviderPreset {
    *  model as `config.godModel ?? preset.recommendedOrchestratorModel ?? MODEL_GOD`.
    *  Advisory + user-overridable. */
   recommendedOrchestratorModel?: string;
+  /** Thinking-effort control for this provider's CLI (card
+   *  agent-command-center-engine-ro-2026-08-18): the flag it takes and the
+   *  EXACT level vocabulary it accepts (claude `--effort
+   *  low|medium|high|xhigh|max`; pi `--thinking off|minimal|low|medium|high|
+   *  xhigh|max` — verified on the installed binaries 2026-08-18). undefined =
+   *  no effort support: the Command Center control hides and spawnAgentCore
+   *  never injects a flag the CLI would reject. Drives `godEffortArgs`. */
+  effort?: { flag: string; levels: readonly string[] };
   /** Whether the router may DELIVER inbox mail to this provider (vs bouncing it
    *  to the god). Requires lifecycle status so the renderer can deliver only at a
    *  safe idle prompt: Claude natively, Antigravity/Codex/Grok via hook bridges.
@@ -186,6 +194,9 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // Longest-context Claude variant — matches the "give Michael a bigger model"
     // advisory and the Recommended tag on the orchestrator picker.
     recommendedOrchestratorModel: 'claude-opus-4-8[1m]',
+    // Verified on the shipped binary (claude --help, 2026-08-18):
+    // "--effort <level>" — low, medium, high, xhigh, max.
+    effort: { flag: '--effort', levels: ['low', 'medium', 'high', 'xhigh', 'max'] },
     resumeFlag: '--resume',
     // Official Claude Code install (npm global). Used by the missing-CLI auto-install.
     installCommand: 'npm install -g @anthropic-ai/claude-code',
@@ -449,6 +460,14 @@ export const AGENT_PROVIDER_PRESETS: AgentProviderPreset[] = [
     // first, so a hookBridge:'pi' would be dead weight + force a second union widening.
     bridge: { kind: 'hooks', shim: 'pi' },
     recommendedOrchestratorModel: 'anthropic/claude-sonnet-4-5',
+    // Verified on the installed pi (2026-08-18): `--thinking <level>` accepts
+    // off|minimal|low|medium|high|xhigh|max (7 — pi adds off+minimal vs
+    // claude). The explicit flag over the --model "provider/id:<thinking>"
+    // shorthand: one concept, one control.
+    effort: {
+      flag: '--thinking',
+      levels: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+    },
     // god-eligible. Live runtime (whether the extension auto-continues from agent_end,
     // or we lean on the renderer idle nudge) is UNVERIFIED pending keys. Renderer nudge
     // is the guaranteed drain fallback either way.
@@ -640,6 +659,31 @@ export function permissionModeArgs(
       (mode === 'bypass' && command.includes(tokens.join(' ')))
     : command.includes(tokens.join(' '));
   return present ? [] : tokens;
+}
+
+/** GOD-only thinking-effort tokens (card agent-command-center-engine-ro-
+ *  2026-08-18). Rides opts.args in spawnAgentCore like permissionModeArgs —
+ *  NEVER the command string (tails are dropped at spawn, 66f564e). Two
+ *  guards, both binding:
+ *  - the level must be in the preset's EXACT vocabulary: claude does not
+ *    hard-fail an unknown `--effort` value, it warns and silently uses the
+ *    default — so a stale/wrongly-cased config value is DROPPED here instead
+ *    of degrading invisibly;
+ *  - a flag already on the command line (typed by the operator or persisted
+ *    in an old command string) wins, never doubled.
+ *  Non-god agents and providers without an effort spec get nothing. */
+export function godEffortArgs(
+  command: string,
+  provider: AgentProvider | undefined,
+  effort: string | undefined,
+  isGod: boolean,
+): string[] {
+  if (!isGod || !effort) return [];
+  const preset = providerPreset(inferAgentProvider(command, provider));
+  const spec = preset.effort;
+  if (!spec || !spec.levels.includes(effort)) return [];
+  if (command.includes(spec.flag)) return [];
+  return [spec.flag, effort];
 }
 
 /** AskUserQuestion must never render in a harness pane: its modal blocks
