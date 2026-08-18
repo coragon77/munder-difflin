@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { HarnessConfig } from '@/store/config';
 import { useStore } from '@/store/store';
 import { disposeTerminal } from './terminalPool';
@@ -82,6 +82,29 @@ export function OfficeThemePicker({ config }: { config: HarnessConfig }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
 
+  // Re-seed from the ON-DISK config when the picker mounts: App's `config`
+  // prop is loaded once and never refreshed after a save (documented at
+  // SettingsModal's own re-seed effect), so the useState seeds above would
+  // show the PRE-SWITCH theme when Settings reopens (card
+  // agent-theme-switch-guard-false-2026-08-18).
+  useEffect(() => {
+    let alive = true;
+    window.cth
+      .getConfig()
+      .then((c) => {
+        if (!alive) return;
+        const hc = c as HarnessConfig;
+        setEnabled(!!hc.tvShowOffices);
+        setCurrent((hc.officeTheme as ThemeId) ?? 'office');
+      })
+      .catch(() => {
+        /* keep the prop seeds */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const archiveAgent = useStore((s) => s.archiveAgent);
   const setOfficeTheme = useStore((s) => s.setOfficeTheme);
 
@@ -104,8 +127,9 @@ export function OfficeThemePicker({ config }: { config: HarnessConfig }) {
   const onSelect = (id: ThemeId) => {
     setNote('');
     if (busy || id === current) return; // no-op on the current theme
-    // A preservesAgents target (custom) is NON-DESTRUCTIVE — nothing to
-    // confirm; the guard inside applyTheme refuses a broken map.
+    // A preservesAgents target (office<->custom) is NON-DESTRUCTIVE — nothing
+    // to confirm; the guard inside applyTheme refuses a broken map or a cast
+    // that doesn't fit.
     if (getTheme(id).preservesAgents) {
       void applyTheme(id);
       return;
@@ -126,22 +150,40 @@ export function OfficeThemePicker({ config }: { config: HarnessConfig }) {
       // error, don't persist the new theme) rather than leave a half-switched floor.
       const victims = nonGodAgents();
       // NON-DESTRUCTIVE switch (card agent-harness-custom-office-th-2026-08-17):
-      // a preservesAgents target (custom) that resolves every live character
-      // and fits the seats skips the teardown ENTIRELY — persist + rebuild,
-      // and OfficeFloor's init re-seats the LIVE roster exactly like boot on a
-      // populated store; PTYs, terminals and panes are untouched. Guard first:
-      // a custom map the operator edited in Tiled may have lost anchors —
-      // refuse, never break the floor.
+      // a preservesAgents target (office<->custom) that resolves every live
+      // character and fits the seats skips the teardown ENTIRELY — persist +
+      // rebuild, and OfficeFloor's init re-seats the LIVE roster exactly like
+      // boot on a populated store; PTYs, terminals and panes are untouched.
+      // Guard first: a custom map the operator edited in Tiled may have lost
+      // anchors — refuse, never break the floor. And a FALSE predicate must
+      // REFUSE with a note — onSelect already skipped the confirm modal for
+      // this target, so falling through into the teardown below would destroy
+      // the cast with NO confirmation (card agent-theme-switch-guard-false-
+      // 2026-08-18).
       const theme = getTheme(id);
-      if (
-        switchPreservesAgents({
-          preservesAgents: !!theme.preservesAgents,
-          liveCharacters: victims.map((a) => a.character),
-          castByName: theme.cast.byName,
-          liveWorkers: victims.length,
-          workerSeats: theme.primarySeatNames.length - 1,
-        })
-      ) {
+      if (theme.preservesAgents) {
+        const seats = theme.primarySeatNames.length - 1;
+        if (
+          !switchPreservesAgents({
+            preservesAgents: true,
+            liveCharacters: victims.map((a) => a.character),
+            castByName: theme.cast.byName,
+            liveWorkers: victims.length,
+            workerSeats: seats,
+          })
+        ) {
+          const uncast = [
+            ...new Set(
+              victims.filter((a) => !(a.character in theme.cast.byName)).map((a) => a.character),
+            ),
+          ];
+          setNote(
+            victims.length > seats
+              ? `Switch refused — the live cast doesn't fit: ${victims.length} workers but only ${seats} worker seats on the ${id} floor. Archive an agent and try again.`
+              : `Switch refused — the live cast can't re-seat on the ${id} floor: ${uncast.join(', ')} missing from its cast.`,
+          );
+          return;
+        }
         const missing = missingAnchors(theme.mapRaw, requiredAnchors(theme));
         if (missing.length > 0) {
           setNote(

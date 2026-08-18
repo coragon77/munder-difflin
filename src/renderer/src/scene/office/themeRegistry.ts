@@ -158,6 +158,11 @@ export interface ThemeConfig {
 export const OFFICE_THEME: ThemeConfig = {
   id: 'office',
   mapRaw: officeMapRaw,
+  // office<->custom shares cast + seats (custom reuses both verbatim), and
+  // preservesAgents is read off the TARGET — with only custom flagged, the
+  // return trip custom->office stayed destructive. The pair preserves in BOTH
+  // directions (card agent-theme-switch-guard-false-2026-08-18).
+  preservesAgents: true,
   tilesets: [
     // office-tileset.png — embedded in the map (firstgid 1); keep the map's copy.
     { url: officeTilesetUrl, embedded: true },

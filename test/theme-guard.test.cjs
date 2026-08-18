@@ -130,6 +130,56 @@ test('switchPreservesAgents: flag + cast + seats all gate the preserve path', ()
   );
 });
 
+// Follow-up card agent-theme-switch-guard-false-2026-08-18 — three operator
+// findings from the live test: asymmetric preservation, stale picker seed,
+// and the silent guard-false fall-through into the teardown loop.
+
+test('both-ways preservation: office opts in too (custom->office non-destructive)', () => {
+  // preservesAgents is read off the TARGET theme; with only custom flagged,
+  // custom->office took the destructive path. The pair shares cast + seats
+  // (custom reuses office's verbatim), so BOTH directions must preserve.
+  const reg = read('src/renderer/src/scene/office/themeRegistry.ts');
+  assert.match(
+    reg,
+    /export const OFFICE_THEME: ThemeConfig = \{[\s\S]{0,500}?preservesAgents: true,/,
+    'OFFICE_THEME opts into the preserve switch',
+  );
+  assert.match(
+    reg,
+    /id: 'custom',\s*mapRaw: customMapRaw,\s*preservesAgents: true,/,
+    'CUSTOM_THEME keeps its flag',
+  );
+});
+
+test('guard-false on a preservesAgents target REFUSES — never falls through to teardown', () => {
+  const picker = read('src/renderer/src/components/OfficeThemePicker.tsx');
+  // onSelect skips the confirm modal for preservesAgents targets, so a FALSE
+  // switchPreservesAgents must refuse with a note inside that branch — the
+  // old code fell through into the kill/archive loop with no confirmation.
+  assert.match(picker, /!switchPreservesAgents\(/, 'the false guard is handled explicitly');
+  const block = picker.indexOf('if (theme.preservesAgents) {');
+  const refuse = picker.indexOf('Switch refused — the live cast');
+  const teardown = picker.indexOf('window.cth.killPty');
+  assert.ok(block !== -1 && refuse !== -1 && teardown !== -1, 'all anchors present');
+  assert.ok(
+    block < refuse && refuse < teardown,
+    'the refusal sits inside the preservesAgents block, BEFORE any teardown',
+  );
+});
+
+test('picker re-seeds the current theme from the ON-DISK config — the prop is stale', () => {
+  // App's config prop is loaded once and never refreshed after a save
+  // (SettingsModal documents it), so seeding useState from the prop shows the
+  // PRE-SWITCH theme when Settings reopens. Re-seed from getConfig() like
+  // SettingsModal's own re-seed effect.
+  const picker = read('src/renderer/src/components/OfficeThemePicker.tsx');
+  assert.match(
+    picker,
+    /window\.cth\s*\.getConfig\(\)[\s\S]{0,500}?setCurrent\(/,
+    'mount-time getConfig() feeds setCurrent',
+  );
+});
+
 test('registry + picker wiring pins (custom theme, preserve-before-teardown, no modal)', () => {
   const reg = read('src/renderer/src/scene/office/themeRegistry.ts');
   assert.match(
