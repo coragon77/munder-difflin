@@ -1744,7 +1744,22 @@ function writeFleetSnapshot(): void {
         cwd: a.cwd,
         parkedAt: a.vacationSince ?? null,
       }));
-    hive.writeFleetSnapshot({ ts: now, agents, vacation, floor: floorSeats(reg) });
+    // The floor block ALSO mirrors the intern spawn settings (card
+    // agent-build-hive-hire-the-miss-2026-08-18) so bin/hive-hire can pre-flight
+    // (refuse on internsEnabled off, show the resolved engine pair in its
+    // receipt) from ONE authoritative near-live file instead of reaching into
+    // the app's config store from a shell script.
+    const internCfg = readConfig();
+    hive.writeFleetSnapshot({
+      ts: now,
+      agents,
+      vacation,
+      floor: {
+        ...floorSeats(reg),
+        internsEnabled: spawnSwitches(internCfg).interns,
+        internDefaults: internCfg.internDefaults ?? null,
+      },
+    });
   } catch (e) {
     console.error('[fleet] snapshot failed:', e);
   }

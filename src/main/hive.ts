@@ -764,6 +764,16 @@ export class HiveManager {
     const dispatchCli = join(root, 'bin', 'hive-dispatch');
     writeFileSync(dispatchCli, HIVE_DISPATCH_CLI, 'utf8');
     if (process.platform !== 'win32') chmodSync(dispatchCli, 0o755);
+    // The intern LIFECYCLE pair (card agent-build-hive-hire-the-miss-2026-08-18):
+    // hive-hire owns the spawn-request JSON (engine pair rule + internDefaults),
+    // hive-fire owns the intern release (irreversibility stated at use).
+    // Same refresh policy as the shims above.
+    const hireCli = join(root, 'bin', 'hive-hire');
+    writeFileSync(hireCli, HIVE_HIRE_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(hireCli, 0o755);
+    const fireCli = join(root, 'bin', 'hive-fire');
+    writeFileSync(fireCli, HIVE_FIRE_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(fireCli, 0o755);
     // The inbox drain (card agent-harness-hive-inbox-cli-o-2026-08-17) —
     // print pending mail + archive to .done in one pass. Same refresh policy.
     const inboxCli = join(root, 'bin', 'hive-inbox');
@@ -1787,7 +1797,7 @@ export class HiveManager {
     // for the agent's lifetime, so the prompt-cache invariant holds.
     const monitorLine = hasInboxMonitor(meta.provider ?? 'claude')
       ? 'INBOX WAKE — at session start, arm ONE persistent monitor on your inbox so new mail wakes you in-session instead of waiting for the typed nudge (arming is silent about mail that is already there — only NEW arrivals after arming wake you). Launch your Monitor tool with this command:\n' +
-        `  flt() { grep -q '"act": *"inform"' "$1" && grep -Eq '"from": *"(ephemeral-worker|scheduler|heartbeat|breaker|system)"' "$1"; }; scan() { news=""; for f in $(comm -13 <(echo "$prev") <(echo "$cur")); do flt "$f" || news="$news \${f##*/}"; done; }; prev=$(ls ${dir}/inbox/*.json 2>/dev/null); while true; do cur=$(ls ${dir}/inbox/*.json 2>/dev/null); scan; [ -n "$news" ] && { sleep 3; cur=$(ls ${dir}/inbox/*.json 2>/dev/null); scan; }; [ -n "$news" ] && { set -- $news; echo "new hive mail (\$#): $news"; }; prev="$cur"; sleep 1; done\n` +
+        `  flt() { grep -q '"act": *"inform"' "$1" && grep -Eq '"from": *"(ephemeral-worker|scheduler|heartbeat|breaker|system)"' "$1"; }; scan() { news=""; for f in $(comm -13 <(echo "$prev") <(echo "$cur")); do flt "$f" || news="$news \${f##*/}"; done; }; prev=$(ls ${dir}/inbox/*.json 2>/dev/null); while true; do cur=$(ls ${dir}/inbox/*.json 2>/dev/null); scan; [ -n "$news" ] && { sleep 3; cur=$(ls ${dir}/inbox/*.json 2>/dev/null); scan; }; [ -n "$news" ] && { set -- $news; echo "new hive mail ($#): $news"; }; prev="$cur"; sleep 1; done\n` +
         'Each "new hive mail (N):" line means N messages arrived as one burst (names listed; a 3s debounce collects stragglers) — read your inbox and handle them (handled files go to inbox/.done/ per protocol). System FYI notices are skipped on purpose. If you cannot arm the monitor, do nothing — the harness\'s typed "read your inbox" nudge remains the fallback and fires only if mail is still unread after its grace window.'
       : '';
     // Integration ownership (card integration-mode-toggle-20260817): in 'god'
@@ -1817,7 +1827,7 @@ export class HiveManager {
         godOwnsClause +
         " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — the objective's constraints and the INDEXES available (graphify-out/ knowledge graph, docs/, *-tracker.md, existing reports), not a reading list: name what must be true of the answer and let the worker pick the cheapest path to it; before listing file paths, check whether an index already answers it — a graphify query beats a grep sweep, and prescribing YOUR traversal makes the worker re-walk a path you already paid for (incident: a prescribed reading list cost an advisor 2.43M tokens, 2026-08-18). Graphify is for ORIENTATION (architecture, file relationships, where a concept lives) — a graph can be stale, so the correct dispatch shape is orient via graphify, then verify only the specific lines to be cited; reserve file:line pointers for claims the worker must cite precisely; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. DISPATCH INTERFACE: run `$HIVE_ROOT/bin/hive-dispatch` for every card dispatch: give exactly one of --card <existing-id> or --title <new-title>, plus --assignee <agent>; add --adopt for a connected current engagement; supply the 4-part contract with --body or stdin. It creates or adopts and assigns the card, recalls a parked assignee, flips it to doing, and mails the contract in one guarded command; it REFUSES without writing if the assignee is active on a DIFFERENT doing/blocked card. The vacation-requests/, hive-card, and hive-mail hand-primitives are the documented MANUAL FALLBACK when hive-dispatch is unavailable or for standalone operations, not normal dispatch. ORIENT FIRST: before dispatching into (or yourself working in) a directory, read that directory's own CLAUDE.md/AGENTS.md — they may carry a graphify-out/ knowledge graph, a wiki index, build/test commands, house gates; orient via them and verify with targeted reads ONLY the specific lines to be cited (docs and graphs go stale — skipping this cost 2.43M tokens once, munder-difflin 2026-08-17). SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm it as a DETACHED process BEFORE the close (a setsid script that polls for the harness process to disappear, ff-merges the batch, pushes, appends to a known log file, and exits), then verify the log after reboot. KEEP ONE ARMED: whenever ANY verified renderer/preload branch is unmerged, arm a watcher on it immediately — arm on the first one; do not wait for the batch to feel complete. An unarmed window means a restart lands NOTHING; early arming is free because the watcher fires only when the harness process disappears. RETARGET PROCEDURE: when new main-bound work joins the ARMED watcher's batch, rebase/cherry-pick onto the batch tip, re-gate, rewrite TARGET, kill the old PID (verify with ps -p; pgrep -f self-matches the querying shell), then relaunch with setsid. NEVER advance main under an armed ff-watcher or its ff-only merge will abort. WATCHER CAN REFUSE: it ABORTS when the live checkout has a dirty tracked worktree, HEAD is not on main, or TARGET is not a fast-forward; it also logs 'window missed' on a <2s process blip. ALWAYS read restart-merge.log after reboot before reporting anything as landed, and re-arm if it refused. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. INBOX INTERFACE: run `$HIVE_ROOT/bin/hive-inbox drain` to print and handle pending mail: it prints every pending mail and archives it to inbox/.done/ in the same pass; --agent <id> targets another inbox and --peek is read-only. The typed-nudge fallback then stands down inside its grace window. Hand-reading inbox JSON and moving it to inbox/.done/ is the documented MANUAL FALLBACK only when hive-inbox cannot process it; the card/board carry the work state, not the inbox file. ATOMIC JSON WRITES: all direct writes to tasks.json (or any other shared hive JSON — registry.json, fleet.json) must be ATOMIC — serialize the full new content to a tempfile in the SAME directory, then os.replace() it onto the target; a bare in-place rewrite risks corrupting the shared kanban mid-write, and a stale read-modify-write can clobber a concurrent landing stamp (another writer's update lost between your read and your write)." +
         ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire and no doing/blocked cards — so a missing standup on a quiet floor is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. HUMAN-CARD REFERENCE — a 'Task from the human' mail that references a card (a cardId field and/or a 'Card: <id>' line in the body) means that card ALREADY EXISTS in tasks.json: NEVER create a duplicate. If its title or notes need enrichment, use hive-card update <id> [--title <t>] [--notes <n>] first; then assign and start that exact card through hive-dispatch --card <id> --assignee <worker> --body <contract>. In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY, and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — set its status to "blocked" and append the concrete ask to the card's "humanQA" array (push {"q":"...","askedAt":"<iso>"}; phrase actions as clear to-dos; keep every past entry — the history documents the card's decisions). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
-        " INTERNS — you OWN their lifecycle: mint them via spawn-requests/ (\"persistent\": true; template in COMMANDS.md) for delegated standing work, and FIRE them via fire-requests/ IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern's pane). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor's context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate. INTERN SPRITES — the harness maps intern NAMES onto office sprites by pool hash: a FEMALE-coded name hashes onto the female intern pool (Holly, Erin, Jan, Karen, Nellie), any other name onto the male pool (Darryl, Roy, Gabe, Robert, Mose) — stable, the same name always wears the same face, and an intern never wears a hire-cast face by default. The female name list is FEMALE_CODED_NAMES and the pools are INTERN_FEMALE_POOL / INTERN_MALE_POOL, all in src/renderer/src/scene/office/spawnIdentity.ts; pick the NAME of each intern to match the sprite you want them wearing (a pool character's own name gets that face, any other name hashes onto its gender pool). All 25 faces (15 hires + 10 interns) are selectable in the icon picker. A registry-saved or operator icon pick always beats the mapping." +
+        ' INTERNS — you OWN their lifecycle: HIRE with "$HIVE_ROOT/bin/hive-hire" --name <Name> --cwd <dir> --objective <contract> (the CLI owns the spawn-request JSON, applies the Settings internDefaults engine pair when you give no engine flags — its receipt PRINTS the resolved provider/model — and refuses half engine pairs, disabled interns, full floors, and fired ids) for delegated standing work; [--card <id> | --title <t>] wires the engagement card. FIRE them with "$HIVE_ROOT/bin/hive-fire" <intern-id> IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane; hive-fire refuses while a doing card is open, --force overrides a deliberate fire, and its receipt states that fired ids are PERMANENTLY refused — re-hire with a fresh --id). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. The spawn-requests/ and fire-requests/ drop-dirs are the MECHANISM these CLIs write into — never hand-write them. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate. INTERN SPRITES — the harness maps intern NAMES onto office sprites by pool hash: a FEMALE-coded name hashes onto the female intern pool (Holly, Erin, Jan, Karen, Nellie), any other name onto the male pool (Darryl, Roy, Gabe, Robert, Mose) — stable, the same name always wears the same face, and an intern never wears a hire-cast face by default. The female name list is FEMALE_CODED_NAMES and the pools are INTERN_FEMALE_POOL / INTERN_MALE_POOL, all in src/renderer/src/scene/office/spawnIdentity.ts; pick the NAME of each intern to match the sprite you want them wearing (a pool character\'s own name gets that face, any other name hashes onto its gender pool). All 25 faces (15 hires + 10 interns) are selectable in the icon picker. A registry-saved or operator icon pick always beats the mapping.' +
         ' VACATION — before spawning anything, check fleet.json\'s vacation pool for a fitting parked agent; normal hive-dispatch recalls the chosen assignee automatically instead of minting new. A vacation-requests/ ("action":"recall") hand-drop is the MANUAL FALLBACK for a standalone recall; park an idle human-created agent through vacation-requests/ ({"agentId":..., "reason":...}) once it is idle ≥ 1 hour, has no doing/blocked card, and its inbox is drained. PARKING GATE — idle time alone is NEVER sufficient to park: park only on POSITIVE done evidence — (a) a done/standby report to you for the current engagement, OR (b) the agent confirms on a pre-park ping that nothing is open in its pane (the agent\'s transcript knows; fleet.json does not — an idle pane may be a stepped-away operator mid-discussion). No evidence: ping first, park only on confirmation. Your judgment can still hold one back if the floor will need it again soon. Interns are FIRED, never parked. PINNED workers (registry "pinned" flag, set from the office UI) are NEVER parked — check the pin before any park decision and skip anyone pinned; the pin is the human\'s call, unpinning is too. A park request carrying "whenQuiet": true is HELD while the agent is busy — the watcher retries it until the gate clears instead of bouncing a rejection back to you.'
       : meta.isAssistant
         ? 'You are Michael\'s PREP ASSISTANT. You will be handed short, possibly vague instructions (each begins with "ENRICH TASK:"). For each one: (1) figure out which project it concerns and cd into the most relevant repo — you start in Michael\'s home directory; (2) gather concrete context READ-ONLY (exact file paths, current state, relevant code, conventions, active branch, gotchas) — NEVER modify, create, or delete files; (3) rewrite the instruction into ONE clear, self-contained prompt that Michael can execute autonomously, preserving the user\'s original intent without inventing scope. Then deliver it: write ONE message JSON into your outbox with "to":"god", "act":"request", a short subject, and the finished prompt as the body. Do NOT perform the task yourself — your only output is the improved prompt sent to Michael.'
@@ -3224,7 +3234,10 @@ vs **persistent named agents, which are human-only surfaces**.
 ### Path 1 — Ephemeral worker (god-runnable from Bash) ✅
 
 Drop a spawn-request JSON into \`$HIVE_ROOT/spawn-requests/\` (one file = one worker;
-atomically archived to \`.done/\` or \`.failed/\` once consumed):
+atomically archived to \`.done/\` or \`.failed/\` once consumed). Omit the engine
+fields unless you deliberately want a specific engine — the harness resolves
+command/provider/model coherently (a request that names ANY engine field owns
+the WHOLE pair; never hand-mix sources):
 
 \`\`\`bash
 cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/spawn-requests/my-task.json" <<'EOF'
@@ -3233,9 +3246,6 @@ cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/spawn-requests/my-task.jso
   "objective": "Fix DIVA ticket 42: <one-paragraph contract for the worker>",
   "cwd": "/opt/django/projects/diva",
   "name": "Diva Worker",
-  "command": "claude",
-  "provider": "claude",
-  "model": null,
   "isolate": true,
   "tokenCap": 0,
   "label": null,
@@ -3283,19 +3293,25 @@ Respawning an existing registry agent after restart = the UI "restore team" flow
 
 ### Path 3 — Intern (persistent hire, standing floor agent) ✅
 
-A spawn-request with \`"persistent": true\` hires an INTERN — the OBSERVABLE
-variant of an ephemeral worker (path gated by \`internsEnabled\`, default ON —
-see "The two switches" above): same disposability, same one-task lifecycle,
-but with a visible floor pane so the human can watch and talk to them.
-Persistence of the process is an implementation detail, not a promise of
-tenure. Interns are classified three ways so floor rules can target them:
-id prefix \`intern-\`, registry \`role: "intern"\`, and display
-name \`<name> (Intern)\`. They get a floor card + terminal pane (like any hire),
-are NEVER reaped (no done/idle/token-cap release), work in their own git
-worktree by default (\`isolate\` defaults to \`true\`, same as ephemeral
-workers; an explicit \`"isolate": false\` opts out for cwds where a worktree
-cannot work), and survive restarts via the registry like any named agent
-(restore-team respawns it, resuming its recorded session).
+**hive-hire is THE interface** (card agent-build-hive-hire-the-miss-2026-08-18):
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-hire" --name Docs --cwd /opt/myproject \\
+  --objective "Read the repo and draft a CONTRIBUTING.md; report to god when done." \\
+  [--title "Write the docs"]
+\`\`\`
+
+It OWNS the spawn-request JSON so no caller hand-writes engine fields: with NO
+engine flags the Settings \`internDefaults\` pair applies (the receipt PRINTS the
+resolved provider/model — what will actually launch); \`--provider\`/\`--model\`
+go together (one without the other is a REFUSAL — a per-field merge once
+launched \`claude --model <pi model id>\`, read from /proc, 2026-08-18);
+\`--card\`/\`--title\` wire the engagement card (assigned + doing). It pre-flights
+the gates the watcher enforces — internsEnabled, floor free seats, retired ids
+(fired ids are PERMANENTLY refused; re-hire with a fresh \`--id\`). The
+\`spawn-requests/\` drop-dir is the mechanism hive-hire writes into — a
+hand-written request is the documented FALLBACK (omit engine fields unless you
+deliberately override, and then as a coherent PAIR):
 
 \`\`\`bash
 cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/spawn-requests/new-hire.json" <<'EOF'
@@ -3304,7 +3320,6 @@ cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/spawn-requests/new-hire.js
   "name": "Dwayne",
   "objective": "Read the repo and draft a CONTRIBUTING.md; report to god when done, then standby for follow-ups.",
   "cwd": "/opt/myproject",
-  "command": "claude",
   "persistent": true
 }
 EOF
@@ -3313,12 +3328,39 @@ EOF
 → agent id \`intern-docs-writer\`, floor name **Dwayne (Intern)**. Give the request
 a \`"name"\` so it reads as a person; without one it shows as \`Intern <id>\`.
 
+Either way (CLI or fallback JSON) a \`"persistent": true\` hire is an INTERN —
+the OBSERVABLE variant of an ephemeral worker (path gated by \`internsEnabled\`,
+default ON — see "The two switches" above): same disposability, same one-task
+lifecycle, but with a visible floor pane so the human can watch and talk to
+them. Persistence of the process is an implementation detail, not a promise of
+tenure. Interns are classified three ways so floor rules can target them:
+id prefix \`intern-\`, registry \`role: "intern"\`, and display
+name \`<name> (Intern)\`. They get a floor card + terminal pane (like any hire),
+are NEVER reaped (no done/idle/token-cap release), work in their own git
+worktree by default (\`isolate\` defaults to \`true\`, same as ephemeral
+workers; \`--no-isolate\` / an explicit \`"isolate": false\` opts out for cwds
+where a worktree cannot work), and survive restarts via the registry like any
+named agent (restore-team respawns it, resuming its recorded session).
+
 **Permissions:** spawn-requests follow the installation's worker-bypass
 setting (Settings → Autonomy, DEFAULT OFF) — ON, the harness appends the
 engine's bypass flag itself; OFF, workers start auto/ask-first. You can ALWAYS
 write the flag into \`command\` yourself — a typed flag wins.
 
-**Firing an intern** (god-runnable, interns only):
+**Firing an intern** (god-runnable, interns only) — **hive-fire is THE
+interface** (same card as hive-hire):
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-fire" intern-docs-writer   # --force overrides the card guard
+\`\`\`
+
+It refuses anything that is NOT an intern (role named), refuses while the
+intern still holds a doing/blocked card — the gate is the WHOLE engagement,
+not the first done-report; \`--force\` overrides a deliberate fire — and the
+receipt states the IRREVERSIBILITY (fired ids are permanently refused; re-hire
+with a fresh \`--id\` via hive-hire) and what SURVIVES (memory + inbox stay
+under \`agents/<id>/\`). The \`fire-requests/\` drop-dir is the mechanism it
+writes into — raw JSON is the documented fallback:
 
 \`\`\`bash
 cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/fire-requests/docs-writer.json" <<'EOF'
@@ -3669,9 +3711,14 @@ targeted reads ONLY the specific lines you will cite.
   and one-task lifecycle, but with a visible floor pane so the human can watch
   and talk to them. Persistence of the process is an implementation detail,
   not a promise of tenure.
-- Interns are disposable by design: the orchestrator FIRES an intern
-  (fire-requests/) as soon as its engagement is verifiably complete. Fresh
-  work gets a fresh intern — never park a finished intern on standby.
+- Interns are disposable by design: the orchestrator HIRES via
+  \`$HIVE_ROOT/bin/hive-hire\` (which owns the spawn-request JSON and applies the
+  Settings internDefaults engine pair) and FIRES via
+  \`$HIVE_ROOT/bin/hive-fire\` as soon as its engagement is verifiably complete
+  (the fire CLI refuses while a doing card is open; fired ids are permanently
+  refused — re-hire with a fresh id). The spawn-requests/ and fire-requests/
+  drop-dirs are the mechanism underneath the CLIs. Fresh work gets a fresh
+  intern — never park a finished intern on standby.
 
 ## Vacation (orchestrator/god)
 
@@ -4410,6 +4457,277 @@ process.stdout.write('dispatched ' + cardId + ' -> ' + assignee +
 try { main(); }
 catch (e) {
   process.stderr.write('hive-dispatch: ' + (e && e.message ? e.message : String(e)) + '\\n');
+  process.exit(1);
+}
+`;
+
+// ─── hive-hire (written to <hive>/bin/hive-hire) ───────────────────────────
+// The intern HIRE interface (card agent-build-hive-hire-the-miss-2026-08-18):
+// owns the spawn-request JSON so no caller hand-writes engine fields, applies
+// Settings internDefaults when no engine flags are given (the normal path),
+// treats --provider/--model as a PAIR (one without the other is a refusal, not
+// a silent per-field merge — the 2026-08-18 incident), prints the RESOLVED
+// engine in the receipt, and pre-flights the same gates the spawn watcher
+// enforces (internsEnabled, floor cap, retired ids) so refusals happen at the
+// typing surface, not in an archived .failed request.
+const HIVE_HIRE_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+function fail(msg) { throw new Error(msg); }
+function usage() {
+  fail([
+    'usage:',
+    '  hive-hire --name <Name> --objective <text|stdin> --cwd <dir>',
+    '          [--id <slug>] [--provider <p> --model <m>] [--no-isolate]',
+    '          [--card <existing-id> | --title <t>] [--adopt]',
+    '',
+    '  Hires an INTERN. With no engine flags the Settings internDefaults pair',
+    '  applies (the receipt prints the resolved provider/model). --provider and',
+    '  --model go together — one without the other is a refusal. --card adopts',
+    '  an existing card, --title creates one; either way it is assigned and',
+    '  flipped to doing. The spawn-requests/ drop-dir is the mechanism this',
+    '  writes into — never hand-write it.',
+  ].join('\\n'));
+}
+
+const root = process.env.HIVE_ROOT;
+if (!root) {
+  process.stderr.write('hive-hire: HIVE_ROOT must be set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+
+const VALUE_FLAGS = ['name', 'objective', 'cwd', 'id', 'provider', 'model', 'card', 'title'];
+function parseArgs(argv) {
+  const vals = {};
+  const bools = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.indexOf('--') !== 0) fail('unexpected argument: ' + a + ' (flags look like --name <value>)');
+    let name = a.slice(2);
+    let inline;
+    const eq = name.indexOf('=');
+    if (eq >= 0) { inline = name.slice(eq + 1); name = name.slice(0, eq); }
+    if (VALUE_FLAGS.indexOf(name) >= 0) {
+      const v = inline !== undefined ? inline : argv[++i];
+      if (v === undefined) fail('missing value for --' + name);
+      vals[name] = v;
+    } else if (name === 'no-isolate' || name === 'adopt') {
+      if (inline !== undefined) fail('--' + name + ' takes no value.');
+      bools[name] = true;
+    } else fail('unknown flag --' + name);
+  }
+  return { vals: vals, bools: bools };
+}
+
+function readJson(file, orNull) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (_) { return orNull; }
+}
+function slug(s) {
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+}
+function sleepMs(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+
+const ledgerPath = path.join(root, 'tasks.json');
+const lockPath = ledgerPath + '.lock';
+function withLock(fn) {
+  for (let i = 0; i < 200; i++) {
+    try {
+      const st = fs.statSync(lockPath);
+      if (Date.now() - st.mtimeMs > 10000) { try { fs.unlinkSync(lockPath); } catch (_) {} }
+    } catch (_) {}
+    let held = false;
+    try { fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' }); held = true; }
+    catch (_) { sleepMs(25); continue; }
+    if (held) {
+      try { return fn(); }
+      finally { try { fs.unlinkSync(lockPath); } catch (_) {} }
+    }
+  }
+  fail('could not acquire the tasks.json lock — another writer seems stuck.');
+}
+
+function main() {
+const parsed = parseArgs(process.argv.slice(2));
+const vals = parsed.vals;
+const name = (vals.name || '').trim();
+if (!name) fail('--name is required (the intern display name, e.g. "Docs").');
+let objective = vals.objective;
+if (objective === undefined) {
+  if (process.stdin.isTTY) fail('no objective — pass --objective <text> or pipe it on stdin.');
+  objective = fs.readFileSync(0, 'utf8');
+}
+objective = String(objective).trim();
+if (!objective) fail('the objective is empty — --objective or stdin must carry it.');
+const cwd = path.resolve((vals.cwd || '').trim());
+if (!vals.cwd || !fs.existsSync(cwd)) fail('--cwd must be an existing directory (got "' + (vals.cwd || '') + '").');
+const id = slug(vals.id || name) || 'intern';
+if ((vals.card ? 1 : 0) + (vals.title ? 1 : 0) > 1) usage();
+
+// ENGINE PAIR RULE: one half without the other is a refusal, never a silent
+// merge (the 2026-08-18 incident was exactly a per-field merge).
+const hasProvider = (vals.provider || '').trim() !== '';
+const hasModel = (vals.model || '').trim() !== '';
+if (hasProvider !== hasModel)
+  fail('--provider and --model go together — give both, or neither (neither applies the Settings internDefaults pair).');
+
+// Pre-flight the same gates the spawn watcher enforces, from fleet.json's
+// floor mirror (near-live; the watcher still refuses authoritatively).
+const fleet = readJson(path.join(root, 'fleet.json'), null);
+const floor = (fleet && fleet.floor) || {};
+if (floor.internsEnabled === false)
+  fail('interns are disabled on this installation (internsEnabled off) — the operator enables them in Settings → Autonomy & Budgets.');
+if (typeof floor.freeSeats === 'number' && floor.freeSeats <= 0)
+  fail('the floor is full (0 free seats of ' + (floor.maxAgents ?? '?') + ') — park or fire an agent first, or queue the card until a seat opens.');
+
+// Retired ids are PERMANENTLY refused by the harness — say so at the surface
+// instead of letting the spawn request die in .failed (god hit this 2026-08-18).
+const reg = readJson(path.join(root, 'registry.json'), null);
+if (!reg || !reg.agents) fail('registry.json is not readable — cannot pre-flight the id.');
+const agentId = 'intern-' + id;
+const prior = reg.agents[agentId];
+if (prior && prior.retired)
+  fail('id "' + agentId + '" was FIRED — fired ids are permanently refused by the harness. Re-hire with a fresh --id (memory/inbox of the old one are kept).');
+if (prior && !prior.archived)
+  fail('"' + agentId + '" is already on the floor — fire it first or pick another --id.');
+
+// The spawn-request THIS tool owns: engine fields appear ONLY as an explicit
+// pair; without them the harness resolver applies internDefaults.
+const req = {
+  id: id,
+  name: name,
+  objective: objective,
+  cwd: cwd,
+  persistent: true,
+  isolate: !parsed.bools['no-isolate'],
+};
+if (hasProvider) { req.provider = vals.provider.trim(); req.model = vals.model.trim(); }
+
+const spawnDir = path.join(root, 'spawn-requests');
+fs.mkdirSync(spawnDir, { recursive: true });
+const reqPath = path.join(spawnDir, 'hire-' + id + '-' + Date.now() + '.json');
+const tmpReq = reqPath + '.tmp-' + process.pid;
+fs.writeFileSync(tmpReq, JSON.stringify(req, null, 2) + '\\n', 'utf8');
+fs.renameSync(tmpReq, reqPath);
+
+// Card wiring (mirror of hive-dispatch): --card adopts, --title creates a
+// born-doing card. The objective already rides the spawn request — no mail.
+let cardId = '';
+if (vals.card || vals.title) {
+  cardId = withLock(function () {
+    const data = readJson(ledgerPath, null) || { tasks: [] };
+    if (!Array.isArray(data.tasks)) fail('tasks.json has an unexpected shape — refusing to write.');
+    if (vals.card) {
+      const card = data.tasks.find(function (t) { return t && t.id === vals.card; });
+      if (!card) fail('no card with id "' + vals.card + '" in tasks.json.');
+      card.assignee = agentId;
+      card.status = 'doing';
+      if (parsed.bools.adopt) card.sessionMode = 'adopt';
+      return card.id;
+    }
+    const title = vals.title.trim();
+    if (!title) fail('--title must be non-empty when given.');
+    const base = 'agent-' + slug(title) + '-' + new Date().toISOString().slice(0, 10);
+    let cid = base;
+    for (let n = 2; data.tasks.some(function (t) { return t && t.id === cid; }); n++) cid = base + '-' + n;
+    const card = {
+      id: cid, title: title, status: 'doing', dependsOn: [], priority: 3,
+      createdAt: new Date().toISOString(), origin: 'agent', assignee: agentId,
+    };
+    if (parsed.bools.adopt) card.sessionMode = 'adopt';
+    data.tasks.push(card);
+    const tmp = ledgerPath + '.tmp-' + process.pid + '-' + Date.now();
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tmp, ledgerPath);
+    return cid;
+  });
+}
+
+const engine = hasProvider
+  ? vals.provider.trim() + ' / ' + vals.model.trim()
+  : 'internDefaults → ' + ((floor.internDefaults && (floor.internDefaults.provider + ' / ' + floor.internDefaults.model)) || 'resolved at spawn (no mirror yet)');
+process.stdout.write(
+  'hired ' + agentId + ' "' + name + ' (Intern)" engine: ' + engine +
+  ' cwd=' + cwd + ' isolate=' + req.isolate +
+  (cardId ? ' card=' + cardId : '') +
+  ' — spawn-request queued (pane up in ~2s; fire with hive-fire ' + agentId + ' when the WHOLE engagement is verifiably done)\\n');
+}
+try { main(); }
+catch (e) {
+  process.stderr.write('hive-hire: ' + (e && e.message ? e.message : String(e)) + '\\n');
+  process.exit(1);
+}
+`;
+
+// ─── hive-fire (written to <hive>/bin/hive-fire) ────────────────────────────
+// The intern FIRE interface (same card): intern-only, states irreversibility
+// and what survives at the moment of use. The fire-requests/ drop-dir is the
+// mechanism it writes into.
+const HIVE_FIRE_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+function fail(msg) { throw new Error(msg); }
+const root = process.env.HIVE_ROOT;
+if (!root) {
+  process.stderr.write('hive-fire: HIVE_ROOT must be set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+
+function readJson(file, orNull) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (_) { return orNull; }
+}
+
+function main() {
+const argv = process.argv.slice(2);
+let force = false;
+const pos = [];
+for (const a of argv) {
+  if (a === '--force') force = true;
+  else if (a.indexOf('--') === 0) fail('unknown flag ' + a + ' (usage: hive-fire <agentId> [--force])');
+  else pos.push(a);
+}
+if (pos.length !== 1) fail('usage: hive-fire <agentId> [--force]');
+const rawId = pos[0].trim();
+const agentId = rawId.startsWith('intern-') ? rawId : 'intern-' + rawId;
+
+const reg = readJson(path.join(root, 'registry.json'), null);
+if (!reg || !reg.agents) fail('registry.json is not readable — cannot validate the id.');
+const entry = reg.agents[agentId];
+if (!entry) fail('no agent "' + agentId + '" in registry.json.');
+if (entry.role !== 'intern')
+  fail('"' + agentId + '" is a ' + (entry.role || 'plain hire') + ', not an intern — only god-hired interns are fireable from Bash; human hires and god stay human surfaces.');
+if (entry.retired) {
+  process.stdout.write('already fired: ' + agentId + ' is retired — nothing to tear down. Re-hiring needs a FRESH id (fired ids are permanently refused).\\n');
+  return;
+}
+
+// Fire-before-done guard: a doing/blocked card means the engagement is still
+// open. --force overrides a deliberate fire; the guard catches the mistake.
+const tasks = readJson(path.join(root, 'tasks.json'), null);
+const open = (tasks && Array.isArray(tasks.tasks) ? tasks.tasks : []).filter(function (t) {
+  return t && t.assignee === agentId && (t.status === 'doing' || t.status === 'blocked');
+});
+if (open.length && !force)
+  fail(open[0].id + ' is still ' + open[0].status + ' — the gate is the WHOLE engagement, not the first done-report. Verify it is done (or reassign the card), or pass --force to fire deliberately.');
+
+const dir = path.join(root, 'fire-requests');
+fs.mkdirSync(dir, { recursive: true });
+const fp = path.join(dir, 'fire-' + agentId + '-' + Date.now() + '.json');
+const tmp = fp + '.tmp-' + process.pid;
+fs.writeFileSync(tmp, JSON.stringify({ id: agentId }, null, 2) + '\\n', 'utf8');
+fs.renameSync(tmp, fp);
+process.stdout.write(
+  'fired ' + agentId + ' (' + (entry.name || agentId) + ') — fire-request queued: terminal closes, registry marked retired.\\n' +
+  'PERMANENT: the id is refused forever — re-hire with a FRESH --id (hive-hire --id …). Preserved: memory + inbox stay under agents/' + agentId + '/.\\n');
+}
+try { main(); }
+catch (e) {
+  process.stderr.write('hive-fire: ' + (e && e.message ? e.message : String(e)) + '\\n');
   process.exit(1);
 }
 `;

@@ -111,7 +111,7 @@ test('cache: a failed discovery (null) is not cached across the TTL — retry ne
   );
   assert.equal(await cache.list('pi'), null, 'failure → null (caller falls back to static)');
   fail = false;
-  let now = 5_000_000;
+  const now = 5_000_000;
   const retry = new ProviderModelCache(
     async (p) => (p === 'pi' ? parsePiListModels(PI_TABLE) : null),
     () => now,
