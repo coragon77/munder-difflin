@@ -344,9 +344,15 @@ test('fold: all-overflow timeout fold — no crash, overflow rides out with the 
   const inbox = inboxDir(root);
   const stagedDir = path.join(inbox, '.staged');
   const big = 'z'.repeat(10_000);
-  hive.send(CONTRACT, 'god');
-  hive.send({ to: 'dwight', subject: 'big A', body: big }, 'god');
-  hive.send({ to: 'dwight', subject: 'big B', body: big }, 'god');
+  hive.send({ ...CONTRACT, created_at: '2026-08-19T10:00:00.000Z' }, 'god');
+  hive.send(
+    { to: 'dwight', subject: 'big A', body: big, created_at: '2026-08-19T10:00:01.000Z' },
+    'god',
+  );
+  hive.send(
+    { to: 'dwight', subject: 'big B', body: big, created_at: '2026-08-19T10:00:02.000Z' },
+    'god',
+  );
   // Backdate ONLY the contract past the horizon; both bigs are fresh.
   const files = fs.readdirSync(stagedDir);
   const contractFile = files.find(
@@ -435,4 +441,75 @@ test('fold: equal created_at ties anchor deterministically (same rule everywhere
   assert.equal(msgs[0].id, 'aaa-contract', 'the lower (ts,id) anchors');
   assert.match(msgs[0].body, /CONTRACT body/);
   assert.match(msgs[0].body, /AMENDMENT body/);
+});
+
+test('fold: a no-op second tick leaves an overflow contract UNCHANGED (pointedIds)', () => {
+  const { hive } = foldHive([CARD({ sessionMode: 'adopt' })]);
+  const big = 'w'.repeat(10_000);
+  hive.send(CONTRACT, 'god');
+  hive.send({ to: 'dwight', subject: 'big one', body: big }, 'god');
+  hive.send({ to: 'dwight', subject: 'big two', body: big }, 'god');
+  hive.routeOnce();
+  const after1 = hive.inbox('dwight').find((m) => m.conversation === 'card-card-1');
+  assert.ok(after1, 'contract present');
+  assert.match(after1.body, /1 message\(s\) beyond the fold budget/, 'one overflow pointed');
+  // Round-3 blocker: the same overflow re-pointed every 1.5s grew the
+  // contract forever. pointedIds makes later no-op ticks leave it untouched.
+  hive.routeOnce();
+  hive.routeOnce();
+  const after3 = hive.inbox('dwight').find((m) => m.conversation === 'card-card-1');
+  assert.equal(after3.body, after1.body, 'no growth across no-op ticks');
+  assert.deepEqual(after3.pointedIds, after1.pointedIds);
+});
+
+test('fold: reverse mixed-age timeout — stale SIBLING release frees the fresh contract too', () => {
+  const { hive, root } = foldHive([CARD()]);
+  const inbox = inboxDir(root);
+  const stagedDir = path.join(inbox, '.staged');
+  // The CONTRACT is the older card-conversation message (normal dispatch
+  // order); the later amendment goes stale alone.
+  const sent = hive.send(
+    { ...CONTRACT, body: 'the contract', created_at: '2026-08-19T10:00:00.000Z' },
+    'god',
+  );
+  const contractId = sent.id;
+  hive.send(
+    {
+      to: 'dwight',
+      subject: 'late amendment',
+      body: 'LATE amendment text',
+      conversation: 'card-card-1',
+      created_at: '2026-08-19T10:05:00.000Z',
+    },
+    'god',
+  );
+  // Backdate ONLY the amendment: it is timeout-stale, the contract is fresh.
+  const amendFile = fs
+    .readdirSync(stagedDir)
+    .find(
+      (f) =>
+        JSON.parse(fs.readFileSync(path.join(stagedDir, f), 'utf8')).subject === 'late amendment',
+    );
+  const old = new Date(Date.now() - MAIL_STAGE_TIMEOUT_MS - 5000);
+  fs.utimesSync(path.join(stagedDir, amendFile), old, old);
+  hive.routeOnce();
+  // Round-3 reverse mixed-age: the stale amendment must not release ALONE
+  // (visible mail beside a hidden contract). With the anchor taken over ALL
+  // staged entries, the fold ABSORBS the stale amendment into the still-held
+  // contract BEFORE any release — nothing is visible yet, and when the gate
+  // opens the contract surfaces as ONE consolidated message.
+  assert.equal(hive.inbox('dwight').length, 0, 'nothing released beside the held contract');
+  const stagedLeft = fs.readdirSync(stagedDir).filter((f) => f.endsWith('.json'));
+  assert.equal(stagedLeft.length, 1, 'only the contract remains staged');
+  const stagedMsg = JSON.parse(fs.readFileSync(path.join(stagedDir, stagedLeft[0]), 'utf8'));
+  assert.equal(stagedMsg.id, contractId, 'the ORIGINAL contract is the anchor');
+  assert.match(stagedMsg.body, /LATE amendment text/, 'stale amendment folded INTO it');
+  // The gate opens (stamp): one consolidated message.
+  hive.recordSession('dwight', 'fresh-card-conversation');
+  hive.routeOnce();
+  const msgs = hive.inbox('dwight');
+  assert.equal(msgs.length, 1, 'one message');
+  assert.equal(msgs[0].id, contractId, 'it is the contract');
+  assert.match(msgs[0].body, /the contract/);
+  assert.match(msgs[0].body, /LATE amendment text/);
 });
