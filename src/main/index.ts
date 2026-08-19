@@ -6838,12 +6838,17 @@ async function processVacationRequest(filePath: string): Promise<void> {
   // IDEMPOTENT RECALL (round 3): a recall request can race another restorer
   // — the auto-park backstop recalls directly when a dispatch/park interleave
   // is caught, while hive-dispatch queues a request for the same agent. The
-  // loser's "not on vacation — nothing to recall" answer means the goal is
-  // ALREADY ACHIEVED, not failure: treat it as success so god hears one clean
-  // [recalled] story instead of a rejection next to a restored floor seat.
-  const alreadyRestored =
-    recall && !res.ok && /not on vacation|already on the floor/.test(res.error ?? '');
-  if (!res.ok && !alreadyRestored) {
+  // loser's benign answer means the goal is ALREADY ACHIEVED, not failure.
+  // EXACT-STRING match only (round 4): recallAgentCore passes arbitrary spawn
+  // errors through verbatim, and a substring regex would archive any error
+  // that happens to contain the phrase as a success. The two strings are
+  // recallAgentCore's own, byte-for-byte.
+  const benignRecall =
+    recall &&
+    !res.ok &&
+    (res.error === `"${agentId}" is not on vacation — nothing to recall` ||
+      res.error === `"${agentId}" is already on the floor`);
+  if (!res.ok && !benignRecall) {
     fail(res.error ?? 'unknown error');
     return;
   }
@@ -6851,7 +6856,9 @@ async function processVacationRequest(filePath: string): Promise<void> {
   informGod(
     recall ? `[recalled] ${agentId}` : `[on vacation] ${agentId}`,
     recall
-      ? `${agentId} is back on the floor — its pane resumed the agent's own session and its inbox drains on the next turn.`
+      ? benignRecall
+        ? `${agentId} was already back on the floor — another recall (likely the auto-park backstop) restored it first; this request is a no-op.`
+        : `${agentId} is back on the floor — its pane resumed the agent's own session and its inbox drains on the next turn.`
       : `${agentId} is on vacation: terminal closed, zero cost, off the floor but NOT deletable. Fetch it back with an "action":"recall" vacation-request when work fits it.`,
   );
   archiveRequestIn(vacationRequestsDir(), filePath, '.done');

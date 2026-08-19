@@ -275,17 +275,41 @@ test('WIRING: hive-dispatch re-reads vacation AFTER its doing-flip (the round-2 
   // recall decision point: a park that interleaved with the flip is only
   // visible in a fresh disk read. Without this, a doing holder can stay
   // parked with no recall — the exact hole review round 2 closed.
-  // The pin proves ORDERING, not just existence (round 3): the vacation
-  // re-read must come AFTER the ledger write that flips the card to doing —
-  // a pin that matched the expression anywhere in hive.ts would pass with
-  // the check hoisted above the flip, the exact stale-snapshot bug.
-  const iFlip = src.indexOf('writeLedger(data)');
-  const iReread = src.indexOf('const parkedNow =');
-  assert.ok(iFlip >= 0 && iReread > iFlip, 'the vacation re-read follows the doing-flip write');
+  // The pin proves ORDERING inside the DISPATCH template only (round 4:
+  // a file-wide indexOf('writeLedger(data)') matched the FIRST call at
+  // hive.ts:5970, not the dispatch write — a vacuous ordering proof).
+  // Slice to the dispatch CLI's own source first, then compare indexes.
+  const cli = src.slice(src.indexOf('const HIVE_DISPATCH_CLI'));
+  const iFlip = cli.indexOf('writeLedger(data)');
+  const iReread = cli.indexOf('const parkedNow =');
+  assert.ok(iFlip >= 0, 'the dispatch template contains its ledger write');
+  assert.ok(iReread > iFlip, 'the vacation re-read follows the doing-flip write');
   assert.match(
     src,
     /const reread = readRegistry\(\);\s*\n.*const parkedNow = \(\(reread && reread\.agents\[assignee\]\) \|\| entry\)\.vacation === true;/,
     'the re-read is null-guarded (readRegistry answers null on failure)',
+  );
+});
+
+test('WIRING: benign-recall idempotence matches EXACT strings, not substrings (round 4)', () => {
+  const src = readFileSync(join(__dirname, '..', 'src', 'main', 'index.ts'), 'utf8');
+  // The already-achieved check must be an exact equality against
+  // recallAgentCore's own refusal strings — a substring regex would archive
+  // any spawn error that happens to contain the phrase as a success.
+  assert.match(
+    src,
+    /res\.error === `"\$\{agentId\}" is not on vacation — nothing to recall`/,
+    'exact match: the not-on-vacation refusal',
+  );
+  assert.match(
+    src,
+    /res\.error === `"\$\{agentId\}" is already on the floor`/,
+    'exact match: the already-on-floor refusal',
+  );
+  assert.doesNotMatch(
+    src,
+    /\/not on vacation\|already on the floor\//,
+    'the loose substring regex is gone',
   );
 });
 
