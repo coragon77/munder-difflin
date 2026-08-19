@@ -27,7 +27,9 @@ const path = require('node:path');
 const loadTs = require('./load-ts.cjs');
 
 const { HiveManager } = loadTs('src/main/hive.ts');
-const { actionableCards, cardHeld, renderActionableLine } = loadTs('src/main/actionableCards.ts');
+const { actionableCards, assigneeById, cardHeld, renderActionableLine } = loadTs(
+  'src/main/actionableCards.ts',
+);
 const { depWaiting } = loadTs('src/main/actionableCards.ts');
 const { detectAnomalies } = loadTs('src/main/standup.ts');
 
@@ -182,6 +184,51 @@ test('renderActionableLine: never reads as a directive', () => {
   assert.doesNotMatch(line, /dispatch|should|must|now|please|queue/i);
 });
 
+// ── the nominee is visible (card agent-hive-dispatch-nomination-2026-08-19) ──
+// renderActionableLine renders ids only, which hid ownership; the guard in
+// hive-dispatch then made that invisibility a silent-steal path. Show the
+// nominee beside its id — cap at 3 and the +K tail unchanged, and a card
+// without a nominee stays bare.
+
+test('renderActionableLine: a nominee rides alongside its id; cap and +K tail unchanged', () => {
+  const byId = { owned: 'creed' };
+  assert.equal(renderActionableLine(['owned'], byId), 'ACTIONABLE: 1 - owned (creed)');
+  assert.equal(
+    renderActionableLine(['free', 'owned'], byId),
+    'ACTIONABLE: 2 - free, owned (creed)',
+  );
+  // The cap shows only the first three; a nominee on a capped-out id never bloats the line.
+  assert.equal(
+    renderActionableLine(['a', 'b', 'c', 'owned'], byId),
+    'ACTIONABLE: 4 - a, b, c (+1 more)',
+  );
+});
+
+test('renderActionableLine: no map / no nominee leaves the id bare', () => {
+  assert.equal(renderActionableLine(['a', 'b']), 'ACTIONABLE: 2 - a, b');
+  assert.equal(renderActionableLine(['a'], {}), 'ACTIONABLE: 1 - a');
+});
+
+test('assigneeById: maps ids to their trimmed, non-empty assignees only', () => {
+  assert.deepEqual(
+    assigneeById({
+      tasks: [
+        { id: 'a', assignee: 'creed' },
+        { id: 'b', assignee: '  toby  ' },
+        { id: 'c', assignee: '' },
+        { id: 'd', assignee: '   ' },
+        { id: 'e' },
+        { id: 'f', assignee: 7 },
+        null,
+        { no: 'id' },
+      ],
+    }),
+    { a: 'creed', b: 'toby' },
+  );
+  assert.deepEqual(assigneeById(undefined), {});
+  assert.deepEqual(assigneeById({ tasks: 'nope' }), {});
+});
+
 // ── setup with a real generated hive ────────────────────────────────────
 
 function setup(t, { tasks = SHAPES } = {}) {
@@ -227,13 +274,21 @@ for (let i = 1; i <= 6; i++)
 test('every card the lister names dispatches through the REAL hive-dispatch gate', {
   skip: !POSIX,
 }, (t) => {
-  const s = setup(t);
+  // A free todo and a nominated todo whose nominee is a REAL, FREE worker:
+  // with the nomination guard the sanctioned dispatch for a nominated card is
+  // to ITS nominee, so the fixture gives the owned card a dispatchable owner.
+  const s = setup(t, {
+    tasks: [card('free-todo'), card('owned-todo', { assignee: 'worker-2' })],
+  });
   s.writeRegistry(WORKERS);
   const named = actionableCards(s.ledger());
   assert.deepEqual(named, ['free-todo', 'owned-todo'], 'fixture sanity: exactly the two todos');
 
-  named.forEach((id, i) => {
-    const r = s.run('hive-dispatch', '--card', id, '--assignee', `worker-${i + 1}`, '--body', 'c');
+  // Each listed card has a SANCTIONED dispatch the gate accepts: an unowned
+  // card to any free worker, an owned card to its standing nominee.
+  const target = { 'free-todo': 'worker-1', 'owned-todo': 'worker-2' };
+  named.forEach((id) => {
+    const r = s.run('hive-dispatch', '--card', id, '--assignee', target[id], '--body', 'c');
     assert.equal(r.code, 0, `gate must accept the injected card ${id}: ${r.stderr}`);
   });
 });
@@ -257,17 +312,34 @@ test('a card the gate holds can never appear in the lister output (all shapes, a
   }
 });
 
-test('owned todos are listed AND gate-LEGAL (assign-then-dispatch flow)', {
+test('owned todos are listed; the gate refuses a silent overwrite but honors assign-then-dispatch', {
   skip: !POSIX,
 }, (t) => {
   // The lister names owned todos (nominated, never dispatched — god must
-  // act); the gate accepts them too — hive-card update --assignee +
-  // hive-dispatch is a documented flow. Lister and gate AGREE on owned todos;
-  // the one remaining asymmetry (dep-waiting) is pinned below.
+  // act). The gate now CHANNELS that action (card agent-hive-dispatch-
+  // nomination-2026-08-19): a silent overwrite to a DIFFERENT worker is
+  // refused, and the deliberate path — hive-card update --assignee first,
+  // then hive-dispatch — lands. Lister and gate still AGREE on owned todos.
   const s = setup(t);
   s.writeRegistry(WORKERS);
+
+  // A different worker is a silent overwrite — refused, naming the nominee.
+  const steal = s.run(
+    'hive-dispatch',
+    '--card',
+    'owned-todo',
+    '--assignee',
+    'worker-2',
+    '--body',
+    'c',
+  );
+  assert.notEqual(steal.code, 0, 'silent overwrite refused');
+  assert.match(steal.stderr, /bystander/, 'refusal names the standing nominee');
+
+  // The deliberate reassignment: move the nominee, then dispatch.
+  s.run('hive-card', 'update', 'owned-todo', '--assignee', 'worker-2');
   const r = s.run('hive-dispatch', '--card', 'owned-todo', '--assignee', 'worker-2', '--body', 'c');
-  assert.equal(r.code, 0, `owned todo is dispatchable: ${r.stderr}`);
+  assert.equal(r.code, 0, `assign-then-dispatch lands: ${r.stderr}`);
 });
 
 test('dep-waiting todos stay gate-LEGAL — a dependency is an engineering fact, not an operator hold (pinned asymmetry #2)', {
@@ -304,7 +376,7 @@ test('hive-card actionable prints the same rendered line and the same list', {
   const lines = r.stdout.trim().split('\n');
   assert.equal(
     lines[0],
-    renderActionableLine(actionableCards(s.ledger())),
+    renderActionableLine(actionableCards(s.ledger()), assigneeById(s.ledger())),
     'first line = injection render',
   );
   assert.deepEqual(lines.slice(1), actionableCards(s.ledger()), 'then the full uncapped list');

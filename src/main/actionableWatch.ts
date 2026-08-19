@@ -21,11 +21,22 @@ export function newActionableIds(prev: string[] | undefined, current: string[]):
 }
 
 /** The mail body — names the new ids and the free-seat count, and says what
- *  an assigned-but-still-todo card means (the predicate fix's whole point). */
-export function actionableWatchBody(newIds: string[], freeSeats: number): string {
+ *  an assigned-but-still-todo card means (the predicate fix's whole point).
+ *  A nominated id also names its nominee (card agent-hive-dispatch-
+ *  nomination-2026-08-19): the watch is exactly where an invisible
+ *  nomination became a silent-steal path, so ownership is stated, not left
+ *  for god to go look up. `nomineeById` is optional — omitted, ids render
+ *  bare. */
+export function actionableWatchBody(
+  newIds: string[],
+  freeSeats: number,
+  nomineeById?: Record<string, string>,
+): string {
   const plural = newIds.length === 1 ? '' : 's';
+  const byId = nomineeById || {};
+  const named = newIds.map((id) => (byId[id] ? `${id} (nominated: ${byId[id]})` : id)).join(', ');
   return (
-    `Actionable-card watch: new dispatchable card${plural}: ${newIds.join(', ')}. ` +
+    `Actionable-card watch: new dispatchable card${plural}: ${named}. ` +
     `Free floor seats: ${freeSeats}. ` +
     `A todo that already carries an assignee is nominated but never dispatched — ` +
     `hive-dispatch it (the only todo->doing path) or park it deliberately. ` +

@@ -187,7 +187,7 @@ import {
   standupTarget,
   summarizeAnomalies,
 } from './standup';
-import { actionableCards, cardPaused } from './actionableCards';
+import { actionableCards, assigneeById, cardPaused } from './actionableCards';
 import { actionableWatchBody, newActionableIds } from './actionableWatch';
 import { resolveInternSpawn } from './internDefaults';
 import { ProviderModelCache } from './providerModels';
@@ -1997,7 +1997,11 @@ function armActionableWatch(m: ScheduledMission): void {
             to: m.to,
             act: 'request',
             subject: m.label,
-            body: actionableWatchBody(fresh, floorSeats(hive.registry()).freeSeats),
+            body: actionableWatchBody(
+              fresh,
+              floorSeats(hive.registry()).freeSeats,
+              assigneeById(hive.tasks()),
+            ),
           },
           'scheduler',
         );

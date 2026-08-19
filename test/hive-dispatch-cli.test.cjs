@@ -685,6 +685,214 @@ test('an UNPAUSED todo card still dispatches (the gate is the flag, not the todo
   assert.equal(s.tasks().find((c) => c.id === 'agent-free-card-2026-08-18').status, 'doing');
 });
 
+// ─── the nomination guard (card agent-hive-dispatch-nomination-2026-08-19) ───
+// A todo that already carries an assignee is NOMINATED, not free capacity.
+// Before this guard, hive-dispatch set card.assignee unconditionally, so a
+// saturation round-robin over the actionable line could silently overwrite a
+// standing nomination. The guard refuses a DIFFERENT assignee without writing,
+// names the nominee, and points at the deliberate two-step reassignment
+// (hive-card update --assignee, then dispatch). Same-assignee and unassigned
+// cards sail through; a mode flag (--adopt/--resume) is no licence to steal.
+
+test('nomination guard: refuses a DIFFERENT assignee over a nominated card, names the nominee, writes nothing', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  s.hive.writeTasks([
+    {
+      id: 'agent-nominated-card-2026-08-19',
+      title: 'Creed is nominated',
+      status: 'todo',
+      assignee: 'creed-msx8l6ju',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'human',
+    },
+  ]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const r = s.run(
+    '--card',
+    'agent-nominated-card-2026-08-19',
+    '--assignee',
+    'worker-1',
+    '--body',
+    'c',
+  );
+  assert.notEqual(r.code, 0, 'refused');
+  assert.match(r.stderr, /creed-msx8l6ju/, 'refusal names the standing nominee');
+  assert.match(r.stderr, /worker-1/, 'refusal names the would-be assignee');
+  assert.match(r.stderr, /hive-card update/, 'refusal points at the documented reassignment path');
+  assert.match(r.stderr, /--assignee/, 'refusal names the --assignee step');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger byte-identical');
+  assert.deepEqual(s.outboxMails(), [], 'no mail queued');
+  assert.equal(
+    s.tasks().find((c) => c.id === 'agent-nominated-card-2026-08-19').assignee,
+    'creed-msx8l6ju',
+    'nominee untouched',
+  );
+});
+
+test('nomination guard: re-dispatching the SAME assignee sails through (a return, not a steal)', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  s.hive.writeTasks([
+    {
+      id: 'agent-same-nominee-2026-08-19',
+      title: 'Same owner returns',
+      status: 'todo',
+      assignee: 'worker-1',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+  const r = s.run(
+    '--card',
+    'agent-same-nominee-2026-08-19',
+    '--assignee',
+    'worker-1',
+    '--body',
+    'c',
+  );
+  assert.equal(r.code, 0, 'same assignee is not a mismatch');
+  assert.equal(s.tasks().find((c) => c.id === 'agent-same-nominee-2026-08-19').status, 'doing');
+});
+
+test('nomination guard: an unassigned or whitespace-only assignee dispatches — nothing to overwrite', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry({
+    'worker-1': { id: 'worker-1', name: 'Worker One', archived: false, vacation: false },
+    'worker-2': { id: 'worker-2', name: 'Worker Two', archived: false, vacation: false },
+  });
+  s.hive.writeTasks([
+    {
+      id: 'agent-unassigned-2026-08-19',
+      title: 'No nominee',
+      status: 'todo',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'human',
+    },
+    {
+      id: 'agent-ws-nominee-2026-08-19',
+      title: 'Whitespace-only nominee counts as unassigned',
+      status: 'todo',
+      assignee: '   ',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'human',
+    },
+  ]);
+  const r1 = s.run(
+    '--card',
+    'agent-unassigned-2026-08-19',
+    '--assignee',
+    'worker-1',
+    '--body',
+    'c',
+  );
+  assert.equal(r1.code, 0, 'no assignee: nothing to overwrite');
+  const r2 = s.run(
+    '--card',
+    'agent-ws-nominee-2026-08-19',
+    '--assignee',
+    'worker-2',
+    '--body',
+    'c',
+  );
+  assert.equal(r2.code, 0, 'whitespace-only assignee reads as empty: dispatchable');
+});
+
+test('nomination guard: hive-card update --assignee then dispatch — the documented deliberate reassignment', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  s.hive.writeTasks([
+    {
+      id: 'agent-reassign-2026-08-19',
+      title: 'Deliberate handoff',
+      status: 'todo',
+      assignee: 'creed-msx8l6ju',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'human',
+    },
+  ]);
+  const { execFileSync } = require('node:child_process');
+  // Step 1: the direct dispatch is refused — still nominated to creed.
+  const refused = s.run(
+    '--card',
+    'agent-reassign-2026-08-19',
+    '--assignee',
+    'worker-1',
+    '--body',
+    'c',
+  );
+  assert.notEqual(refused.code, 0, 'guard holds before the reassignment');
+  // Step 2: deliberately move the nomination via hive-card update.
+  execFileSync(
+    path.join(s.root, 'bin', 'hive-card'),
+    ['update', 'agent-reassign-2026-08-19', '--assignee', 'worker-1'],
+    { env: s.env, encoding: 'utf8' },
+  );
+  assert.equal(
+    s.tasks().find((c) => c.id === 'agent-reassign-2026-08-19').assignee,
+    'worker-1',
+    'update moved the nomination',
+  );
+  // Step 3: now the dispatch lands — nomination and assignee agree.
+  const r = s.run('--card', 'agent-reassign-2026-08-19', '--assignee', 'worker-1', '--body', 'c');
+  assert.equal(r.code, 0, 'dispatch succeeds after the deliberate reassignment');
+  assert.equal(s.tasks().find((c) => c.id === 'agent-reassign-2026-08-19').status, 'doing');
+});
+
+test('nomination guard: fires on --resume too — a mode flag is no licence to overwrite', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const sid = 'f68d69ae-c2ac-4d4d-ae63-b244fff90453';
+  plantClaudeSession(s.env.HOME, sid);
+  s.hive.writeTasks([
+    {
+      id: 'agent-nominated-resume-2026-08-19',
+      title: 'Nominated, stamped',
+      status: 'todo',
+      assignee: 'creed-msx8l6ju',
+      sessionId: sid,
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+  const r = s.run(
+    '--card',
+    'agent-nominated-resume-2026-08-19',
+    '--assignee',
+    'worker-1',
+    '--resume',
+    '--body',
+    'c',
+  );
+  assert.notEqual(r.code, 0, 'guard fires even in --resume mode');
+  assert.match(r.stderr, /creed-msx8l6ju/, 'refusal names the standing nominee');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
+});
+
 test('stdin carries the contract when --body is absent', {
   skip: !POSIX,
 }, (t) => {

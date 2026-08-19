@@ -41,7 +41,7 @@ import type { AgentUsageSample } from './usage';
 // ONE definition of actionable (card agent-actionablecards-one-shar-2026-08-
 // 18) — serialized verbatim (toString) into the generated bin/ CLIs below so
 // the gate, the lister and the roster injection run identical code.
-import { actionableCards, cardHeld, renderActionableLine } from './actionableCards';
+import { actionableCards, assigneeById, cardHeld, renderActionableLine } from './actionableCards';
 import { COMMAND_GROUPS } from '../shared/claudeCommands';
 import {
   isClaudeProvider,
@@ -3275,12 +3275,15 @@ export class HiveManager {
       // makes god go look. INFORMATION, never a directive. A missing or
       // corrupt ledger renders 0 — the roster line itself must not break.
       let actionableIds: string[] = [];
+      let actionableNominees: Record<string, string> = {};
       try {
-        actionableIds = actionableCards(JSON.parse(readFileSync(join(root, 'tasks.json'), 'utf8')));
+        const ledger = JSON.parse(readFileSync(join(root, 'tasks.json'), 'utf8'));
+        actionableIds = actionableCards(ledger);
+        actionableNominees = assigneeById(ledger);
       } catch {
         actionableIds = [];
       }
-      const actionableLine = renderActionableLine(actionableIds);
+      const actionableLine = renderActionableLine(actionableIds, actionableNominees);
 
       // MAIL STALLED (card agent-hive-mail-silently-destr-2026-08-18, god's
       // revised DoD): a backlog silently sitting in a REAL outbox is as
@@ -5238,9 +5241,11 @@ function readLedger() {
 // then the full uncapped id list. No lock, no write.
 const actionableCardsFn = ${actionableCards};
 const renderActionableLineFn = ${renderActionableLine};
+const assigneeByIdFn = ${assigneeById};
 function cmdActionable() {
-  const ids = actionableCardsFn(readLedger());
-  process.stdout.write([renderActionableLineFn(ids)].concat(ids).join('\\n') + '\\n');
+  const data = readLedger();
+  const ids = actionableCardsFn(data);
+  process.stdout.write([renderActionableLineFn(ids, assigneeByIdFn(data))].concat(ids).join('\\n') + '\\n');
 }
 
 // The read-only board reader (card agent-hive-card-list-a-read-on-2026-08-19):
@@ -5895,7 +5900,10 @@ function usage() {
     '  card — a BLOCKED card does not occupy its assignee (it waits on',
     '  someone else while its owner stays recorded) — or if the target card',
     '  is paused (paused:true) or blocked — the operator hold: ask the',
-    '  operator to release it, there is no override.',
+    '  operator to release it, there is no override. It also refuses a',
+    '  target todo that already carries a DIFFERENT assignee — that is a',
+    '  nomination, not free capacity; reassign deliberately with',
+    '  hive-card update <id> --assignee <new> first, then dispatch.',
   ].join('\\n'));
 }
 
@@ -6111,6 +6119,23 @@ withLock(function () {
       fail('refused: card "' + card.id + '" is blocked (status blocked) — blocked cards wait on the operator. ' +
         'Ask the operator to unblock it. There is no override, and never flip a held card to doing by ' +
         'hand-editing tasks.json — hive-dispatch is the only todo->doing path precisely so this hold cannot be worked around.');
+    }
+    // NOMINATION GUARD (card agent-hive-dispatch-nomination-2026-08-19): a
+    // todo that already carries a DIFFERENT assignee is NOMINATED — god (or a
+    // human) picked that agent on purpose. Until this guard, the dispatch set
+    // card.assignee unconditionally, and once the actionable-watch widening
+    // started surfacing nominated todos, a saturation round-robin was one pass
+    // away from silently overwriting a standing nomination. Refuse WITHOUT
+    // writing, name the nominee, and point at the deliberate two-step
+    // reassignment (hive-card update --assignee, then dispatch). A SAME
+    // assignee — a --adopt/--resume return, a retry — is not a mismatch and
+    // sails through; an empty/whitespace assignee is no nomination at all.
+    const nominee = typeof card.assignee === 'string' ? card.assignee.trim() : '';
+    if (nominee && nominee !== assignee) {
+      fail('refused: card "' + card.id + '" is already nominated to "' + nominee + '" — dispatching it to "' + assignee +
+        '" would silently overwrite that nomination. Nothing was written: an assigned todo is a deliberate nomination, ' +
+        'not free capacity to round-robin over. If the reassignment is truly deliberate, take the documented two-step path: ' +
+        'hive-card update ' + card.id + ' --assignee ' + assignee + ' first, then re-run this dispatch.');
     }
     // --resume (card agent-hive-dispatch-blocked-ca-2026-08-19): return the
     // assignee to this card's stored conversation. Refuse BEFORE any write

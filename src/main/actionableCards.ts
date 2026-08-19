@@ -109,11 +109,44 @@ export function actionableCards(data: unknown): string[] {
  * verbatim (toString) into the generated bin/ CLIs and must not reference
  * anything outside itself (a const reference silently becomes undefined in
  * the CLI — the test caught exactly that).
+ *
+ * OWNERSHIP IS VISIBLE (card agent-hive-dispatch-nomination-2026-08-19):
+ * until now the line rendered ids only, which hid a card's nominee; the
+ * actionable-watch widening then surfaced those nominated todos and god's
+ * saturation pass could round-robin straight over a standing nomination. A
+ * nominee rides beside its id — "id (nominee)" — so ownership is a fact on
+ * the line. The optional `nomineeById` map supplies the names; omitted or
+ * missing-for-an-id leaves that id bare (no nominee = nothing to show). The
+ * 3-id cap and the "+K more" tail are unchanged, so the line cannot bloat.
  */
-export function renderActionableLine(ids: string[]): string {
+export function renderActionableLine(ids: string[], nomineeById?: Record<string, string>): string {
   const cap = 3;
-  const shown = ids.slice(0, cap).join(', ');
+  const byId = nomineeById || {};
+  const shown = ids
+    .slice(0, cap)
+    .map((id) => (byId[id] ? `${id} (${byId[id]})` : id))
+    .join(', ');
   const more = ids.length > cap ? ` (+${ids.length - cap} more)` : '';
   const named = shown ? ` - ${shown}` : '';
   return `ACTIONABLE: ${ids.length}${named}${more}`;
+}
+
+/**
+ * The id → nominee map `renderActionableLine` and the actionable-watch mail
+ * read ownership from (card agent-hive-dispatch-nomination-2026-08-19).
+ * Junk rows are skipped and a blank / whitespace-only assignee reads as NO
+ * nominee (an empty string is an un-assigned card, not a name). Like its
+ * siblings this is serialized verbatim into the generated bin/ CLIs, so it
+ * references nothing outside itself.
+ */
+export function assigneeById(data: unknown): Record<string, string> {
+  const list = (data as { tasks?: unknown } | null | undefined)?.tasks;
+  const byId: Record<string, string> = {};
+  if (!Array.isArray(list)) return byId;
+  for (const t of list) {
+    const c = t as { id?: unknown; assignee?: unknown } | null;
+    if (!c || typeof c !== 'object' || typeof c.id !== 'string') continue;
+    if (typeof c.assignee === 'string' && c.assignee.trim()) byId[c.id] = c.assignee.trim();
+  }
+  return byId;
 }

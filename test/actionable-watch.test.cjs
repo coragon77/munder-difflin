@@ -45,6 +45,13 @@ test('body names the new card ids and the free-seat count', () => {
   assert.match(body, /\b3\b/);
 });
 
+test('body names the nominee for a nominated card (card agent-hive-dispatch-nomination-2026-08-19)', () => {
+  const body = actionableWatchBody(['agent-x-1', 'agent-y-2'], 3, { 'agent-x-1': 'creed' });
+  assert.match(body, /agent-x-1/, 'the nominated id is present');
+  assert.match(body, /creed/, 'its nominee is named');
+  assert.match(body, /agent-y-2/, 'an un-nominated id stays present');
+});
+
 test('mission: kind, cadence, and body EMPTY by design (the fire computes the mail)', () => {
   // The heartbeat trap this card exists not to repeat: HEARTBEAT_MISSION.body
   // is configured prose its arm NEVER sends — dead text. This mission keeps
