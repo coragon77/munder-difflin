@@ -137,3 +137,4 @@ test/terminal-selection.test.cjs
 test/skills.test.cjs
 test/tool-detect.test.cjs
 test/settings-hero-card.test.cjs
+test/terminal-render-debug.test.cjs

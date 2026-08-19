@@ -1,8 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { terminalDebug } from './components/terminalPool';
 import brandLogo from '@brand/logo.png?url';
 import './design/global.css';
+
+// DevTools diagnosis handle for the terminal render options (flicker/blur
+// card): `__cthTermDebug.contrast(1)` etc. flips live terminals at runtime.
+// Inert until called — it changes nothing by existing.
+window.__cthTermDebug = terminalDebug;
 
 const favicon = document.createElement('link');
 favicon.rel = 'icon';

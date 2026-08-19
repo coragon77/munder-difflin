@@ -34,6 +34,10 @@ import {
   type TerminalAutomationBlock,
 } from './terminalAutomation';
 import { sanitizeTerminalSelection } from './terminalSelection';
+import {
+  sanitizeTerminalRenderOptionPatch,
+  type TerminalRenderOptionPatch,
+} from './terminalRenderDebug';
 import '@xterm/xterm/css/xterm.css';
 
 export interface TerminalEntry {
@@ -80,6 +84,18 @@ export interface TerminalEntry {
 
 const pool = new Map<string, TerminalEntry>();
 
+// ─── Debug handle state (window.__cthTermDebug) ────────────────────────────
+// Diagnosis instrument for the "slight flicker + intermittent blur while
+// typing" report — see terminalDebug below. Not a user-facing setting:
+// nothing here is consulted until someone calls the handle from the DevTools
+// console. Empty overrides + webgl enabled = the exact pre-instrument behavior.
+let debugRenderOptions: TerminalRenderOptionPatch = {};
+let debugWebglDisabled = false;
+// The fontSize the last acquireTerminal was asked for — reset() restores it
+// rather than a hard-coded number, so the instrument returns to the app's live
+// zoom, not yesterday's default.
+let lastAcquiredFontSize = 14;
+
 type ThemeMap = Record<string, string>;
 
 /** Get (or lazily create) the persistent terminal for a pty. Theme/font are
@@ -87,6 +103,7 @@ type ThemeMap = Record<string, string>;
 export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14): TerminalEntry {
   const existing = pool.get(ptyId);
   if (existing) return existing;
+  lastAcquiredFontSize = fontSize;
 
   const host = document.createElement('div');
   host.style.width = '100%';
@@ -112,6 +129,10 @@ export function acquireTerminal(ptyId: string, theme?: ThemeMap, fontSize = 14):
     // cream paper. Untouched for already-high-contrast cells (the dark theme).
     minimumContrastRatio: 4.5,
     allowProposedApi: true,
+    // Debug-handle overrides win LAST so terminals created mid-diagnosis start
+    // with the values currently being tested (dispatch: changes must not be
+    // limited to terminals that already existed).
+    ...debugRenderOptions,
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -496,6 +517,11 @@ export function dismissTerminalPicker(ptyId: string): void {
  *  rather than leave a black terminal. */
 function leaseWebglRenderer(entry: TerminalEntry): void {
   if (entry.webgl) return;
+  // Debug handle may have parked the pool on the DOM renderer (flicker
+  // diagnosis). This is also what makes __cthTermDebug.webgl(false) STICK:
+  // attach() re-leases on every attach, so the flag — not just the one-off
+  // release — has to gate the lease.
+  if (debugWebglDisabled) return;
   try {
     const webgl = new WebglAddon();
     webgl.onContextLoss(() => {
@@ -720,6 +746,145 @@ export function disposeTerminal(ptyId: string): void {
   }
   entry.host.remove();
   pool.delete(ptyId);
+}
+
+// ─── Debug handle: runtime render-option toggles ──────────────────────────
+// Diagnostic instrument for the pane flicker/blur report (card
+// agent-runtime-toggle-for-xterm-2026-08-19). The HYPOTHESIS under test:
+// minimumContrastRatio 4.5 forces xterm to recompute per-cell foregrounds, so
+// the WebGL glyph atlas thrashes (clear + re-rasterize) while typing — which
+// would present exactly as flash + momentarily soft glyphs. This handle lets
+// the operator flip the suspect options on the RUNNING app (no rebuild, no
+// restart) and watch the panes. It must not become a user-facing setting:
+// nothing below runs until called, and reset() walks everything back.
+
+/** Apply a sanitized render-option patch to every pooled terminal. Already-
+ *  OPEN terminals get it immediately — option assignment plus the same
+ *  re-measure / atlas-clear / refit path the wake-recovery uses, because a
+ *  contrast or font change leaves the rasterized glyph atlas stale otherwise.
+ *  Terminals created LATER inherit the values at acquireTerminal(). */
+function applyDebugRenderOptions(patch: TerminalRenderOptionPatch): void {
+  const keys = Object.keys(patch) as Array<keyof TerminalRenderOptionPatch>;
+  if (!keys.length) return;
+  debugRenderOptions = { ...debugRenderOptions, ...patch };
+  for (const entry of pool.values()) {
+    if (!entry.opened) continue;
+    if (patch.minimumContrastRatio !== undefined) {
+      entry.term.options.minimumContrastRatio = patch.minimumContrastRatio;
+    }
+    if (patch.fontFamily !== undefined) entry.term.options.fontFamily = patch.fontFamily;
+    if (patch.fontSize !== undefined) entry.term.options.fontSize = patch.fontSize;
+    if (patch.lineHeight !== undefined) entry.term.options.lineHeight = patch.lineHeight;
+    // reflowTerminal self-assigns the font options to force xterm's re-measure,
+    // drops the glyph atlas, refits and refreshes — everything a live option
+    // flip needs, with the pty poked only if the grid actually changed.
+    reflowTerminal(entry.ptyId);
+  }
+}
+
+/** Flip every pooled terminal between WebGL and the DOM fallback renderer,
+ *  through the SAME lease/release paths attach/detach use — a second release
+ *  mechanism is how the live-context leak (see releaseWebglContexts) started.
+ *  `on=false` also holds for future attaches: leaseWebglRenderer checks the
+ *  flag, so the DOM renderer survives pane switches instead of reverting. */
+function setDebugWebgl(on: boolean): void {
+  debugWebglDisabled = !on;
+  for (const entry of pool.values()) {
+    if (!entry.opened) continue;
+    if (on) {
+      // Lease only on-screen terminals: the WebGL addon loads onto an OPEN
+      // terminal with a host to draw into. A detached one leases fresh on its
+      // next attach — which respects the flag either way.
+      if (entry.host.isConnected) leaseWebglRenderer(entry);
+    } else {
+      releaseWebglRenderer(entry);
+    }
+    // Either direction leaves xterm's cached cell metrics stale — the same
+    // class of problem as a context loss, so reuse its recovery repaint.
+    scheduleWebglRecovery(entry.recovery, requestAnimationFrame, () =>
+      repaintTerminalAfterRendererLoss(entry),
+    );
+  }
+}
+
+export interface TerminalDebugState {
+  poolSize: number;
+  opened: number;
+  webglLeased: number;
+  webglDisabledByDebug: boolean;
+  minimumContrastRatio: number | undefined;
+  fontFamily: string | undefined;
+  fontSize: number | undefined;
+  lineHeight: number | undefined;
+}
+
+/** What the first opened terminal actually renders with right now — the
+ *  console answer to "did my toggle land?". */
+function terminalDebugState(): TerminalDebugState {
+  const entries = [...pool.values()];
+  const opts = entries.find((e) => e.opened)?.term.options;
+  return {
+    poolSize: entries.length,
+    opened: entries.filter((e) => e.opened).length,
+    webglLeased: entries.filter((e) => e.webgl).length,
+    webglDisabledByDebug: debugWebglDisabled,
+    minimumContrastRatio: opts?.minimumContrastRatio,
+    fontFamily: opts?.fontFamily,
+    fontSize: opts?.fontSize,
+    lineHeight: opts?.lineHeight,
+  };
+}
+
+/** The DevTools-console handle (window.__cthTermDebug, installed in main.tsx).
+ *  Every mutator validates its input through sanitizeTerminalRenderOptionPatch
+ *  and returns the post-call state, so each console line answers itself. */
+export const terminalDebug = {
+  /** Suspect #1. `contrast(1)` disables the per-cell contrast adjustment
+   *  entirely; `contrast(4.5)` is the shipped default. */
+  contrast(ratio: number): TerminalDebugState {
+    applyDebugRenderOptions(sanitizeTerminalRenderOptionPatch({ minimumContrastRatio: ratio }));
+    return terminalDebugState();
+  },
+  /** `webgl(false)` parks every pane on the DOM renderer; `webgl(true)` takes
+   *  fresh WebGL leases for the on-screen ones. */
+  webgl(on: boolean): TerminalDebugState {
+    setDebugWebgl(Boolean(on));
+    return terminalDebugState();
+  },
+  /** Nice-to-have render options, e.g. font({ size: 16 }) or
+   *  font({ lineHeight: 1.1 }) — fall out of the same apply path. */
+  font(patch: TerminalRenderOptionPatch): TerminalDebugState {
+    applyDebugRenderOptions(sanitizeTerminalRenderOptionPatch(patch));
+    return terminalDebugState();
+  },
+  /** Walk everything back to shipped behavior without a restart: default
+   *  contrast, WebGL on, the stock font family/lineHeight, and the app's live
+   * zoom (the fontSize the last terminal was acquired with). */
+  reset(): TerminalDebugState {
+    applyDebugRenderOptions({
+      minimumContrastRatio: 4.5,
+      fontFamily: '"JetBrains Mono", "SF Mono", Menlo, monospace',
+      fontSize: lastAcquiredFontSize,
+      lineHeight: 1.0,
+    });
+    setDebugWebgl(true);
+    // Fully consumed: later-created terminals go back to pure defaults.
+    debugRenderOptions = {};
+    return terminalDebugState();
+  },
+  state(): TerminalDebugState {
+    return terminalDebugState();
+  },
+};
+
+export type TerminalDebugHandle = typeof terminalDebug;
+
+declare global {
+  interface Window {
+    /** DevTools-only diagnosis handle (flicker/blur card). Not a setting —
+     *  absent from any UI, inert until called from the console. */
+    __cthTermDebug?: TerminalDebugHandle;
+  }
 }
 
 // ─── v0.3.4: ⌘-click a markdown path in terminal output → rendered preview ───
