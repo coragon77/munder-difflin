@@ -847,7 +847,8 @@ test('show: one card in full — every field, notes verbatim, humanQA history in
   assert.match(out, /^doneAt:\s+-$/m);
   assert.match(out, /^blockedBy:\s+dwight-1$/m);
   assert.match(out, /^blockedWhy:\s+JORI feed returned 502 twice \(23:04, 23:11\)$/m);
-  assert.match(out, /^session:\s+stamped \(resume\)$/m);
+  assert.match(out, /^session:\s+stamped$/m);
+  assert.match(out, /^sessionMode:\s+resume$/m);
   assert.ok(
     !out.includes('f68d69ae'),
     'sessionId PRESENCE only — the raw conversation id never prints',
@@ -907,6 +908,61 @@ test('show: a bare card renders every absent optional field as -', { skip: !POSI
   }
   assert.match(out, /^paused:\s+no$/m);
   assert.match(out, /^session:\s+none$/m);
+  assert.match(out, /^sessionMode:\s+-$/m);
+});
+
+test('show: sessionMode WITHOUT a sessionId still prints — the adopt window between flip and watcher stamp', {
+  skip: !POSIX,
+}, async (t) => {
+  // hive-card status doing --adopt writes sessionMode BEFORE the watcher
+  // stamps the conversation (the stamp lands on the transition, later). The
+  // detail read must not swallow the mode just because no session exists yet
+  // — the mode is the dispatch intent, the stamp is the linkage.
+  const s = setup(t);
+  s.hive.writeTasks([
+    {
+      id: 'agent-adopt-window-2026-08-19',
+      title: 'Adopted but not yet stamped',
+      status: 'doing',
+      assignee: 'kevin-1',
+      sessionMode: 'adopt',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+    },
+  ]);
+  const out = s.run('show', 'agent-adopt-window-2026-08-19');
+  assert.match(out, /^session:\s+none$/m);
+  assert.match(out, /^sessionMode:\s+adopt$/m, 'the mode is visible in the stamp window');
+});
+
+test('show: a rogue ledger entry cannot crash the read — garbage fields degrade gracefully', {
+  skip: !POSIX,
+}, async (t) => {
+  // The ledger reader validates only the top-level shape; per-card fields are
+  // historical accretion, and show must stay a READ that always answers.
+  const s = setup(t);
+  s.hive.writeTasks([
+    {
+      id: 'agent-rogue-entry-2026-08-19',
+      title: 'Fields from a wild import',
+      status: 'todo',
+      dependsOn: 'agent-not-an-array', // a string, not []
+      priority: 'high', // not a number
+      createdAt: '2026-08-19T00:00:00.000Z',
+      description: 42, // not a string
+      humanQA: [{ askedAt: '2026-08-19T09:00:00.000Z' }, null, { q: 'Sane entry?' }],
+    },
+  ]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+  const out = s.run('show', 'agent-rogue-entry-2026-08-19'); // must not throw
+  assert.match(out, /^dependsOn:\s+agent-not-an-array$/m, 'non-array renders as its String() form');
+  assert.match(out, /^priority:\s+high$/m);
+  assert.match(out, /^notes:\s+-$/m, 'non-string description degrades to -');
+  assert.match(out, /1\. q: -$/m, 'an entry with no q still prints');
+  assert.match(out, /2\. q: -$/m, 'a null entry still prints');
+  assert.match(out, /3\. q: Sane entry\?$/m);
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
 });
 
 test('show: unknown id fails with a clear error and a non-zero exit', {

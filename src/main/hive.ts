@@ -5900,7 +5900,7 @@ function cmdList(argv) {
 // column); the sessionId prints PRESENCE only, never the raw conversation
 // id (it is a /resume key, not something to display); humanQA prints EVERY
 // entry in ledger order with unanswered ones marked, dismissed ones named.
-function row(label, value) { return (label + ':').padEnd(12) + value; }
+function row(label, value) { return (label + ':').padEnd(13) + value; }
 function cmdShow(argv) {
   if (argv.length !== 1 || argv[0].indexOf('--') === 0) usage();
   const cardId = argv[0];
@@ -5916,14 +5916,18 @@ function cmdShow(argv) {
     row('assignee', card.assignee || '-'),
     row('origin', card.origin || '-'),
     row('priority', card.priority == null ? '-' : String(card.priority)),
-    row('dependsOn', card.dependsOn && card.dependsOn.length ? card.dependsOn.join(', ') : '-'),
+    // Rogue-ledger guard: dependsOn is only shape-checked as a top-level
+    // convention, not per card — a non-array must degrade, never crash the read.
+    row('dependsOn', card.dependsOn == null ? '-' : (Array.isArray(card.dependsOn) ? (card.dependsOn.length ? card.dependsOn.join(', ') : '-') : String(card.dependsOn))),
     row('createdAt', card.createdAt || '-'),
     row('doneAt', card.doneAt || '-'),
     row('blockedBy', card.blockedBy || '-'),
     row('blockedWhy', card.blockedWhy || '-'),
-    row('session', card.sessionId
-      ? 'stamped' + (card.sessionMode ? ' (' + card.sessionMode + ')' : '')
-      : 'none'),
+    // Two rows on purpose: an --adopt flip writes sessionMode BEFORE the
+    // watcher stamps the conversation, so the mode can legitimately exist
+    // with no sessionId yet — folding them into one row would hide it.
+    row('session', card.sessionId ? 'stamped' : 'none'),
+    row('sessionMode', card.sessionMode || '-'),
   ];
   if (typeof card.description === 'string' && card.description.length) {
     out.push('notes:');
