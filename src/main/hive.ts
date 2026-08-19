@@ -1531,18 +1531,21 @@ export class HiveManager {
    *  discipline of one active card per agent; a rare multi-card agent simply
    *  gets the same stamp on each (they share the conversation anyway). */
   private stampActiveCards(agentId: string, sessionId: string): void {
-    const root = this.root();
-    if (!root) return;
     try {
-      const data = this.tasks() as { tasks: HiveTask[] };
-      let touched = false;
-      for (const t of data.tasks) {
-        if (t?.assignee === agentId && t.status === 'doing' && t.sessionId !== sessionId) {
-          t.sessionId = sessionId;
-          touched = true;
+      // Under the ledger lock (card agent-audit-legacy-writetasks--2026-08-19):
+      // a refused (false) stamp simply skips — the next session-change hook
+      // retries, and a no-op when nothing matches (no write, no commit).
+      this.withLedgerLock((tasks) => {
+        let touched = false;
+        for (const t of tasks) {
+          if (t?.assignee === agentId && t.status === 'doing' && t.sessionId !== sessionId) {
+            t.sessionId = sessionId;
+            touched = true;
+          }
         }
-      }
-      if (touched) this.writeTasks(data.tasks);
+        if (touched) this.writeTasks(tasks);
+        return touched;
+      });
     } catch {
       /* best-effort — stamping must never fail a hook */
     }
@@ -1553,14 +1556,18 @@ export class HiveManager {
    *  discipline as stampActiveCards; public because cardSessions.ts owns the
    *  decision. */
   stampCard(cardId: string, sessionId: string): void {
-    const root = this.root();
-    if (!root || !sessionId) return;
+    if (!sessionId) return;
     try {
-      const data = this.tasks() as { tasks: HiveTask[] };
-      const card = data.tasks.find((t) => t?.id === cardId);
-      if (!card || card.sessionId === sessionId) return;
-      card.sessionId = sessionId;
-      this.writeTasks(data.tasks);
+      // Under the ledger lock (card agent-audit-legacy-writetasks--2026-08-19);
+      // a refused (false) stamp skips — the watcher retries on the next
+      // transition.
+      this.withLedgerLock((tasks) => {
+        const card = tasks.find((t) => t?.id === cardId);
+        if (!card || card.sessionId === sessionId) return false;
+        card.sessionId = sessionId;
+        this.writeTasks(tasks);
+        return true;
+      });
     } catch {
       /* best-effort — the watcher retries on the next transition */
     }
@@ -2505,42 +2512,51 @@ export class HiveManager {
 
   /** The human adds a card from the tasks tab. Read-modify-write on
    *  tasks.json AT ACTION TIME (the god edits the file directly from its
-   *  shell — never overwrite from stale renderer state). No wake-up message
-   *  (amendment 1): human cards wait for the god's heartbeat triage — cards
-   *  are the backlog channel, direct messages the act-now channel (the
-   *  godLine standup clause says so). */
+   *  shell — never overwrite from stale renderer state), UNDER the ledger
+   *  lock (card agent-audit-legacy-writetasks--2026-08-19) so a concurrent
+   *  CLI writer is never clobbered by a stale read and never clobbers us.
+   *  No wake-up message (amendment 1): human cards wait for the god's
+   *  heartbeat triage — cards are the backlog channel, direct messages the
+   *  act-now channel (the godLine standup clause says so).
+   *  Returns null on empty title OR lock refusal (caller re-polls). */
   addHumanTask(title: string, notes?: string): HiveTask | null {
     const clean = title.trim();
     if (!clean) return null;
-    const data = this.tasks() as { tasks: HiveTask[] };
-    const base = `human-${this.humanTaskSlug(clean)}-${new Date().toISOString().slice(0, 10)}`;
-    // Same title twice on the same day must not collide (React keys, god's
-    // lookups): append -2, -3, … until free.
-    let id = base;
-    for (let n = 2; data.tasks.some((t) => t?.id === id); n++) id = `${base}-${n}`;
-    const task: HiveTask = {
-      id,
-      title: clean,
-      ...(notes && notes.trim() ? { description: notes.trim() } : {}),
-      status: 'todo',
-      dependsOn: [],
-      priority: 3,
-      createdAt: new Date().toISOString(),
-      origin: 'human',
-    };
-    this.writeTasks([...data.tasks, task]);
-    return task;
+    return (
+      this.withLedgerLock((tasks) => {
+        const base = `human-${this.humanTaskSlug(clean)}-${new Date().toISOString().slice(0, 10)}`;
+        // Same title twice on the same day must not collide (React keys, god's
+        // lookups): append -2, -3, … until free.
+        let id = base;
+        for (let n = 2; tasks.some((t) => t?.id === id); n++) id = `${base}-${n}`;
+        const task: HiveTask = {
+          id,
+          title: clean,
+          ...(notes && notes.trim() ? { description: notes.trim() } : {}),
+          status: 'todo',
+          dependsOn: [],
+          priority: 3,
+          createdAt: new Date().toISOString(),
+          origin: 'human',
+        };
+        tasks.push(task);
+        this.writeTasks(tasks);
+        return task;
+      }) || null
+    );
   }
 
   /** Human deletes their OWN card — only while it is an untouched todo
    *  (origin 'human' AND status 'todo'). God-created cards and anything the
-   *  hive already picked up survive. Read-modify-write at action time. */
+   *  hive already picked up survive. Read-modify-write at action time, under
+   *  the ledger lock (card agent-audit-legacy-writetasks--2026-08-19). */
   deleteHumanTask(id: string): boolean {
-    const data = this.tasks() as { tasks: HiveTask[] };
-    const card = data.tasks.find((t) => t?.id === id);
-    if (!card || card.origin !== 'human' || card.status !== 'todo') return false;
-    this.writeTasks(data.tasks.filter((t) => t?.id !== id));
-    return true;
+    return this.withLedgerLock((tasks) => {
+      const card = tasks.find((t) => t?.id === id);
+      if (!card || card.origin !== 'human' || card.status !== 'todo') return false;
+      this.writeTasks(tasks.filter((t) => t?.id !== id));
+      return true;
+    });
   }
 
   /** Flip ONE card's status from a FRESH read (card agent-tasks-tab-ui-
@@ -2587,11 +2603,14 @@ export class HiveManager {
   /** THE single tasks.json lock helper for main-process writers (O_EXCL
    *  create + 10s stale takeover + ~5s bounded retry) — the SAME discipline
    *  bin/hive-card's withLock uses, so main-process writers and the CLI never
-   *  clobber each other. Do NOT add a second lock helper for tasks.json — one
-   *  file, one lock path (card agent-two-parallel-tasks-json--2026-08-18
-   *  unified a duplicate helper onto this one). `fn` receives the freshly-read
-   *  task array; return its value (false = refused/missing). */
-  private withLedgerLock<T>(fn: (tasks: HiveTask[]) => T): T | false {
+   *  clobber each other. Public (card agent-audit-legacy-writetasks--2026-08-19):
+   *  EVERY main-process tasks.json writer routes here — Hive methods plus the
+   *  index.ts/realtimeActions.ts callers that hold a hive handle. Do NOT add a
+   *  second lock helper for tasks.json — one file, one lock path (card
+   *  agent-two-parallel-tasks-json--2026-08-18 unified a duplicate helper onto
+   *  this one). `fn` receives the freshly-read task array; return its value
+   *  (false = refused/missing). */
+  withLedgerLock<T>(fn: (tasks: HiveTask[]) => T): T | false {
     const root = this.root();
     if (!root) return false;
     this.ensureHive();

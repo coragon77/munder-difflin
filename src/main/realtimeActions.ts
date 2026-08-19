@@ -56,8 +56,13 @@ export interface RealtimeSpawnSpec {
 export interface RealtimeActionDeps {
   hiveEnabled(): boolean;
   hiveSend(partial: Partial<HiveMessage>, from: string): HiveMessage;
-  hiveTasks(): unknown;
   hiveWriteTasks(tasks: HiveTask[]): void;
+  /** THE tasks.json lock helper (hive.withLedgerLock) — card
+   *  agent-audit-legacy-writetasks--2026-08-19: every ledger mutation below
+   *  runs inside it. `fn` receives the freshly-read task array; call
+   *  hiveWriteTasks(tasks) INSIDE the callback. Returns false when the lock
+   *  stayed contended (~5s) — treat as busy, not as done. */
+  hiveWithLedgerLock<T>(fn: (tasks: HiveTask[]) => T): T | false;
   hiveRegistry(): Registry;
   hiveLog(event: Record<string, unknown>): void;
   controlPause(agentId: string, on: boolean): void;
@@ -375,11 +380,6 @@ function attribute(
   }
 }
 
-function findTasks(deps: RealtimeActionDeps): HiveTask[] {
-  const data = deps.hiveTasks() as { tasks?: unknown } | null;
-  return Array.isArray(data?.tasks) ? (data!.tasks as HiveTask[]) : [];
-}
-
 function execPing(deps: RealtimeActionDeps, a: Record<string, unknown>): ActionResult {
   const reg = deps.hiveRegistry();
   const r = resolveAgent(str(a.agentId) || str(a.target) || str(a.name), reg);
@@ -438,10 +438,13 @@ function execSteer(deps: RealtimeActionDeps, a: Record<string, unknown>): Action
   return { ok: true, spoken: `Steering ${r.name}: ${text.slice(0, 80)}.` };
 }
 
+/** Result of a locked card lookup: exactly one of ambiguous (ask which) /
+ *  card (found — already mutated + written) / neither (not found). */
+type CardPick = { ambiguous?: HiveTask[]; card?: HiveTask };
+
 function execCreateTask(deps: RealtimeActionDeps, a: Record<string, unknown>): ActionResult {
   const title = str(a.title) || str(a.task) || str(a.name);
   if (!title) return { ok: false, spoken: 'What should the task be titled?' };
-  const tasks = findTasks(deps);
   const id = `${slug(title)}-${shortId()}`;
   const card: HiveTask = {
     id,
@@ -453,7 +456,17 @@ function execCreateTask(deps: RealtimeActionDeps, a: Record<string, unknown>): A
     priority: typeof a.priority === 'number' ? a.priority : 5,
     createdAt: new Date().toISOString(),
   };
-  deps.hiveWriteTasks([...tasks, card]);
+  // Locked append (card agent-audit-legacy-writetasks--2026-08-19): the
+  // read-modify-write runs under tasks.json.lock so a concurrent CLI landing
+  // (hive-dispatch stamp, hive-card update) is never clobbered by a stale read.
+  if (
+    deps.hiveWithLedgerLock((tasks) => {
+      tasks.push(card);
+      deps.hiveWriteTasks(tasks);
+      return true;
+    }) !== true
+  )
+    return { ok: false, spoken: 'The task board was busy — say that again in a moment.' };
   attribute(deps, 'create_task', id, { title: title.slice(0, 120), assignee: card.assignee });
   return {
     ok: true,
@@ -501,21 +514,20 @@ function scoreCard(refNorm: string, refToks: string[], c: HiveTask): number {
  *  or `ambiguous` (the close candidates) when the top two are within
  *  AMBIGUOUS_MARGIN — callers ask which rather than mutate the wrong card. */
 function findCard(
-  deps: RealtimeActionDeps,
+  tasks: HiveTask[],
   ref: string,
-): { tasks: HiveTask[]; card: HiveTask | null; ambiguous?: HiveTask[] } {
-  const tasks = findTasks(deps);
+): { card: HiveTask | null; ambiguous?: HiveTask[] } {
   const refNorm = normMatch(ref);
   const refToks = toksMatch(ref);
   const scored = tasks
     .map((c) => ({ c, s: scoreCard(refNorm, refToks, c) }))
     .filter((x) => x.s >= 0.45)
     .sort((a, b) => b.s - a.s);
-  if (!scored.length) return { tasks, card: null };
+  if (!scored.length) return { card: null };
   const top = scored[0];
   const close = scored.filter((x) => x.s >= top.s - AMBIGUOUS_MARGIN);
-  if (close.length > 1) return { tasks, card: null, ambiguous: close.slice(0, 3).map((x) => x.c) };
-  return { tasks, card: top.c };
+  if (close.length > 1) return { card: null, ambiguous: close.slice(0, 3).map((x) => x.c) };
+  return { card: top.c };
 }
 
 function execAssignTask(deps: RealtimeActionDeps, a: Record<string, unknown>): ActionResult {
@@ -523,46 +535,62 @@ function execAssignTask(deps: RealtimeActionDeps, a: Record<string, unknown>): A
   const assignee = str(a.assignee) || str(a.to) || str(a.agentId);
   if (!ref || !assignee)
     return { ok: false, spoken: 'I need both a task and who to assign it to.' };
-  const { tasks, card, ambiguous } = findCard(deps, ref);
-  if (ambiguous) {
+  // Locked targeted write (card agent-audit-legacy-writetasks--2026-08-19):
+  // resolve + mutate + write under tasks.json.lock, never a stale pre-read.
+  const res = deps.hiveWithLedgerLock((tasks): CardPick => {
+    const { card, ambiguous } = findCard(tasks, ref);
+    if (ambiguous) return { ambiguous };
+    if (!card) return {};
+    card.assignee = assignee;
+    deps.hiveWriteTasks(tasks);
+    return { card };
+  });
+  if (res === false)
+    return { ok: false, spoken: 'The task board was busy — say that again in a moment.' };
+  if (res.ambiguous)
     return {
       ok: false,
-      spoken: `Which one — ${ambiguous.map((c) => `"${c.title}"`).join(', or ')}?`,
+      spoken: `Which one — ${res.ambiguous.map((c) => `"${c.title}"`).join(', or ')}?`,
     };
-  }
-  if (!card) return { ok: false, spoken: `I couldn't find a task matching "${ref}".` };
-  card.assignee = assignee;
-  deps.hiveWriteTasks(tasks);
-  attribute(deps, 'assign_task', card.id, { assignee });
-  return { ok: true, spoken: `Assigned "${card.title}" to ${assignee}.` };
+  if (!res.card) return { ok: false, spoken: `I couldn't find a task matching "${ref}".` };
+  attribute(deps, 'assign_task', res.card.id, { assignee });
+  return { ok: true, spoken: `Assigned "${res.card.title}" to ${assignee}.` };
 }
 
 function execUpdateTask(deps: RealtimeActionDeps, a: Record<string, unknown>): ActionResult {
   const ref = str(a.taskId) || str(a.task) || str(a.title);
   if (!ref) return { ok: false, spoken: 'Which task should I update?' };
-  const { tasks, card, ambiguous } = findCard(deps, ref);
-  if (ambiguous) {
-    return {
-      ok: false,
-      spoken: `Which one — ${ambiguous.map((c) => `"${c.title}"`).join(', or ')}?`,
-    };
-  }
-  if (!card) return { ok: false, spoken: `I couldn't find a task matching "${ref}".` };
   const status = str(a.status);
   const valid = ['todo', 'doing', 'blocked', 'done'];
   if (status && !valid.includes(status))
     return { ok: false, spoken: `"${status}" isn't a valid status.` };
-  if (status) {
-    card.status = status as HiveTask['status'];
-    // Amendment D (card agent-every-non-paused-todo-ke-2026-08-18): a resumed
-    // card must not carry a stale on-hold flag into doing.
-    if (card.status === 'doing' && card.paused) card.paused = undefined;
-  }
-  if (str(a.result)) card.result = str(a.result);
-  if (str(a.assignee)) card.assignee = str(a.assignee);
-  deps.hiveWriteTasks(tasks);
-  attribute(deps, 'update_task', card.id, { status: card.status });
-  return { ok: true, spoken: `Updated "${card.title}"${status ? ` to ${status}` : ''}.` };
+  // Locked targeted write (card agent-audit-legacy-writetasks--2026-08-19):
+  // resolve + mutate + write under tasks.json.lock, never a stale pre-read.
+  const res = deps.hiveWithLedgerLock((tasks): CardPick => {
+    const { card, ambiguous } = findCard(tasks, ref);
+    if (ambiguous) return { ambiguous };
+    if (!card) return {};
+    if (status) {
+      card.status = status as HiveTask['status'];
+      // Amendment D (card agent-every-non-paused-todo-ke-2026-08-18): a resumed
+      // card must not carry a stale on-hold flag into doing.
+      if (card.status === 'doing' && card.paused) card.paused = undefined;
+    }
+    if (str(a.result)) card.result = str(a.result);
+    if (str(a.assignee)) card.assignee = str(a.assignee);
+    deps.hiveWriteTasks(tasks);
+    return { card };
+  });
+  if (res === false)
+    return { ok: false, spoken: 'The task board was busy — say that again in a moment.' };
+  if (res.ambiguous)
+    return {
+      ok: false,
+      spoken: `Which one — ${res.ambiguous.map((c) => `"${c.title}"`).join(', or ')}?`,
+    };
+  if (!res.card) return { ok: false, spoken: `I couldn't find a task matching "${ref}".` };
+  attribute(deps, 'update_task', res.card.id, { status: res.card.status });
+  return { ok: true, spoken: `Updated "${res.card.title}"${status ? ` to ${status}` : ''}.` };
 }
 
 // ─── v0.3.4 soft executors ──────────────────────────────────────────────────
@@ -615,18 +643,26 @@ function execGateTool(deps: RealtimeActionDeps, a: Record<string, unknown>): Act
 function execDeleteTask(deps: RealtimeActionDeps, a: Record<string, unknown>): ActionResult {
   const ref = str(a.taskId) || str(a.task) || str(a.title);
   if (!ref) return { ok: false, spoken: 'Which task should I delete?' };
-  const { tasks, card, ambiguous } = findCard(deps, ref);
-  if (ambiguous)
+  // Locked targeted delete (card agent-audit-legacy-writetasks--2026-08-19).
+  const res = deps.hiveWithLedgerLock((tasks): CardPick => {
+    const { card, ambiguous } = findCard(tasks, ref);
+    if (ambiguous) return { ambiguous };
+    if (!card) return {};
+    deps.hiveWriteTasks(tasks.filter((t) => t.id !== card.id));
+    return { card };
+  });
+  if (res === false)
+    return { ok: false, spoken: 'The task board was busy — say that again in a moment.' };
+  if (res.ambiguous)
     return {
       ok: false,
-      spoken: `Which one — ${ambiguous.map((c) => `"${c.title}"`).join(', or ')}?`,
+      spoken: `Which one — ${res.ambiguous.map((c) => `"${c.title}"`).join(', or ')}?`,
     };
-  if (!card) return { ok: false, spoken: `I couldn't find a task matching "${ref}".` };
-  deps.hiveWriteTasks(tasks.filter((t) => t.id !== card.id));
-  attribute(deps, 'delete_task', card.id, { title: card.title.slice(0, 120) });
+  if (!res.card) return { ok: false, spoken: `I couldn't find a task matching "${ref}".` };
+  attribute(deps, 'delete_task', res.card.id, { title: res.card.title.slice(0, 120) });
   return {
     ok: true,
-    spoken: `Deleted the task "${card.title}". Recreate it any time if that was wrong.`,
+    spoken: `Deleted the task "${res.card.title}". Recreate it any time if that was wrong.`,
   };
 }
 

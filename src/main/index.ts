@@ -2720,8 +2720,6 @@ function dispatchWebhookWork(arg: {
   origin: 'webhook' | 'org';
 }): boolean {
   try {
-    const ledger = hive.tasks() as { tasks?: HiveTask[] };
-    const existing = Array.isArray(ledger?.tasks) ? ledger.tasks : [];
     const card: HiveTask = {
       id: arg.taskId,
       title: arg.title,
@@ -2732,7 +2730,18 @@ function dispatchWebhookWork(arg: {
       createdAt: new Date().toISOString(),
       ...(arg.tokenHash ? { webhook: { tokenHash: arg.tokenHash } } : {}),
     };
-    hive.writeTasks([...existing, card]);
+    // Locked append (card agent-audit-legacy-writetasks--2026-08-19): the
+    // read-append-write runs under tasks.json.lock like every other
+    // main-process ledger writer — a concurrent CLI landing is never clobbered
+    // by a stale read. Refused lock = card not written = caller's false.
+    if (
+      hive.withLedgerLock((tasks) => {
+        tasks.push(card);
+        hive.writeTasks(tasks);
+        return true;
+      }) !== true
+    )
+      return false;
   } catch (e) {
     console.error('[webhook] could not create task card:', e instanceof Error ? e.message : e);
     return false;
@@ -4801,14 +4810,14 @@ ipcMain.handle('hive:addHumanTask', (_evt, title: unknown, notes: unknown) => {
   if (typeof title !== 'string' || !title.trim()) return { ok: false, error: 'invalid title' };
   if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
   const task = hive.addHumanTask(title, typeof notes === 'string' ? notes : undefined);
-  return task ? { ok: true, task } : { ok: false, error: 'empty title' };
+  return task ? { ok: true, task } : { ok: false, error: 'empty title or ledger busy — retry' };
 });
 ipcMain.handle('hive:deleteHumanTask', (_evt, id: unknown) => {
   if (typeof id !== 'string') return { ok: false, error: 'invalid id' };
   if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
   return hive.deleteHumanTask(id)
     ? { ok: true }
-    : { ok: false, error: "not a human-origin 'todo' card" };
+    : { ok: false, error: "not a human-origin 'todo' card, or ledger busy — retry" };
 });
 // Targeted status move (card agent-tasks-tab-ui-strips-card-2026-08-18): the
 // tasks tab's move button must NOT whole-file overwrite the ledger from its
@@ -6039,8 +6048,8 @@ const completionWatcher = initCompletionWatcher({
 registerRealtimeActionIpc({
   hiveEnabled: () => hive.enabled(),
   hiveSend: (partial, from) => hive.send(partial, from),
-  hiveTasks: () => hive.tasks(),
   hiveWriteTasks: (tasks) => hive.writeTasks(tasks),
+  hiveWithLedgerLock: (fn) => hive.withLedgerLock(fn),
   hiveRegistry: () => hive.registry(),
   hiveLog: (event) => hive.appendLog(event),
   controlPause: (id, on) => control.pause(id, on),

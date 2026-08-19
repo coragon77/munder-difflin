@@ -144,3 +144,4 @@ test/one-agent-per-directory-physical.test.cjs
 test/actionable-watch.test.cjs
 test/hive-park-recall-cli.test.cjs
 test/hive-gate-shared-state.test.cjs
+test/tasks-writers-locked.test.cjs
