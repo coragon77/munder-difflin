@@ -226,8 +226,8 @@ test('godLine carries the SHARED-STATE GATE rule (hand-access banned)', () => {
   assert.ok(/REFUSES every such attempt with NO override/.test(p));
   assert.ok(/hive-card list \(paused always shown\)/.test(p), 'card reads name the read primitive');
   assert.ok(
-    /NO primitive reads fleet\.json or registry\.json/.test(p),
-    'names the files with no read primitive',
+    /no primitive EXPOSES fleet\.json or registry\.json content/.test(p),
+    'names the files no primitive exposes to god (CLIs may read them internally)',
   );
   assert.ok(
     /MAIL THE OPERATOR and card a harness extension — do not hand-edit, and do not thrash retrying the refused command/.test(
@@ -256,10 +256,9 @@ test('godLine MONITOR clause: roster line is the live view, raw reads refused', 
     'the standup reviews agents through the roster line',
   );
   assert.ok(
-    /hive-card list[^.]*human-origin|human-origin todo cards[\s\S]{0,200}list-filter extension/.test(
-      p,
-    ),
-    'the human-origin scan runs through hive-card list, gaps are carded',
+    /review hive-card list for UNASSIGNED todo cards/.test(p) &&
+      /origin filter is a carded list-filter extension/.test(p),
+    'the human-origin triage runs through hive-card list as the unassigned-todo scan; origin is a carded filter',
   );
 });
 
