@@ -205,7 +205,12 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
         : buildSpawnCommand(config, initialModel, initialProvider)),
   );
   const [description, setDescription] = useState(
-    editOf?.description ?? pendingHire?.description ?? 'a fresh harness',
+    // No 'a fresh harness' default (card agent-restore-parked-agents-de-2026-08-19,
+    // god steer 6): a role-shaped placeholder is the 'on standby' defect class —
+    // it reads like a real briefing and even leaked into registry roles. Empty
+    // is honest: the input shows its placeholder, an untyped hire leaves the
+    // registry role unset and every surface renders the shared UNKNOWN constant.
+    editOf?.description ?? pendingHire?.description ?? '',
   );
   // ROLE IS IDENTITY (card agent-separate-agent-identity--2026-08-19). It lives
   // in the REGISTRY and has its own field here — never prefilled from the store
@@ -515,10 +520,13 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
       name: name.trim(),
       character,
       accent,
-      description: description.trim() || 'a fresh harness',
-      // The same briefing seeds the registry role (hive.role below) — carry it
-      // on the row too so monitor rows render identity from the start; the
-      // boot reconcile keeps it in step with the registry thereafter.
+      // Status starts as the typed briefing only when one was typed; empty
+      // otherwise (no 'a fresh harness' placeholder — steer 6). The scrape
+      // owns this field from the first pane tick.
+      description: description.trim(),
+      // The same typed briefing seeds the registry role (hive.role below) — the
+      // hire-time identity input; the boot reconcile keeps the row's role in
+      // step with the registry thereafter.
       role: description.trim() || undefined,
       project: basename(spawnedCwd),
       tmuxTarget: '',

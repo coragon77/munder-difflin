@@ -13,6 +13,7 @@ import { PORTRAIT_W } from '@/scene/office/portraitArt';
 import { RealtimeMichaelToggle } from './RealtimeMichaelToggle';
 import { CostHud } from '@/realtime/CostHud';
 import { useStore, type Agent } from '@/store/store';
+import { UNKNOWN_ROLE } from '@shared/agentRole';
 import { usePtyParser } from '@/hooks/usePtyParser';
 import { useRestoreTeam } from '@/hooks/useRestoreTeam';
 import { useTerminalFontSize } from './terminalFontSize';
@@ -1037,7 +1038,12 @@ function Header({ agent }: { agent: Agent }) {
           fontStyle: 'italic',
         }}
       >
-        “{agent.description}”
+        {/* ROLE IS IDENTITY (card agent-restore-parked-agents-de-2026-08-19,
+            god steer 5): the quoted line answered "who is this agent", so it
+            renders the registry role (shared unknown fallback), not the live
+            description. No subordinate status line here — the terminal this
+            header sits on IS the live status. */}
+        “{agent.role?.trim() || UNKNOWN_ROLE}”
       </span>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
         {/* v0.3.4: the IDE opens from agent level — full Monaco editor + git

@@ -17,10 +17,11 @@
 //  • the status scrape is SANITISED where it is written (usePtyParser) and
 //    where legacy rows hydrate (store loaders), so no ANSI/control junk can
 //    reach any consumer;
-//  • a PARKED agent's description is restored to its responsibility wording
-//    (Stefan's rule — prefer the registry role text) by the boot
-//    vacation-reconcile, through the store's own setters: no hand-edited
-//    hive files.
+//  • a PARKED agent's row is never rewritten — Stefan cancelled the
+//    description-restore mid-card ('the role field fits my purpose much
+//    better'); descriptions stay what the scrape left, only sanitised;
+//  • the fullscreen header quotes the ROLE too, and the 'a fresh harness'
+//    role-shaped placeholder class is dead everywhere.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -182,7 +183,7 @@ test('AGENTS (floor) rows render the role identity line plus a labelled live sta
     'floor rows carry the role identity line with the shared unknown fallback',
   );
   assert.ok(
-    /status:/.test(agents) && /\{a\.description\}/.test(agents),
+    /status:/.test(agents) && /\{a\.description/.test(agents),
     'the live status stays visible on floor rows, clearly labelled as status',
   );
 });
@@ -195,24 +196,22 @@ test('the panel imports the shared UNKNOWN_ROLE — no fourth spelling', () => {
   );
 });
 
-// ─── Stefan's rule: parked descriptions restored from the registry roles ───
+// ─── Stefan's final call: role, not description — no data migration ────────
 
-test('the boot vacation-reconcile restores parked DESCRIPTIONS from registry roles', () => {
+test('the boot vacation-reconcile stamps ONLY the role — no description rewrite', () => {
   const src = read('src/renderer/src/hooks/useHive.ts');
   const at = src.indexOf('BOOT vacation reconcile');
   const body = src.slice(at, src.indexOf('// 5c)', at));
   assert.ok(at >= 0, 'the boot vacation reconcile effect exists');
   assert.ok(
-    /role !== UNKNOWN_ROLE/.test(body),
-    'the restore only fires for a REAL registry role — never stamps the unknown wording into data',
-  );
-  assert.ok(
-    /description:\s*restore/.test(body),
-    "a parked agent's description is set to its registry role wording (Stefan's rule)",
-  );
-  assert.ok(
     /role:\s*e\.role/.test(body),
-    'the row also carries the role itself — the identity the monitor renders',
+    'every row gets the registry role stamped — the identity the monitor renders',
+  );
+  // The description-restore deliverable was CANCELLED mid-card (Stefan: 'the
+  // role field fits my purpose much better'). Pin that it cannot sneak back.
+  assert.ok(
+    !/description:\s*(restore|e\.role)/.test(body),
+    'the reconcile never rewrites descriptions — Stefan chose role over description',
   );
 });
 
@@ -226,4 +225,37 @@ test('the spawn broadcast and the store row both carry the registry role', () =>
     /role\?: string/.test(store),
     'the store Agent type has a role field (identity is no longer re-derived from status)',
   );
+});
+
+// ─── god steer 5: the fullscreen header quotes the ROLE ────────────────────
+
+test('FullscreenTerminal quotes the registry role, not the live description', () => {
+  const src = read('src/renderer/src/components/FullscreenTerminal.tsx');
+  assert.ok(
+    src.includes("from '@shared/agentRole'"),
+    'reuses the shared UNKNOWN_ROLE constant — no second spelling',
+  );
+  assert.ok(
+    /\{agent\.role(\?\.trim\(\))? \|\| UNKNOWN_ROLE\}/.test(src),
+    'the quoted identity line is the registry role with the unknown fallback',
+  );
+  assert.ok(
+    !/\{agent\.description\}/.test(src),
+    'the live description no longer poses as identity in the fullscreen header',
+  );
+});
+
+// ─── god steer 6: the 'a fresh harness' placeholder class is dead ──────────
+
+test("no surface ships the 'a fresh harness' role-shaped placeholder", () => {
+  const sources = [
+    'src/renderer/src/components/AddAgentModal.tsx',
+    'src/renderer/src/hooks/useHive.ts',
+    'src/renderer/src/store/store.ts',
+    'src/renderer/src/components/CommandCenterPanel.tsx',
+  ];
+  for (const p of sources) {
+    const src = read(p).replace(/^\s*\/\/.*$/gm, ''); // comments may name the dead placeholder
+    assert.ok(!src.includes("'a fresh harness'"), `${p} carries no live 'a fresh harness' default`);
+  }
 });
