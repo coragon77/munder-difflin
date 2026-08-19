@@ -148,3 +148,4 @@ test/tasks-writers-locked.test.cjs
 test/sessionstart-rearm.test.cjs
 test/standup-owner-route.test.cjs
 test/writetasks-ipc-removed.test.cjs
+test/heartbeat-removal.test.cjs

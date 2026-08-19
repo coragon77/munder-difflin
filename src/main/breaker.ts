@@ -4,7 +4,7 @@
  * Claude Code exposes `--max-turns` but NO dollar ceiling, so we enforce one
  * ourselves. This module owns the POLICY only — trip conditions + the
  * steer → constrain → stop escalation ladder. It has no side effects: it reads
- * signals and returns decisions; the caller (the heartbeat beat in index.ts)
+ * signals and returns decisions; the caller (the breaker beat in index.ts)
  * performs the enforcement (send a corrective message, notify, kill+archive) and
  * emits BreakerState on the separate `control:breakerState` channel (Seam 2 with
  * Oscar/#7, whose avatar adapter gives breaker level precedence over hook status).
@@ -277,7 +277,7 @@ export class CircuitBreaker {
     return (h >>> 0).toString(16);
   }
 
-  // ── periodic evaluation (called by the heartbeat beat) ────────────────────
+  // ── periodic evaluation (called by the breaker beat) ─────────────────────
 
   /** Evaluate every agent for this beat and return a decision per agent. The
    *  caller emits each state (keeps the dashboard live) and enforces `action`

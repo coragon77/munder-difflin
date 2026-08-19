@@ -42,7 +42,7 @@ export interface CommandHistoryRow {
  *     (coordinated w/ jim-mq290qkn 2026-06-06):
  *       cost_ledger(id, agent_id, session_id TEXT, ts, input, output,
  *                   cache_read, cache_creation, model TEXT, usd REAL)
- *     Rows are CUMULATIVE snapshots (one per agent per heartbeat beat) — diff
+ *     Rows are CUMULATIVE snapshots (one per agent per breaker beat) — diff
  *     consecutive rows for velocity; index (agent_id, session_id, ts). Additive;
  *     lands as a later migration.
  */

@@ -60,16 +60,12 @@ export interface ScheduledMission {
    *  agent-every-non-paused-todo-ke-2026-08-18). */
   skipWhenFloorQuiet?: boolean;
   /** Mission flavor. Absent ⇒ 'dispatch' (the classic interval-dispatch mission,
-   *  e.g. the ops standup). 'heartbeat' (Lane A #1) is a context-aware beat: it
-   *  observes live floor state, re-engages a quiet god, and ticks the circuit
-   *  breaker — armed with an adaptive cadence, not a fixed setInterval.
-   *  'actionable-watch' mails god only when a NEW actionable card appears
-   *  (transition-based, never a per-tick nag). */
-  kind?: 'dispatch' | 'heartbeat' | 'compact' | 'actionable-watch';
-  /** Heartbeat only: a floor is "quiet" when no tracked signal (log.jsonl mtime,
-   *  inbox/outbox mtimes, any PTY output) has moved in this many ms. Default
-   *  ~5 min. NOT derived from registry.status (which never transitions in main). */
-  quietThresholdMs?: number;
+   *  e.g. the ops standup). 'actionable-watch' mails god only when a NEW
+   *  actionable card appears (transition-based, never a per-tick nag).
+   *  ('heartbeat' was deleted 2026-08-19 — card agent-delete-the-floor-
+   *  heartbe-2026-08-19: its quiet-floor trigger was inverted and its
+   *  configured body was dead text the arm never sent.) */
+  kind?: 'dispatch' | 'compact' | 'actionable-watch';
 }
 
 /** The built-in hourly ops standup: god reviews who's doing what + whether tasks
@@ -99,34 +95,10 @@ export const OPS_STANDUP_MISSION: ScheduledMission = {
   // that stays true: the trigger does it, just not on this mission's clock.
 };
 
-/** The built-in heartbeat (Lane A #1). A context-aware beat that, each tick,
- *  observes live floor state and — only when the floor has gone quiet — drops a
- *  digest into god's inbox and (if god's PTY is genuinely idle) nudges it to
- *  re-engage anyone stalled. The same beat ticks the circuit breaker.
- *
- *  Shipped DISABLED by default (opt-in): unlike the standup, which only sends a
- *  hive message, the heartbeat types into god's PTY, so the user turns it on
- *  explicitly in the Command Center once they want active re-engagement.
- *  `intervalMs` is the normal-cadence base; the scheduler derives a tighter beat
- *  when an agent looks stuck and a slower one right after a re-engage. */
-export const HEARTBEAT_MISSION: ScheduledMission = {
-  id: 'heartbeat',
-  label: 'Floor heartbeat',
-  intervalMs: 120_000,
-  to: 'god',
-  body:
-    'Floor heartbeat: the team has gone quiet. Review the digest in your inbox, ' +
-    're-engage anyone stalled or blocked, and keep the board accurate — or rest ' +
-    'if the work is genuinely done.',
-  enabled: false,
-  kind: 'heartbeat',
-  quietThresholdMs: 300_000,
-};
-
 /** The built-in actionable-card watch (card agent-actionable-card-watch-fi-
  *  2026-08-19), defect (B): nothing woke god when dispatchable work APPEARED —
- *  the heartbeat fired on the floor being QUIET (when god is least useful)
- *  and is now disabled by the operator. This mission is the inverse: each
+ *  the (now deleted) heartbeat fired on the floor being QUIET (when god is
+ *  least useful). This mission is the inverse: each
  *  ~2-min tick computes actionableCards(tasks.json) (the ONE shared
  *  predicate from src/main/actionableCards.ts) and mails god ONLY on a
  *  TRANSITION — an actionable id absent from `reportedActionableIds`.
@@ -144,8 +116,8 @@ export const HEARTBEAT_MISSION: ScheduledMission = {
  *
  *  `body` is EMPTY BY DESIGN — armActionableWatch COMPUTES the mail per fire
  *  (new ids + free seats, src/main/actionableWatch.ts). The configured-body
- *  trap must not repeat: HEARTBEAT_MISSION.body is prose its arm never
- *  sends, dead text that only ever shows in the Command Center. */
+ *  trap must not repeat: the deleted heartbeat's body was prose its arm never
+ *  sent, dead text that only ever showed in the Command Center. */
 export const ACTIONABLE_WATCH_MISSION: ScheduledMission = {
   id: 'actionable-watch',
   label: 'Actionable-card watch',
@@ -155,6 +127,22 @@ export const ACTIONABLE_WATCH_MISSION: ScheduledMission = {
   enabled: true,
   kind: 'actionable-watch',
 };
+
+/** Boot migration (card agent-delete-the-floor-heartbe-2026-08-19): strip the
+ *  deleted heartbeat mission from a persisted missions array. Without this, an
+ *  install whose heartbeat was ENABLED (it was, operator-side, before being
+ *  disabled) would fall through syncMissions to the generic dispatch path and
+ *  start sending the configured body every interval — the exact dead-text trap
+ *  the deletion exists to end, resurrected. Pure + reference-stable when
+ *  nothing matches, so the caller writes only on a real change. */
+export function stripHeartbeatMissions(missions: ScheduledMission[]): ScheduledMission[] {
+  const out = missions.filter(
+    // `kind` is compared as a string: persisted configs predate the union
+    // member's deletion and still carry 'heartbeat' at runtime.
+    (m) => !(m && (m.id === 'heartbeat' || (m.kind as string | undefined) === 'heartbeat')),
+  );
+  return out.length === missions.length ? missions : out;
+}
 
 /** The dedicated auto-compact MAINTENANCE schedule (maint-1). DECOUPLED from the
  *  ops standup so editing/replacing a standup can never silently disable
@@ -187,8 +175,9 @@ export const COMPACT_MAINTENANCE_MISSION: ScheduledMission = {
  *  so an interval the user tuned by hand is left exactly where they put it. */
 const LEGACY_COMPACT_MAINTENANCE_INTERVAL_MS = 3_600_000;
 
-/** Circuit-breaker thresholds (Lane A #6.6b). The breaker runs inside the
- *  heartbeat beat, so it only ticks when the heartbeat is enabled. Trip
+/** Circuit-breaker thresholds (Lane A #6.6b). The breaker is ticked by its
+ *  own always-on beat (runBreakerBeat in index.ts), independent of any
+ *  mission. Trip
  *  conditions are behavioral by default; `costCapUsd` is the only $-based one and
  *  is unset by default (a hardcoded dollar default would be arbitrary). Defaults
  *  are deliberately conservative and steer-first — `hardStop` is OFF unless the
@@ -209,7 +198,7 @@ export interface CircuitBreakerConfig {
 
 /** Enterprise Knowledge Graph (multimodal context store + agent access tool).
  *  The user ingests their own documents/images/PDFs; agents query them on demand
- *  via the `kg` CLI. Opt-in like the heartbeat/Slack features — `enabled` gates
+ *  via the `kg` CLI. Opt-in like the Slack feature — `enabled` gates
  *  everything (no env injected, no prompt line, no store touched when off). See
  *  docs/design/knowledge-graph.md. */
 export interface KnowledgeGraphConfig {
@@ -314,9 +303,6 @@ export interface HarnessConfig {
   /** One-time guard: has the built-in hourly ops standup been seeded into an
    *  existing install's missions? Prevents re-adding it after a user deletes it. */
   opsStandupSeeded?: boolean;
-  /** One-time guard for the built-in heartbeat mission (mirrors opsStandupSeeded
-   *  so a user who deletes the heartbeat doesn't get it re-added every boot). */
-  heartbeatSeeded?: boolean;
   /** One-time guard for the built-in actionable-card watch (mirrors
    *  opsStandupSeeded so a user who deletes it doesn't get it re-added every
    *  boot; its enabled state is likewise never stomped on upgrade). */
@@ -805,7 +791,11 @@ export function writeConfig(patch: Partial<HarnessConfig>): HarnessConfig {
     const seen = new Set<string>();
     next.registeredRepos = patch.registeredRepos
       .map((r) => expandTilde(r))
-      .filter((r) => r && !seen.has(r) && (seen.add(r), true));
+      .filter((r) => {
+        if (!r || seen.has(r)) return false;
+        seen.add(r);
+        return true;
+      });
   }
   // Track recently-opened hive homes so the launch picker can list them. Any write
   // that SETS harnessHome (onboarding finish, changeHome) promotes it to the front,

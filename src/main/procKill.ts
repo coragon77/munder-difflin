@@ -5,7 +5,7 @@
  * the DIRECT child only. Two leaks follow: (1) a child that ignores/queues
  * SIGHUP never dies, so its PID lingers for the machine's uptime; (2) even when
  * the child dies, its own children (MCP servers, helper daemons the session
- * started) are orphaned to PID 1 and never released. With the breaker/heartbeat
+ * started) are orphaned to PID 1 and never released. With the breaker
  * spawning and killing sessions all day, PIDs accumulate steadily.
  *
  * The fix: the pty child is a session leader (forkpty does setsid), so its

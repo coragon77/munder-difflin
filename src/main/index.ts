@@ -49,9 +49,9 @@ import {
   ensureClaudePermissionsAccepted,
   modelForRole,
   OPS_STANDUP_MISSION,
-  HEARTBEAT_MISSION,
   COMPACT_MAINTENANCE_MISSION,
   ACTIONABLE_WATCH_MISSION,
+  stripHeartbeatMissions,
   type HarnessConfig,
   type ScheduledMission,
 } from './config';
@@ -203,7 +203,7 @@ import {
   secretRefFor,
   INTEGRATION_TEMPLATES,
 } from '../shared/integrations';
-import { SYSTEM_SENDERS, isFyiMail } from '../shared/hiveMail';
+import { SYSTEM_SENDERS } from '../shared/hiveMail';
 import { RosterStore } from './roster';
 import { ControlRegistry } from './control';
 import { fetchHireManifest, readHireManifestFile } from './hire';
@@ -505,7 +505,7 @@ const telemetry = new TelemetryCollector({
 // live OTel arrives.
 const usageProvider: UsageProvider = telemetry;
 // Circuit breaker (Lane A #6.6b) — the REAL policy (replaces Lane C's interim
-// glue). POLICY only; the heartbeat beat feeds it signals (via usageProvider) +
+// glue). POLICY only; the breaker beat feeds it signals (via usageProvider) +
 // enforces its decisions. Config read live so a settings change applies next beat.
 const breaker = new CircuitBreaker(() => {
   const c = readConfig();
@@ -516,9 +516,8 @@ const breaker = new CircuitBreaker(() => {
     agentTokenCaps: c.agentTokenCaps,
   };
 });
-// Always-on beats (decoupled from the optional heartbeat): the live fleet snapshot
-// Michael reads + the breaker beat, so guardrails + monitoring work even when the
-// heartbeat mission is disabled (it ships off).
+// Always-on beats: the live fleet snapshot Michael reads + the breaker beat, so
+// guardrails + monitoring run regardless of any mission.
 let fleetTimer: ReturnType<typeof setInterval> | null = null;
 /** The operator's usage-budget window (5h) — the burn indicator's span. */
 const BURN_WINDOW_MS = 5 * 60 * 60 * 1000;
@@ -983,9 +982,7 @@ function clearMissionTimers(): void {
  *  agent-every-non-paused-todo-ke-2026-08-18: every todo keeps the standup
  *  alive; on-hold reference cards opt out via `paused`). The ledger half is
  *  `ledgerDisqualifiesQuiet` (standup.ts) — one predicate, clerk and scheduler
- *  agree. NOT the heartbeat's isFloorQuiet: that one watches coordination
- *  file mtimes for a threshold; this one asks "did anything move since the last
- *  fire". Any read/parse failure (or no hive root) = NOT quiet — fail toward
+ *  agree. Any read/parse failure (or no hive root) = NOT quiet — fail toward
  *  firing rather than silently dropping a due dispatch. */
 function floorQuietSince(since: number): boolean {
   const reg = hive.registry();
@@ -1167,17 +1164,10 @@ function syncMissions(): void {
   const missions = readConfig().missions ?? [];
   for (const m of missions) {
     if (!m.enabled || !(m.intervalMs > 0)) continue;
-    // Heartbeat (Lane A #1) opts out of the fixed setInterval and self-reschedules
-    // with an adaptive cadence. Registered into the same missionTimers map so
-    // clearMissionTimers() tears it down identically on quit/reset.
-    if (m.kind === 'heartbeat') {
-      armHeartbeat(m);
-      continue;
-    }
     // Actionable-card watch (card agent-actionable-card-watch-fi-2026-08-19):
-    // kind-specific for the same reason as the heartbeat — the plain dispatch
-    // path would send the (deliberately empty) body every tick; the watch
-    // must mail god only on a TRANSITION, which is this arm's own fire.
+    // kind-specific because the plain dispatch path would send the
+    // (deliberately empty) body every tick; the watch must mail god only on a
+    // TRANSITION, which is this arm's own fire.
     if (m.kind === 'actionable-watch') {
       armActionableWatch(m);
       continue;
@@ -1428,17 +1418,21 @@ function ensureDefaultMissions(): void {
       opsStandupSeeded: true,
     });
   }
-  // Seed the built-in heartbeat (Lane A #1) once. Shipped DISABLED, so it just
-  // appears in the SCHEDULES panel for the user to turn on; lastFiredAt = now so
-  // it doesn't fire on the very first launch after a user enables it.
-  const cfg2 = readConfig();
-  if (!cfg2.heartbeatSeeded) {
-    const missions = cfg2.missions ?? [];
-    const has = missions.some((m) => m.id === HEARTBEAT_MISSION.id);
-    writeConfig({
-      missions: has ? missions : [...missions, { ...HEARTBEAT_MISSION, lastFiredAt: Date.now() }],
-      heartbeatSeeded: true,
-    });
+  // Deleted-heartbeat migration (card agent-delete-the-floor-heartbe-
+  // 2026-08-19): strip any persisted heartbeat mission so an install whose
+  // heartbeat was ENABLED never falls through to the generic dispatch path and
+  // starts sending the dead configured body. Idempotent — writes only when a
+  // heartbeat entry is actually present (stripHeartbeatMissions is
+  // reference-stable otherwise). This replaces the old heartbeatSeeded seeding
+  // block; the `heartbeatSeeded` flag rides along in old configs, untyped now
+  // and harmless.
+  {
+    const cfgHb = readConfig();
+    const missionsHb = cfgHb.missions ?? [];
+    const stripped = stripHeartbeatMissions(missionsHb);
+    if (stripped !== missionsHb) {
+      writeConfig({ missions: stripped });
+    }
   }
   // Seed the actionable-card watch once (card agent-actionable-card-watch-fi-
   // 2026-08-19). lastFiredAt = now so the first check waits one full interval;
@@ -1551,42 +1545,7 @@ function ensureDefaultMissions(): void {
   }
 }
 
-// ─── Heartbeat (Lane A #1) + circuit-breaker beat (#6.6b) ────────────────────
-
-/** Is the floor quiet? Derived ONLY from signals the main process owns or can
- *  stat — log.jsonl mtime (the master signal: every routed msg/drain/spawn/task
- *  append touches it), each agent's inbox + outbox/.sent mtimes, and every live
- *  PTY's lastOutputAt (an agent printing/thinking counts as activity). Crucially
- *  NOT registry.status, which is written 'idle' once at spawn and never
- *  transitions in main — reading it would see the floor quiet forever. */
-function isFloorQuiet(thresholdMs: number): boolean {
-  const root = hive.root();
-  if (!root) return false;
-  const times: number[] = [];
-  const pushMtime = (p: string): void => {
-    try {
-      times.push(statSync(p).mtimeMs);
-    } catch {
-      /* missing */
-    }
-  };
-  pushMtime(join(root, 'log.jsonl'));
-  const agentsDir = join(root, 'agents');
-  if (existsSync(agentsDir)) {
-    for (const id of readdirSync(agentsDir)) {
-      pushMtime(join(agentsDir, id, 'inbox'));
-      pushMtime(join(agentsDir, id, 'outbox', '.sent'));
-    }
-  }
-  // god's own pty is not "floor activity" (one-line fix, card
-  // agent-actionable-card-watch-fi-2026-08-19): counting it postponed every
-  // beat while god worked. Everything else (log/inbox/outbox mtimes, worker
-  // ptys) still counts.
-  for (const t of ptyManager.list())
-    if (t.id !== ptyForAgent(hive.registry().godId ?? '')) times.push(t.lastOutputAt);
-  if (times.length === 0) return false; // nothing to judge → don't fire
-  return Date.now() - Math.max(...times) > thresholdMs;
-}
+// ─── Circuit-breaker beat (#6.6b) ────────────────────────────────────────────
 
 /** Newest coordination-file mtime for one agent (inbox + inbox/.done, outbox +
  *  outbox/.sent, memory.md) — FILES only, deliberately excluding PTY output, so
@@ -1618,90 +1577,6 @@ function lastCoordinationAt(agentId: string): number {
 function ptyForAgent(agentId: string): string | undefined {
   for (const [ptyId, a] of ptyToAgent) if (a === agentId) return ptyId;
   return undefined;
-}
-
-/** "Stuck" = some worker's PTY is actively printing (recent output) while its
- *  coordination files have gone stale — working-but-not-coordinating. Tightens
- *  the heartbeat cadence so we notice a wedged agent sooner. */
-function looksStuck(windowMs: number): boolean {
-  const reg = hive.registry();
-  const now = Date.now();
-  for (const [id, a] of Object.entries(reg.agents)) {
-    if (a.archived || id === reg.godId) continue;
-    const ptyId = ptyForAgent(id);
-    if (!ptyId) continue;
-    const idle = ptyManager.idleFor(ptyId) ?? Infinity;
-    if (idle < 15_000 && now - lastCoordinationAt(id) > windowMs) return true;
-  }
-  return false;
-}
-
-/** Bounded digest for god — paths + counts, never full files (reference-passing,
- *  #6.2). A few hundred tokens at most. */
-function buildHeartbeatDigest(quietMs: number, actionable = 0): string {
-  const reg = hive.registry();
-  const active = Object.entries(reg.agents).filter(([id, a]) => !a.archived && id !== reg.godId);
-  const names = active.map(([, a]) => a.name).join(', ') || '—';
-  const boardHead = hive.board().split('\n').slice(0, 10).join('\n').trim();
-  const log = hive
-    .logTail(8)
-    .map((e) => {
-      try {
-        return JSON.stringify(e);
-      } catch {
-        return '';
-      }
-    })
-    .filter(Boolean)
-    .join('\n');
-  const withInbox = active.filter(([id]) => hive.inbox(id).length > 0).map(([, a]) => a.name);
-  // When real agent/human mail is waiting, lead with an explicit call-to-action
-  // instead of the "quiet" line — this beat fired BECAUSE of unread actionable
-  // inbox, not because the floor went quiet, and god must read it now.
-  const header =
-    actionable > 0
-      ? `Floor heartbeat — ${actionable} actionable inbox message(s) awaiting you (worker/human mail). Drain your inbox NOW and act on them.`
-      : `Floor heartbeat — quiet ~${Math.round(quietMs / 60000)}m.`;
-  return [
-    header,
-    `Active agents (${active.length}): ${names}.`,
-    withInbox.length ? `Undrained inbox: ${withInbox.join(', ')}.` : 'No undrained inboxes.',
-    '',
-    'Board (head):',
-    boardHead || '(empty)',
-    '',
-    'Recent log:',
-    log || '(none)',
-    '',
-    'Re-engage anyone stalled or blocked and keep the board accurate — or rest if the work is genuinely done.',
-  ].join('\n');
-}
-
-/** Count of UNREAD actionable messages in god's inbox — real agent/human mail,
- *  excluding the scheduler's own beats AND pure FYI mail (ephemeral-worker
- *  spawn/fire informs and similar), which waits for god's next natural drain
- *  instead of triggering a re-engage. Drives an inbox-aware re-engage so a
- *  worker's reply (or a human answer) doesn't sit unread while the floor is busy:
- *  the floor-quiet gate alone misses that case — any active agent keeps the floor
- *  "loud", so god was never re-engaged until everything else went idle. */
-function godActionableInboxCount(): number {
-  try {
-    const godId = hive.registry().godId;
-    if (!godId) return 0;
-    return hive.inbox(godId).filter((m) => !SYSTEM_SENDERS.has(m.from) && !isFyiMail(m)).length;
-  } catch {
-    return 0;
-  }
-}
-
-/** Re-engage a quiet floor: drop a durable digest into god's inbox. We never
- *  type directly into god's PTY here — if he's busy that would jam mid-step. The
- *  inbox message is delivered by the renderer's busy-aware inbox-wake (it nudges
- *  god to read his inbox only once he's idle), so the heartbeat defers around a
- *  working god instead of interrupting him. */
-function reengageGod(digest: string): void {
-  if (!hive.enabled()) return;
-  hive.send({ to: 'god', act: 'request', subject: 'Heartbeat', body: digest }, 'heartbeat');
 }
 
 /** A native toast for breaker constrain/stop, gated on the notifications setting. */
@@ -1759,7 +1634,7 @@ function hasOpenWork(agentId: string, now: number, doingCards: Set<string>): boo
  *  it to the durable cost ledger (the SOLE durable cost store), tick the breaker,
  *  emit each BreakerState on control:breakerState (Seam 2), and enforce any
  *  escalation. God is in the LEDGER (cost visibility) but NOT the breaker inputs
- *  (the heartbeat manages god; we never auto-steer/kill the orchestrator). */
+ *  (we never auto-steer/kill the orchestrator). */
 function runBreakerBeat(progressWindowMs: number): void {
   if (!hive.enabled()) return;
   const reg = hive.registry();
@@ -1859,7 +1734,7 @@ function runBreakerBeat(progressWindowMs: number): void {
 }
 
 /** Build + write the live fleet snapshot Michael reads (`<hive>/fleet.json`).
- *  Always-on (independent of the heartbeat) since `claude agents` can't see the
+ *  Always-on since `claude agents` can't see the
  *  hive's sibling sessions. PII-free; never throws (called from a timer). */
 function writeFleetSnapshot(): void {
   if (!hive.enabled()) return;
@@ -1967,48 +1842,6 @@ function floorSeats(reg: Registry): { maxAgents: number; onFloor: number; freeSe
   const cap = normalizeFloorMaxAgents(readConfig().floorMaxAgents);
   const onFloor = floorCensus(reg);
   return { maxAgents: cap, onFloor, freeSeats: Math.max(0, cap - onFloor) };
-}
-
-/** Arm the heartbeat with an adaptive, self-rescheduling cadence (recursive
- *  setTimeout instead of a fixed setInterval). Each beat runs the cost/breaker
- *  pass, re-engages a quiet floor, stamps lastFiredAt, then re-arms: ~base on a
- *  normal beat, base/4 (min 30s) when an agent looks stuck, base*2.5 right after
- *  a re-engage. Registered into missionTimers so shutdown tears it down. */
-function armHeartbeat(m: ScheduledMission): void {
-  const base = m.intervalMs;
-  const quiet = m.quietThresholdMs ?? 300_000;
-  const beat = (): void => {
-    let next = base;
-    try {
-      // (the breaker beat + cost ledger now run on their own always-on timer)
-      // Re-engage god when the floor is quiet OR when real agent/human mail is
-      // waiting in god's inbox — the latter is independent of floor-quiet so a
-      // worker's reply doesn't sit unread while other agents keep the floor busy.
-      const actionable = godActionableInboxCount();
-      if (isFloorQuiet(quiet) || actionable > 0) {
-        reengageGod(buildHeartbeatDigest(quiet, actionable));
-        next = Math.round(base * 2.5); // back off after re-engaging
-      } else if (looksStuck(quiet)) {
-        next = Math.max(30_000, Math.round(base / 4)); // tighten when an agent is wedged
-      }
-      const cur = readConfig().missions ?? [];
-      writeConfig({
-        missions: cur.map((x) => (x.id === m.id ? { ...x, lastFiredAt: Date.now() } : x)),
-      });
-      try {
-        liveWebContents()?.send('missions:updated');
-      } catch {
-        /* window gone */
-      }
-    } catch (e) {
-      console.error('[heartbeat]', e);
-    }
-    const entry = missionTimers.get(m.id) ?? {};
-    entry.timeout = setTimeout(beat, next);
-    missionTimers.set(m.id, entry);
-  };
-  const remaining = Math.max(0, base - (Date.now() - (m.lastFiredAt ?? 0)));
-  missionTimers.set(m.id, { timeout: setTimeout(beat, remaining) });
 }
 
 /** Arm the actionable-card watch (card agent-actionable-card-watch-fi-
@@ -5350,7 +5183,7 @@ ipcMain.handle('hive:agentContext', (_evt, agentId: unknown) => {
 // everything the office-floor sidebar + telemetry know per agent: the registry
 // record (name/role/provider/cwd/status/archived/isGod/isAssistant/sessionId/
 // cwdValid), live token + breaker + last-tool telemetry, and the current context
-// window fill. Includes ARCHIVED agents (unlike the heartbeat's fleet.json, which
+// window fill. Includes ARCHIVED agents (unlike fleet.json, which
 // is live-only) so Michael can speak to inactive agents — their cwd and memory
 // stay reachable. PII-free: no secrets, env, or API keys ever leave main; cost is
 // carried as tokens (+ a usd field the voice layer deliberately never speaks).
@@ -5407,9 +5240,7 @@ ipcMain.handle('telemetry:spans', (_evt, agentId: unknown) =>
 ipcMain.handle('telemetry:snapshot', () => ({
   ...telemetry.snapshot(),
   // Breaker states were push-only (one per beat per live agent), so a reloaded
-  // renderer showed a stale/absent breaker badge until the next beat — and the
-  // heartbeat cadence is adaptive (up to 2.5× base), so that window could be
-  // minutes. Backfill the CURRENT level per agent here; live pushes resume on
+  // renderer showed a stale/absent breaker badge until the next beat. Backfill the CURRENT level per agent here; live pushes resume on
   // the next beat. Forgotten/archived agents read 'healthy' by construction.
   breakers: hive.enabled()
     ? Object.entries(hive.registry().agents)
@@ -7409,7 +7240,7 @@ function bootstrapHiveServices(): void {
   // Bind the telemetry collector BEFORE the renderer spawns any agent, then point
   // the hive at it so every subsequent spawn is instrumented. Best-effort — a bind
   // failure just leaves telemetry off (transcript reconciler stays). No breaker.start():
-  // the breaker is POLICY-only, ticked by the heartbeat beat (#1, ships disabled).
+  // the breaker is POLICY-only, ticked by the always-on breaker beat.
   void telemetry.start().then((r) => {
     if (r.ok && r.endpoint) {
       hive.setOtelEndpoint(r.endpoint);
@@ -7422,7 +7253,7 @@ function bootstrapHiveServices(): void {
   armAlwaysOnBeats();
 }
 
-/** (Re)arm the always-on beats (decoupled from the optional heartbeat): the live
+/** (Re)arm the always-on beats: the live
  *  fleet snapshot Michael reads (~8s) + the breaker/cost-ledger beat (~30s).
  *  Guarded (clear-then-set) so a re-bootstrap (changeHome recovery) OR a
  *  powerMonitor resume can't stack duplicate timers — these are setInterval

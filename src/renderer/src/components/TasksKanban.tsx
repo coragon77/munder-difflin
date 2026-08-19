@@ -178,7 +178,7 @@ export function TasksKanban() {
 
   // Human-created card: main process does the read-modify-write on tasks.json
   // (never a renderer-side whole-file overwrite — the god edits that file too).
-  // No wake-up message: god triages human cards at heartbeat standups.
+  // No wake-up message: god triages human cards at standups.
   const addTask = useCallback(async () => {
     const title = newTitle.trim();
     if (!title) return;
@@ -244,7 +244,7 @@ export function TasksKanban() {
       }}
     >
       {/* Toolbar — the god writes the ledger, but the human can ADD cards
-          (origin 'human'; triaged by the god at heartbeats) and delete their
+          (origin 'human'; triaged by the god at standups) and delete their
           own while still untouched todo (detail view). */}
       <div
         style={{

@@ -273,10 +273,10 @@ export interface ScheduledMission {
   lastFiredAt?: number;
   /** Dispatch only: skip a due fire while the floor is quiet. */
   skipWhenFloorQuiet?: boolean;
-  /** Mission flavor; 'heartbeat' (Lane A #1) is a context-aware adaptive beat. */
-  kind?: 'dispatch' | 'heartbeat' | 'compact';
-  /** Heartbeat only: floor-quiet threshold in ms. */
-  quietThresholdMs?: number;
+  /** Mission flavor. Absent ⇒ 'dispatch' (the classic interval-dispatch
+   *  mission). 'actionable-watch' mails god only when a NEW actionable card
+   *  appears (transition-based, never a per-tick nag). */
+  kind?: 'dispatch' | 'compact';
 }
 
 /** Circuit-breaker thresholds (Lane A #6.6b). Mirrors src/main/config.ts. */
@@ -331,7 +331,6 @@ export interface HarnessConfig {
   embeddingModel: 'minilm' | 'embeddinggemma';
   missions?: ScheduledMission[];
   opsStandupSeeded?: boolean;
-  heartbeatSeeded?: boolean;
   notifications?: boolean;
   /** Kitty integration gate (agent-harness-kittyenabled-set-2026-08-17) —
    *  default OFF, missing = off. Mirrors main + renderer HarnessConfig so
@@ -607,7 +606,7 @@ export type TelemetryEvent =
 
 /** Cold-start backfill from the collector. `breakers` carries the CURRENT
  *  per-agent circuit-breaker level — the live stream is push-only (one per
- *  heartbeat beat), so without this backfill a reloaded renderer would show a
+ *  breaker beat), so without this backfill a reloaded renderer would show a
  *  stale breaker badge until the next beat lands. */
 export interface TelemetrySnapshot {
   usage: AgentUsageSample[];
@@ -1275,7 +1274,7 @@ const api = {
   ): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('hive:ensureSlackCard', messageId, text, slack),
   /** The human adds a todo card (origin 'human'). Main-process read-modify-write
-   *  on tasks.json at action time. No wake-up — god triages at heartbeats. */
+   *  on tasks.json at action time. No wake-up — god triages at standups. */
   hiveAddHumanTask: (
     title: string,
     notes?: string,

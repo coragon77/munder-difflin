@@ -30,8 +30,7 @@ export interface ScheduledMission {
   lastFiredAt?: number;
   /** Dispatch only: skip a due fire while the floor is quiet. */
   skipWhenFloorQuiet?: boolean;
-  kind?: 'dispatch' | 'heartbeat' | 'compact';
-  quietThresholdMs?: number;
+  kind?: 'dispatch' | 'compact';
 }
 
 /** Circuit-breaker thresholds (mirrors src/main/config.ts CircuitBreakerConfig). */
@@ -93,7 +92,6 @@ export interface HarnessConfig {
   embeddingModel: 'minilm' | 'embeddinggemma';
   missions?: ScheduledMission[];
   opsStandupSeeded?: boolean;
-  heartbeatSeeded?: boolean;
   notifications?: boolean;
   /** Kitty integration — gates every kitty feature (satellite, kitty buttons,
    *  detach-to-kitty). Default off; missing field reads as off. Mirrors

@@ -100,11 +100,10 @@ interface PtySession {
    *  never leaks into another. Null falls back to the default attached sink
    *  (the primary window), preserving single-window behavior. */
   owner: WebContents | null;
-  /** Epoch ms of the most recent byte this PTY emitted (bumped in onData). The
-   *  heartbeat (Lane A #1) reads this for two things: floor-quiet detection (an
-   *  agent printing/thinking counts as activity even before it writes a hive
-   *  file) and the idle handshake that gates god's PTY nudge (never type into a
-   *  PTY that produced output in the last few seconds = mid-stream). */
+  /** Epoch ms of the most recent byte this PTY emitted (bumped in onData). Read
+   *  by the idle handshakes that gate typing into a PTY (never type into one
+   *  that produced output in the last few seconds = mid-stream) and by the
+   *  live floor watcher (an agent printing counts as active). */
   lastOutputAt: number;
   /** True after the child has emitted at least one frame. Automation waits for
    *  this before typing, so startup prompts cannot outrun the TUI subscription. */

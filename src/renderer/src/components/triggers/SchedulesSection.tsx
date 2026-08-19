@@ -39,8 +39,7 @@ interface ScheduledMission {
   autoCompact?: boolean;
   lastFiredAt?: number;
   skipWhenFloorQuiet?: boolean;
-  kind?: 'dispatch' | 'heartbeat' | 'compact';
-  quietThresholdMs?: number;
+  kind?: 'dispatch' | 'compact';
 }
 
 const DEFAULT_INTERVAL_MS = 3_600_000;
@@ -260,10 +259,9 @@ function MissionRow({
     setSaved(false);
   }, [open]);
 
-  const heartbeat = mission.kind === 'heartbeat';
-  // The quiet-skip is dispatch-only: heartbeat and compact fire on their own
-  // logic and never reach the guard in the scheduler.
-  const dispatch = mission.kind !== 'heartbeat' && mission.kind !== 'compact';
+  // The quiet-skip is dispatch-only: compact missions fire on their own logic
+  // and never reach the guard in the scheduler.
+  const dispatch = mission.kind !== 'compact';
   const dirty =
     label !== mission.label ||
     to !== mission.to ||
@@ -303,9 +301,7 @@ function MissionRow({
         onToggle={() => setOpen((o) => !o)}
         title={
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            <Chip tone={mission.enabled ? 'on' : 'off'}>
-              {heartbeat ? '♥ beat' : fmtInterval(mission.intervalMs)}
-            </Chip>
+            <Chip tone={mission.enabled ? 'on' : 'off'}>{fmtInterval(mission.intervalMs)}</Chip>
             <span
               style={{
                 flex: 1,
@@ -372,12 +368,6 @@ function MissionRow({
           </Field>
           <Field label="EVERY">
             <IntervalPicker value={intervalMs} onChange={setIntervalMs} />
-            {heartbeat && (
-              <Hint>
-                The beat adapts to how quiet the floor is, so this is the ceiling, not the exact
-                gap.
-              </Hint>
-            )}
           </Field>
           {dispatch && (
             <Field label="QUIET FLOOR">
