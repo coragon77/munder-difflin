@@ -174,6 +174,10 @@ test('godLine pins hive-dispatch as the ONLY todo->doing path with the paused/bl
   // reachable by hand-editing tasks.json with a python one-liner. The gate
   // moves into the PRIMITIVE (hive-dispatch refuses paused/blocked cards)
   // and the briefing must teach BOTH: only path + no hand-edits.
+  // Card agent-disambiguate-blocked-ope-2026-08-19: the refusal splits —
+  // paused stays the absolute operator hold; blocked is a WAIT gated on
+  // provenance (blockedBy), and the one legal way through is the recorded
+  // owner's own --resume return.
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
   assert.ok(/ONLY todo->doing path/.test(p), 'names hive-dispatch as the ONLY todo->doing path');
   assert.ok(
@@ -182,8 +186,16 @@ test('godLine pins hive-dispatch as the ONLY todo->doing path with the paused/bl
   );
   assert.ok(/python|one-liner|jq/i.test(p), 'names the one-liner habit the ban closes off');
   assert.ok(
-    /target card is paused \(paused:true\) or blocked/.test(p),
-    'teaches the paused/blocked target-card refusal',
+    /target card is paused \(paused:true\)/.test(p),
+    'teaches the paused target-card refusal',
+  );
+  assert.ok(
+    /WAIT gated on provenance/.test(p),
+    'teaches blocked as a provenance-gated wait, not an operator hold',
+  );
+  assert.ok(
+    /recorded owner's own --resume return/.test(p),
+    'teaches the one legal dispatch through a blocked card',
   );
   assert.ok(/no override/i.test(p) || /NO override/.test(p), 'there is no override flag to teach');
   assert.ok(

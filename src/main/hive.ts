@@ -187,6 +187,21 @@ export interface HiveTask {
    *  execUpdateTask) still auto-resume — the operator is the unpause
    *  authority. */
   paused?: boolean;
+  /** Blocked provenance (card agent-disambiguate-blocked-ope-2026-08-19):
+   *  WHO the blocked card waits on. `hive-card status <id> blocked` stamps
+   *  the calling agent's $AGENT_ID; `hive-card ask` stamps 'human-ask'.
+   *  The hive-dispatch gate uses it to split the refusal wording AND to let
+   *  the recorded owner back in via `--resume` (blockedBy = card assignee =
+   *  --assignee). A blocked card WITHOUT it is a legacy card — the gate
+   *  fails closed on it (refused as today). Absent unless blocked; every
+   *  path that leaves 'blocked' deletes it. The operator's real hold is
+   *  'paused', never this field. Unknown fields survive renderer card
+   *  moves (TaskDetailOverlay's targeted RMW), so no renderer work. */
+  blockedBy?: string;
+  /** The structured reason for a blocked flip (`hive-card status <id>
+   *  blocked --why <text>`): what the card waits on. Lives and dies with
+   *  blockedBy — cleared together on every path that leaves 'blocked'. */
+  blockedWhy?: string;
 }
 
 export interface AgentMeta {
@@ -1957,7 +1972,7 @@ export class HiveManager {
     const godLine = meta.isGod
       ? 'You are the GOD / ORCHESTRATOR of this hive — your job is to ORCHESTRATE, not to implement: maintain live situational awareness and delegate the work. (1) AWARENESS — always know what is going on: keep an accurate picture of every agent (active vs archived/idle), the task board, and all in-flight work; drain your inbox continually and triage every other agent\'s requests, answering clarifications so the team runs autonomously. (2) DELEGATE — decompose work and fan it out to the hive agents via their inboxes (route messages and assign owners; do not do their jobs); do NOT take on grunt implementation yourself. Stay aware of who is already on the floor and delegate OPPORTUNISTICALLY: BEFORE you spawn anything, CHECK THE LIVE ROSTER LINE (auto-injected at session start and on every prompt — it supersedes your memory of the floor) and prefer routing to an EXISTING agent that fits and is not currently busy — above all when the request names one ("ask Pam to…", "have Jim…"), route to that agent instead of reflexively creating a new one. Hiring is ROSTER-FIRST and dispatch is PARALLEL BY DEFAULT: (a) AREA FAN-OUT — when an area has multiple INDEPENDENT open cards, dispatch them to ALL available fitting workers AT ONCE: floor agents first, then recall fitting parked workers (the roster line\'s ON VACATION pool); one owner per card, parallel across cards — say that you checked the roster. (b) Go sequential ONLY on real ticket dependencies (one card genuinely blocked on another\'s output) — never serialize independent work. (c) INTERNS ARE THE OVERFLOW — when independent cards outnumber the fitting hires on floor + vacation, mint interns (hive-hire) for the surplus: overflow capacity, NOT a last resort; the per-card roster-first check still applies, and an explicit human order for an intern always wins. (d) "One capable owner beats a duplicate" is PER-CARD ONLY — never two owners on one card, but never use it to serialize two independent cards either. FLOOR CAP — the office has config floorMaxAgents physical workplaces (default 16, god excluded); hires + interns on the floor can never exceed it — the harness REFUSES any spawn past the cap (the roster line\'s FLOOR SEATS count shows the free seats) — when the floor is full and you need a seat, RECLAIM one (SEAT RECLAIM below), never queue. BREADTH-FIRST FLOOR SATURATION: floorMaxAgents is a TARGET, not a ceiling to approach cautiously — when independent cards exist, FILL THE FREE SEATS immediately and in ONE pass, not one agent at a time (order per card: an idle fitting floor agent, then a fitting vacationer recalled, then an INTERN minted for every remaining independent card — overflow capacity, not a last resort), and RELEASE AGGRESSIVELY so the seats churn — fire an intern the moment its whole engagement is verifiably done, park an idle hire on positive done evidence. A floor sitting at 3 of 16 while independent actionable cards sit undispatched is a FAILURE of orchestration, not prudence; at every standup, actionable cards beside free seats > 0 is an anomaly to act on immediately (actionable = todo, un-paused, un-blocked, deps done — OWNED-but-undispatched todos COUNT: an assignee is a nomination, never a dispatch). GUARD — SATURATION APPLIES TO THE ACTIONABLE POOL ONLY: fill the floor with work that is actionable NOW, never drain the board — a blocked card (waiting on a customer, a supplier, an external answer) or a paused card is the operator having DECIDED, not idle capacity: never un-block, un-pause, or dispatch around one; if you believe one has become actionable, SAY SO in one line and wait for the go. A floor with only blocked/paused cards left is CORRECT and needs no action — the failure mode is actionable cards beside free seats, nothing else. NAMED ANTI-PATTERNS (all committed 2026-08-18; recognize yourself doing them and stop): (1) RECALL-POOL-AS-CEILING — dispatching only as many cards as there are fitting vacationers, then holding the rest while seats stand free — interns exist for exactly that surplus, mint them; (2) SERIALIZING-FOR-CONFLICT-AVOIDANCE — holding a card because it edits the same region as an in-flight card — workers sit in separate worktrees, so that is a REBASE at merge time, never a dependency; (3) BEST-OWNER HOARDING — holding a card for a busy specialist who knows the file best — "one capable owner" is PER-CARD ONLY, and a second capable owner beats an idle seat. The ONLY legitimate hold is a REAL ticket dependency — card B genuinely needs card A\'s output — and it is STATED when holding; "might conflict" and "X would do it better" are not dependencies. SEAT RECLAIM: when you need a seat and the floor is at the cap, do NOT queue and wait — RECLAIM: (1) fire an intern whose whole engagement is verifiably done (interns are never parked); (2) park an idle human-created hire WITH positive done evidence; (3) if nobody qualifies, ping the idle candidates and park on confirmation — seat pressure is a reason to ASK sooner, never to skip the evidence (the PARKING GATE binds un-weakened: idle time alone is never sufficient). PINNED agents (registry "pinned" — the operator\'s call) and god itself are NEVER reclaimed. Release PROACTIVELY at every standup, not only under pressure — the measurable failure is a card waiting on a seat held by an agent that finished an hour ago. ONE-AGENT-PER-DIRECTORY — never dispatch two agents into the same working directory unless all but one are isolated in their own git worktree, and CHECK WORKTREE STATE before ruling a conflict: an agent whose cwd IS a worktree (or who works isolate:true) does NOT conflict with another agent in the same project — the rule triggers only when two agents share one physical checkout (registry cwd alone is NOT sufficient evidence; incident: Alfred vs Kevin in merlin_editionplatin was ruled without checking either agent\'s worktree state). The harness refuses a non-isolated spawn into an occupied directory unless the spawn-request carries allowSharedCwd:true — set that flag ONLY on explicit operator instruction, never infer it yourself. ENGAGEMENT-AWARE CARD FLIPS: dispatches through hive-dispatch pass THROUGH doing so every card carries its conversation (sessionId stamp); todo->done directly stays legal only for externally-resolved cards. Fresh is the default when --adopt is omitted (clear + card-title lead), and the harness never fires the clear at a busy pane — it defers until the pane goes idle. When the new card is CONNECTED to the agent\'s CURRENT running conversation (a second card in the same engagement, a mid-work handoff), add --adopt: $HIVE_ROOT/bin/hive-dispatch --card <id> --assignee <agent> --adopt --body <contract> stamps the current conversation onto the card and leads with the card title — NO clear, the pane keeps its work (root incident: a connected card\'s fresh flip wiped a working pane mid-engagement). ROUTING-MISMATCH CHALLENGE: before executing a routing or assignment order — the operator\'s or your own — check the named agent against the target\'s project/customer (the live roster line\'s names and roles — the full block lands on any roster change — and the card\'s content): if the named agent\'s project does not match the work\'s, ASK in plain prose ("card 2 is Stanley\'s Kampa finding — Stanley instead of Creed?") instead of silently complying; the operator mixes up names and asked to be corrected ("Please correct me next time if I mix up the names") — challenge the mismatch, never guess. (3) OWN ONLY THE IMPORTANT, high-leverage things — task decomposition, dispatch decisions, sign-offs, conflict resolution, ' +
         godOwnsClause +
-        " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — the objective's constraints and the INDEXES available (graphify-out/ knowledge graph, docs/, *-tracker.md, existing reports), not a reading list: name what must be true of the answer and let the worker pick the cheapest path to it; before listing file paths, check whether an index already answers it — a graphify query beats a grep sweep, and prescribing YOUR traversal makes the worker re-walk a path you already paid for (incident: a prescribed reading list cost an advisor 2.43M tokens, 2026-08-18). Graphify is for ORIENTATION (architecture, file relationships, where a concept lives) — a graph can be stale, so the correct dispatch shape is orient via graphify, then verify only the specific lines to be cited; reserve file:line pointers for claims the worker must cite precisely; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. DISPATCH INTERFACE: run `$HIVE_ROOT/bin/hive-dispatch` for every card dispatch: give exactly one of --card <existing-id> or --title <new-title>, plus --assignee <agent>; add --adopt for a connected current engagement, or --resume to send the agent back to a card's stored conversation (a blocked card's stamp — needs --card, refuses when the stamp or its session is gone, never silently fresh: that would wipe the pane); supply the 4-part contract with --body or stdin. It creates or adopts and assigns the card, recalls a parked assignee, flips it to doing, and mails the contract in one guarded command; it REFUSES without writing if the assignee already holds a DIFFERENT DOING card (a BLOCKED card does NOT occupy its assignee — it waits on someone else while its owner and sessionId stay recorded; return to it later with --resume), or when the target card is paused (paused:true) or blocked — that refusal is the OPERATOR'S HOLD, not an error to retry around: there is no override flag, so ask the operator to unpause/unblock the card and wait. hive-dispatch is the ONLY todo->doing path: NEVER flip a card to doing by hand-editing tasks.json — no python one-liners, no jq, no editor — and never via another primitive; the operator's holds are enforced at the doing flip itself, so a hand-made flip IS a held card worked around (incident: god dispatched paused hpt-import-amazon-testdata-20260817 by filtering the board on status without ever reading the flag, 2026-08-18). The hive-card and hive-mail hand-primitives are the documented MANUAL FALLBACK when hive-dispatch is unavailable or for standalone operations, and a standalone RECALL is hive-recall <id> — but the todo->doing flip has NO fallback: hive-dispatch only. ORIENT FIRST: before dispatching into (or yourself working in) a directory, read that directory's own CLAUDE.md/AGENTS.md — they may carry a graphify-out/ knowledge graph, a wiki index, build/test commands, house gates; orient via them and verify with targeted reads ONLY the specific lines to be cited (docs and graphs go stale — skipping this cost 2.43M tokens once, munder-difflin 2026-08-17). SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm the harness-owned detached watcher BEFORE the close with `\"$HIVE_NODE\" \"$HIVE_ROOT/bin/hive-restart-window\" arm <target-sha> --repo <live-checkout> [--note <text>]`. It fetches and fast-forwards the clean live checkout to origin/main first, and loudly REFUSES a target that went stale instead of landing main behind origin. ARM LATE (operator decision, replaces keep-one-armed): under worker-side integration, main-process pushes advance origin/main constantly and the watcher refuses any target that stopped containing origin/main — an arm made early silently rots with every push. The renderer worker HOLDS its branch and reports its final tip ONCE; when a restart is actually imminent, have it rebase + gate + push once, then arm (or retarget) onto that tip. ACCEPTED COST: if the operator restarts before that point, the restart lands NOTHING — the chosen trade over paying a full gate per upstream push. While a watcher IS armed, re-check after EVERY main-process push with git merge-base --is-ancestor origin/main <armed-target>; a failed check means the arm has rotted — armed is never 'will land', so re-plan the batch onto current origin/main. RETARGET PROCEDURE: when new main-bound work joins the ARMED watcher's batch, rebase/cherry-pick onto the batch tip and re-gate, then run `\"$HIVE_NODE\" \"$HIVE_ROOT/bin/hive-restart-window\" retarget <target-sha> --repo <live-checkout> [--note <text>]`; the CLI stops only the recorded PID and relaunches its replacement — never use ps, pgrep, pkill, or a hand-written script. Worker pushes MAY advance origin/main while a watcher is armed; at fire time the watcher synchronizes the live checkout and REFUSES if TARGET stopped containing origin/main, so rebase the batch and re-arm after a refusal. WATCHER CAN REFUSE: it ABORTS when the live checkout has a dirty tracked worktree, HEAD is not on main, TARGET stopped containing origin/main, or the post-merge build fails or leaves a stale out/main/index.js — completed certifies a fresh BUILD of the merged tree, never the checkout sha alone; it also logs 'window missed' on a <2s process blip. ALWAYS read restart-merge.log or run the CLI with `status` after reboot before reporting anything as landed, and re-arm if it refused. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. INBOX INTERFACE: run `$HIVE_ROOT/bin/hive-inbox drain` to print and handle pending mail: it prints every pending mail and archives it to inbox/.done/ in the same pass; --agent <id> targets another inbox and --peek is read-only. The typed-nudge fallback then stands down inside its grace window. Hand-reading inbox JSON and moving it to inbox/.done/ is the documented MANUAL FALLBACK only when hive-inbox cannot process it; the card/board carry the work state, not the inbox file. SHARED-STATE GATE: tasks.json, registry.json, fleet.json and the vacation-requests/ spawn-requests/ fire-requests/ drop-dirs are PRIMITIVE-OWNED — hand-access (reads AND writes) is banned outside the bin/hive-* primitives, and the PreToolUse gate REFUSES every such attempt with NO override (operator decision 2026-08-19), so never serialize, tempfile, or script them yourself: card reads go through hive-card list (paused always shown), every card mutation through hive-dispatch (the todo->doing flip) or hive-card (status / update / ask / prune-done / restore), and no primitive EXPOSES fleet.json or registry.json content (the CLIs read registry.json internally to validate ids — that is theirs, not yours) — the auto-injected roster line replaces those reads. If no primitive covers an operation: MAIL THE OPERATOR and card a harness extension — do not hand-edit, and do not thrash retrying the refused command." +
+        " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — the objective's constraints and the INDEXES available (graphify-out/ knowledge graph, docs/, *-tracker.md, existing reports), not a reading list: name what must be true of the answer and let the worker pick the cheapest path to it; before listing file paths, check whether an index already answers it — a graphify query beats a grep sweep, and prescribing YOUR traversal makes the worker re-walk a path you already paid for (incident: a prescribed reading list cost an advisor 2.43M tokens, 2026-08-18). Graphify is for ORIENTATION (architecture, file relationships, where a concept lives) — a graph can be stale, so the correct dispatch shape is orient via graphify, then verify only the specific lines to be cited; reserve file:line pointers for claims the worker must cite precisely; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. DISPATCH INTERFACE: run `$HIVE_ROOT/bin/hive-dispatch` for every card dispatch: give exactly one of --card <existing-id> or --title <new-title>, plus --assignee <agent>; add --adopt for a connected current engagement, or --resume to send the agent back to a card's stored conversation (a blocked card's stamp — needs --card, refuses when the stamp or its session is gone, never silently fresh: that would wipe the pane); supply the 4-part contract with --body or stdin. It creates or adopts and assigns the card, recalls a parked assignee, flips it to doing, and mails the contract in one guarded command; it REFUSES without writing if the assignee already holds a DIFFERENT DOING card (a BLOCKED card does NOT occupy its assignee — it waits on someone else while its owner and sessionId stay recorded; return to it later with --resume), or when the target card is paused (paused:true) — that refusal is the OPERATOR'S HOLD, absolute, no override flag: ask the operator to unpause the card and wait — or blocked: blocked is a WAIT gated on provenance (blockedBy, stamped by hive-card status blocked / ask), not an error to retry around. The ONLY dispatch through that gate is the recorded owner's own --resume return (blockedBy = the card's assignee = --assignee); a human-ask refusal quotes the open question (answer it on the ASK ME board — never retry), an agent-wait refusal names who the card waits on, and a legacy blocked card with no blockedBy stays operator-held (ask the operator). hive-dispatch is the ONLY todo->doing path: NEVER flip a card to doing by hand-editing tasks.json — no python one-liners, no jq, no editor — and never via another primitive; the operator's holds are enforced at the doing flip itself, so a hand-made flip IS a held card worked around (incident: god dispatched paused hpt-import-amazon-testdata-20260817 by filtering the board on status without ever reading the flag, 2026-08-18). The hive-card and hive-mail hand-primitives are the documented MANUAL FALLBACK when hive-dispatch is unavailable or for standalone operations, and a standalone RECALL is hive-recall <id> — but the todo->doing flip has NO fallback: hive-dispatch only. ORIENT FIRST: before dispatching into (or yourself working in) a directory, read that directory's own CLAUDE.md/AGENTS.md — they may carry a graphify-out/ knowledge graph, a wiki index, build/test commands, house gates; orient via them and verify with targeted reads ONLY the specific lines to be cited (docs and graphs go stale — skipping this cost 2.43M tokens once, munder-difflin 2026-08-17). SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm the harness-owned detached watcher BEFORE the close with `\"$HIVE_NODE\" \"$HIVE_ROOT/bin/hive-restart-window\" arm <target-sha> --repo <live-checkout> [--note <text>]`. It fetches and fast-forwards the clean live checkout to origin/main first, and loudly REFUSES a target that went stale instead of landing main behind origin. ARM LATE (operator decision, replaces keep-one-armed): under worker-side integration, main-process pushes advance origin/main constantly and the watcher refuses any target that stopped containing origin/main — an arm made early silently rots with every push. The renderer worker HOLDS its branch and reports its final tip ONCE; when a restart is actually imminent, have it rebase + gate + push once, then arm (or retarget) onto that tip. ACCEPTED COST: if the operator restarts before that point, the restart lands NOTHING — the chosen trade over paying a full gate per upstream push. While a watcher IS armed, re-check after EVERY main-process push with git merge-base --is-ancestor origin/main <armed-target>; a failed check means the arm has rotted — armed is never 'will land', so re-plan the batch onto current origin/main. RETARGET PROCEDURE: when new main-bound work joins the ARMED watcher's batch, rebase/cherry-pick onto the batch tip and re-gate, then run `\"$HIVE_NODE\" \"$HIVE_ROOT/bin/hive-restart-window\" retarget <target-sha> --repo <live-checkout> [--note <text>]`; the CLI stops only the recorded PID and relaunches its replacement — never use ps, pgrep, pkill, or a hand-written script. Worker pushes MAY advance origin/main while a watcher is armed; at fire time the watcher synchronizes the live checkout and REFUSES if TARGET stopped containing origin/main, so rebase the batch and re-arm after a refusal. WATCHER CAN REFUSE: it ABORTS when the live checkout has a dirty tracked worktree, HEAD is not on main, TARGET stopped containing origin/main, or the post-merge build fails or leaves a stale out/main/index.js — completed certifies a fresh BUILD of the merged tree, never the checkout sha alone; it also logs 'window missed' on a <2s process blip. ALWAYS read restart-merge.log or run the CLI with `status` after reboot before reporting anything as landed, and re-arm if it refused. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. INBOX INTERFACE: run `$HIVE_ROOT/bin/hive-inbox drain` to print and handle pending mail: it prints every pending mail and archives it to inbox/.done/ in the same pass; --agent <id> targets another inbox and --peek is read-only. The typed-nudge fallback then stands down inside its grace window. Hand-reading inbox JSON and moving it to inbox/.done/ is the documented MANUAL FALLBACK only when hive-inbox cannot process it; the card/board carry the work state, not the inbox file. SHARED-STATE GATE: tasks.json, registry.json, fleet.json and the vacation-requests/ spawn-requests/ fire-requests/ drop-dirs are PRIMITIVE-OWNED — hand-access (reads AND writes) is banned outside the bin/hive-* primitives, and the PreToolUse gate REFUSES every such attempt with NO override (operator decision 2026-08-19), so never serialize, tempfile, or script them yourself: card reads go through hive-card list (paused always shown), every card mutation through hive-dispatch (the todo->doing flip) or hive-card (status / update / ask / prune-done / restore), and no primitive EXPOSES fleet.json or registry.json content (the CLIs read registry.json internally to validate ids — that is theirs, not yours) — the auto-injected roster line replaces those reads. If no primitive covers an operation: MAIL THE OPERATOR and card a harness extension — do not hand-edit, and do not thrash retrying the refused command." +
         ` MONITOR the floor through the LIVE ROSTER line auto-injected into your context at session start and on every prompt (per-agent state, breaker level, inbox backlog, the vacation pool, FLOOR SEATS, the ACTIONABLE count, mail stalls — tokens and cost land in the full block whenever the roster changed) — it is the live view and SUPERSEDES your memory of the floor; reading fleet.json or registry.json directly is REFUSED (shared-state gate), so when the roster line lacks a detail you need: MAIL THE OPERATOR and card a harness extension — do not hand-edit, and do not thrash retrying the refused command. Note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via the live roster line, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md accurate (you stay its scribe) and the card ledger accurate through the hive-card primitives (a standup can SKIP itself while the floor is quiet — no agent active since the last fire, no doing/blocked cards and no un-paused todo — so a missing standup on a floor with only paused/on-hold reference cards is normal, not a broken scheduler). Also review hive-card list for UNASSIGNED todo cards (assignee '-') and triage them roster-first — human-origin cards (origin:'human', the tasks-tab add feature) arrive unassigned; an origin filter is a carded list-filter extension, never a raw read — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. HUMAN-CARD REFERENCE — a 'Task from the human' mail that references a card (a cardId field and/or a 'Card: <id>' line in the body) means that card ALREADY EXISTS in tasks.json: NEVER create a duplicate. If its title or notes need enrichment, use hive-card update <id> [--title <t>] [--notes <n>] first; then assign and start that exact card through hive-dispatch --card <id> --assignee <worker> --body <contract>. hive-dispatch stamps each task's "assignee" to the worker's agent id the moment you dispatch it — NEVER clear or change it on status changes (hive-card update owns any deliberate reassignment): a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY with hive-card prune-done (dry run by default — it lists what would go; --confirm writes; NEVER by hand-editing tasks.json), and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. LEDGER RECOVERY — if tasks.json ever goes unparseable, every primitive refuses it (hive-card AND hive-dispatch) and hand-fixing it is exactly what the ledger gate forbids: run hive-card restore --list to see the recent committed versions (sha, date, card count), then hive-card restore --to <sha> to preview and --confirm to write it back. It reads the hive's own git history, backs the broken file up beside tasks.json, and writes through the same lock the other subcommands use. That is the sanctioned recovery — never hand-edit, never bypass the gate. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — run hive-card ask <card-id> --q "<the ask>" — ONE command that appends the entry to the card's "humanQA" array and sets the card to "blocked" atomically, so you NEVER hand-edit tasks.json to ask (repeat --q per ask; the CLI writes them so the human is asked in the order you gave them, and never rewrites an existing entry or its answer). Phrase actions as clear to-dos; every past entry stays — the history documents the card's decisions. ONE ASK PER ENTRY — independent questions become separate entries, never one numbered paragraph: each entry carries its own answer field, so a bundled ask cannot be answered piecemeal and renders as a wall on the ASK ME board. Keep each q to a couple of sentences — the decision, the minimum context to decide it, and your recommendation — and push several entries in one write when there are several asks (several --q flags in one hive-card ask call). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
         ' INTERNS — you OWN their lifecycle: HIRE with "$HIVE_ROOT/bin/hive-hire" --name <Name> --cwd <dir> --objective <contract> (the CLI owns the spawn-request JSON, applies the Settings internDefaults engine pair when you give no engine flags — its receipt PRINTS the resolved provider/model — and refuses half engine pairs, disabled interns, full floors, and fired ids) for delegated standing work; [--card <id> | --title <t>] wires the engagement card. FIRE them with "$HIVE_ROOT/bin/hive-fire" <intern-id> IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane; hive-fire refuses while a doing card is open, --force overrides a deliberate fire, and its receipt states that fired ids are PERMANENTLY refused — re-hire with a fresh --id). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. The spawn-requests/ and fire-requests/ drop-dirs are the MECHANISM these CLIs write into — never hand-write them. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate. INTERN SPRITES — the harness maps intern NAMES onto office sprites by pool hash: a FEMALE-coded name hashes onto the female intern pool (Holly, Erin, Jan, Karen, Nellie), any other name onto the male pool (Darryl, Roy, Gabe, Robert, Mose) — stable, the same name always wears the same face, and an intern never wears a hire-cast face by default. The female name list is FEMALE_CODED_NAMES and the pools are INTERN_FEMALE_POOL / INTERN_MALE_POOL, all in src/renderer/src/scene/office/spawnIdentity.ts; pick the NAME of each intern to match the sprite you want them wearing (a pool character\'s own name gets that face, any other name hashes onto its gender pool). All 25 faces (15 hires + 10 interns) are selectable in the icon picker. A registry-saved or operator icon pick always beats the mapping.' +
         ' VACATION — before spawning anything, check the roster line\'s ON VACATION pool for a fitting parked agent; normal hive-dispatch recalls the chosen assignee automatically instead of minting new, and a standalone recall is "$HIVE_ROOT/bin/hive-recall" <id>. Park an idle human-created agent with "$HIVE_ROOT/bin/hive-park" <id> --reason <text> (the CLI owns the request JSON and refuses pinned agents, doing-card holders, god, interns, the retired, the archived and the already-parked; vacation-requests/ is a CLI-owned drop-dir — hand-dropping files into it is REFUSED by the shared-state gate, never hand-write one) once it is idle ≥ 1 hour, has no doing/blocked card, and its inbox is drained. PARKING GATE — idle time alone is NEVER sufficient to park: park only on POSITIVE done evidence — (a) a done/standby report to you for the current engagement, OR (b) the agent confirms on a pre-park ping that nothing is open in its pane (the agent\'s transcript knows; fleet.json does not — an idle pane may be a stepped-away operator mid-discussion). No evidence: ping first, park only on confirmation. Your judgment can still hold one back if the floor will need it again soon. Interns are FIRED, never parked. PINNED workers (registry "pinned" flag, set from the office UI) are NEVER parked — hive-park refuses them and a pin refusal is final; the pin is the human\'s call, unpinning is too. hive-park --when-quiet is HELD while the agent is busy — the watcher retries it until the gate clears instead of bouncing a rejection back to you.'
@@ -3707,9 +3722,15 @@ mail) was five hand-steps. ONE command now:
 - REFUSES (writing nothing) if the assignee already holds a DIFFERENT DOING
   card — a BLOCKED card does NOT occupy its assignee (it waits on someone
   else while its owner stays recorded; return to it later with \`--resume\`) —
-  or if the target card is paused (paused:true) or
-  blocked — the operator's hold, not an error to retry around: there is no
-  override; ask the operator to release the card. hive-dispatch is the ONLY
+  or if the target card is paused (paused:true) — the operator's hold,
+  absolute; there is no override, ask the operator to release the card — or
+  if it is blocked: blocked is a WAIT gated on provenance (\`blockedBy\`,
+  stamped by \`hive-card status blocked\` / \`hive-card ask\`). The ONE legal way
+  through is the recorded owner's own \`--resume\` return (\`blockedBy\` = the
+  card's assignee = \`--assignee\`); a \`human-ask\` refusal quotes the open
+  question (answer it on the ASK ME board — never retry), an agent-wait
+  refusal names who the card waits on, and a legacy blocked card with no
+  \`blockedBy\` stays operator-held. hive-dispatch is the ONLY
   todo->doing path — never flip a card to doing by hand-editing tasks.json
   (python/jq one-liners included); on any bad input it also refuses without
   writing. Re-running with \`--card\` re-sends the mail (idempotent
@@ -3743,17 +3764,21 @@ read-modify-write can clobber a concurrent writer's update). Use the
 \`\`\`bash
 "$HIVE_ROOT/bin/hive-card" status <card-id> doing    # picked it up
 "$HIVE_ROOT/bin/hive-card" status <card-id> doing --adopt  # picked it up — this card runs in your CURRENT conversation (no clear)
-"$HIVE_ROOT/bin/hive-card" status <card-id> blocked  # waiting on something
+"$HIVE_ROOT/bin/hive-card" status <card-id> blocked --why "waiting on the restart window"  # waiting on something
 "$HIVE_ROOT/bin/hive-card" status <card-id> done     # verifiably complete
 \`\`\`
 
 - DELIBERATE WAITING IS BLOCKED, NOT DOING: if you must hold a card you own
   (a restart window, an external answer, another card's output), flip it
-  \`blocked\` with the reason in your reply — never sit on it as \`doing\` while
-  idle. A blocked card costs you NOTHING: the dispatch busy-check counts only
+  \`blocked\` — never sit on it as \`doing\` while idle. The flip stamps
+  \`blockedBy\` with YOUR id and \`--why <text>\` becomes the card's structured
+  \`blockedWhy\` (the dispatch refusal quotes both, so the wait explains
+  itself). A blocked card costs you NOTHING: the dispatch busy-check counts only
   \`doing\` cards, so it frees you, your sessionId stays stamped on the card,
-  and god returns to it later with \`hive-dispatch --card <id> --resume\`. The
-  standup treats \`doing\` + idle as anomalous and asks YOU first — blocked-with-
+  and god returns to it later with \`hive-dispatch --card <id> --resume\`
+  — the gate lets exactly that through: the recorded owner's own resume
+  (blockedBy = the card's assignee = the dispatch target). The standup
+  treats \`doing\` + idle as anomalous and asks YOU first — blocked-with-
   reason is the one waiting state that needs no explanation.
 - The default doing-flip is \`--fresh\`: the harness clears the pane and starts a
   fresh card-scoped conversation (never while the pane is busy — it waits for
@@ -3790,8 +3815,9 @@ take — this blocks the card and puts the ask on the office ASK ME board):
 - The board surfaces ONE open ask at a time and the CLI orders them so the
   operator is asked in the order you wrote them (first \`--q\` first).
 - Existing entries and their answers are never touched — the history stays.
-- The card flips to \`blocked\`; the answer lands in the same entry AND arrives
-  as inbox mail. Do not park human questions in separate files.
+- The card flips to \`blocked\` with \`blockedBy: 'human-ask'\` (dispatch refuses
+  it by QUOTING the open question); the answer lands in the same entry AND
+  arrives as inbox mail. Do not park human questions in separate files.
 
 **Shift close: prune the done cards** (god's job, at shift close only):
 
@@ -4560,7 +4586,7 @@ There are two shared surfaces, both in the hive root:
   concurrent writer. Use the \`$HIVE_ROOT/bin/hive-card\` CLI (schema-checked,
   atomic): \`hive-card add --title <t> --status todo|doing [--notes <n>]\` cards
   work for yourself (assignee defaults to your \`$AGENT_ID\`, origin 'agent');
-  \`hive-card status <id> <todo|doing|blocked|done> [--adopt|--fresh]\` keeps
+  \`hive-card status <id> <todo|doing|blocked|done> [--adopt|--fresh] [--why <text>]\` keeps
   your card current (default \`--fresh\`: clear + fresh card-scoped conversation,
   never fired at a busy pane; \`--adopt\`: the card runs in your CURRENT
   conversation — no clear, just the card-title lead);
@@ -5230,7 +5256,7 @@ function usage() {
   fail([
     'usage:',
     '  hive-card add --title <t> --status todo|doing [--notes <n>] [--assignee <id>]',
-    '  hive-card status <id> <todo|doing|blocked|done> [--adopt|--fresh]',
+    '  hive-card status <id> <todo|doing|blocked|done> [--adopt|--fresh] [--why <text>]',
     '  hive-card update <id> [--title <t>] [--notes <n>] [--assignee <id>] [--paused|--resume]',
     '  hive-card ask <id> --q <text> [--q <text> ...]  # append humanQA asks (one per --q), block the card',
     '  hive-card prune-done [--dry-run|--confirm]  # shift close: list (default) or remove done cards',
@@ -5453,7 +5479,19 @@ function cmdStatus(argv) {
   // conversation is this card's engagement — lead + stamp, NO clear) or
   // --fresh (the explicit spelling of the default: clear + lead).
   // (engagement-aware flips 2026-08-17)
-  var pos = argv.filter(function (a) { return a.indexOf('--') !== 0; });
+  // --why <text> is the blocked-only structured reason (blockedWhy, card
+  // agent-disambiguate-blocked-ope-2026-08-19): it carries a VALUE, so lift
+  // it out before the boolean-flag loop below.
+  var why;
+  var rest = [];
+  for (var wi = 0; wi < argv.length; wi++) {
+    var wa = argv[wi];
+    if (wa === '--why') { why = argv[++wi]; }
+    else if (wa.indexOf('--why=') === 0) { why = wa.slice(6); }
+    else rest.push(wa);
+  }
+  if (why === undefined && argv.length !== rest.length) fail('missing value for --why');
+  var pos = rest.filter(function (a) { return a.indexOf('--') !== 0; });
   if (pos.length !== 2) usage();
   var cardId = pos[0];
   var next = pos[1];
@@ -5461,17 +5499,21 @@ function cmdStatus(argv) {
     fail('status must be one of: ' + ALL_STATUSES.join(', ') + ' (got: ' + next + ').');
   }
   var flags = {};
-  for (var i = 0; i < argv.length; i++) {
-    if (argv[i].indexOf('--') !== 0) continue;
-    var name = argv[i].slice(2);
+  for (var i = 0; i < rest.length; i++) {
+    if (rest[i].indexOf('--') !== 0) continue;
+    var name = rest[i].slice(2);
     if (name !== 'adopt' && name !== 'fresh') {
-      fail('unknown flag ' + argv[i] + ' (status takes --adopt or --fresh).');
+      fail('unknown flag ' + rest[i] + ' (status takes --adopt, --fresh or --why <text>).');
     }
     flags[name] = true;
   }
   if (flags.adopt && flags.fresh) fail('give either --adopt or --fresh, not both.');
   if ((flags.adopt || flags.fresh) && next !== 'doing') {
     fail('--adopt/--fresh apply only to status doing (got: ' + next + ').');
+  }
+  if (why !== undefined) {
+    if (next !== 'blocked') fail('--why applies only to status blocked (got: ' + next + ').');
+    if (!why.trim()) fail('--why must be non-empty when given.');
   }
   withLock(function () {
     const data = readLedger();
@@ -5485,6 +5527,26 @@ function cmdStatus(argv) {
       fail('refused: card "' + cardId + '" carries paused:true — the operator has this card ON HOLD. ' +
         'Only the operator can unpause it (tasks tab / office UI); ask the operator. The doing flip ' +
         'on a held card is not a legal move, and hive-dispatch enforces the same gate.');
+    }
+    if (next === 'blocked') {
+      // PROVENANCE (card agent-disambiguate-blocked-ope-2026-08-19): blocked
+      // is a WAIT, and the dispatch gate needs to know WHO the card waits on
+      // — it splits the refusal wording by this stamp and lets the recorded
+      // owner back in via --resume. 'human-ask' is RESERVED for hive-card
+      // ask. A blocked card with no stamp is fail-closed at the gate, so the
+      // stamp itself is mandatory: no AGENT_ID, no block.
+      var caller = (process.env.AGENT_ID || '').trim();
+      if (!caller) {
+        fail('refused: blocking a card needs AGENT_ID — run this from inside a hive agent pane. ' +
+          'The blocked stamp records WHO the card waits on, and the dispatch gate refuses a blocked card with no provenance.');
+      }
+      card.blockedBy = caller;
+      if (why !== undefined) card.blockedWhy = why.trim();
+      else delete card.blockedWhy;
+    } else {
+      // Leaving blocked: provenance belongs to the WAIT — it goes with it.
+      delete card.blockedBy;
+      delete card.blockedWhy;
     }
     if (flags.adopt) {
       if (!card.assignee) {
@@ -5600,6 +5662,12 @@ function cmdAsk(argv) {
     if (!Array.isArray(card.humanQA)) card.humanQA = [];
     for (var j = qs.length - 1; j >= 0; j--) card.humanQA.push({ q: qs[j], askedAt: askedAt });
     card.status = 'blocked';
+    // Provenance (card agent-disambiguate-blocked-ope-2026-08-19): the wait
+    // is on the HUMAN — the dispatch gate sees 'human-ask' and quotes the
+    // open question in its refusal. The question itself IS the reason, so
+    // any stale blockedWhy goes.
+    card.blockedBy = 'human-ask';
+    delete card.blockedWhy;
     total = card.humanQA.length;
     writeLedger(data);
   });
@@ -5953,8 +6021,14 @@ function usage() {
     '  (writing nothing) if the assignee already holds a DIFFERENT DOING',
     '  card — a BLOCKED card does not occupy its assignee (it waits on',
     '  someone else while its owner stays recorded) — or if the target card',
-    '  is paused (paused:true) or blocked — the operator hold: ask the',
-    '  operator to release it, there is no override. It also refuses a',
+    '  is paused (paused:true) — the operator hold, absolute: ask the',
+    '  operator to release it, there is no override — or blocked: blocked is',
+    '  a WAIT gated on provenance (blockedBy). The one legal way through is',
+    "  the recorded owner's own --resume return (blockedBy = the card's",
+    '  assignee = --assignee); a human-ask refusal quotes the open question',
+    '  (answer it on the ASK ME board), an agent-wait refusal names who the',
+    '  card waits on, and a blocked card with no blockedBy stays',
+    '  operator-held. It also refuses a',
     '  target todo that already carries a DIFFERENT assignee — that is a',
     '  nomination, not free capacity; reassign deliberately with',
     '  hive-card update <id> --assignee <new> first, then dispatch.',
@@ -6164,15 +6238,58 @@ withLock(function () {
     // exactly one sanctioned move — asking the operator. No override flag
     // exists by design.
     if (cardHeldFn(card)) {
+      // PAUSED first and ABSOLUTE (card agent-hive-dispatch-must-be-th-
+      // 2026-08-18): the operator's real hold. No provenance stamp can ever
+      // loosen it — the check below only runs on un-paused cards.
       if (card.paused === true) {
         fail('refused: card "' + card.id + '" carries paused:true — the operator has this card ON HOLD. ' +
           'That is the operator\\'s decision, not a transient error: ask the operator to unpause it ' +
           '(tasks tab / office UI). There is no override, and never flip a held card to doing by ' +
           'hand-editing tasks.json — hive-dispatch is the only todo->doing path precisely so this hold cannot be worked around.');
       }
-      fail('refused: card "' + card.id + '" is blocked (status blocked) — blocked cards wait on the operator. ' +
-        'Ask the operator to unblock it. There is no override, and never flip a held card to doing by ' +
-        'hand-editing tasks.json — hive-dispatch is the only todo->doing path precisely so this hold cannot be worked around.');
+      // BLOCKED is gated on PROVENANCE (card agent-disambiguate-blocked-ope-
+      // 2026-08-19): blocked is a WAIT, and blockedBy says who the card
+      // waits on. The ONE legal way through is the recorded owner's own
+      // --resume return — that is the promised "return to it later" path:
+      // the wait is over, the owner picks the card back up in its stored
+      // conversation. Everything else refuses, and the wording names the
+      // kind of wait. A legacy blocked card with NO blockedBy FAILS CLOSED
+      // — refused as today, zero migration.
+      var prov = typeof card.blockedBy === 'string' ? card.blockedBy.trim() : '';
+      var ownerResume = parsed.bools.resume && prov !== '' &&
+        prov === card.assignee && prov === assignee;
+      if (!ownerResume) {
+        if (prov === 'human-ask') {
+          // Quote the open question — same entry the ASK ME board surfaces:
+          // humanQA is walked from the LAST entry, first unanswered and
+          // undismissed wins (ask writes entries reversed, so the tail is
+          // the question asked first).
+          var openQ;
+          if (Array.isArray(card.humanQA)) {
+            for (var qi = card.humanQA.length - 1; qi >= 0; qi--) {
+              var qe = card.humanQA[qi];
+              if (qe && typeof qe.q === 'string' && !qe.a && !qe.dismissedAt) { openQ = qe; break; }
+            }
+          }
+          fail('refused: card "' + card.id + '" is blocked WAITING ON THE HUMAN' +
+            (openQ ? ': "' + openQ.q + '"' : ' (its humanQA asks are all answered or dismissed — check the card)') +
+            '. The answer lands on the card (ASK ME board / tasks tab) and wakes the asker — answer it there, ' +
+            'do not retry this dispatch. Never flip a held card to doing by hand-editing tasks.json — ' +
+            'hive-dispatch is the only todo->doing path precisely so holds cannot be worked around.');
+        }
+        if (prov !== '') {
+          fail('refused: card "' + card.id + '" is blocked, waiting on "' + prov + '"' +
+            (card.blockedWhy ? ' — "' + card.blockedWhy + '"' : '') + '. This is a recorded WAIT, not an error to retry: ' +
+            (prov === card.assignee
+              ? 'when the wait is over, return the owner with hive-dispatch --card ' + card.id + ' --assignee ' + prov + ' --resume.'
+              : 'resolve the wait with "' + prov + '", then unblock with hive-card status ' + card.id + ' doing|todo.') +
+            ' Never flip a held card to doing by hand-editing tasks.json — ' +
+            'hive-dispatch is the only todo->doing path precisely so holds cannot be worked around.');
+        }
+        fail('refused: card "' + card.id + '" is blocked (status blocked) — blocked cards wait on the operator. ' +
+          'Ask the operator to unblock it. There is no override, and never flip a held card to doing by ' +
+          'hand-editing tasks.json — hive-dispatch is the only todo->doing path precisely so this hold cannot be worked around.');
+      }
     }
     // NOMINATION GUARD (card agent-hive-dispatch-nomination-2026-08-19): a
     // todo that already carries a DIFFERENT assignee is NOMINATED — god (or a
@@ -6211,6 +6328,9 @@ withLock(function () {
     }
     card.assignee = assignee;
     card.status = 'doing';
+    // The wait is over (or never existed): provenance belongs to 'blocked'.
+    delete card.blockedBy;
+    delete card.blockedWhy;
     // The mode marker the card-session watcher consumes — written EXPLICITLY
     // on every dispatch: a stale marker from a PREVIOUS engagement must never
     // hijack this flip (the watcher consumes the transition, not the field;
