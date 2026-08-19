@@ -516,6 +516,10 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
       character,
       accent,
       description: description.trim() || 'a fresh harness',
+      // The same briefing seeds the registry role (hive.role below) — carry it
+      // on the row too so monitor rows render identity from the start; the
+      // boot reconcile keeps it in step with the registry thereafter.
+      role: description.trim() || undefined,
       project: basename(spawnedCwd),
       tmuxTarget: '',
       cwd: spawnedCwd,

@@ -19,6 +19,7 @@ import { useFleetTelemetry, useBurnWindow } from '@/hooks/useTelemetry';
 import { waitingBadge } from '@/statusLabel';
 import { COMMAND_GROUPS } from '@shared/claudeCommands';
 import { useStore, triggerHistoryVisible, agentClassOf, type Agent } from '@/store/store';
+import { UNKNOWN_ROLE } from '@shared/agentRole';
 import { usePtyParser } from '@/hooks/usePtyParser';
 import { useProviderModels } from '@/hooks/useProviderModels';
 import {
@@ -1052,8 +1053,22 @@ function FloorTab({ seed }: { seed: { text: string; cardId?: string; seq: number
                   </button>
                 )}
               </div>
+              {/* ROLE IS IDENTITY (card agent-restore-parked-agents-de-2026-08-19):
+                  answers "who is this and what do they own" — the question this
+                  panel is read for. Registry role, shared unknown fallback. */}
+              <div style={{ fontSize: 11, color: 'var(--cth-ink-700)', wordBreak: 'break-word' }}>
+                {a.role?.trim() || UNKNOWN_ROLE}
+              </div>
               <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-all' }}>
                 {a.cwd}
+              </div>
+              {/* Live status — visibly subordinate to identity and labelled as
+                  status (vocabulary from card agent-separate-agent-identity--
+                  2026-08-19): the operator reads this line for what the agent
+                  is doing RIGHT NOW. Sanitised at the write point; kept, not
+                  deleted. */}
+              <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-word' }}>
+                <span style={{ color: 'var(--cth-ink-300)' }}>status:</span> {a.description}
               </div>
               {/* Live telemetry (folded in from the old Fleet tab) */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1785,7 +1800,13 @@ function VacationSection() {
               {a.name}
             </div>
             <div style={{ fontSize: 11, color: 'var(--cth-ink-500)', wordBreak: 'break-word' }}>
-              {a.description}
+              {/* ROLE IS IDENTITY (card agent-restore-parked-agents-de-2026-08-19):
+                 this shelf used to render the live description — the scrape —
+                 so every parked agent read 'on standby' and the operator routed
+                 on status wording. The registry role is who they are; the
+                 parked description is restored to the same wording by the boot
+                 reconcile, so a second line would only duplicate it. */}
+              {a.role?.trim() || UNKNOWN_ROLE}
             </div>
             <div style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
               parked {relAge(Math.max(0, Date.now() - (a.vacationSince ?? Date.now())))} ago

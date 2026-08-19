@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useStore, type ToolKind, type StationKind } from '@/store/store';
 import { inferAgentProvider } from '@/store/config';
+import { sanitizeStatusText } from '@/statusText';
 
-// ANSI escape sequence stripper — Claude colors its tool tags with these.
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
+// ANSI escape stripper — Claude colors its tool tags with these.
+// SANITISED AT THE WRITE POINT (card agent-restore-parked-agents-de-2026-08-19):
+// the chunk is stripped with the FULL control-sequence sanitiser (the old
+// SGR-only `\x1b[…m` pattern let cursor-position codes like `\x1b[26G` through
+// into the stored status — Dwight's row rendered them as visible junk), and
+// the summary written into `description`/`action` is collapsed + capped so it
+// fits a row. Semantics unchanged: this is still the live status scrape.
 
 // Tool call lines look like: `● Read SPEC.md`, `● Bash npm test`, `● Edit src/foo.ts`
 const TOOL_RE = /●\s+([A-Za-z][A-Za-z_]*)(?:\s+(.+))?/g;
@@ -108,7 +114,7 @@ export function usePtyParser(agentId: string) {
       // own their status; claude keeps both (parser refines, hooks decide).
       const self = useStore.getState().agents.find((a) => a.id === agentId);
       if (self && inferAgentProvider(self.command, self.provider) !== 'claude') return;
-      const text = chunk.replace(ANSI_RE, '');
+      const text = sanitizeStatusText(chunk, 400);
       if (!text.trim()) return;
 
       // Passive context-limit sniffing from /context output (the gauge poll
@@ -140,7 +146,9 @@ export function usePtyParser(agentId: string) {
       if (lastTool) {
         const station = TOOL_TO_STATION[lastTool] ?? 'desk';
         const carrying = TOOLKIND_BY_NAME[lastTool] ?? undefined;
-        const summary = lastArg ? `${lastTool.toLowerCase()} ${lastArg}` : lastTool.toLowerCase();
+        const summary = sanitizeStatusText(
+          lastArg ? `${lastTool.toLowerCase()} ${lastArg}` : lastTool.toLowerCase(),
+        );
         // NOTE: `progress` deliberately untouched — it's the context gauge now
         // (filled by the useHive context poll), not a per-task meter.
         updateAgent(agentId, {

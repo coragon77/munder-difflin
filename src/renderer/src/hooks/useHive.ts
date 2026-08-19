@@ -31,6 +31,7 @@ import { deliverWithAcknowledgement } from './queueDelivery';
 import { cardSessionActionStillValid, type CardSnapshotLike } from '../../../shared/cardSessions';
 import { waitingLabel } from '../../../shared/waitingLabel';
 import { spawnIdentity } from '@/scene/office/spawnIdentity';
+import { UNKNOWN_ROLE } from '../../../shared/agentRole';
 
 const GOD_ID = 'god';
 const GOD_PTY = `pty-${GOD_ID}`;
@@ -1137,6 +1138,10 @@ export function useHive(config: HarnessConfig | null): void {
         character,
         accent,
         description: rec.role || 'a fresh harness',
+        // REGISTRY ROLE — the identity line monitor rows render (card
+        // agent-restore-parked-agents-de-2026-08-19); description stays the
+        // status field the scrape owns.
+        role: rec.role,
         project,
         tmuxTarget: '',
         cwd: rec.cwd,
@@ -1199,6 +1204,18 @@ export function useHive(config: HarnessConfig | null): void {
   //     (a phantom restore card) and the VACATION shelf would stay empty. The
   //     registry is the truth — re-run the park locally for its vacationers.
   //     Idempotent: re-parking an already-parked entry only refreshes the flag.
+  //
+  //     ROLE + DESCRIPTION RESTORE (card agent-restore-parked-agents-de-2026-08-19):
+  //     the same pass stamps the REGISTRY ROLE onto every row (the identity the
+  //     monitor renders) and, for PARKED agents with a real registry role, sets
+  //     the row's `description` to that role wording — Stefan's "restore the
+  //     descriptions" rule, preferring the restored role text. This is the
+  //     sanctioned write path for the field: the store's own updateAgent via the
+  //     roster mirror, sourced from the registry — no hive file is hand-edited.
+  //     It STICKS because a parked agent has no pane: the 4s idle scrape only
+  //     rewrites LIVE agents (its timer is cleared when the pty view unmounts).
+  //     The UNKNOWN wording is never stamped into data — no registry role means
+  //     the row keeps its description and renders the shared unknown constant.
   useEffect(() => {
     if (!config?.onboardingComplete) return;
     let cancelled = false;
@@ -1206,11 +1223,20 @@ export function useHive(config: HarnessConfig | null): void {
       .hiveAgentDirectory()
       .then((dir) => {
         if (cancelled) return;
-        for (const e of dir.agents)
-          if (e.vacation)
+        for (const e of dir.agents) {
+          const restore = e.role !== UNKNOWN_ROLE ? e.role : undefined;
+          if (e.vacation) {
             useStore
               .getState()
               .archiveAgent(e.id, { vacation: true, vacationSince: e.vacationSince ?? undefined });
+            useStore.getState().updateAgent(e.id, {
+              role: e.role,
+              ...(restore ? { description: restore } : {}),
+            });
+          } else {
+            useStore.getState().updateAgent(e.id, { role: e.role });
+          }
+        }
       })
       .catch(() => {
         /* ignore — the broadcasts above still cover live parks */

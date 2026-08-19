@@ -8,6 +8,7 @@ import type { CardSessionMarker } from '@shared/cardSessions';
 import type { HireManifest } from '@shared/hire';
 import { DEFAULT_ORG_TRIGGER, type OrgTriggerConfig, type WebhookTrigger } from '@shared/triggers';
 import { isCompactionCommand } from '@shared/providerAutomation';
+import { sanitizeStatusText } from '@/statusText';
 
 export type ToolKind =
   | 'Read'
@@ -43,6 +44,13 @@ export interface Agent {
   accent: AccentColorName;
   /** persistent short context — what is this agent for (shown on the floor) */
   description: string;
+  /** REGISTRY ROLE — the identity field god routes on (card
+   *  agent-restore-parked-agents-de-2026-08-19). Stamped from the registry
+   *  (spawn broadcasts, the boot reconcile) and rendered as the identity
+   *  line on monitor rows; NEVER written from `description`, which is the
+   *  live status scrape usePtyParser owns. Absent/empty renders as the
+   *  shared UNKNOWN_ROLE constant. */
+  role?: string;
   project: string;
   /** legacy field — populated only for the seeded mock agents */
   tmuxTarget: string;
@@ -552,8 +560,13 @@ function loadPersistedAgents(): Agent[] {
     const parsed = persistedSlice(LS_AGENTS, fileRoster?.agents);
     if (!parsed.length) return [];
     // Reset volatile run-state; the PTY stream / mock loop will repopulate it.
+    // Descriptions are sanitised ON HYDRATE (card agent-restore-parked-agents-
+    // de-2026-08-19): rows persisted before the scrape was cleaned at the
+    // write point can still carry raw ANSI/control junk (Dwight's), and this
+    // is the one point every consumer reads through.
     return parsed.map((a) => ({
       ...a,
+      description: sanitizeStatusText(a.description ?? ''),
       progress: 0,
       status: 'idle',
       action: 'reconnecting…',
@@ -582,8 +595,11 @@ function loadPersistedArchived(): Agent[] {
     const parsed = persistedSlice(LS_ARCHIVED, fileRoster?.archived);
     if (!parsed.length) return [];
     // Archived agents have no live process — force the flag + clear run-state.
+    // Descriptions sanitised on hydrate like live rows: a parked agent's
+    // frozen last scrape is exactly where control-sequence junk went stale.
     return parsed.map((a) => ({
       ...a,
+      description: sanitizeStatusText(a.description ?? ''),
       archived: true,
       status: 'idle',
       ptyId: undefined,
