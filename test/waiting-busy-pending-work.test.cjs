@@ -165,6 +165,7 @@ test('HookServer feeds the tracker from live payload shapes (Monitor arm → Sto
   const tracker = new T();
   const hive = {
     recordSession() {},
+    recordInboxMonitorArm() {},
     sockPath() {
       return null;
     },

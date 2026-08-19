@@ -62,7 +62,8 @@ interface HookPayload {
   tool_response?: { taskId?: unknown; persistent?: boolean };
 }
 
-/** Card agent-sessionstart-must-tell-e-2026-08-19. A harness restart (the
+/** Card agent-sessionstart-must-tell-e-2026-08-19, widened by card
+ *  agent-harness-owned-wake-rearm-2026-08-19. A harness restart (the
  *  operator's KILL button) kills every agent's inbox monitor silently — the
  *  Monitor-tool task dies with the agent's session, the deferred tool list
  *  resets, and NOTHING tells the agent: an agent stalling on a doing card is
@@ -77,14 +78,51 @@ interface HookPayload {
  *  respawn): two copies would drift apart. No restart-vs-first-start branch:
  *  SessionStart `source` is optional and shim-dependent, and the action is
  *  identical either way — "unless you armed it in THIS session" makes one
- *  literal correct for startup, resume and clear alike. */
+ *  literal correct for startup, resume and clear alike.
+ *  THE WIDENED CLASS (Robert's fourth failure mode): the same kill drops
+ *  EVERY in-session background task — builds, gate runs, run-in-background
+ *  shells, watchers — and the restored transcript still believes they are
+ *  running: the agent waits for completion notifications that can never
+ *  arrive, and because no MAIL is involved, no nudge path exists for this
+ *  class at all. One sentence covers it — same unconditional literal, "from
+ *  any earlier session" stays vacuously true on a first start. */
 const SESSION_START_REARM =
-  'INBOX MONITOR — this is a FRESH session: the inbox monitor you armed in any earlier session is DEAD (a restart or session clear kills every Monitor task silently — nothing else will tell you). REARM it NOW — unless you armed it in THIS session — using the INBOX WAKE command in your system prompt (a redundant arm is cheaper than a missed one). If you cannot arm it, do nothing: the typed nudge remains the fallback.';
+  'INBOX MONITOR — this is a FRESH session: the inbox monitor you armed in any earlier session is DEAD (a restart or session clear kills every Monitor task silently — nothing else will tell you). REARM it NOW — unless you armed it in THIS session — using the INBOX WAKE command in your system prompt (a redundant arm is cheaper than a missed one). If you cannot arm it, do nothing: the typed nudge remains the fallback. The same kill dropped EVERY background task from any earlier session — builds, gate runs, background shells, watchers — and a restored transcript still believes they are running: re-verify anything you were waiting on; a completion notification from a dead task can never arrive.';
 
 /** The rearm line for an agent's provider — null when the provider has no
  *  agent-armable inbox monitor (capability absent, never a default). */
 function sessionStartRearmFor(provider: AgentProvider | undefined): string | null {
   return provider !== undefined && hasInboxMonitor(provider) ? SESSION_START_REARM : null;
+}
+
+/** Card agent-harness-owned-wake-rearm-2026-08-19: the rearm-aware wake. A
+ *  dead monitor does not make an agent mail-deaf (the typed nudge still fires
+ *  per mail) — it makes it PERMANENTLY DEGRADED: every future mail pays the
+ *  45s nudge grace because nothing ever tells the agent to rearm. The
+ *  harness KNOWS the degradation: the registry carries the durable fact that
+ *  a persistent monitor was armed in an earlier harness lifetime
+ *  (recordInboxMonitorArm at PostToolUse Monitor), and the tracker's
+ *  session-scoped ids say whether an arm has been seen since this session
+ *  began (SessionStart wipes them; a rearm repopulates). Both legs plus
+ *  capability ⇒ the wake NAMES THE CAUSE. Rides UserPromptSubmit — the
+ *  boundary every typed nudge lands on — as additionalContext (merged with
+ *  roster/steer), because the typed text is renderer-owned and this must
+ *  merge live without a restart window. Self-extinguishing: the first
+ *  PostToolUse(Monitor, persistent) of the session clears it. */
+const NUDGE_REARM =
+  'INBOX MONITOR — the harness recorded a persistent inbox monitor armed for you in an earlier session and has seen no rearm in this one: the monitor is GONE (a restart or session clear kills every Monitor task silently). REARM it now using the INBOX WAKE command in your system prompt (a redundant arm is cheaper than a missed one) — until you do, every new mail waits out the typed-nudge grace window instead of waking you in-session.';
+
+/** The nudge-time rearm notice for an agent the harness KNOWS is degraded:
+ *  durable arm fact, monitor-capable provider, no rearm since this session
+ *  began. Null whenever any leg is missing — never a guess, never a nag for
+ *  an agent that rearmed (or never armed). */
+function nudgeRearmFor(state: {
+  provider: AgentProvider | undefined;
+  armedBefore: boolean;
+  rearmedSinceSessionStart: boolean;
+}): string | null {
+  if (!state.armedBefore || state.rearmedSinceSessionStart) return null;
+  return state.provider !== undefined && hasInboxMonitor(state.provider) ? NUDGE_REARM : null;
 }
 
 export class HookServer {
@@ -315,12 +353,12 @@ export class HookServer {
       // (never-completing) monitors by the taskId learned HERE — counting them
       // would make the whole floor permanently busy and no clear/park would
       // ever fire. One-shot monitors (persistent false/absent) still count.
+      // A PERSISTENT arm is also the durable registry fact behind the
+      // rearm-aware nudge (recordInboxMonitorArm — one write per lifetime).
       if (p.tool_name === 'Monitor') {
-        this.pendingWork?.recordMonitorArm(
-          agentId,
-          p.tool_response?.taskId,
-          p.tool_response?.persistent === true,
-        );
+        const persistent = p.tool_response?.persistent === true;
+        this.pendingWork?.recordMonitorArm(agentId, p.tool_response?.taskId, persistent);
+        if (persistent) this.hive.recordInboxMonitorArm(agentId);
       }
     }
 
@@ -491,12 +529,26 @@ export class HookServer {
         ? sessionStartRearmFor(this.hive.providerOf(agentId))
         : null;
 
-    if (steer || roster || rearm) {
+    // The rearm-aware wake (card agent-harness-owned-wake-rearm-2026-08-19):
+    // known-degraded agents get the cause named at the boundary every typed
+    // nudge lands on. Requires the tracker — without it "rearmed since this
+    // session began" is unknowable and a notice would nag agents that DID
+    // rearm, so it stays silent (the SessionStart line still fired).
+    const nudgeRearm =
+      event === 'UserPromptSubmit' && agentId && this.pendingWork
+        ? nudgeRearmFor({
+            provider: this.hive.providerOf(agentId),
+            armedBefore: this.hive.inboxMonitorArmed(agentId),
+            rearmedSinceSessionStart: this.pendingWork.hasPersistentMonitor(agentId),
+          })
+        : null;
+
+    if (steer || roster || rearm || nudgeRearm) {
       this.emit(agentId, event, p);
       return {
         hookSpecificOutput: {
           hookEventName: event,
-          additionalContext: [roster, rearm, steer].filter(Boolean).join('\n\n'),
+          additionalContext: [roster, rearm, nudgeRearm, steer].filter(Boolean).join('\n\n'),
         },
       };
     }

@@ -299,6 +299,16 @@ export interface RegistryAgent extends AgentMeta {
    *  (e.g. "ClaudeTerminalHarness") spawns into a nonexistent dir and fails; this
    *  flag makes that visible instead of letting it slip through silently. */
   cwdValid?: boolean;
+  /** True once a PERSISTENT inbox-monitor arm has been observed for this agent
+   *  (PostToolUse Monitor with persistent:true) — the DURABLE half of the
+   *  rearm-aware nudge condition (card agent-harness-owned-wake-rearm-
+   *  2026-08-19). Sticky by design: persistent monitors never complete, so
+   *  nothing legitimately un-arms one — the only real transition is the session
+   *  dying, which is exactly the degraded state this flag exists to name.
+   *  Survives harness restarts (the in-memory tracker dies with the process;
+   *  this registry fact is what the restarted harness still knows) and
+   *  re-spawns (ensureAgent's `...prev` spread, like permissionMode). */
+  inboxMonitorArmed?: boolean;
 }
 
 export interface Registry {
@@ -1520,6 +1530,37 @@ export class HiveManager {
       this.commit(`hive: session ${agentId}`);
     } catch {
       /* best-effort — never crash a hook handler */
+    }
+  }
+
+  /** Record that this agent has (at some point) armed a persistent inbox
+   *  monitor — the durable fact behind the rearm-aware nudge (see
+   *  RegistryAgent.inboxMonitorArmed). Sticky: writes only when the flag is
+   *  absent, so it costs one registry write per agent lifetime. Best-effort —
+   *  never crash a hook handler. */
+  recordInboxMonitorArm(agentId: string): void {
+    const root = this.root();
+    if (!root) return;
+    try {
+      const reg = this.registry();
+      const agent = reg.agents[agentId];
+      if (!agent || agent.inboxMonitorArmed) return; // unknown agent or already known → no write
+      agent.inboxMonitorArmed = true;
+      agent.lastSeen = Date.now();
+      this.writeJson(join(root, 'registry.json'), reg);
+      this.commit(`hive: monitor arm ${agentId}`);
+    } catch {
+      /* best-effort — never crash a hook handler */
+    }
+  }
+
+  /** The durable "has ever armed a persistent inbox monitor" fact (registry).
+   *  False for unknown agents — never a guess. */
+  inboxMonitorArmed(agentId: string): boolean {
+    try {
+      return this.registry().agents[agentId]?.inboxMonitorArmed === true;
+    } catch {
+      return false;
     }
   }
 

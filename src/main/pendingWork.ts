@@ -54,6 +54,14 @@ export class PendingWorkTracker {
     else ids.delete(taskId);
   }
 
+  /** True when a persistent monitor arm has been seen since the CURRENT
+   *  session began — SessionStart/End wipe the set (resetAgent) and a rearm
+   *  repopulates it, so this is the session-scoped half of the rearm-aware
+   *  nudge condition (card agent-harness-owned-wake-rearm-2026-08-19). */
+  hasPersistentMonitor(agentId: string): boolean {
+    return (this.persistentMonitorIds.get(agentId)?.size ?? 0) > 0;
+  }
+
   /** Stop: record the live background-task snapshot as this agent's census.
    *  Shape per claude 2.1.x Kjp(): {id, type, status, description, …}. */
   recordSettle(agentId: string, backgroundTasks: unknown): void {
