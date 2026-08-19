@@ -95,6 +95,7 @@ import {
 import { startSessionRequestWatcher } from './sessionRequests';
 import { listLocalSkills, type LocalSkill } from './skills';
 import { shouldAdoptWorktree } from './worktreeAdopt';
+import { autoParkDecisions, autoParkReason, AUTO_PARK_SWEEP_MS } from './autoPark';
 import {
   parkAgentCore,
   recallAgentCore,
@@ -6848,6 +6849,82 @@ async function processVacationRequest(filePath: string): Promise<void> {
   archiveRequestIn(vacationRequestsDir(), filePath, '.done');
 }
 
+/** Auto-park sweep throttle (GC_SWEEP_MS precedent): the tick fires every
+ *  1.5s; an hour-scale rule needs one registry+tasks+telemetry read a minute. */
+let lastAutoParkSweepAt = 0;
+
+/** Auto-park (card agent-auto-park-idle-agents-th-2026-08-19): the prose rule
+ *  "park an idle agent when god remembers" made mechanical. Runs from the
+ *  ephemeral-worker tick — the one always-on loop with NO quiet-floor predicate
+ *  — because a quiet floor is exactly when idle agents accumulate and the
+ *  standup skips itself. The EVIDENCE GATE is the done card (the machine-readable
+ *  form of the agent's done-report) plus every ambiguity failing toward NOT
+ *  parking: the full decision + rationale lives in autoPark.ts, pure and tested.
+ *  Parks go through the SAME parkAgent() refusal ladder as vacation-requests
+ *  (pinned / intern / god / retired / busy all re-refused there), origin 'auto'
+ *  for honest logs. Observability is not optional: every park mails god WHY and
+ *  WHEN and lands a kind:'auto_park' row in log.jsonl. Kill-switch only
+ *  (autoParkIdle === false) — default ON, nothing to configure to fire. */
+function autoParkSweep(): void {
+  if (readConfig().autoParkIdle === false) return;
+  const reg = hive.registry();
+  const usageById = new Map(telemetry.snapshot().usage.map((u) => [u.agentId, u]));
+  const now = Date.now();
+  // The card evidence and the park itself run INSIDE the ledger lock: a
+  // hive-dispatch doing-flip (CLI or main writer, same lock) can never
+  // interleave between "all cards done" and the park — "a doing/blocked
+  // holder is never parked" holds mechanically, not just observationally.
+  // Lock contention (a writer held it ~5s) just skips this sweep — the next
+  // one is 60s out.
+  hive.withLedgerLock((tasks) => {
+    const cardsByAssignee = new Map<string, { id?: string; status?: string }[]>();
+    for (const t of tasks) {
+      const owner = t?.assignee?.trim();
+      if (!owner) continue;
+      const list = cardsByAssignee.get(owner) ?? [];
+      list.push({ id: t.id, status: t.status });
+      cardsByAssignee.set(owner, list);
+    }
+    const candidates = Object.entries(reg.agents)
+      .filter(([, a]) => !a.archived && !a.vacation && !a.retired)
+      .map(([id, a]) => {
+        const row = usageById.get(id);
+        return {
+          id,
+          role: a.role,
+          // Both god spellings, as parkAgentCore itself checks them.
+          isGod: !!a.isGod || reg.godId === id,
+          pinned: a.pinned,
+          archived: a.archived,
+          vacation: a.vacation,
+          retired: a.retired,
+          telemetryAgeMs: row && row.ts > 0 ? now - row.ts : undefined,
+          pendingBackgroundWork: pendingWork.countFor(id),
+          inboxBacklog: hive.inboxBacklog(id),
+          cards: cardsByAssignee.get(id) ?? [],
+        };
+      });
+    for (const d of autoParkDecisions(candidates)) {
+      const res = parkAgent(d.id, autoParkReason(d), 'auto');
+      if (res.ok) {
+        hive.appendLog({ kind: 'auto_park', agentId: d.id, idleMs: d.idleMs, evidence: d.evidence });
+        console.log(`[auto-park] parked ${d.id} — ${autoParkReason(d)}`);
+        informGod(
+          `[auto-park] ${d.id}`,
+          `${d.id} was parked by the harness at ${new Date(now).toISOString()} on positive done evidence: ${autoParkReason(d)}. It is zero-cost and protected from deletion; fetch it back with hive-recall ${d.id} (a dispatch to it recalls it automatically). The pin flag (office UI) is the standing protection if this one should never be auto-parked.`,
+        );
+      } else {
+        // Refusals log only: a busy race retries on the next sweep, a permanent
+        // refusal means the registry already moved (parked/pinned/retired) and
+        // the candidate stops qualifying. parkAgentCore logged its own row.
+        hive.appendLog({ kind: 'auto_park_refused', agentId: d.id, error: res.error ?? null });
+        console.log(`[auto-park] refused ${d.id}: ${res.error}`);
+      }
+    }
+    return true;
+  });
+}
+
 /** Total tokens (input+output+cache) a worker has burned so far, from the usage
  *  provider — 0 when unknown. Mirrors the breaker's `tokensOf`. Used only by the
  *  (default-off) per-worker token cap. */
@@ -7019,6 +7096,15 @@ async function ephemeralWorkerTick(): Promise<void> {
         /* dir vanished */
       }
       for (const f of files) await processVacationRequest(join(vdir, f));
+    }
+
+    // (2d) Auto-park — the evidence-gated idle sweep (autoPark.ts). Throttled;
+    //      stateless per run (registry + tasks + telemetry + inbox fs are the
+    //      state), so an app restart just resumes on the next due sweep.
+    const now2 = Date.now();
+    if (now2 - lastAutoParkSweepAt >= AUTO_PARK_SWEEP_MS) {
+      lastAutoParkSweepAt = now2;
+      autoParkSweep();
     }
 
     // (3) GC preserved worktrees whose work has since integrated. Throttled to

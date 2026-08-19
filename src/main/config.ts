@@ -300,6 +300,14 @@ export interface HarnessConfig {
    *  (the standup dispatch lands in god's inbox every hour). Orthogonal to
    *  `skipWhenFloorQuiet`, which still skips a quiet floor before any of this. */
   standupClerk?: boolean;
+  /** Auto-park idle agents on positive done evidence (card
+   *  agent-auto-park-idle-agents-th-2026-08-19). DEFAULT ON: the sweep runs in
+   *  the always-on worker tick and parks an agent that is idle ≥ 1h (telemetry),
+   *  inbox drained, no pending background work, with ALL its assigned cards
+   *  done — the done card IS the machine-readable done-report of the parking
+   *  gate (see src/main/autoPark.ts). `false` is a kill-switch only; nothing
+   *  needs configuring for it to fire (the anti-heartbeat rule). */
+  autoParkIdle?: boolean;
   /** One-time guard: has the built-in hourly ops standup been seeded into an
    *  existing install's missions? Prevents re-adding it after a user deletes it. */
   opsStandupSeeded?: boolean;
@@ -593,6 +601,7 @@ const DEFAULTS: HarnessConfig = {
   // installs read the same default: readConfig merges over DEFAULTS, so a
   // config.json predating the field routes to the clerk too.
   standupClerk: true,
+  autoParkIdle: true,
   notifications: false,
   kittyEnabled: false,
   strongKeepalive: false,

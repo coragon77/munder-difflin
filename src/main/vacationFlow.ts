@@ -89,11 +89,15 @@ export interface RecallDeps {
   log(message: string): void;
 }
 
-/** Who is asking for the park — the operator's button or god's automated
- *  vacation-request. The ONLY rung that differs is the busy gate (operator
- *  decision, card vacation-busy-fresh-boot-20260817): the human pressed the
- *  button and can see the agent's PTY, so idleness is their call, not ours. */
-export type ParkOrigin = 'operator' | 'request';
+/** Who is asking for the park — the operator's button, god's automated
+ *  vacation-request, or the harness's auto-park sweep (card
+ *  agent-auto-park-idle-agents-th-2026-08-19). The ONLY rung that differs is
+ *  the busy gate (operator decision, card vacation-busy-fresh-boot-20260817):
+ *  the human pressed the button and can see the agent's PTY, so idleness is
+ *  their call, not ours. 'auto' behaves like 'request' there — and unlike a
+ *  whenQuiet request it is never held, because the sweep re-derives its
+ *  candidates from live state every minute anyway. */
+export type ParkOrigin = 'operator' | 'request' | 'auto';
 
 /** A park's answer. `busy` marks the ONE refusal that is temporary — the agent
  *  is working right now — and is what `shouldHoldPark` keys on, so no caller
@@ -128,7 +132,7 @@ export function parkAgentCore(
     };
   if (entry.vacation) return { ok: false, error: `"${agentId}" is already on vacation` };
   // A PINNED worker is never parkable, no matter who asks (pin-workers-20260817):
-  // god's vacation-request, the UI button, any future auto-park — every path
+  // god's vacation-request, the UI button, the auto-park sweep — every path
   // converges here. The refusal is a strict no-op: it must land BEFORE the
   // busy gate and the PTY teardown so a refused park touches nothing.
   if (entry.pinned)
