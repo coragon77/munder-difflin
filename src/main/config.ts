@@ -40,6 +40,13 @@ export interface ScheduledMission {
    *  standup fire, so an old backlog card escalates ONCE, not hourly. Written
    *  by the standup clerk every fire (same read-modify-write as lastFiredAt). */
   escalatedTodos?: string[];
+  /** Actionable-watch transition state (card agent-actionable-card-watch-fi-
+   *  2026-08-19): the ids the watch last reported to god. Persisted with the
+   *  mission (the escalatedTodos pattern) so a reboot does not re-fire the
+   *  backlog and a card god declines to dispatch costs exactly one mail.
+   *  Updated to the CURRENT set whenever it changes — a card that leaves todo
+   *  and returns re-fires. */
+  reportedActionableIds?: string[];
   /** When true, a due fire is silently skipped while the floor is quiet
    *  (no non-god agent active since the last fire AND nothing in the ledger
    *  that counts: no 'doing'/'blocked' card and no NON-PAUSED todo — card
@@ -48,8 +55,10 @@ export interface ScheduledMission {
   /** Mission flavor. Absent ⇒ 'dispatch' (the classic interval-dispatch mission,
    *  e.g. the ops standup). 'heartbeat' (Lane A #1) is a context-aware beat: it
    *  observes live floor state, re-engages a quiet god, and ticks the circuit
-   *  breaker — armed with an adaptive cadence, not a fixed setInterval. */
-  kind?: 'dispatch' | 'heartbeat' | 'compact';
+   *  breaker — armed with an adaptive cadence, not a fixed setInterval.
+   *  'actionable-watch' mails god only when a NEW actionable card appears
+   *  (transition-based, never a per-tick nag). */
+  kind?: 'dispatch' | 'heartbeat' | 'compact' | 'actionable-watch';
   /** Heartbeat only: a floor is "quiet" when no tracked signal (log.jsonl mtime,
    *  inbox/outbox mtimes, any PTY output) has moved in this many ms. Default
    *  ~5 min. NOT derived from registry.status (which never transitions in main). */
@@ -105,6 +114,39 @@ export const HEARTBEAT_MISSION: ScheduledMission = {
   enabled: false,
   kind: 'heartbeat',
   quietThresholdMs: 300_000,
+};
+
+/** The built-in actionable-card watch (card agent-actionable-card-watch-fi-
+ *  2026-08-19), defect (B): nothing woke god when dispatchable work APPEARED —
+ *  the heartbeat fired on the floor being QUIET (when god is least useful)
+ *  and is now disabled by the operator. This mission is the inverse: each
+ *  ~2-min tick computes actionableCards(tasks.json) (the ONE shared
+ *  predicate from src/main/actionableCards.ts) and mails god ONLY on a
+ *  TRANSITION — an actionable id absent from `reportedActionableIds`.
+ *  Without that set god would be re-woken every tick for a card he
+ *  legitimately declined to dispatch; with it, that costs one mail per id.
+ *  A card that leaves todo and returns re-fires — correct, it is new work.
+ *  NO floor-quiet gate anywhere: that gate was the heartbeat's defect, not a
+ *  feature to keep.
+ *
+ *  Shipped ENABLED: the mission is silent by construction (an empty or
+ *  unchanged actionable set sends nothing and writes nothing), so it IS the
+ *  wake path the operator asked for — toggle it off in the Command Center
+ *  if you ever want a fully passive board. Existing installs keep whatever
+ *  state they have (actionableWatchSeeded guards re-seeding).
+ *
+ *  `body` is EMPTY BY DESIGN — armActionableWatch COMPUTES the mail per fire
+ *  (new ids + free seats, src/main/actionableWatch.ts). The configured-body
+ *  trap must not repeat: HEARTBEAT_MISSION.body is prose its arm never
+ *  sends, dead text that only ever shows in the Command Center. */
+export const ACTIONABLE_WATCH_MISSION: ScheduledMission = {
+  id: 'actionable-watch',
+  label: 'Actionable-card watch',
+  intervalMs: 120_000,
+  to: 'god',
+  body: '',
+  enabled: true,
+  kind: 'actionable-watch',
 };
 
 /** The dedicated auto-compact MAINTENANCE schedule (maint-1). DECOUPLED from the
@@ -268,6 +310,10 @@ export interface HarnessConfig {
   /** One-time guard for the built-in heartbeat mission (mirrors opsStandupSeeded
    *  so a user who deletes the heartbeat doesn't get it re-added every boot). */
   heartbeatSeeded?: boolean;
+  /** One-time guard for the built-in actionable-card watch (mirrors
+   *  opsStandupSeeded so a user who deletes it doesn't get it re-added every
+   *  boot; its enabled state is likewise never stomped on upgrade). */
+  actionableWatchSeeded?: boolean;
   /** maint-1 guard for the dedicated auto-compact maintenance mission. UNLIKE the
    *  two above, this does NOT suppress re-add forever: once seeded (flag set), a
    *  later delete makes the mission reappear DISABLED on next boot (compaction is

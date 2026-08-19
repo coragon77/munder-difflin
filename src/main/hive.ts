@@ -3240,7 +3240,7 @@ export class HiveManager {
 
       // ACTIONABLE (card agent-actionablecards-one-shar-2026-08-18): god is
       // EVENT-driven while the board is STATE — the miss this fixes was an
-      // unowned, unpaused todo sitting invisible for four turns. The SAME
+      // unpaused todo (owned or not) sitting invisible for four turns. The SAME
       // predicate as the hive-dispatch hold gate and `hive-card actionable`
       // (src/main/actionableCards.ts); ids, capped, because a bare count
       // makes god go look. INFORMATION, never a directive. A missing or
@@ -3698,7 +3698,8 @@ cards — the card is never duplicated):
 \`\`\`
 
 - Prints the ACTIONABLE line god's roster injection renders (the SAME
-  predicate: todo, not paused, not blocked, unowned, deps done — ids capped
+  predicate: todo, not paused, not blocked, deps done — an assigned todo
+  still in todo is nominated but never dispatched, so it IS listed — ids capped
   at 3 in the line, the full list below it). \`ACTIONABLE: 0\` means nothing
   to dispatch. Information, not an instruction — same deal as the injection
   line. A dep-waiting todo stays dispatchable (a dependency is not an

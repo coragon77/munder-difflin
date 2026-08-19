@@ -2,8 +2,12 @@
 
 /**
  * actionableCards (card agent-actionablecards-one-shar-2026-08-18): ONE
- * definition of "actionable" — status todo, not paused:true, not blocked, no
- * owner already on it — with THREE consumers that must never disagree:
+ * definition of "actionable" — status todo, not paused:true, not blocked,
+ * deps done; an assignee does NOT exclude a card (card
+ * agent-actionable-card-watch-fi-2026-08-19) — hive-dispatch is the ONLY
+ * todo->doing path and always flips through doing, so a todo that carries an
+ * assignee is NOMINATED BUT NEVER DISPATCHED, exactly the state god must see.
+ * THREE consumers that must never disagree:
  *
  *   1. god's roster injection (HiveManager.rosterContext — slim AND full),
  *   2. the hive-dispatch hold gate (refuses paused/blocked targets),
@@ -47,15 +51,28 @@ const SHAPES = [
   card('free-todo'), // actionable
   card('paused-todo', { paused: true }), // operator hold — excluded
   card('blocked-card', { status: 'blocked' }), // operator hold — excluded
-  card('owned-todo', { assignee: 'bystander' }), // owned — excluded (list only)
+  card('owned-todo', { assignee: 'bystander' }), // assigned but still todo = nominated, never dispatched — actionable
   card('doing-card', { status: 'doing', assignee: 'bystander' }),
   card('done-card', { status: 'done', assignee: 'bystander' }),
 ];
 
 // ── the predicate ───────────────────────────────────────────────────────
 
-test('actionableCards: exactly the unowned, unpaused, non-blocked todos', () => {
-  assert.deepEqual(actionableCards({ tasks: SHAPES }), ['free-todo']);
+test('actionableCards: exactly the unpaused, non-blocked, non-dep-waiting todos', () => {
+  assert.deepEqual(actionableCards({ tasks: SHAPES }), ['free-todo', 'owned-todo']);
+});
+
+test('actionableCards: an owned, un-paused, non-dep-waiting todo IS actionable — nominated, never dispatched (card agent-actionable-card-watch-fi-2026-08-19)', () => {
+  // Observed 2026-08-19: two assigned un-paused todos rendered "ACTIONABLE: 0"
+  // because the predicate read an assignee as "someone is already on it".
+  // But only hive-dispatch flips todo->doing, so an assigned TODO is a card
+  // god nominated and never dispatched — it must surface, not hide.
+  assert.deepEqual(
+    actionableCards({
+      tasks: [card('owned', { assignee: 'toby' }), card('ws', { assignee: '   ' })],
+    }),
+    ['owned', 'ws'],
+  );
 });
 
 test('actionableCards: paused must be strictly true — truthy noise is not a hold', () => {
@@ -65,10 +82,6 @@ test('actionableCards: paused must be strictly true — truthy noise is not a ho
     }),
     ['a', 'b', 'c'],
   );
-});
-
-test('actionableCards: whitespace-only assignee is unowned', () => {
-  assert.deepEqual(actionableCards({ tasks: [card('a', { assignee: '   ' })] }), ['a']);
 });
 
 test('actionableCards: defensive shapes — missing ledger, junk rows, junk input', () => {
@@ -217,12 +230,12 @@ test('every card the lister names dispatches through the REAL hive-dispatch gate
   const s = setup(t);
   s.writeRegistry(WORKERS);
   const named = actionableCards(s.ledger());
-  assert.deepEqual(named, ['free-todo'], 'fixture sanity: exactly one named card');
+  assert.deepEqual(named, ['free-todo', 'owned-todo'], 'fixture sanity: exactly the two todos');
 
-  for (const id of named) {
-    const r = s.run('hive-dispatch', '--card', id, '--assignee', 'worker-1', '--body', 'c');
+  named.forEach((id, i) => {
+    const r = s.run('hive-dispatch', '--card', id, '--assignee', `worker-${i + 1}`, '--body', 'c');
     assert.equal(r.code, 0, `gate must accept the injected card ${id}: ${r.stderr}`);
-  }
+  });
 });
 
 test('held cards are excluded by the lister AND refused by the gate — no asymmetry', {
@@ -244,13 +257,13 @@ test('a card the gate holds can never appear in the lister output (all shapes, a
   }
 });
 
-test('owned todos stay gate-LEGAL by design (assign-then-dispatch flow) — pinned asymmetry', {
+test('owned todos are listed AND gate-LEGAL (assign-then-dispatch flow)', {
   skip: !POSIX,
 }, (t) => {
-  // The lister excludes owned todos (someone is already on it); the gate still
-  // accepts them — hive-card update --assignee + hive-dispatch is a documented
-  // flow. This is the ONE deliberate narrow difference; hold conditions
-  // (paused/blocked) have zero asymmetry, as pinned above.
+  // The lister names owned todos (nominated, never dispatched — god must
+  // act); the gate accepts them too — hive-card update --assignee +
+  // hive-dispatch is a documented flow. Lister and gate AGREE on owned todos;
+  // the one remaining asymmetry (dep-waiting) is pinned below.
   const s = setup(t);
   s.writeRegistry(WORKERS);
   const r = s.run('hive-dispatch', '--card', 'owned-todo', '--assignee', 'worker-2', '--body', 'c');
@@ -298,7 +311,9 @@ test('hive-card actionable prints the same rendered line and the same list', {
 });
 
 test('hive-card actionable: zero and backlog shapes', { skip: !POSIX }, (t) => {
-  const s0 = setup(t, { tasks: [card('held', { paused: true }), card('own', { assignee: 'x' })] });
+  const s0 = setup(t, {
+    tasks: [card('held', { paused: true }), card('fin', { status: 'done', assignee: 'x' })],
+  });
   const r0 = s0.run('hive-card', 'actionable');
   assert.equal(r0.code, 0);
   assert.equal(r0.stdout.trim(), 'ACTIONABLE: 0');
@@ -335,7 +350,7 @@ test('rosterContext full block carries the ACTIONABLE line with ids', async (t) 
     agents: [{ id: 'god-1', name: 'Michael', isGod: true }],
   });
   const full = s.hive.rosterContext();
-  assert.match(full, /ACTIONABLE: 1 - free-todo/);
+  assert.match(full, /ACTIONABLE: 2 - free-todo, owned-todo/);
 });
 
 test('rosterContext slim line (unchanged roster) still carries the ACTIONABLE line', async (t) => {
@@ -354,7 +369,7 @@ test('rosterContext slim line (unchanged roster) still carries the ACTIONABLE li
   s.hive.rosterContext('god-1'); // full — stores the sig
   const slim = s.hive.rosterContext('god-1'); // unchanged → slim
   assert.match(slim, /unchanged/);
-  assert.match(slim, /ACTIONABLE: 1 - free-todo/);
+  assert.match(slim, /ACTIONABLE: 2 - free-todo, owned-todo/);
 });
 
 test('rosterContext: all held/owned renders the plain zero', async (t) => {

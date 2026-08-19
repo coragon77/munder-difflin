@@ -1,8 +1,8 @@
 /**
  * ONE definition of "actionable" (card agent-actionablecards-one-shar-
  * 2026-08-18): a card god could dispatch right now — status todo, not
- * paused:true, not blocked, no owner already on it. God is EVENT-driven
- * while the board is STATE; this predicate is how the state reaches god:
+ * paused:true, not blocked, deps done. God is EVENT-driven while the board
+ * is STATE; this predicate is how the state reaches god:
  *
  *   - HiveManager.rosterContext renders it into god's per-prompt injection
  *     (ACTIONABLE line), slim AND full;
@@ -19,13 +19,18 @@
  * .toString) into the generated bin/ CLIs, so main process, gate and lister
  * run byte-identical code even through the bundler's renames. (depWaiting's
  * expression is inlined into actionableCards for exactly that reason; the
- * equality is pinned by test.) The TWO deliberate asymmetries, both pinned
- * by test: an OWNED todo is excluded here (someone is already on it) but
- * still gate-legal — `hive-card update --assignee` + dispatch is a
- * documented flow; a DEP-WAITING todo is excluded (correctly waiting) but
- * still gate-legal — a dependency is an engineering fact between cards, not
+ * equality is pinned by test.) The ONE deliberate asymmetry, pinned
+ * by test: a DEP-WAITING todo is excluded (correctly waiting) but still
+ * gate-legal — a dependency is an engineering fact between cards, not
  * an operator hold, and early stake-a-claim dispatch stays god's call. Held
  * cards (paused / blocked) have ZERO asymmetry: excluded here, refused there.
+ * An OWNED todo IS actionable (card agent-actionable-card-watch-fi-2026-08-19):
+ * hive-dispatch is the ONLY todo->doing path and always flips through doing,
+ * so a todo that carries an assignee is NOMINATED BUT NEVER DISPATCHED —
+ * exactly the state god must act on. Excluding it is how assigned cards sat
+ * unnoticed (2026-08-19: "ACTIONABLE: 0" while two assigned un-paused todos
+ * waited); listing it makes the lister and the hold gate agree MORE, not
+ * less — cardHeld below checks only paused/blocked, never assignee.
  */
 
 /** The operator's hold on a card: paused:true or status blocked. */
@@ -60,7 +65,7 @@ export function depWaiting(t: unknown, statusById: Map<string, string>): boolean
   return deps.some((d) => statusById.get(d) !== 'done');
 }
 
-/** The single definition of actionable — ids of dispatchable, unowned todos. */
+/** The single definition of actionable — ids of dispatchable todos. */
 export function actionableCards(data: unknown): string[] {
   const list = (data as { tasks?: unknown } | null | undefined)?.tasks;
   if (!Array.isArray(list)) return [];
@@ -70,7 +75,6 @@ export function actionableCards(data: unknown): string[] {
     id: string;
     status?: unknown;
     paused?: unknown;
-    assignee?: unknown;
     dependsOn?: unknown;
   }> = [];
   for (const t of list) {
@@ -83,7 +87,8 @@ export function actionableCards(data: unknown): string[] {
   for (const c of rows) {
     if (c.status !== 'todo') continue; // blocked/doing/done are not backlog
     if (c.paused === true) continue; // operator hold
-    if (typeof c.assignee === 'string' && c.assignee.trim() !== '') continue; // owned
+    // An assignee does NOT exclude a card: only hive-dispatch flips todo->doing,
+    // so an assigned todo is nominated but never dispatched (see header).
     // Dep-waiting is CORRECTLY WAITING, not actionable — the same expression
     // as depWaiting() above, inlined because this function is serialized
     // verbatim into the generated bin/ CLIs (pinned equal by test).

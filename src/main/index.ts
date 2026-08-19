@@ -51,6 +51,7 @@ import {
   OPS_STANDUP_MISSION,
   HEARTBEAT_MISSION,
   COMPACT_MAINTENANCE_MISSION,
+  ACTIONABLE_WATCH_MISSION,
   type HarnessConfig,
   type ScheduledMission,
 } from './config';
@@ -183,7 +184,8 @@ import {
   standupTarget,
   summarizeAnomalies,
 } from './standup';
-import { cardPaused } from './actionableCards';
+import { actionableCards, cardPaused } from './actionableCards';
+import { actionableWatchBody, newActionableIds } from './actionableWatch';
 import { resolveInternSpawn } from './internDefaults';
 import { ProviderModelCache } from './providerModels';
 import { analytics } from './analytics';
@@ -1137,6 +1139,14 @@ function syncMissions(): void {
       armHeartbeat(m);
       continue;
     }
+    // Actionable-card watch (card agent-actionable-card-watch-fi-2026-08-19):
+    // kind-specific for the same reason as the heartbeat — the plain dispatch
+    // path would send the (deliberately empty) body every tick; the watch
+    // must mail god only on a TRANSITION, which is this arm's own fire.
+    if (m.kind === 'actionable-watch') {
+      armActionableWatch(m);
+      continue;
+    }
     const fire = (): void => {
       try {
         // skipWhenFloorQuiet (ops-standup): while the floor is quiet a due fire
@@ -1395,6 +1405,22 @@ function ensureDefaultMissions(): void {
       heartbeatSeeded: true,
     });
   }
+  // Seed the actionable-card watch once (card agent-actionable-card-watch-fi-
+  // 2026-08-19). lastFiredAt = now so the first check waits one full interval;
+  // that FIRST fire reports every currently-actionable id exactly once — the
+  // one-shot wake-up for backlogs that predate the mission (observed
+  // 2026-08-19: two assigned un-paused todos invisible behind "ACTIONABLE: 0").
+  const cfgWatch = readConfig();
+  if (!cfgWatch.actionableWatchSeeded) {
+    const missions = cfgWatch.missions ?? [];
+    const has = missions.some((m) => m.id === ACTIONABLE_WATCH_MISSION.id);
+    writeConfig({
+      missions: has
+        ? missions
+        : [...missions, { ...ACTIONABLE_WATCH_MISSION, lastFiredAt: Date.now() }],
+      actionableWatchSeeded: true,
+    });
+  }
 
   // maint-1 RETIREMENT: `compact-maintenance` is no longer a mission. Scheduled
   // compaction is now the CONTEXT TRIGGER's job, so the operator has exactly one
@@ -1517,7 +1543,12 @@ function isFloorQuiet(thresholdMs: number): boolean {
       pushMtime(join(agentsDir, id, 'outbox', '.sent'));
     }
   }
-  for (const t of ptyManager.list()) times.push(t.lastOutputAt);
+  // god's own pty is not "floor activity" (one-line fix, card
+  // agent-actionable-card-watch-fi-2026-08-19): counting it postponed every
+  // beat while god worked. Everything else (log/inbox/outbox mtimes, worker
+  // ptys) still counts.
+  for (const t of ptyManager.list())
+    if (t.id !== ptyForAgent(hive.registry().godId ?? '')) times.push(t.lastOutputAt);
   if (times.length === 0) return false; // nothing to judge → don't fire
   return Date.now() - Math.max(...times) > thresholdMs;
 }
@@ -1938,6 +1969,63 @@ function armHeartbeat(m: ScheduledMission): void {
   };
   const remaining = Math.max(0, base - (Date.now() - (m.lastFiredAt ?? 0)));
   missionTimers.set(m.id, { timeout: setTimeout(beat, remaining) });
+}
+
+/** Arm the actionable-card watch (card agent-actionable-card-watch-fi-
+ *  2026-08-19), defect (B): god has no turns when the floor is quiet, so
+ *  dispatchable cards sat unnoticed. Fixed ~2-min tick (a plain setInterval,
+ *  like the generic dispatch path — no adaptive cadence to derive here):
+ *  compute the ONE shared actionableCards() over tasks.json, mail god only
+ *  the ids that were NOT in `reportedActionableIds` (the transition set),
+ *  then persist the CURRENT set whenever it changed — so a card god declines
+ *  costs one mail, and a card that leaves todo and returns re-fires. NO
+ *  floor-quiet gate: that gate was the defect, not a feature. The body is
+ *  COMPUTED (new ids + free seats), never the configured (empty) one. */
+function armActionableWatch(m: ScheduledMission): void {
+  const fire = (): void => {
+    try {
+      const cur = readConfig().missions ?? [];
+      const live = cur.find((x) => x.id === m.id) ?? m; // fresh state, not the arming snapshot
+      const current = actionableCards(hive.tasks());
+      const fresh = newActionableIds(live.reportedActionableIds, current);
+      if (fresh.length > 0 && hive.enabled()) {
+        hive.send(
+          {
+            to: m.to,
+            act: 'request',
+            subject: m.label,
+            body: actionableWatchBody(fresh, floorSeats(hive.registry()).freeSeats),
+          },
+          'scheduler',
+        );
+      }
+      // Persist the CURRENT set whenever it changed (new ids appeared OR ids
+      // departed). Unchanged — including empty→empty — sends nothing, writes
+      // nothing: the quiet case must cost zero config churn.
+      const prev = live.reportedActionableIds ?? [];
+      if (fresh.length > 0 || prev.some((id) => !current.includes(id))) {
+        writeConfig({
+          missions: cur.map((x) =>
+            x.id === m.id ? { ...x, lastFiredAt: Date.now(), reportedActionableIds: current } : x,
+          ),
+        });
+        try {
+          liveWebContents()?.send('missions:updated');
+        } catch {
+          /* window gone */
+        }
+      }
+    } catch (e) {
+      console.error('[actionable-watch]', e);
+    }
+  };
+  const remaining = Math.max(0, m.intervalMs - (Date.now() - (m.lastFiredAt ?? 0)));
+  const entry: MissionTimer = {};
+  entry.timeout = setTimeout(() => {
+    fire();
+    entry.interval = setInterval(fire, m.intervalMs);
+  }, remaining);
+  missionTimers.set(m.id, entry);
 }
 
 /** The live renderer webContents, or null if the window is gone/destroyed.
