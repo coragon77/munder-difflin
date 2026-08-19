@@ -181,6 +181,7 @@ import {
   standupTarget,
   summarizeAnomalies,
 } from './standup';
+import { cardPaused } from './actionableCards';
 import { resolveInternSpawn } from './internDefaults';
 import { ProviderModelCache } from './providerModels';
 import { analytics } from './analytics';
@@ -1066,7 +1067,22 @@ async function runStandupClerk(): Promise<void> {
     console.log('[standup] clerk: nothing to escalate — god stays silent');
     return;
   }
-  const facts = summarizeAnomalies(anomalies);
+  const pausedIds = ((tasksJson as { tasks?: unknown[] } | null)?.tasks ?? []).filter(
+    (c) => cardPaused(c) && typeof (c as { id?: unknown }).id === 'string',
+  ) as { id: string }[];
+  // Legibility without actionability (card agent-standup-must-not-nag-god-
+  // 2026-08-19): paused cards produce no findings, but total silence about six
+  // held cards is its own kind of wrong — ONE fact line keeps the floor state
+  // readable while saying explicitly it is not actionable. Rides the report
+  // only when one exists (findings ⇒ mail); a held-only floor stays silent.
+  const shown = pausedIds
+    .slice(0, 3)
+    .map((c) => c.id)
+    .join(', ');
+  const heldNote = pausedIds.length
+    ? `${pausedIds.length} card${pausedIds.length === 1 ? '' : 's'} held by the operator (paused): ${shown}${pausedIds.length > 3 ? ` +${pausedIds.length - 3} more` : ''} — holds, not findings; do not resume`
+    : '';
+  const facts = [summarizeAnomalies(anomalies), heldNote].filter(Boolean).join('\n\n');
   let report = facts;
   try {
     const res = await runHiddenHelper(clerkPrompt(root, anomalies), {

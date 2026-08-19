@@ -34,6 +34,18 @@ export function cardHeld(t: unknown): boolean {
   return !!c && typeof c === 'object' && (c.paused === true || c.status === 'blocked');
 }
 
+/** The paused half of cardHeld, split out for the standup (card
+ *  agent-standup-must-not-nag-god-2026-08-19): detectors that already select
+ *  on status need the paused question ALONE — blocked-unowned sees only
+ *  blocked cards, where cardHeld is always true and would kill the detector
+ *  outright. cardHeld keeps its own inline copy of this expression because it
+ *  is serialized verbatim into the generated bin/ CLIs (no cross-calls);
+ *  cardPaused is main-process-only and never serialized. */
+export function cardPaused(t: unknown): boolean {
+  const c = t as { paused?: unknown } | null;
+  return !!c && typeof c === 'object' && c.paused === true;
+}
+
 /**
  * The standup's dep-waiting interpretation, promoted to the ONE shared
  * definition (card agent-actionablecards-fold-dep-2026-08-18): a dep is

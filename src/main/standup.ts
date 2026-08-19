@@ -27,7 +27,7 @@
  *  todos that kept it alive.
  */
 
-import { depWaiting } from './actionableCards';
+import { cardPaused, depWaiting } from './actionableCards';
 
 /** Where a due ops-standup goes. */
 export type StandupTarget = 'clerk' | 'god';
@@ -72,8 +72,10 @@ export interface StandupTask {
    *  todo-unattended — younger ones are presumed mid-dispatch. Missing
    *  counts (cannot prove young; fail toward surfacing). */
   createdAt?: string;
-  /** Reference-only opt-out: a paused todo neither keeps the floor non-quiet
-   *  nor escalates. Absent = not paused. */
+  /** Operator hold (card agent-standup-must-not-nag-god-2026-08-19): a
+   *  paused card is not stalled, not unowned-by-accident and not unattended —
+   *  it is held on purpose, a decided state, never a finding. Absent = not
+   *  paused. */
   paused?: boolean;
 }
 
@@ -151,9 +153,10 @@ export function detectAnomalies(
   // (1) stalled — a card is in 'doing' but its owner isn't moving. An owner
   // with pending background work is WAITING, not idle (card
   // agent-harness-busy-signal-coun-2026-08-17), and one with no telemetry yet
-  // has simply not reported a first tool call.
+  // has simply not reported a first tool call. A PAUSED doing card is an
+  // operator hold — the hold explains the stillness, never a stall.
   for (const c of cards) {
-    if (c.status !== 'doing') continue;
+    if (c.status !== 'doing' || cardPaused(c)) continue;
     const owner = c.assignee?.trim();
     if (!owner) continue;
     const a = byId.get(owner);
@@ -176,8 +179,13 @@ export function detectAnomalies(
   }
 
   // (2) blocked-unowned — a blocker nobody owns is a blocker nobody is clearing.
+  // A PAUSED blocker is the operator's hold (the incident: six paused HPT
+  // cards still nagged god to assign+resume) — held is a decided state, not
+  // a finding. Same predicate as (1)/(2b): cardPaused, the paused half of
+  // cardHeld (cardHeld itself can't serve here — every blocked card is
+  // cardHeld by definition, it would suppress the whole detector).
   for (const c of cards) {
-    if (c.status === 'blocked' && !c.assignee?.trim()) {
+    if (c.status === 'blocked' && !c.assignee?.trim() && !cardPaused(c)) {
       out.push({
         kind: 'blocked-unowned',
         subject: c.id,
@@ -198,7 +206,7 @@ export function detectAnomalies(
   const statusById = new Map(cards.map((c) => [c.id, c.status ?? 'todo']));
   const escalated = new Set(escalatedBefore);
   for (const c of cards) {
-    if (c.status !== 'todo' || c.paused === true) continue;
+    if (c.status !== 'todo' || cardPaused(c)) continue;
     if (escalated.has(c.id)) continue;
     // Unmet dependency: any dep that is not done keeps this card correctly
     // waiting. The interpretation lives in ONE place now — depWaiting in
@@ -303,6 +311,9 @@ export function clerkPrompt(root: string, anomalies: Anomaly[]): string {
     '- FIRST LINE: one sentence, under 140 characters, naming the worst problem.',
     '- Then at most 4 short lines: what is wrong, who owns it, the next action.',
     'Name agents and card ids. No preamble, no markdown headings, no questions.',
+    'Cards with paused:true are the operator’s holds: they are not problems. Do',
+    'not recommend resuming, assigning or working them; mention them (if at',
+    'all) only as held.',
     'Do not use any tool other than reading files. Do not write, edit, or run anything.',
   ].join('\n');
 }

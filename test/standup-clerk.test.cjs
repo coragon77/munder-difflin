@@ -136,6 +136,65 @@ test('blocked-unowned: a blocked card with no assignee escalates, an owned one d
   );
 });
 
+// ── paused cards are operator holds, never findings (card agent-standup-    ──
+//    must-not-nag-god-2026-08-19) — the incident: six paused HPT cards still
+//    produced blocked-unowned findings whose prose told god to assign agents
+//    and resume work. Both directions pinned: paused ⇒ NO finding, the SAME
+//    card unpaused ⇒ the finding it produces today.
+
+test('paused cards escalate nothing; unpaused, the same cards escalate as today', () => {
+  const held = (extra) => ({ ...extra, paused: true });
+  // (2) the incident’s exact shape: blocked, unowned (b55b76c frees blocked
+  // assignees), paused.
+  const blocked = { id: 'c-9', title: 'hpt restore', status: 'blocked' };
+  assert.deepEqual(
+    detect([agent()], [held(blocked)]),
+    [],
+    'a paused blocker is an operator hold — not blocked-unowned',
+  );
+  assert.deepEqual(kinds(detect([agent()], [blocked])), ['blocked-unowned']);
+  // (1) stalled: a paused doing card with an idle owner is held, not stalled.
+  const doing = { id: 'c-1', title: 'ship it', status: 'doing', assignee: 'pam' };
+  const idleOwner = [agent({ lastActiveSecAgo: STALLED_SEC + 900 })];
+  assert.deepEqual(
+    detect(idleOwner, [held(doing)]),
+    [],
+    'the pause explains the stillness — not a stall',
+  );
+  assert.deepEqual(kinds(detect(idleOwner, [doing])), ['stalled']);
+  // (2b) todo-unattended already skipped paused (todo-alive card) — repinned
+  // here so all three card detectors’ hold semantics live in one place.
+  const todo = { id: 'c-2', title: 'later', status: 'todo', createdAt: 0 };
+  assert.deepEqual(
+    detect([agent()], [held(todo)]),
+    [],
+    'a paused todo is reference-only — not unattended',
+  );
+  assert.deepEqual(kinds(detect([agent()], [todo])), ['todo-unattended']);
+});
+
+test('the clerk prompt forbids resume-nudges on paused cards (prose, not just findings)', () => {
+  const p = clerkPrompt('/hive', []);
+  assert.match(p, /paused.*operator|operator.*paused/i);
+  assert.match(p, /do\s+not\s+(recommend|resume|assign)/i);
+});
+
+test('wiring: the report counts paused cards as held, explicitly non-actionable', () => {
+  const src = read('src/main/index.ts');
+  const body = src.slice(
+    src.indexOf('async function runStandupClerk'),
+    src.indexOf('function syncMissions'),
+  );
+  assert.ok(body.length > 0, 'runStandupClerk found');
+  assert.match(
+    body,
+    /cardPaused\(/,
+    'the held count reuses the shared predicate, not a second paused-check',
+  );
+  assert.match(body, /held by the operator/i, 'the note names the hold as the operator’s');
+  assert.match(body, /not findings/i, 'the note stays explicitly non-actionable');
+});
+
 test('breaker-armed: anything above healthy escalates', () => {
   for (const level of ['steering', 'constrained', 'stopped']) {
     const found = detect([agent({ breaker: level })], []);
@@ -247,9 +306,10 @@ test('the clerk reuses the existing one-shot machinery (no new spawn path)', () 
   const fn = src.slice(src.indexOf('async function runStandupClerk'));
   assert.ok(fn.length > 0, 'the clerk runner exists');
   // The window must reach past hive.send (near the function's end) — it grew
-  // with the amendment-A dedup block; keep it just past the current function
-  // end (~3.7k) so the asserts stay INSIDE runStandupClerk.
-  const body = fn.slice(0, 4096);
+  // with the amendment-A dedup block and again with the held-note block; keep
+  // it just past the current function end (~5k) so the asserts stay INSIDE
+  // runStandupClerk.
+  const body = fn.slice(0, 5200);
   assert.match(body, /detectAnomalies\(/, 'escalation is decided deterministically');
   assert.match(body, /resolveHelperEngine\(/, 'engine resolved from Settings/god engine');
   assert.match(body, /summarizeAnomalies\(/, 'LLM failure falls back to the deterministic report');
