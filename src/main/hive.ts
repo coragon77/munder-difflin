@@ -5771,8 +5771,9 @@ function usage() {
     '  hive-card ask <id> --q <text> [--q <text> ...]  # append humanQA asks (one per --q), block the card',
     '  hive-card prune-done [--dry-run|--confirm]  # shift close: list (default) or remove done cards',
     '  hive-card actionable  # read-only: the ACTIONABLE roster line + full id list',
-    '  hive-card list [--status <todo|doing|blocked|done>] [--assignee <id>] [--open]',
+    '  hive-card list [--status <todo|doing|blocked|done>] [--assignee <id>] [--origin human|agent] [--open]',
     '                # read-only: one line per card — paused is ALWAYS shown',
+    '  hive-card show <id>  # read-only: ONE card in full — notes, humanQA history, blocked provenance',
     '  hive-card restore --list  # read-only: recent tasks.json versions in the hive git history',
     '  hive-card restore [--to <sha>] [--dry-run|--confirm]  # put a known-good tasks.json back',
   ].join('\\n'));
@@ -5849,7 +5850,7 @@ function cmdList(argv) {
   const openFlag = argv.indexOf('--open') >= 0;
   const flags = parseFlags(argv.filter(function (a) { return a !== '--open'; }));
   for (const k of Object.keys(flags)) {
-    if (['status', 'assignee'].indexOf(k) < 0) fail('unknown flag --' + k);
+    if (['status', 'assignee', 'origin'].indexOf(k) < 0) fail('unknown flag --' + k);
   }
   let want = null;
   if (openFlag) {
@@ -5861,6 +5862,9 @@ function cmdList(argv) {
     }
     want = [flags.status];
   }
+  if (flags.origin !== undefined && ['human', 'agent'].indexOf(flags.origin) < 0) {
+    fail('--origin must be human or agent (got: ' + flags.origin + ').');
+  }
   const data = readLedger();
   const lines = [];
   for (const st of ALL_STATUSES) {
@@ -5868,6 +5872,9 @@ function cmdList(argv) {
     for (const t of data.tasks) {
       if (!t || t.status !== st) continue;
       if (flags.assignee !== undefined && (t.assignee || '-') !== flags.assignee) continue;
+      // Unknown origin (legacy card with the key absent) matches NEITHER
+      // value — it fails closed, like a blocked card with no blockedBy.
+      if (flags.origin !== undefined && t.origin !== flags.origin) continue;
       // One card per terminal line: collapse embedded whitespace and cap the
       // title so a rogue ledger entry can never wrap or inject rows.
       const title = String(t.title || '').replace(/\\s+/g, ' ').trim();
@@ -5879,6 +5886,63 @@ function cmdList(argv) {
     }
   }
   process.stdout.write(lines.join('\\n') + (lines.length ? '\\n' : ''));
+}
+
+// The card-detail reader (card agent-hive-card-show-the-card--2026-08-19):
+// list answers "what is on the board", show answers "what is ON this card".
+// The R3 shared-state gate refuses every direct tasks.json read, and before
+// this no primitive exposed a card's detail fields at all — god could not
+// read a card's notes to answer the operator and had to reconstruct them
+// from board.md prose, and reported blocked cards as carrying "no readable
+// blocker" while blockedWhy sat unreadable on them. Read-only like list:
+// no lock, no write, unknown id fails with exit 1. The description prints
+// VERBATIM (only a two-space indent per line — never flattened like the list
+// column); the sessionId prints PRESENCE only, never the raw conversation
+// id (it is a /resume key, not something to display); humanQA prints EVERY
+// entry in ledger order with unanswered ones marked, dismissed ones named.
+function row(label, value) { return (label + ':').padEnd(12) + value; }
+function cmdShow(argv) {
+  if (argv.length !== 1 || argv[0].indexOf('--') === 0) usage();
+  const cardId = argv[0];
+  const data = readLedger();
+  const card = data.tasks.find(function (t) { return t && t.id === cardId; });
+  if (!card) fail('no card with id "' + cardId + '" in tasks.json.');
+  const out = [
+    row('id', card.id),
+    // One line like list: a rogue multi-line title cannot fake a labeled row.
+    row('title', String(card.title == null ? '-' : card.title).replace(/\\s+/g, ' ').trim() || '-'),
+    row('status', card.status == null ? '-' : card.status),
+    row('paused', card.paused === true ? 'yes — operator hold' : 'no'),
+    row('assignee', card.assignee || '-'),
+    row('origin', card.origin || '-'),
+    row('priority', card.priority == null ? '-' : String(card.priority)),
+    row('dependsOn', card.dependsOn && card.dependsOn.length ? card.dependsOn.join(', ') : '-'),
+    row('createdAt', card.createdAt || '-'),
+    row('doneAt', card.doneAt || '-'),
+    row('blockedBy', card.blockedBy || '-'),
+    row('blockedWhy', card.blockedWhy || '-'),
+    row('session', card.sessionId
+      ? 'stamped' + (card.sessionMode ? ' (' + card.sessionMode + ')' : '')
+      : 'none'),
+  ];
+  if (typeof card.description === 'string' && card.description.length) {
+    out.push('notes:');
+    out.push(card.description.split('\\n').map(function (l) { return l ? '  ' + l : ''; }).join('\\n'));
+  } else {
+    out.push(row('notes', '-'));
+  }
+  if (Array.isArray(card.humanQA) && card.humanQA.length) {
+    out.push('humanQA (' + card.humanQA.length + '):');
+    const flat = function (v) { return String(v == null ? '-' : v).replace(/\\s+/g, ' ').trim(); };
+    card.humanQA.forEach(function (e, i) {
+      const answered = e && typeof e.a === 'string' && e.a.length;
+      out.push('  ' + (i + 1) + '. q: ' + flat(e && e.q));
+      out.push('     a: ' + (answered ? flat(e.a) : '(unanswered' + (e && e.dismissedAt ? ', dismissed' : '') + ')'));
+    });
+  } else {
+    out.push(row('humanQA', '-'));
+  }
+  process.stdout.write(out.join('\\n') + '\\n');
 }
 
 function writeLedger(data) {
@@ -6392,6 +6456,7 @@ try {
   else if (cmd === 'prune-done') cmdPruneDone(process.argv.slice(3));
   else if (cmd === 'actionable') cmdActionable();
   else if (cmd === 'list') cmdList(process.argv.slice(3));
+  else if (cmd === 'show') cmdShow(process.argv.slice(3));
   else if (cmd === 'restore') cmdRestore(process.argv.slice(3));
   else usage();
 } catch (e) {

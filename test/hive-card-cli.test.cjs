@@ -661,6 +661,7 @@ test('list: READ-ONLY under every flag combo — ledger byte-identical, no lock/
     ['--status=done'],
     ['--assignee', 'kevin-1'],
     ['--status', 'todo', '--assignee', 'kevin-1'],
+    ['--origin', 'human'],
   ];
   for (const args of combos) {
     s.run('list', ...args);
@@ -716,6 +717,238 @@ test('list: rejects unknown flags, bad --status, and --open with --status — no
   r = s.runFail('list', '--open', '--status', 'todo');
   assert.notEqual(r.code, 0, '--open with --status rejected');
   assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
+});
+
+// ——— list --origin + show (card agent-hive-card-show-the-card--2026-08-19):
+// the card-detail read the R3 shared-state gate closed off. list answers
+// "what is on the board"; show answers "what is ON this card" — until now no
+// primitive exposed a card's detail fields at all, so god could not read a
+// card's notes to answer the operator (had to reconstruct the feature from
+// board.md prose) and reported blocked cards as carrying "no readable
+// blocker" while blockedWhy sat unreadable on them.
+
+function seedOrigins(s) {
+  const mk = (over) => ({
+    dependsOn: [],
+    priority: 3,
+    createdAt: '2026-08-19T00:00:00.000Z',
+    origin: 'agent',
+    ...over,
+  });
+  s.hive.writeTasks([
+    mk({ id: 'o-agent-todo', title: 'Agent backlog', status: 'todo', assignee: 'kevin-1' }),
+    mk({ id: 'o-human-todo', title: 'Human typed this', status: 'todo', origin: 'human' }),
+    mk({
+      id: 'o-human-doing',
+      title: 'Human adopted',
+      status: 'doing',
+      origin: 'human',
+      assignee: 'jessica-1',
+    }),
+    mk({ id: 'o-agent-done', title: 'Agent shipped', status: 'done', assignee: 'stanley-1' }),
+    // A pre-origin-migration card: the key is ABSENT, not 'agent'.
+    mk({ id: 'o-legacy', title: 'No origin stamp', status: 'todo', origin: undefined }),
+  ]);
+}
+
+const O_AGENT_TODO = 'todo | o-agent-todo | kevin-1 | paused=no | Agent backlog';
+const O_HUMAN_TODO = 'todo | o-human-todo | - | paused=no | Human typed this';
+const O_HUMAN_DOING = 'doing | o-human-doing | jessica-1 | paused=no | Human adopted';
+const O_AGENT_DONE = 'done | o-agent-done | stanley-1 | paused=no | Agent shipped';
+
+test('list --origin: human picks the tasks-tab cards, agent the self-carded ones; legacy is excluded', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedOrigins(s);
+  assert.deepEqual(linesOf(s.run('list', '--origin', 'human')), [O_HUMAN_TODO, O_HUMAN_DOING]);
+  assert.deepEqual(linesOf(s.run('list', '--origin', 'agent')), [O_AGENT_TODO, O_AGENT_DONE]);
+  // The legacy card (origin key absent) appears under NEITHER value —
+  // unknown origin fails closed, exactly like the dispatch gate's blockedBy.
+  assert.ok(!s.run('list', '--origin', 'human').includes('o-legacy'));
+  assert.ok(!s.run('list', '--origin', 'agent').includes('o-legacy'));
+});
+
+test('list --origin composes with --status, --assignee and --open', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  seedOrigins(s);
+  assert.deepEqual(linesOf(s.run('list', '--origin', 'human', '--status', 'todo')), [O_HUMAN_TODO]);
+  assert.deepEqual(linesOf(s.run('list', '--origin', 'human', '--assignee', 'jessica-1')), [
+    O_HUMAN_DOING,
+  ]);
+  assert.deepEqual(linesOf(s.run('list', '--origin', 'agent', '--open')), [O_AGENT_TODO]);
+});
+
+test('list --origin rejects other values — nothing written', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  seedOrigins(s);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+  const r = s.runFail('list', '--origin', 'nonsense');
+  assert.notEqual(r.code, 0, 'only human|agent are valid origins');
+  assert.match(r.stderr, /--origin/i);
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
+});
+
+const RICH_ID = 'agent-rich-card-2026-08-19';
+
+function seedRichCard(s) {
+  s.hive.writeTasks([
+    {
+      id: RICH_ID,
+      title: 'The JORI import is wedged',
+      status: 'blocked',
+      assignee: 'dwight-1',
+      origin: 'agent',
+      dependsOn: ['agent-feed-normalizer-2026-08-18', 'agent-csv-schema-check-2026-08-17'],
+      priority: 2,
+      createdAt: '2026-08-19T10:00:00.000Z',
+      description: 'imports stall on page 3\n  log excerpt: ECONNRESET x2\n\nsee redmine 3216',
+      blockedBy: 'dwight-1',
+      blockedWhy: 'JORI feed returned 502 twice (23:04, 23:11)',
+      sessionId: 'f68d69ae-c2ac-4d4d-ae63-b244fff90453',
+      sessionMode: 'resume',
+      humanQA: [
+        {
+          q: 'Ship the partial import?',
+          a: 'No — wait for the full feed.',
+          askedAt: '2026-08-19T10:05:00.000Z',
+          answeredAt: '2026-08-19T10:40:00.000Z',
+        },
+        { q: 'Page on JORI support tonight?', askedAt: '2026-08-19T11:00:00.000Z' },
+        {
+          q: 'Old question the operator swiped away?',
+          askedAt: '2026-08-19T09:00:00.000Z',
+          dismissedAt: '2026-08-19T09:30:00.000Z',
+        },
+      ],
+    },
+  ]);
+}
+
+test('show: one card in full — every field, notes verbatim, humanQA history in order', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedRichCard(s);
+  const out = s.run('show', RICH_ID);
+
+  assert.match(out, /^id:\s+agent-rich-card-2026-08-19$/m);
+  assert.match(out, /^title:\s+The JORI import is wedged$/m);
+  assert.match(out, /^status:\s+blocked$/m);
+  assert.match(out, /^paused:\s+no$/m);
+  assert.match(out, /^assignee:\s+dwight-1$/m);
+  assert.match(out, /^origin:\s+agent$/m);
+  assert.match(out, /^priority:\s+2$/m);
+  assert.match(
+    out,
+    /^dependsOn:\s+agent-feed-normalizer-2026-08-18, agent-csv-schema-check-2026-08-17$/m,
+  );
+  assert.match(out, /^createdAt:\s+2026-08-19T10:00:00.000Z$/m);
+  assert.match(out, /^doneAt:\s+-$/m);
+  assert.match(out, /^blockedBy:\s+dwight-1$/m);
+  assert.match(out, /^blockedWhy:\s+JORI feed returned 502 twice \(23:04, 23:11\)$/m);
+  assert.match(out, /^session:\s+stamped \(resume\)$/m);
+  assert.ok(
+    !out.includes('f68d69ae'),
+    'sessionId PRESENCE only — the raw conversation id never prints',
+  );
+
+  // The full description, whitespace preserved verbatim (2-space indent per
+  // line, blank line stays blank — never flattened like the list column).
+  assert.match(out, /^notes:$/m);
+  assert.ok(
+    out.includes('  imports stall on page 3\n    log excerpt: ECONNRESET x2\n\n  see redmine 3216'),
+    'description whitespace preserved',
+  );
+
+  // EVERY humanQA entry, in ledger order, answers marked.
+  assert.match(out, /^humanQA \(3\):$/m);
+  const first = out.indexOf('Ship the partial import?');
+  const second = out.indexOf('Page on JORI support tonight?');
+  const third = out.indexOf('Old question the operator swiped away?');
+  assert.ok(first >= 0 && second > first && third > second, 'entries in ledger order');
+  assert.match(out, /a: No — wait for the full feed\./, 'the answered entry shows its answer');
+  assert.match(
+    out,
+    /q: Page on JORI support tonight\?\n\s+a: \(unanswered\)/,
+    'an open ask is clearly marked',
+  );
+  assert.match(
+    out,
+    /q: Old question the operator swiped away\?\n\s+a: \(unanswered, dismissed\)/,
+    'a dismissed ask is marked as dismissed, not silently awaiting',
+  );
+});
+
+test('show: a bare card renders every absent optional field as -', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  s.hive.writeTasks([
+    {
+      id: 'agent-bare-card-2026-08-19',
+      title: 'Just the required fields',
+      status: 'todo',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+    },
+  ]);
+  const out = s.run('show', 'agent-bare-card-2026-08-19');
+  for (const label of [
+    'assignee',
+    'origin',
+    'dependsOn',
+    'doneAt',
+    'blockedBy',
+    'blockedWhy',
+    'notes',
+    'humanQA',
+  ]) {
+    assert.match(out, new RegExp('^' + label + ':\\s+-$', 'm'), label + ' shows - when absent');
+  }
+  assert.match(out, /^paused:\s+no$/m);
+  assert.match(out, /^session:\s+none$/m);
+});
+
+test('show: unknown id fails with a clear error and a non-zero exit', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedRichCard(s);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+  const r = s.runFail('show', 'no-such-card');
+  assert.notEqual(r.code, 0, 'non-zero exit');
+  assert.match(r.stderr, /no card with id "no-such-card"/);
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
+});
+
+test('show: argument validation + READ-ONLY — no flags, one id, ledger byte-identical', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedRichCard(s);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  let r = s.runFail('show');
+  assert.notEqual(r.code, 0, 'no id rejected');
+  r = s.runFail('show', '--notes', 'x');
+  assert.notEqual(r.code, 0, 'show takes no flags');
+  r = s.runFail('show', RICH_ID, 'extra');
+  assert.notEqual(r.code, 0, 'exactly one id');
+
+  // The usage text carries both new surfaces.
+  const usage = s.runFail();
+  assert.match(usage.stderr, /hive-card show <id>/);
+  assert.match(usage.stderr, /--origin human\|agent/);
+
+  s.run('show', RICH_ID);
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched by the read');
+  assert.deepEqual(
+    fs
+      .readdirSync(path.dirname(s.tasksPath))
+      .filter((f) => f.includes('.tmp') || f.endsWith('.lock')),
+    [],
+    'no lock or tmp files left behind',
+  );
 });
 
 // ——— ask + prune-done (card agent-hive-card-ask-prune-done-2026-08-19) ———
