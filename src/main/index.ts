@@ -95,7 +95,15 @@ import {
 import { startSessionRequestWatcher } from './sessionRequests';
 import { listLocalSkills, type LocalSkill } from './skills';
 import { shouldAdoptWorktree } from './worktreeAdopt';
-import { autoParkDecisions, autoParkReason, cardsByAssignee, AUTO_PARK_SWEEP_MS } from './autoPark';
+import {
+  autoParkDecisions,
+  autoParkReason,
+  cardsByAssignee,
+  evidencePruned,
+  AUTO_PARK_SWEEP_MS,
+  type AutoParkCandidate,
+  type AutoParkDecision,
+} from './autoPark';
 import {
   parkAgentCore,
   recallAgentCore,
@@ -6880,15 +6888,22 @@ let lastAutoParkSweepAt = 0;
  *  for honest logs. Observability is not optional: every park mails god WHY and
  *  WHEN and lands a kind:'auto_park' row in log.jsonl. Kill-switch only
  *  (autoParkIdle === false) — default ON, nothing to configure to fire. */
+/** Post-prune notice arm (god amendment 2): in-memory, one notice per
+ *  episode — losing it to a restart costs one duplicate mail, nothing more
+ *  (heldQuietParks precedent). */
+let autoParkPruneNoticeArmed = false;
+
 function autoParkSweep(): void {
   if (readConfig().autoParkIdle === false) return;
   const reg = hive.registry();
   const usageById = new Map(telemetry.snapshot().usage.map((u) => [u.agentId, u]));
   const now = Date.now();
+  const seen: AutoParkCandidate[] = [];
+  const parks: AutoParkDecision[] = [];
   for (const [id, a] of Object.entries(reg.agents)) {
     if (a.archived || a.vacation || a.retired) continue;
     const row = usageById.get(id);
-    const candidate = {
+    const candidate: AutoParkCandidate = {
       id,
       role: a.role,
       // Both god spellings, as parkAgentCore itself checks them.
@@ -6916,6 +6931,7 @@ function autoParkSweep(): void {
         // cardsByAssignee accepts it (and the hive.tasks() wrapper) by design.
         { ...candidate, cards: cardsByAssignee(tasks).get(id) ?? [] },
       ]);
+      seen.push({ ...candidate, cards: cardsByAssignee(tasks).get(id) ?? [] });
       if (d.length === 0) return null;
       const res = parkAgent(d[0].id, autoParkReason(d[0]), 'auto');
       if (!res.ok) {
@@ -6926,6 +6942,7 @@ function autoParkSweep(): void {
         console.log(`[auto-park] refused ${id}: ${res.error}`);
         return null;
       }
+      parks.push(d[0]);
       return d[0];
     });
     if (!decision) continue; // not parkable, refused, or lock contention
@@ -6975,6 +6992,24 @@ function autoParkSweep(): void {
         );
       })();
     }
+  }
+  // Post-prune sentinel (god amendment 2): the gate can NEVER fire on this
+  // floor — say so ONCE, so a swept-clean ledger disables auto-park loudly,
+  // not silently (the deleted-heartbeat failure mode).
+  if (evidencePruned(seen, parks)) {
+    if (!autoParkPruneNoticeArmed) {
+      autoParkPruneNoticeArmed = true;
+      hive.appendLog({ kind: 'auto_park_evidence_pruned' });
+      console.warn(
+        '[auto-park] evidence pruned: no done cards on the floor — nobody can qualify until the next done flip lands',
+      );
+      informGod(
+        '[auto-park evidence pruned]',
+        'The ledger holds no done cards (likely a hive-card prune-done at shift close), so the auto-park evidence gate can never qualify anyone — idle agents will NOT be parked until the next done flip lands. This notice fires once per episode; it exists so a silently-disabled mechanism is never mistaken for a quiet floor.',
+      );
+    }
+  } else {
+    autoParkPruneNoticeArmed = false;
   }
 }
 

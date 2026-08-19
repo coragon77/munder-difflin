@@ -575,6 +575,11 @@ function execUpdateTask(deps: RealtimeActionDeps, a: Record<string, unknown>): A
       // Amendment D (card agent-every-non-paused-todo-ke-2026-08-18): a resumed
       // card must not carry a stale on-hold flag into doing.
       if (card.status === 'doing' && card.paused) card.paused = undefined;
+      // doneAt stamp (god amendment 1, auto-park recency) — same rule as
+      // hive-card status and updateTaskStatus: date the done flip, clear it
+      // on any flip off done.
+      if (card.status === 'done') card.doneAt = new Date().toISOString();
+      else delete card.doneAt;
     }
     if (str(a.result)) card.result = str(a.result);
     if (str(a.assignee)) card.assignee = str(a.assignee);

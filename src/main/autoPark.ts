@@ -44,6 +44,15 @@ export const AUTO_PARK_IDLE_MS = 60 * 60_000;
  *  once a minute are plenty for an hour-scale rule (GC_SWEEP_MS precedent). */
 export const AUTO_PARK_SWEEP_MS = 60_000;
 
+/** How much OLDER than the idle window a done flip may be and still count as
+ *  evidence about the CURRENT engagement (god amendment 1): the done-report
+ *  lands, then wrap-up work follows (merge, mail, a stray question) before
+ *  true silence starts — the flip is legitimately a bit older than the
+ *  telemetry silence. One hour of slack covers that without re-opening the
+ *  "done at 10:00, uncarded discussion all evening" hole: the freshest done
+ *  flip must be within idleMs + this slack of the sweep. */
+export const AUTO_PARK_DONE_RECENT_MS = 60 * 60_000;
+
 /** One agent as the sweep sees it — every field the decision needs, nothing
  *  the decision cannot use (registry flags + telemetry age + inbox backlog +
  *  pending background work + the agent's assigned cards). Every numeric is
@@ -68,7 +77,7 @@ export interface AutoParkCandidate {
   inboxBacklog?: number;
   /** Every card in tasks.json assigned to this agent. A non-array value is
    *  no evidence (fail closed), never a crash. */
-  cards?: { id?: string; status?: string }[];
+  cards?: { id?: string; status?: string; doneAt?: string }[];
 }
 
 /** A count that cannot be proven to be a non-negative integer → the caller
@@ -82,13 +91,15 @@ function unknownCount(v: number | undefined): boolean {
  *  callback — because the sweep reads the ledger in both places and a shape
  *  mismatch at either silently degrades to "no evidence" (review round 2,
  *  the dead-mechanism blocker: cardsOf(.tasks on an array) is undefined). */
-export function cardsByAssignee(ledger: unknown): Map<string, { id?: string; status?: string }[]> {
+export function cardsByAssignee(
+  ledger: unknown,
+): Map<string, { id?: string; status?: string; doneAt?: string }[]> {
   // Array.isArray is the ONLY shape proof — a junk wrapper's .tasks (an
   // object, a string, a number) is NOT iterable and must become an empty
   // list, never a throw (round-3: `{tasks:{}}` reached for...of and threw).
   const raw = Array.isArray(ledger) ? ledger : (ledger as { tasks?: unknown })?.tasks;
   const list: unknown[] = Array.isArray(raw) ? raw : [];
-  const byAssignee = new Map<string, { id?: string; status?: string }[]>();
+  const byAssignee = new Map<string, { id?: string; status?: string; doneAt?: string }[]>();
   for (const t of list) {
     // A malformed row (non-object, non-string assignee) is skipped — one
     // junk card in the ledger must not take down the whole sweep.
@@ -97,9 +108,9 @@ export function cardsByAssignee(ledger: unknown): Map<string, { id?: string; sta
     if (typeof assignee !== 'string') continue;
     const owner = assignee.trim();
     if (!owner) continue;
-    const card = t as { id?: string; status?: string };
+    const card = t as { id?: string; status?: string; doneAt?: string };
     const cards = byAssignee.get(owner) ?? [];
-    cards.push({ id: card.id, status: card.status });
+    cards.push({ id: card.id, status: card.status, doneAt: card.doneAt });
     byAssignee.set(owner, cards);
   }
   return byAssignee;
@@ -145,6 +156,14 @@ export function autoParkDecisions(candidates: AutoParkCandidate[]): AutoParkDeci
     const cards = Array.isArray(c.cards) ? c.cards : [];
     if (cards.length === 0) continue;
     if (!cards.every((card) => card?.status === 'done')) continue;
+    // RECENCY (god amendment 1): the done flip must be about the CURRENT
+    // engagement, not tenure — the FRESHEST doneAt within idleMs + slack of
+    // the sweep. A missing/unparseable doneAt (cards done before the stamp
+    // existed) is UNKNOWN flip time: fails closed, and the reason string
+    // says so instead of hiding it.
+    const newestDone = Math.max(...cards.map((card) => Date.parse(card.doneAt ?? '') || 0));
+    const freshWindow = age + AUTO_PARK_DONE_RECENT_MS;
+    if (newestDone <= 0 || Date.now() - newestDone > freshWindow) continue;
     out.push({
       id: c.id,
       idleMs: age,
@@ -152,6 +171,42 @@ export function autoParkDecisions(candidates: AutoParkCandidate[]): AutoParkDeci
     });
   }
   return out;
+}
+
+/** Post-prune sentinel (god amendment 2): true when the floor state means
+ *  the sweep can NEVER qualify anyone — every otherwise-parkable-looking
+ *  agent lacks done evidence because the ledger holds NO done cards at all
+ *  (the hive-card prune-done signature at shift close). Failing safe is not
+ *  enough: a mechanism that silently stops working is the deleted-heartbeat
+ *  failure mode, so the caller logs + mails god ONCE per episode (armed
+ *  here, disarmed the moment a done card exists anywhere again). */
+export function evidencePruned(
+  candidates: AutoParkCandidate[],
+  decisions: AutoParkDecision[],
+): boolean {
+  if (decisions.length > 0) return false; // someone parked — the gate works
+  let otherwiseParkable = false;
+  for (const c of candidates) {
+    const cards = Array.isArray(c.cards) ? c.cards : [];
+    if (cards.some((card) => card?.status === 'done')) return false; // evidence exists
+    const row = c.telemetryAgeMs;
+    const idleOk =
+      typeof row === 'number' && Number.isFinite(row) && row >= 0 && row >= AUTO_PARK_IDLE_MS;
+    if (
+      idleOk &&
+      !c.isGod &&
+      c.role !== 'intern' &&
+      !c.pinned &&
+      !c.archived &&
+      !c.vacation &&
+      !c.retired &&
+      (c.pendingBackgroundWork ?? -1) === 0 &&
+      (c.inboxBacklog ?? -1) === 0
+    ) {
+      otherwiseParkable = true;
+    }
+  }
+  return otherwiseParkable;
 }
 
 /** The reason string that rides the park: names every gate input so the log

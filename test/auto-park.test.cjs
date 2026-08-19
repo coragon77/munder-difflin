@@ -34,11 +34,19 @@ const {
   autoParkDecisions,
   autoParkReason,
   cardsByAssignee,
+  evidencePruned,
   AUTO_PARK_IDLE_MS,
   AUTO_PARK_SWEEP_MS,
+  AUTO_PARK_DONE_RECENT_MS,
 } = loadTs('src/main/autoPark.ts');
 
-const done = (id) => ({ id, status: 'done' });
+// doneAt stamped 5 minutes ago: comfortably inside idle+slack for every
+// test that expects a park (the freshness rule, god amendment 1).
+const done = (id, ageMs = 5 * 60_000) => ({
+  id,
+  status: 'done',
+  doneAt: new Date(Date.now() - ageMs).toISOString(),
+});
 const idle = (over) => AUTO_PARK_IDLE_MS + over;
 /** The provably-clean counts — explicit 0s, because the hardened gate reads
  *  an ABSENT count as unknown (fail closed), not as zero. */
@@ -155,6 +163,69 @@ test('never parked: god, intern, pinned, archived, vacation, retired', () => {
   for (const extra of cases) {
     assert.equal(autoParkDecisions([{ id: 'a', ...base, ...extra }]).length, 0);
   }
+});
+
+test('RECENCY (god amendment 1): a done card from hours before uncarded work is NOT evidence', () => {
+  // The exact scenario god named: done flip at 10:00, uncarded discussion all
+  // evening, idle 1h — the flip is 12h old, far outside idle+slack.
+  const stale = [
+    { id: 'a', telemetryAgeMs: idle(0), ...DRAINED, cards: [done('c', 12 * 3_600_000)] },
+  ];
+  assert.equal(autoParkDecisions(stale).length, 0, 'a 12h-old done flip must not park');
+  // The Kelly shape: flip 10min before idle started — inside idle+slack.
+  const fresh = [{ id: 'a', telemetryAgeMs: idle(0), ...DRAINED, cards: [done('c', 3_700_000)] }];
+  assert.equal(autoParkDecisions(fresh).length, 1, 'a flip ~1h before the sweep parks');
+  // The edge: flip exactly at idle+slack old still parks; one ms older does
+  // not — the window is idleMs + AUTO_PARK_DONE_RECENT_MS (2h for a 1h idle).
+  const WINDOW = AUTO_PARK_IDLE_MS + AUTO_PARK_DONE_RECENT_MS;
+  const edge = (over) => [
+    { id: 'a', telemetryAgeMs: idle(0), ...DRAINED, cards: [done('c', WINDOW + over)] },
+  ];
+  assert.equal(autoParkDecisions(edge(1)).length, 0);
+  assert.equal(autoParkDecisions(edge(0)).length, 1);
+  // A MISSING doneAt (cards done before the stamp existed) = UNKNOWN flip
+  // time: fails closed — the rule reads exactly as strong as it is.
+  const unstamped = [
+    { id: 'a', telemetryAgeMs: idle(0), ...DRAINED, cards: [{ id: 'c', status: 'done' }] },
+  ];
+  assert.equal(autoParkDecisions(unstamped).length, 0, 'unstamped done cards are not evidence');
+  // Unparseable doneAt is the same as missing.
+  const junk = [
+    {
+      id: 'a',
+      telemetryAgeMs: idle(0),
+      ...DRAINED,
+      cards: [{ id: 'c', status: 'done', doneAt: 'garbage' }],
+    },
+  ];
+  assert.equal(autoParkDecisions(junk).length, 0);
+  // Mixed: an old unstamped card + a fresh stamped one — the freshest wins.
+  const mixed = [
+    {
+      id: 'a',
+      telemetryAgeMs: idle(0),
+      ...DRAINED,
+      cards: [{ id: 'old', status: 'done' }, done('new', 3_700_000)],
+    },
+  ];
+  assert.equal(autoParkDecisions(mixed).length, 1);
+});
+
+test('POST-PRUNE sentinel (god amendment 2): the gate says so when it can never fire', () => {
+  const parkable = { id: 'a', telemetryAgeMs: idle(0), ...DRAINED, cards: [] };
+  // No done cards anywhere + an otherwise-parkable agent => pruned signature.
+  assert.equal(evidencePruned([parkable], []), true);
+  // A done card ANYWHERE on the floor means evidence CAN exist => not pruned.
+  assert.equal(evidencePruned([parkable, { ...parkable, id: 'b', cards: [done('c')] }], []), false);
+  // A park landed => the gate works => never say pruned.
+  assert.equal(evidencePruned([parkable], [{ id: 'a', idleMs: 1, evidence: 'c' }]), false);
+  // Nobody otherwise-parkable (all busy/pinned/backlogged) => quiet, not pruned.
+  assert.equal(
+    evidencePruned([{ id: 'a', telemetryAgeMs: 5_000, ...DRAINED, cards: [] }], []),
+    false,
+  );
+  assert.equal(evidencePruned([{ ...parkable, pinned: true }], []), false);
+  assert.equal(evidencePruned([{ ...parkable, inboxBacklog: 2 }], []), false);
 });
 
 test('malformed input fails CLOSED (review finding 2) — junk never parks', () => {
@@ -334,11 +405,12 @@ test('cardsByAssignee reads BOTH ledger shapes and NEVER throws on junk (round 3
   const fromArray = cardsByAssignee(cards);
   const fromWrapper = cardsByAssignee({ tasks: cards });
   for (const m of [fromArray, fromWrapper]) {
+    // doneAt rides along (absent on these fixtures -> undefined own-property)
     assert.deepEqual(m.get('kelly'), [
-      { id: 'c1', status: 'done' },
-      { id: 'c2', status: 'doing' },
+      { id: 'c1', status: 'done', doneAt: undefined },
+      { id: 'c2', status: 'doing', doneAt: undefined },
     ]);
-    assert.deepEqual(m.get('ada'), [{ id: 'c3', status: 'done' }]);
+    assert.deepEqual(m.get('ada'), [{ id: 'c3', status: 'done', doneAt: undefined }]);
     assert.equal(m.has('c4'), false);
   }
   // junk wrappers/rows are safely empty or skipped — never a throw
@@ -351,7 +423,7 @@ test('cardsByAssignee reads BOTH ledger shapes and NEVER throws on junk (round 3
     null,
     { id: 'j2', assignee: 'real', status: 'done' },
   ]);
-  assert.deepEqual(junkRows.get('real'), [{ id: 'j2', status: 'done' }]);
+  assert.deepEqual(junkRows.get('real'), [{ id: 'j2', status: 'done', doneAt: undefined }]);
   assert.equal(junkRows.size, 1);
 });
 

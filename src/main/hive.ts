@@ -145,6 +145,15 @@ export interface HiveTask {
   dependsOn: string[];
   priority: number;
   createdAt: string;
+  /** WHEN this card was flipped to 'done' (ISO; god amendment 1, card
+   *  agent-auto-park-idle-agents-th-2026-08-19): the auto-park evidence gate
+   *  requires the done flip to be RECENT relative to the idle window — a done
+   *  card from hours before an uncarded conversation is tenure, not evidence.
+   *  Stamped by BOTH writers (hive-card status done + updateTaskStatus);
+   *  cleared on any flip off done. Cards done before this field existed have
+   *  UNKNOWN flip time and fail the recency rule closed (honest, not hidden).
+   */
+  doneAt?: string;
   /** First-class human feedback: the god appends {q} when a card can only
    *  proceed with the human's input (status goes blocked); the harness UI
    *  fills in {a}. The full history stays on the card forever. */
@@ -3056,6 +3065,9 @@ export class HiveManager {
       if (card.status === status && !(status === 'doing' && card.paused)) return true;
       card.status = status;
       if (status === 'doing' && card.paused) card.paused = undefined; // auto-resume
+      // doneAt stamp (god amendment 1) — same rule as hive-card status.
+      if (status === 'done') card.doneAt = new Date().toISOString();
+      else delete card.doneAt;
       this.writeTasks(tasks);
       return true;
     });
@@ -6061,6 +6073,11 @@ function cmdStatus(argv) {
       delete card.sessionMode;
     }
     card.status = next;
+    // doneAt stamp (god amendment 1): the auto-park gate reads this as WHEN
+    // the engagement's done-report landed. Cleared on any flip off done so a
+    // reopened card cannot masquerade as recently-finished evidence.
+    if (next === 'done') card.doneAt = new Date().toISOString();
+    else delete card.doneAt;
     writeLedger(data);
   });
   process.stdout.write(cardId + ' -> ' + next + (flags.adopt ? ' (adopt)' : '') + '\\n');
