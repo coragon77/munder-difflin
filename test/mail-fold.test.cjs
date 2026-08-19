@@ -6,10 +6,11 @@
  * dispatch file. The fold closes it mechanically: when a dispatch contract
  * becomes visible (direct delivery, or release from inbox/.staged), it
  * ABSORBS everything else pending for the agent, so the dispatch is the ONE
- * thing beside itself. Originals are archived to inbox/.done/ (consumed).
- *
- * These tests pin the HiveManager delivery surface (deliver/releaseStagedMail)
- * on top of the staging behaviour pinned by card-scoped-sessions.test.cjs.
+ * thing beside itself. A per-tick backstop fold keeps that true for mail
+ * routed after the contract. Originals are archived to inbox/.done/
+ * (consumed). Reviewer-driven cases included: mixed-age timeout, single
+ * combined budget, delivery-order independence, amendment anchoring,
+ * invalid-mail tolerance, deterministic fold order.
  */
 
 const test = require('node:test');
@@ -29,6 +30,13 @@ const CARD = (over = {}) => ({
   status: 'doing',
   ...over,
 });
+
+const CONTRACT = {
+  to: 'dwight',
+  subject: 'Fold card — card card-1',
+  body: 'the contract',
+  conversation: 'card-card-1',
+};
 
 /** Hand-built hive with god + dwight (claude, an old live session so the
  *  mail hold is active for an unstamped doing card), an inbox each. */
@@ -73,17 +81,9 @@ test('fold: staged siblings absorb into the dispatch contract at release — one
     'god',
   );
   // The dispatch contract (card conversation) — stages beside it.
-  hive.send(
-    {
-      to: 'dwight',
-      subject: 'Fold card — card card-1',
-      body: 'the contract',
-      conversation: 'card-card-1',
-    },
-    'god',
-  );
+  hive.send(CONTRACT, 'god');
   assert.equal(fs.readdirSync(path.join(inbox, '.staged')).length, 2, 'both staged');
-  // The card-scoped clear executed: the new conversation reported in → stamp.
+  // The card-scoped clear executed: a NEW conversation reported in → stamp.
   hive.recordSession('dwight', 'fresh-card-conversation');
   hive.routeOnce();
   const msgs = hive.inbox('dwight');
@@ -93,9 +93,9 @@ test('fold: staged siblings absorb into the dispatch contract at release — one
   assert.match(msgs[0].body, /ALSO do the two additions/);
   assert.match(msgs[0].body, /MAIL FOLDED INTO THIS DISPATCH/);
   // God's caveats: the act survives the fold (a folded request still waits on
-  // an answer) and the framing cannot be mistaken for card instructions.
+  // an answer) and the framing marks it as separate mail, not contract lines.
   assert.match(msgs[0].body, /act: request \| Subject: amendment/);
-  assert.match(msgs[0].body, /NOT part of this card's contract/);
+  assert.match(msgs[0].body, /handle it alongside this contract/);
   assert.equal(fs.readdirSync(path.join(inbox, '.staged')).length, 0, 'staged drained');
   assert.equal(
     fs.readdirSync(path.join(inbox, '.done')).length,
@@ -107,15 +107,7 @@ test('fold: staged siblings absorb into the dispatch contract at release — one
 test('fold: inbox-pending mail (stamp→sweep race window) absorbs into the staged contract', () => {
   const { hive, root } = foldHive([CARD()]);
   const inbox = inboxDir(root);
-  hive.send(
-    {
-      to: 'dwight',
-      subject: 'Fold card — card card-1',
-      body: 'the contract',
-      conversation: 'card-card-1',
-    },
-    'god',
-  );
+  hive.send(CONTRACT, 'god');
   hive.recordSession('dwight', 'fresh-card-conversation'); // stamp → hold open
   // Amendment lands AFTER the stamp but BEFORE the release sweep → inbox.
   hive.send({ to: 'dwight', subject: 'late amendment', body: 'LATE add this too' }, 'god');
@@ -132,15 +124,7 @@ test('fold: adopt dispatch (direct delivery) absorbs pending inbox mail into the
   const { hive } = foldHive([CARD({ sessionMode: 'adopt' })]);
   hive.send({ to: 'dwight', subject: 'pre-dispatch note', body: 'NOTE read me too' }, 'god');
   assert.equal(hive.inbox('dwight').length, 1, 'note pending');
-  hive.send(
-    {
-      to: 'dwight',
-      subject: 'Fold card — card card-1',
-      body: 'the contract',
-      conversation: 'card-card-1',
-    },
-    'god',
-  );
+  hive.send(CONTRACT, 'god');
   const msgs = hive.inbox('dwight');
   assert.equal(msgs.length, 1, 'contract absorbed the pending note');
   assert.match(msgs[0].body, /the contract/);
@@ -149,15 +133,7 @@ test('fold: adopt dispatch (direct delivery) absorbs pending inbox mail into the
 
 test('fold: dispatch with an empty inbox is byte-identical — no fold section', () => {
   const { hive, root } = foldHive([CARD()]);
-  hive.send(
-    {
-      to: 'dwight',
-      subject: 'Fold card — card card-1',
-      body: 'the contract',
-      conversation: 'card-card-1',
-    },
-    'god',
-  );
+  hive.send(CONTRACT, 'god');
   hive.recordSession('dwight', 'fresh-card-conversation');
   hive.routeOnce();
   const msgs = hive.inbox('dwight');
@@ -174,28 +150,22 @@ test('fold: past the body budget, headers fold and overflow stays pending — ne
   hive.send({ to: 'dwight', act: 'query', subject: 'big one', body: big }, 'god');
   hive.send({ to: 'dwight', act: 'inform', subject: 'big two', body: big }, 'god');
   hive.send({ to: 'dwight', act: 'inform', subject: 'big three', body: big }, 'god');
-  hive.send(
-    {
-      to: 'dwight',
-      subject: 'Fold card — card card-1',
-      body: 'the contract',
-      conversation: 'card-card-1',
-    },
-    'god',
-  );
+  hive.send(CONTRACT, 'god');
   hive.recordSession('dwight', 'fresh-card-conversation');
   hive.routeOnce();
+  // Release pass: big one fits the single 16k budget; big two/three overflow
+  // beside the contract as headers + a drain pointer. The same tick's
+  // backstop pass must NOT re-budget them in (idempotence — a backlog cannot
+  // be swallowed 16k per tick): they stay pending, pointed at.
   const msgs = hive.inbox('dwight');
-  // The contract + the two beyond-budget messages (left pending, pointed at).
-  assert.equal(msgs.length, 3, 'overflow stays pending in the inbox');
+  assert.equal(msgs.length, 3, 'both beyond-budget messages stay beside the contract');
   const contract = msgs.find((m) => m.conversation === 'card-card-1');
   assert.ok(contract, 'contract released');
   assert.match(contract.body, /the contract/);
-  assert.ok(contract.body.includes(big), 'first big mail folded IN FULL — no truncation');
-  assert.match(contract.body, /MAIL QUEUED BESIDE THIS DISPATCH/);
+  assert.ok(contract.body.includes(big), 'big mail folded IN FULL — no truncation');
   assert.match(contract.body, /Subject: big two/);
   assert.match(contract.body, /Subject: big three/);
-  assert.match(contract.body, /act: query \| Subject: big one/, 'act preserved in the full fold');
+  assert.match(contract.body, /act: query \| Subject: big one/, 'act preserved in the fold');
   assert.match(
     contract.body,
     /2 message\(s\) beyond the fold budget remain pending in your inbox — run hive-inbox drain/,
@@ -204,7 +174,149 @@ test('fold: past the body budget, headers fold and overflow stays pending — ne
   assert.equal(
     fs.readdirSync(path.join(inbox, '.done')).length,
     1,
-    'only the fully folded mail consumed',
+    'only fully folded mail consumed (big one)',
+  );
+});
+
+test('fold: ONE budget across staged siblings and inbox-pending mail (no double 16k)', () => {
+  const { hive } = foldHive([CARD()]);
+  const nine = 'y'.repeat(9_000);
+  // 9k stages beside the contract; another 9k lands in the inbox after the
+  // stamp (stamp→sweep window). A combined budget folds the first in full and
+  // header-points the second; two separate budgets would inline both (18k).
+  hive.send({ to: 'dwight', subject: 'staged nine', body: nine }, 'god');
+  hive.send(CONTRACT, 'god');
+  hive.recordSession('dwight', 'fresh-card-conversation');
+  hive.send({ to: 'dwight', subject: 'inbox nine', body: nine }, 'god');
+  hive.routeOnce();
+  const msgs = hive.inbox('dwight');
+  const contract = msgs.find((m) => m.conversation === 'card-card-1');
+  assert.ok(contract, 'contract released');
+  // The combined fold must NOT fully contain BOTH 8k bodies.
+  const yRuns = contract.body.match(/y{8,}/g) ?? [];
+  assert.ok(yRuns.length <= 1, `only one 9k body inlined, got ${yRuns.length}`);
+  assert.match(contract.body, /Subject: (staged nine|inbox nine)/);
+  assert.match(contract.body, /MAIL QUEUED BESIDE THIS DISPATCH/);
+});
+
+test('fold: mixed-age timeout — a stale contract release folds its FRESH staged sibling too', () => {
+  const { hive, root } = foldHive([CARD()]);
+  const stagedDir = path.join(inboxDir(root), '.staged');
+  hive.send(CONTRACT, 'god');
+  // Backdate ONLY the contract: it is timeout-stale, the amendment is fresh.
+  const contractFile = path.join(stagedDir, fs.readdirSync(stagedDir)[0]);
+  const old = new Date(Date.now() - MAIL_STAGE_TIMEOUT_MS - 5000);
+  fs.utimesSync(contractFile, old, old);
+  hive.send({ to: 'dwight', subject: 'fresh amendment', body: 'FRESH do this too' }, 'god');
+  hive.routeOnce();
+  const msgs = hive.inbox('dwight');
+  assert.equal(msgs.length, 1, 'the fresh sibling did not stay hidden in .staged');
+  assert.match(msgs[0].body, /the contract/);
+  assert.match(msgs[0].body, /FRESH do this too/);
+  assert.equal(fs.readdirSync(stagedDir).length, 0, 'staged drained');
+});
+
+test('fold: mail routed AFTER a direct (adopt) contract is folded in on the next tick', () => {
+  const { hive } = foldHive([CARD({ sessionMode: 'adopt' })]);
+  hive.send(CONTRACT, 'god');
+  // A note routed after the contract lands beside it — delivery order must
+  // not decide visibility. The tick fold consolidates it into the unread
+  // contract.
+  hive.send({ to: 'dwight', subject: 'late note', body: 'LATE handle me' }, 'god');
+  assert.equal(hive.inbox('dwight').length, 2, 'briefly beside — as routed');
+  hive.routeOnce();
+  const msgs = hive.inbox('dwight');
+  assert.equal(msgs.length, 1, 'tick fold consolidated the late arrival');
+  assert.match(msgs[0].body, /the contract/);
+  assert.match(msgs[0].body, /LATE handle me/);
+});
+
+test('fold: a later same-conversation amendment never consumes the original contract', () => {
+  const { hive, root } = foldHive([CARD({ sessionMode: 'adopt' })]);
+  const inbox = inboxDir(root);
+  hive.send(
+    { ...CONTRACT, body: 'the ORIGINAL contract', created_at: '2026-08-19T10:00:00.000Z' },
+    'god',
+  );
+  hive.send(
+    {
+      to: 'dwight',
+      subject: 'amendment to the card',
+      body: 'AMEND the scope thus',
+      conversation: 'card-card-1',
+      created_at: '2026-08-19T10:00:02.000Z',
+    },
+    'god',
+  );
+  hive.routeOnce();
+  const msgs = hive.inbox('dwight');
+  assert.equal(msgs.length, 1, 'one message');
+  // The ORIGINAL is the anchor: its body leads, the amendment is the framed
+  // foreign section — never the reverse.
+  const origAt = msgs[0].body.indexOf('the ORIGINAL contract');
+  const amendAt = msgs[0].body.indexOf('AMEND the scope thus');
+  assert.ok(origAt >= 0 && amendAt > origAt, 'original contract anchors, amendment folds in');
+  assert.match(msgs[0].body, /Subject: amendment to the card/);
+  assert.equal(
+    fs.readdirSync(path.join(inbox, '.done')).length,
+    1,
+    'the amendment (not the contract) was consumed',
+  );
+});
+
+test('fold: structurally invalid pending mail is skipped, not fatal — and stays pending', () => {
+  const { hive, root } = foldHive([CARD()]);
+  const inbox = inboxDir(root);
+  hive.send({ to: 'dwight', subject: 'broken envelope', body: 'x' }, 'god');
+  // The hold is active, so the note STAGED. Corrupt it there to
+  // valid-JSON-but-not-a-message (no body).
+  const stagedDir = path.join(inbox, '.staged');
+  const stagedFiles = fs.readdirSync(stagedDir).filter((f) => f.endsWith('.json'));
+  const broken = stagedFiles[0];
+  fs.writeFileSync(path.join(stagedDir, broken), JSON.stringify({ nope: true }));
+  hive.send(CONTRACT, 'god');
+  hive.recordSession('dwight', 'fresh-card-conversation');
+  hive.routeOnce();
+  const msgs = hive.inbox('dwight');
+  const contract = msgs.find((m) => m.conversation === 'card-card-1');
+  assert.ok(contract, 'contract released despite the invalid sibling');
+  // The invalid file is invisible to inbox() (pre-existing parity) and is
+  // released un-parsed like any staged file — but never consumed by the fold.
+  assert.ok(
+    fs.existsSync(path.join(inbox, broken)) || fs.existsSync(path.join(stagedDir, broken)),
+    'invalid file not consumed by the fold',
+  );
+  const done = path.join(inbox, '.done');
+  assert.ok(!fs.existsSync(done) || fs.readdirSync(done).length === 0, 'nothing archived');
+});
+
+test('fold: fold order is oldest-first regardless of directory enumeration', () => {
+  const { hive } = foldHive([CARD({ sessionMode: 'adopt' })]);
+  const first = hive.send(
+    {
+      to: 'dwight',
+      subject: 'older note',
+      body: 'OLDEST',
+      created_at: '2026-08-19T10:00:00.000Z',
+    },
+    'god',
+  );
+  const second = hive.send(
+    {
+      to: 'dwight',
+      subject: 'newer note',
+      body: 'NEWEST',
+      created_at: '2026-08-19T10:00:01.000Z',
+    },
+    'god',
+  );
+  assert.ok(Date.parse(second.created_at) > Date.parse(first.created_at));
+  hive.send(CONTRACT, 'god');
+  const msgs = hive.inbox('dwight');
+  assert.equal(msgs.length, 1);
+  assert.ok(
+    msgs[0].body.indexOf('OLDEST') < msgs[0].body.indexOf('NEWEST'),
+    'oldest body folded first',
   );
 });
 
@@ -212,15 +324,7 @@ test('fold: timeout release still warns god, and the folded contract carries its
   const { hive, root } = foldHive([CARD()]);
   const stagedDir = path.join(inboxDir(root), '.staged');
   hive.send({ to: 'dwight', subject: 'amendment', body: 'ADD this as well' }, 'god');
-  hive.send(
-    {
-      to: 'dwight',
-      subject: 'Fold card — card card-1',
-      body: 'the contract',
-      conversation: 'card-card-1',
-    },
-    'god',
-  );
+  hive.send(CONTRACT, 'god');
   // Backdate both past the horizon (mtime is the timeout clock).
   const old = new Date(Date.now() - MAIL_STAGE_TIMEOUT_MS - 5000);
   for (const f of fs.readdirSync(stagedDir)) fs.utimesSync(path.join(stagedDir, f), old, old);
