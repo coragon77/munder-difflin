@@ -49,10 +49,13 @@ test('spawn footers defer to integrationMode/dispatch — no blanket push ban', 
 
 test('godLine VACATION paragraph documents whenQuiet holding', () => {
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
-  assert.ok(/whenQuiet/.test(p), 'the godLine mentions whenQuiet');
+  // 2026-08-19 godLine sweep: the raw "whenQuiet" JSON-field spelling was
+  // replaced by the primitive's flag — hive-park --when-quiet — because the
+  // request JSON is CLI-owned and hand-drops are gate-refused.
+  assert.ok(/--when-quiet/.test(p), 'the godLine names the when-quiet flag');
   assert.ok(
-    /"whenQuiet"\s*:\s*true is HELD/i.test(p) || /whenQuiet.{0,80}HELD/i.test(p),
-    'a whenQuiet park is HELD (not rejected) while the agent is busy',
+    /hive-park --when-quiet is HELD/i.test(p),
+    'a when-quiet park is HELD (not rejected) while the agent is busy',
   );
 });
 

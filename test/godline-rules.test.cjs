@@ -21,11 +21,13 @@
  *  - INBOX INTERFACE — god uses hive-inbox drain to print and archive mail
  *    in one pass; hand-moving JSON to inbox/.done/ is only the documented
  *    fallback. The card/board carry work state, not the inbox file.
- *  - ATOMIC JSON WRITES — every direct god write to tasks.json (or any
- *    shared hive JSON) goes through a tempfile in the same directory plus
- *    os.replace() onto the target, so a crash mid-write cannot corrupt the
- *    kanban and a stale read-modify-write cannot clobber a landing stamp
- *    (card godline-atomic-taskfile-writes-20260816).
+ *  - SHARED-STATE GATE — hand-access (reads AND writes) to tasks.json,
+ *    registry.json, fleet.json and the drop-dirs is banned outside the
+ *    bin/hive-* primitives; the gate refuses with no override, and the
+ *    escape route is mail-the-operator + card an extension, word-for-word
+ *    as the hook's refusal text (card agent-godline-sweep-fix-the-pr-2026-08-19;
+ *    replaces the pre-gate ATOMIC JSON WRITES rule, whose tempfile+os.replace
+ *    teaching is now a banned operation).
  *
  * Same pattern as the SKILL-DRIVEN WORK amendment (session-naming card).
  */
@@ -148,8 +150,16 @@ test('godLine teaches hive-dispatch as the guarded dispatch interface', () => {
     'teaches that a blocked card frees the agent for other work (owner stays recorded)',
   );
   assert.ok(
-    /vacation-requests\/, hive-card, and hive-mail[^.]+FALLBACK/.test(prompt),
+    /hive-card and hive-mail[^.]+MANUAL FALLBACK/.test(prompt),
     'manual dispatch primitives are demoted to fallback',
+  );
+  assert.ok(
+    !/vacation-requests\/, hive-card/.test(prompt),
+    'the vacation-requests/ hand-drop is no longer taught as a dispatch fallback (gate-refused)',
+  );
+  assert.ok(
+    /standalone RECALL is hive-recall <id>/.test(prompt),
+    'a standalone recall names its primitive',
   );
   assert.ok(
     !/hive-card status <id> doing/.test(prompt),
@@ -202,12 +212,81 @@ test('godLine teaches hive-inbox drain as the archive-on-read interface', () => 
   assert.ok(!/ARCHIVE-ON-READ:/.test(prompt), 'the old hand-archive instruction is gone');
 });
 
-test('godLine carries the ATOMIC JSON WRITES rule', () => {
+test('godLine carries the SHARED-STATE GATE rule (hand-access banned)', () => {
+  // Card agent-godline-sweep-fix-the-pr-2026-08-19: the R3 gate (26d7de2)
+  // refuses ALL non-primitive access to shared hive state — the old ATOMIC
+  // JSON WRITES clause taught exactly the banned operation (tempfile +
+  // os.replace hand-writes). The clause must now state the ban, name the
+  // primitives, and carry the hook's escape route word-for-word.
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
-  assert.ok(/ATOMIC JSON WRITES:/.test(p), 'god briefing must carry the ATOMIC JSON WRITES rule');
-  assert.ok(/direct writes to tasks\.json \(or any other shared hive JSON/.test(p));
-  assert.ok(/tempfile in the SAME directory/.test(p));
-  assert.ok(/os\.replace\(\)/.test(p));
+  assert.ok(/SHARED-STATE GATE:/.test(p), 'god briefing must carry the SHARED-STATE GATE rule');
+  assert.ok(
+    /hand-access \(reads AND writes\) is banned outside the bin\/hive-\* primitives/.test(p),
+  );
+  assert.ok(/REFUSES every such attempt with NO override/.test(p));
+  assert.ok(/hive-card list \(paused always shown\)/.test(p), 'card reads name the read primitive');
+  assert.ok(
+    /NO primitive reads fleet\.json or registry\.json/.test(p),
+    'names the files with no read primitive',
+  );
+  assert.ok(
+    /MAIL THE OPERATOR and card a harness extension — do not hand-edit, and do not thrash retrying the refused command/.test(
+      p,
+    ),
+    'the escape route matches the hook refusal text word-for-word',
+  );
+  // the banned mechanism teaching is gone
+  assert.ok(!/os\.replace/.test(p), 'no more os.replace hand-write teaching');
+  assert.ok(!/tempfile in the SAME directory/.test(p), 'no more tempfile hand-write teaching');
+});
+
+test('godLine MONITOR clause: roster line is the live view, raw reads refused', () => {
+  // Card agent-godline-sweep-fix-the-pr-2026-08-19, defect 2: 26d7de2 refuses
+  // god reading fleet.json/registry.json — the MONITOR clause taught both
+  // reads. rosterContext (auto-injected every prompt) is the live view; the
+  // escape route must match the hook's refusal text.
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/MONITOR the floor through the LIVE ROSTER line/.test(p));
+  assert.ok(
+    /reading fleet\.json or registry\.json directly is REFUSED \(shared-state gate\)/.test(p),
+  );
+  assert.ok(!/MONITOR the floor by reading/.test(p), 'the raw-read instruction is gone');
+  assert.ok(
+    /review every agent via the live roster line/.test(p),
+    'the standup reviews agents through the roster line',
+  );
+  assert.ok(
+    /hive-card list[^.]*human-origin|human-origin todo cards[\s\S]{0,200}list-filter extension/.test(
+      p,
+    ),
+    'the human-origin scan runs through hive-card list, gaps are carded',
+  );
+});
+
+test('godLine VACATION clause: hive-park/hive-recall only, no hand-drop teaching', () => {
+  // 788e344 shipped hive-park/hive-recall and gated the vacation-requests/
+  // drop-dir — the clause's "hand-drop is the documented MANUAL FALLBACK"
+  // wording taught a banned operation.
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(
+    /check the roster line's ON VACATION pool/.test(p),
+    'the pool is read off the roster line, not fleet.json',
+  );
+  assert.ok(/standalone recall is "\$HIVE_ROOT\/bin\/hive-recall" <id>/.test(p));
+  assert.ok(
+    !/vacation-requests\/[^.]*MANUAL FALLBACK|MANUAL FALLBACK[^.]{0,120}vacation-requests\//.test(
+      p,
+    ),
+    'no vacation-requests/ hand-drop is taught as fallback',
+  );
+  assert.ok(
+    /hand-dropping files into it is REFUSED by the shared-state gate/.test(p),
+    'the drop-dir ban is stated',
+  );
+  assert.ok(
+    /hive-park --when-quiet is HELD/.test(p),
+    'the when-quiet flag is named, not the raw JSON field',
+  );
 });
 
 test('godLine carries the HUMAN-CARD REFERENCE rule (no duplicate cards)', () => {
@@ -293,7 +372,10 @@ test('godLine carries the ROUTING-MISMATCH CHALLENGE rule', () => {
   const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
   assert.ok(/ROUTING-MISMATCH CHALLENGE:/.test(p), 'the rule must be named');
   assert.ok(/routing or assignment order/.test(p), 'covers routing and assignment orders');
-  assert.ok(/registry\.json cwd/.test(p), 'names the evidence source (registry cwd)');
+  assert.ok(
+    /the live roster line's names and roles/.test(p),
+    'names the evidence source (the live roster line — registry reads are gate-refused)',
+  );
   assert.ok(/project\/customer/.test(p), "checks against the target's project/customer");
   assert.ok(/ASK in plain prose/.test(p), 'the mismatch response is a plain question');
   assert.ok(/instead of silently complying|rather than silently complying/.test(p));
@@ -318,10 +400,18 @@ test('godLine carries the BREADTH-FIRST FLOOR SATURATION rule', () => {
   assert.ok(/in ONE pass/.test(p), 'one pass, not one agent at a time');
   assert.ok(/FAILURE of orchestration/.test(p), 'an under-filled floor is a failure');
   assert.ok(
-    /free seats > 0.{0,200}unowned.{0,40}actionable|unowned.{0,40}actionable.{0,80}free seats/.test(
-      p,
-    ),
-    'the standup anomaly is stated: free seats beside unowned actionable cards',
+    /actionable cards beside free seats > 0 is an anomaly/.test(p),
+    'the standup anomaly is stated: free seats beside actionable cards',
+  );
+  // 648ffdc widened actionableCards() to OWNED un-paused todos — "unowned"
+  // stopped being the fact; the anomaly is undispatched, owned or not.
+  assert.ok(
+    !/unowned actionable/.test(p),
+    'owned-but-undispatched todos count as actionable; "unowned actionable" is gone',
+  );
+  assert.ok(
+    /OWNED-but-undispatched todos COUNT/.test(p),
+    'the corrected fact is taught explicitly',
   );
   // stale FLOOR CAP tail contradicted the reclaim duty
   assert.ok(
@@ -423,7 +513,10 @@ test('godLine carries the PARALLEL-DISPATCH + FLOOR-CAP policy', () => {
   );
   assert.ok(/config floorMaxAgents/.test(p), 'rule text references the floorMaxAgents config');
   assert.ok(/REFUSES any spawn past the cap/.test(p), 'god knows the cap is enforced');
-  assert.ok(/fleet\.json's floor block/.test(p), 'god is pointed at the live seat count');
+  assert.ok(
+    /the roster line's FLOOR SEATS count shows the free seats/.test(p),
+    'god is pointed at the live seat count on the auto-injected roster line',
+  );
 });
 
 test('godLine carries the INTERN SPRITES name->sprite rule', () => {
