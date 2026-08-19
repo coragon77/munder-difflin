@@ -106,13 +106,16 @@ import {
 import { startCardSessionWatcher } from './cardSessions';
 import type { CardSessionMarker } from '../shared/cardSessions';
 
-// Whole-window flicker test (card agent-add-disable-gpu-composit-2026-08-19):
-// the flicker spread from the xterm panes to the office floor, pointing below
-// xterm at GPU compositing / the NVIDIA driver. Chromium reads this switch at
-// GPU-process startup — appended after app.whenReady() it would be a silent
-// no-op, hence module top level. A/B without a rebuild:
-//   MD_ENABLE_GPU_COMPOSITING=1 npm run dev   (restores default compositing)
-if (process.env.MD_ENABLE_GPU_COMPOSITING !== '1') {
+// GPU compositing kill-switch (card agent-flip-md-enable-gpu-compo-2026-08-19).
+// Default is GPU compositing ON — software compositing burned ~84% of a core
+// in the GPU process while idling, and the flicker it was chasing turned out
+// to be driver/compositor level (reproduces in plain Chrome), so paying that
+// CPU cost by default was the wrong default. Exact =0 disables:
+//   MD_ENABLE_GPU_COMPOSITING=0 npm run dev   (software compositing)
+// Every other value (unset, empty, "1", garbage) leaves GPU compositing on.
+// Chromium reads this switch at GPU-process startup — appended after
+// app.whenReady() it would be a silent no-op, hence module top level.
+if (process.env.MD_ENABLE_GPU_COMPOSITING === '0') {
   app.commandLine.appendSwitch('disable-gpu-compositing');
 }
 import { HookServer } from './hooks';
