@@ -159,12 +159,27 @@ test('status: moves an existing card and validates inputs', { skip: !POSIX }, as
 // refuse it, not silently auto-resume it. blocked->doing stays legal (the
 // humanQA resume flow: god unblocks a card once the human answered).
 
+/** Crown registry godId and return an exec env that runs the CLI AS god. */
+function crownGod(s) {
+  const regPath = path.join(path.dirname(s.tasksPath), 'registry.json');
+  const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+  reg.godId = 'test-god-1';
+  fs.writeFileSync(regPath, JSON.stringify(reg));
+  return { ...s.env, AGENT_ID: 'test-god-1' };
+}
+function runAs(s, env) {
+  return (...args) => execFileSync(process.execPath, [s.cli, ...args], { env, encoding: 'utf8' });
+}
+
 test("status doing on a PAUSED card refuses — the hold is the operator's, nothing written", {
   skip: !POSIX,
 }, async (t) => {
   const s = setup(t);
   const id = s.run('add', '--title', 'Held card', '--status', 'todo').trim();
-  s.run('update', id, '--paused');
+  // The hold is god-only (card agent-make-the-paused-hold-har-2026-08-19),
+  // so the pause itself runs as god.
+  const godEnv = crownGod(s);
+  runAs(s, godEnv)('update', id, '--paused');
   const before = fs.readFileSync(s.tasksPath, 'utf8');
 
   const r = s.runFail('status', id, 'doing');
@@ -491,6 +506,62 @@ test("update: --assignee '' clears the assignee, untouched fields stay", {
   assert.equal(c.assignee, undefined, 'empty --assignee clears');
   assert.equal(c.title, 'Renamed meanwhile', 'untouched fields stay');
   assert.ok(!('assignee' in c), 'the key is gone, not an empty string');
+});
+
+// ——— the HARD paused hold (card agent-make-the-paused-hold-har-2026-08-19):
+// paused is the operator's absolute hold, but hive-card update --resume used
+// to clear it for ANY caller — the strongest hold in the system was prose.
+// The mechanism half: setting or clearing paused via the CLI is god-only
+// (the policy half — god only on the operator's explicit instruction — lives
+// in the godLine, not in code). The operator's own path is the UI, which
+// writes through the main process, never this CLI.
+
+test('update --paused/--resume: a non-god caller is REFUSED on both, ledger untouched', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const godEnv = crownGod(s);
+  const id = s.run('add', '--title', 'Held card', '--status', 'todo').trim();
+
+  let r = s.runFail('update', id, '--paused');
+  assert.notEqual(r.code, 0, 'a worker cannot set the hold');
+  assert.match(r.stderr, /operator's hold/, 'refusal says WHY');
+  assert.match(r.stderr, /ONLY god/, 'refusal names WHO may do it');
+  assert.match(r.stderr, /ask the operator/, 'refusal names the sanctioned path');
+
+  runAs(s, godEnv)('update', id, '--paused');
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+  r = s.runFail('update', id, '--resume');
+  assert.notEqual(r.code, 0, 'a worker cannot clear the hold either');
+  assert.match(r.stderr, /ONLY god/, 'the resume refusal names who may do it');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
+  assert.equal(s.tasks().find((c) => c.id === id).paused, true, 'still on hold');
+});
+
+test('update --paused/--resume: god succeeds on both', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  const godEnv = crownGod(s);
+  const god = runAs(s, godEnv);
+  const id = s.run('add', '--title', 'Held card', '--status', 'todo').trim();
+
+  god('update', id, '--paused');
+  assert.equal(s.tasks().find((c) => c.id === id).paused, true, 'god sets the hold');
+
+  god('update', id, '--resume');
+  const card = s.tasks().find((c) => c.id === id);
+  assert.ok(!('paused' in card), 'god clears the hold — flag gone, not false');
+});
+
+test('update: the gate covers ONLY the hold — non-god enrichment still works', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const id = s.run('add', '--title', 'Enrichable', '--status', 'todo').trim();
+  s.run('update', id, '--title', 'Renamed by a worker', '--assignee', 'stanley-1');
+  const card = s.tasks().find((c) => c.id === id);
+  assert.equal(card.title, 'Renamed by a worker');
+  assert.equal(card.assignee, 'stanley-1');
+  assert.ok(!('paused' in card), 'no hold set along the way');
 });
 
 // ——— list (card agent-hive-card-list-a-read-on-2026-08-19): the READ-ONLY

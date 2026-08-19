@@ -186,7 +186,7 @@ function refusalReason(target: string, context: string): string {
       lines.splice(
         1,
         0,
-        '→ for paused/resume use `$HIVE_ROOT/bin/hive-card update <id> --paused|--resume`',
+        "→ for paused/resume use `$HIVE_ROOT/bin/hive-card update <id> --paused|--resume` (god-only — the operator's hold)",
       );
     else if (/assignee|owner/.test(ctx))
       lines.splice(

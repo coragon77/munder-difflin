@@ -484,6 +484,16 @@ test('saturation guard: ACTIONABLE pool only, blocked/paused are decisions', () 
     /SAY SO in one line and wait for the go|say so in one line and wait for the go/i.test(p),
     'a maybe-actionable card goes to the operator, not the floor',
   );
+  // Card agent-make-the-paused-hold-har-2026-08-19: the CLI gate made the
+  // hold hard (god-only); the POLICY half — god runs the unpause ONLY on the
+  // operator's explicit order — is prose here, not a permission bit.
+  assert.ok(
+    /un-pausing via hive-card update --resume is yours to run ONLY on the operator's explicit instruction/.test(
+      p,
+    ),
+    "god may unpause ONLY on the operator's explicit instruction",
+  );
+  assert.ok(/never your own judgement/.test(p), "god's own judgement never unpauses a card");
   assert.ok(
     /only blocked\/paused cards left is CORRECT/.test(p),
     'an empty-looking floor of blocked/paused cards needs no action',

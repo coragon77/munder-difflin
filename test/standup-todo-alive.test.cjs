@@ -284,9 +284,15 @@ test('hive-card CLI: --paused/--resume on update; status -> doing REFUSES while 
   const cliPath = path.join(root, 'bin', 'hive-card');
   assert.match(fs.readFileSync(cliPath, 'utf8'), /--paused/, 'update accepts --paused');
   assert.match(fs.readFileSync(cliPath, 'utf8'), /--resume/, 'update accepts --resume');
+  // The hold is god-only (card agent-make-the-paused-hold-har-2026-08-19):
+  // the pause/resume calls below run AS god.
+  const regPath = path.join(root, 'registry.json');
+  const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
+  reg.godId = 'god-test';
+  fs.writeFileSync(regPath, JSON.stringify(reg));
   const run = (args) =>
     execFileSync(process.execPath, [cliPath, ...args], {
-      env: { ...process.env, HIVE_ROOT: root },
+      env: { ...process.env, HIVE_ROOT: root, AGENT_ID: 'god-test' },
       encoding: 'utf8',
     }).trim();
   run(['update', 'c1', '--paused']);
