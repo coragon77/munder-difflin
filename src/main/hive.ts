@@ -342,6 +342,23 @@ export function findCheckoutOccupant(
   return null;
 }
 
+/** The one-agent-per-directory spawn refusal — names the holder, the PHYSICAL
+ *  checkout being fought over (not just the spawn cwd: a seat at a
+ *  subdirectory or symlink alias of the checkout is the same conflict), and
+ *  every real way out. The worktree escape and the override serve
+ *  fresh-spawn paths; "park the holder" is the one a RECALL can use — recall
+ *  re-enters the recorded cwd with isolate:false, so telling Stefan to
+ *  "spawn with isolate:true" there sent him hunting a bug in the rule instead
+ *  of at the occupied checkout (card agent-one-agent-per-directory--2026-08-19). */
+export function oneAgentPerDirectoryRefusal(
+  occupant: string,
+  checkout: string,
+  seat: string,
+): string {
+  const seatNote = seat === checkout ? '' : ` (their seat: ${seat})`;
+  return `one agent per directory — ${occupant} works in the physical checkout ${checkout}${seatNote}, and a second non-isolated agent would share its working tree. Give the new agent its own worktree (spawn with "isolate": true), park or free ${occupant} first (the escape a recall can use — a recall re-enters its recorded cwd and cannot isolate), or set "allowSharedCwd": true ONLY on explicit operator instruction.`;
+}
+
 /** Build env + extra spawn args that make an agent process hive-aware. */
 export interface SpawnInjection {
   args: string[];

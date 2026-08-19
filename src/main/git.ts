@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { cp, lstat, mkdir, readFile, stat, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { safeJoin } from './fs';
@@ -250,6 +251,40 @@ export async function getDiff(
     workingExists,
     isBinary,
   };
+}
+
+/** The PHYSICAL CHECKOUT a seat belongs to — the identity the
+ *  one-agent-per-directory guard compares (card
+ *  agent-one-agent-per-directory--2026-08-19).
+ *
+ *  `git rev-parse --show-toplevel` read AT GUARD TIME (cannot go stale):
+ *  inside a linked worktree it is the WORKTREE's own root — each worktree is
+ *  its own physical checkout, so a worktree seat never collides with the
+ *  base checkout of the same project; inside the main checkout it is the
+ *  repo root — so a seat spawned into a SUBDIRECTORY of a checkout occupies
+ *  the whole checkout (spawn-cwd depth is not isolation: one working tree,
+ *  one index, one HEAD). Deliberately NOT `git worktree list` (enumerates one
+ *  repo's registrations, prune-stale entries included, while the guard
+ *  compares seats across many repos — show-toplevel gives each seat's
+ *  physical identity directly) and NOT the registry isolate/worktree fields
+ *  (nothing ever populates them — decoration, verified 2026-08-19).
+ *  Non-repo or git-less → realpath (symlink aliases still collapse);
+ *  nonexistent path → the input unchanged. */
+export async function physicalCheckout(cwd: string): Promise<string> {
+  const res = await runGit(cwd, ['rev-parse', '--path-format=absolute', '--show-toplevel']);
+  const top = res.ok ? res.stdout.trim() : '';
+  if (top) {
+    try {
+      return realpathSync(top);
+    } catch {
+      return top;
+    }
+  }
+  try {
+    return realpathSync(cwd);
+  } catch {
+    return cwd;
+  }
 }
 
 /** The MAIN working tree of the repository `cwd` belongs to.

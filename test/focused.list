@@ -140,3 +140,4 @@ test/settings-hero-card.test.cjs
 test/terminal-render-debug.test.cjs
 test/gpu-compositing-switch.test.cjs
 test/router-cc-god.test.cjs
+test/one-agent-per-directory-physical.test.cjs

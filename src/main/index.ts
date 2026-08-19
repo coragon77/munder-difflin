@@ -76,6 +76,7 @@ import {
   listWorktrees,
   checkoutRef,
   getHead,
+  physicalCheckout,
 } from './git';
 import { refreshProjectGraph } from './graphRefresh';
 import { retireLandedBranches } from './branchRetire';
@@ -84,6 +85,7 @@ import {
   deriveSpawnLabel,
   floorCensus,
   findCheckoutOccupant,
+  oneAgentPerDirectoryRefusal,
   type AgentMeta,
   type HiveMessage,
   type HiveTask,
@@ -3504,29 +3506,44 @@ async function spawnAgentCore(
   // ── ONE AGENT PER DIRECTORY (operator addendum, same card) ──────────────
   // At most one hire/intern per PHYSICAL CHECKOUT. A spawn that lands in the
   // checkout itself (isolate !== true → no fresh worktree of its own) is
-  // refused when another live agent's RESOLVED working directory equals it.
-  // Resolved = the occupant's live worktree when it has one, else its
-  // registry cwd — a worktree-isolated occupant does NOT conflict (its seat
-  // is the worktree, not the base checkout), and registry cwd alone was
-  // never sufficient evidence of a conflict (root incident: Alfred-vs-Kevin
-  // in merlin_editionplatin, ruled without checking worktree state).
+  // refused when another live agent's seat belongs to the SAME physical
+  // checkout. Seats are resolved via physicalCheckout() — `git rev-parse
+  // --show-toplevel` + realpath read AT GUARD TIME (card
+  // agent-one-agent-per-directory--2026-08-19): a linked worktree is its own
+  // physical checkout (its occupant never conflicts with the base checkout of
+  // the same project), a seat at a SUBDIRECTORY or symlink alias of a checkout
+  // occupies the whole checkout (cwd string equality missed both directions).
+  // Registry isolate/worktree fields are NOT consulted — nothing ever
+  // populates them (decoration, verified 2026-08-19); registry cwd IS reliable
+  // because an isolate:true spawn records the worktree path as the agent's
+  // cwd before persisting, so worktreePaths here is belt-and-braces only.
   // `allowSharedCwd` is the explicit operator override — god may set it only
-  // on operator instruction, never inferred.
+  // on operator instruction, never inferred. An IDLE holder still holds the
+  // checkout (its branch, index and uncommitted state sit there and it wakes
+  // on the next inbox mail); the way out is park/fire, which removes the
+  // holder from this loop (vacation/archived are skipped below).
   if (opts.hive && hive.enabled() && opts.isolate !== true && opts.allowSharedCwd !== true) {
     const reg = hive.registry();
     if (opts.hive.id !== reg.godId && !opts.hive.isGod) {
-      const dirs = new Map<string, string>();
+      const seats = new Map<string, string>();
       for (const [id, a] of Object.entries(reg.agents)) {
         if (id === opts.hive.id || id === reg.godId || a.isGod) continue;
         if (a.archived || a.vacation || a.retired) continue; // off the floor
-        dirs.set(id, resolve(worktreePaths.get(id) ?? a.cwd));
+        seats.set(id, resolve(worktreePaths.get(id) ?? a.cwd));
       }
-      const newDir = resolve(expandTilde(opts.cwd));
-      const occupant = findCheckoutOccupant(dirs, newDir, opts.hive.id);
+      const newCheckout = await physicalCheckout(resolve(expandTilde(opts.cwd)));
+      const dirs = new Map<string, string>();
+      let holderSeat: string | null = null;
+      for (const [id, seat] of seats) {
+        const checkout = await physicalCheckout(seat);
+        if (holderSeat === null && checkout === newCheckout) holderSeat = seat;
+        dirs.set(id, checkout);
+      }
+      const occupant = findCheckoutOccupant(dirs, newCheckout, opts.hive.id);
       if (occupant) {
         return {
           ok: false,
-          error: `one agent per directory — ${occupant} already works in ${newDir} without a worktree. Spawn with "isolate": true (its own worktree), free the directory, or set "allowSharedCwd": true ONLY on explicit operator instruction.`,
+          error: oneAgentPerDirectoryRefusal(occupant, newCheckout, holderSeat ?? newCheckout),
         };
       }
     }
