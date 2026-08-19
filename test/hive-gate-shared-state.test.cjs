@@ -249,6 +249,120 @@ test('compound command: primitive segment passes but hand-edit segment still ref
   assert.ok(d, 'denied — the python segment is a hand-edit even next to a primitive');
 });
 
+// ————————————— Quote-aware parsing (card agent-r3-gate-false-positive-q-2026-08-19) —————————————
+// God's live repro: a quoted `--notes` argument containing `|` and the word
+// `tasks.json` fractured the command at the pipe; the orphaned prose fragment
+// was judged as its own non-primitive command and refused — the gate told god
+// to use the primitive god was ALREADY using. Metacharacters inside quotes
+// must not split a segment and must not register as redirects.
+
+test('quoted | plus protected basename inside a primitive argument PASSES (god repro)', () => {
+  const { root } = floor();
+  const cmd =
+    './bin/hive-card update agent-foo-1 --notes "triaged via hive-card list --origin human|agent. ' +
+    'Gap origin: both. Pam\'s R3 hook then closed direct tasks.json reads."';
+  assert.equal(gate(root, root, 'Bash', { command: cmd }), null, 'must pass');
+});
+
+test('same basename outside quotes still refuses (the pipe is real)', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', {
+    command: `./bin/hive-card update agent-foo-1 --notes triaged --origin human|cat tasks.json`,
+  });
+  assert.ok(d, 'denied');
+  assert.match(d.reason, /hive-card/);
+});
+
+test('genuinely chained cat tasks.json | grep x is still refused', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', { command: `cat $HIVE_ROOT/tasks.json | grep x` });
+  assert.ok(d, 'denied');
+  assert.match(d.reason, /hive-card list/);
+});
+
+test('quoted > in a primitive argument is not a redirect', () => {
+  const { root } = floor();
+  const cmd = `./bin/hive-card update agent-foo-1 --notes "reminder: cat x > tasks.json is banned"`;
+  assert.equal(gate(root, root, 'Bash', { command: cmd }), null, 'must pass');
+});
+
+test('unquoted redirect onto tasks.json from a primitive call is still refused', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', { command: `./bin/hive-card list > tasks.json` });
+  assert.ok(d, 'denied');
+});
+
+test('quoted && and ; do not fracture a primitive segment either', () => {
+  const { root } = floor();
+  const cmd = `./bin/hive-card update agent-foo-1 --notes 'a && b; c | d — mentions tasks.json in prose'`;
+  assert.equal(gate(root, root, 'Bash', { command: cmd }), null, 'must pass');
+});
+
+test('non-primitive quoting a protected basename is still refused (R3 token scan)', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', { command: `echo "x > tasks.json"` });
+  assert.ok(d, 'denied');
+});
+
+// Review round (cold-context reviewer, 2026-08-19): live-shell classes that a
+// naive quote mask wrongly treats as inert prose. Metachars are LIVE inside
+// double-quoted $( ) and backtick substitutions and inside heredoc bodies.
+
+test('$( ) inside double quotes is LIVE: smuggled redirect in a primitive arg is refused', () => {
+  const { root } = floor();
+  const cmd = `./bin/hive-card update agent-foo-1 --notes "$(cat /tmp/x > $HIVE_ROOT/tasks.json)"`;
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — command substitution executes, the redirect is real');
+});
+
+test('backtick substitution inside double quotes is LIVE: redirect refused', () => {
+  const { root } = floor();
+  const cmd = './bin/hive-card update agent-foo-1 --notes "`cat /tmp/x > $HIVE_ROOT/tasks.json`"';
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied');
+});
+
+test("'$( )' inside SINGLE quotes is inert prose and passes", () => {
+  const { root } = floor();
+  const cmd = `./bin/hive-card update agent-foo-1 --notes '$(cat /tmp/x > $HIVE_ROOT/tasks.json)'`;
+  assert.equal(gate(root, root, 'Bash', { command: cmd }), null, 'single quotes never execute');
+});
+
+test('heredoc body is not a quote context: quote in body cannot mask later commands', () => {
+  const { root } = floor();
+  const cmd = './bin/hive-card update agent-foo-1 --notes <<EOF\n"\nEOF\ncat tasks.json';
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — the read after the terminator is its own segment');
+  assert.match(d.reason, /hive-card list/);
+});
+
+test('sh -c body is gated raw: redirect inside it is not lost to retokenization', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', { command: `sh -c './bin/hive-card list > tasks.json'` });
+  assert.ok(d, 'denied — redirect onto protected state, even via sh -c');
+});
+
+test('quoted executable containing a metachar does not fake a primitive', () => {
+  const { root } = floor();
+  const cmd = '"$HIVE_ROOT/bin/hive-card|evil" "$HIVE_ROOT/tasks.json"';
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — the executable is literally hive-card|evil, not the primitive');
+});
+
+test('escaped space does not alias a redirect onto a protected basename', () => {
+  const { root } = floor();
+  // shell target is the file "tasks.json copy" — NOT the protected tasks.json
+  const cmd = 'echo x > tasks.json\\ copy';
+  assert.equal(gate(root, root, 'Bash', { command: cmd }), null, 'not our file');
+});
+
+test('unclosed $( inside double quotes stays live (refuse-biased)', () => {
+  const { root } = floor();
+  const cmd = './bin/hive-card update agent-foo-1 --notes "$(cat x > $HIVE_ROOT/tasks.json';
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied');
+});
+
 // —————————————————————————————————————————————————————— Bash: reads pass —
 
 test('reads of UNRELATED files pass (the gate is scoped to protected paths)', () => {

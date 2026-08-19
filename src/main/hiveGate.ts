@@ -114,10 +114,123 @@ function pathResolve(p: string, base?: string): string {
   return `/${parts.join('/')}`;
 }
 
-/** Split a command line into pipeline/sequence segments. Over-eager on quoted
- *  operators — safe: it can only split a segment into MORE checked pieces. */
+/** Quote-aware mask, same length as `s`: INERT shell prose becomes NUL, so
+ *  pattern scans see only live shell syntax. Masked (inert): single- and
+ *  double-quoted prose, and the escaped char of a `\x` pair (the backslash
+ *  itself stays visible so `> tasks.json\ copy` is not aliased onto
+ *  tasks.json). LIVE (unmasked): `$( )` and backtick bodies inside double
+ *  quotes — command substitution EXECUTES there — and heredoc bodies, where
+ *  quotes never open state and newlines still split (card
+ *  agent-r3-gate-false-positive-q-2026-08-19 + cold-context review round:
+ *  a naive quote mask let `"$(cat x > $HIVE_ROOT/tasks.json)"` smuggle a
+ *  hand-edit through the primitive exemption). Unclosed quotes/substitutions
+ *  swallow the rest as prose; the exec-position check still runs on it. */
+function maskQuoted(s: string): string {
+  const out = s.split('');
+  const n = out.length;
+  let quote: '"' | "'" | null = null;
+  let sub = 0; // depth of $( opened inside double quotes — live
+  let bt = false; // backtick body opened inside double quotes — live
+  let heredoc: string | null = null; // pending heredoc terminator
+  let hdTabs = false; // <<- : terminator may be tab-indented
+  let body = false; // inside a heredoc body line — live, quotes never open
+  for (let i = 0; i < n; i++) {
+    const c = s[i] as string;
+    if (body) {
+      if (c === '\n') body = false;
+      continue; // live
+    }
+    if (heredoc !== null && (i === 0 || (s[i - 1] as string) === '\n')) {
+      const nl = s.indexOf('\n', i);
+      const end = nl === -1 ? n : nl;
+      let line = s.slice(i, end).replace(/\r$/, '');
+      if (hdTabs) line = line.replace(/^\t+/, '');
+      if (line === heredoc) {
+        heredoc = null;
+        i = end - 1; // land on the \n (or EOF); it stays live and splits
+      } else {
+        body = true;
+      }
+      continue;
+    }
+    if (quote === "'") {
+      out[i] = '\0';
+      if (c === "'") quote = null;
+      continue;
+    }
+    if (c === '\\' && sub === 0 && !bt) {
+      if (i + 1 < n) out[i + 1] = '\0';
+      continue; // backslash itself stays visible
+    }
+    if (quote === '"') {
+      if (sub > 0) {
+        if (c === '(') sub++;
+        else if (c === ')') sub--;
+        continue; // live
+      }
+      if (bt) {
+        if (c === '`') bt = false;
+        continue; // live
+      }
+      if (c === '$' && (s[i + 1] as string) === '(') {
+        sub = 1;
+        i++; // the '(' is live too
+        continue;
+      }
+      if (c === '`') {
+        bt = true;
+        continue;
+      }
+      out[i] = '\0';
+      if (c === '"') quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      out[i] = '\0';
+      continue;
+    }
+    if (c === '<' && (s[i + 1] as string) === '<') {
+      let j = i + 2;
+      hdTabs = false;
+      if ((s[j] as string) === '-') {
+        hdTabs = true;
+        j++;
+      }
+      let q = '';
+      if ((s[j] as string) === "'" || (s[j] as string) === '"') {
+        q = s[j] as string;
+        j++;
+      }
+      let delim = '';
+      while (j < n && !/[\s'"]/.test(s[j] as string)) {
+        delim += s[j];
+        j++;
+      }
+      if (q && (s[j] as string) === q) j++;
+      heredoc = delim || '\n'; // bare <<: only an empty line terminates
+      i = j - 1;
+    }
+  }
+  return out.join('');
+}
+
+/** Split a command line into pipeline/sequence segments, QUOTE-AWARE: a
+ *  metacharacter inside quotes never splits (card agent-r3-gate-false-
+ *  positive-q-2026-08-19 — `--notes "a|b … tasks.json"` used to fracture a
+ *  legitimate primitive call and get it refused). Unclosed quotes swallow the
+ *  rest as one segment; the exec-position check still runs on it. */
 function segments(command: string): string[] {
-  return command.split(/&&|\|\||[;|\n]/);
+  const mask = maskQuoted(command);
+  const re = /&&|\|\||[;|\n]/g;
+  const out: string[] = [];
+  let last = 0;
+  for (const m of mask.matchAll(re)) {
+    out.push(command.slice(last, m.index));
+    last = (m.index ?? 0) + m[0].length;
+  }
+  out.push(command.slice(last));
+  return out;
 }
 
 /** Whitespace tokens of one segment, quote-stripped, $HIVE_ROOT expanded. */
@@ -128,35 +241,73 @@ function tokens(segment: string, hiveRoot: string): string[] {
     .filter(Boolean);
 }
 
-/** The executable token of a segment: skips env assignments and wrappers. */
-function execOf(toks: string[]): string | null {
-  let i = 0;
-  while (i < toks.length && /^[A-Za-z_]\w*=/.test(toks[i] ?? '')) i++;
-  while (i < toks.length && ['sudo', 'nohup', 'time', 'exec', 'command'].includes(toks[i] ?? ''))
-    i++;
-  return toks[i] ?? null;
+/** Quote-aware shell WORDS of a segment (whole-word wrapping quotes stripped,
+ *  inner syntax kept raw). Feeds the exec-position test so a quoted
+ *  `"$HIVE_ROOT/bin/hive-card|evil"` cannot tokenize into the primitive
+ *  basename — the exact basename must match (review round, finding 5). */
+function shellWords(segment: string): string[] {
+  const words: string[] = [];
+  let raw = '';
+  let open: string | null = null;
+  const push = () => {
+    if (!raw) return;
+    const q = raw[0] as string;
+    if (
+      raw.length > 1 &&
+      (q === "'" || q === '"') &&
+      raw.endsWith(q) &&
+      !raw.slice(1, -1).includes(q)
+    ) {
+      raw = raw.slice(1, -1);
+    }
+    words.push(raw);
+    raw = '';
+  };
+  for (const c of segment) {
+    if (/\s/.test(c) && !open) {
+      push();
+    } else {
+      if (open) {
+        if (c === open) open = null;
+      } else if (c === '"' || c === "'") {
+        open = c;
+      }
+      raw += c;
+    }
+  }
+  push();
+  return words;
 }
 
 /** Is this segment an invocation of a bin/hive-* primitive? Covers direct
  *  calls (`…/bin/hive-card …`) and the bundled-node launcher
- *  (`"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" …`). */
-function isPrimitiveSegment(toks: string[]): boolean {
-  const exec = execOf(toks);
+ *  (`"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" …`). Works on
+ *  quote-aware WORDS: env assignments and wrappers are skipped at word
+ *  level, and the exec basename must match the primitive regex EXACTLY. */
+function isPrimitiveSegment(words: string[]): boolean {
+  let i = 0;
+  while (i < words.length && /^[A-Za-z_]\w*=/.test(words[i] ?? '')) i++;
+  while (i < words.length && ['sudo', 'nohup', 'time', 'exec', 'command'].includes(words[i] ?? ''))
+    i++;
+  const exec = words[i] ?? null;
   if (!exec) return false;
   if (PRIMITIVE_RE.test(basename(exec))) return true;
   if (LAUNCHERS.has(basename(exec))) {
-    const next = toks[toks.indexOf(exec) + 1] ?? '';
+    const next = expandRoot(words[i + 1] ?? '', '');
     if (PRIMITIVE_RE.test(basename(next))) return true;
   }
   return false;
 }
 
-/** Redirect (`>` / `>>`) targets in a segment, quote-stripped. */
+/** Redirect (`>` / `>>`) targets in a segment, QUOTE-AWARE: a `>` inside
+ *  quotes is prose, not a redirect (same card as segments()). Scanned against
+ *  the quote mask; NUL-masked chars end a capture, so a quoted target is not
+ *  mistaken for a path (nor for a redirect). */
 function redirectTargets(segment: string): string[] {
   const out: string[] = [];
-  const re = />>?\s*([^\s;&|)'"]+)/g;
+  const re = />>?\s*([^\s;&|)\0]+)/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(segment))) out.push(m[1] ?? '');
+  while ((m = re.exec(maskQuoted(segment)))) out.push(m[1] ?? '');
   return out;
 }
 
@@ -234,6 +385,13 @@ function refusalReason(target: string, context: string): string {
   return [head, tail].join('\n');
 }
 
+/** sh -c '<body>' — the body is a full command line; capture it RAW (with
+ *  wrapping quotes stripped) so operators inside survive recursion. The old
+ *  retokenize-and-join path dropped `>` and sequencing (review round,
+ *  finding 4: `sh -c 'hive-card list > tasks.json'` sailed through). */
+const SH_C =
+  /(?:^|[\s;&|])(?:(?:sudo|nohup|time|exec|command)\s+)*(?:sh|bash|dash|zsh)(?:\s+-[a-zA-Z]+)*\s+-[a-zA-Z]*c[a-zA-Z]*\s*([\s\S]*)$/;
+
 /** Evaluate one Bash command string; returns the denial or null. */
 function gateBash(command: string, hiveRoot: string, cwd?: string): SharedStateDenial | null {
   for (const segment of segments(command)) {
@@ -246,17 +404,16 @@ function gateBash(command: string, hiveRoot: string, cwd?: string): SharedStateD
     }
     const toks = tokens(segment, hiveRoot);
     if (toks.length === 0) continue;
-    const exec = execOf(toks);
-    if (exec && ['sh', 'bash', 'dash', 'zsh'].includes(basename(exec))) {
-      // sh -c '<body>' — evaluate the body, not the shell.
-      const rest = toks.slice(toks.indexOf(exec) + 1);
-      if (rest[0] === '-c' && rest.length > 1) {
-        const inner = gateBash(rest.slice(1).join(' '), hiveRoot, cwd);
-        if (inner) return inner;
-        continue;
-      }
+    const m = SH_C.exec(segment);
+    if (m && m[1] !== undefined) {
+      let body = m[1];
+      const q = body[0] as string;
+      if (body.length > 1 && (q === "'" || q === '"') && body.endsWith(q)) body = body.slice(1, -1);
+      const inner = gateBash(body, hiveRoot, cwd);
+      if (inner) return inner;
+      continue;
     }
-    if (isPrimitiveSegment(toks)) continue; // the CLIs own these files
+    if (isPrimitiveSegment(shellWords(segment))) continue; // the CLIs own these files
     const hit = toks.find((t) => isProtectedPath(t, hiveRoot, cwd));
     if (!hit) continue;
     return { reason: refusalReason(hit, segment) };
