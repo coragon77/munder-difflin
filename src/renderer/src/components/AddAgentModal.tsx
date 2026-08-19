@@ -27,6 +27,7 @@ import {
   isClaudeProvider,
 } from '@/store/config';
 import { DEFAULT_HIRE_PERMISSION_MODE, type HirePermissionMode } from '@shared/agentProvider';
+import { UNKNOWN_ROLE } from '@shared/agentRole';
 import { useProviderModels } from '@/hooks/useProviderModels';
 
 const ACCENTS: AccentColorName[] = ['coral', 'mint', 'sky', 'lemon', 'lilac', 'peach'];
@@ -130,7 +131,7 @@ const SECTIONS: { key: SectionKey; label: string; hint: string }[] = [
   { key: 'identity', label: 'Identity', hint: 'name · character · color' },
   { key: 'workspace', label: 'Workspace', hint: 'folder · isolation · resume' },
   { key: 'engine', label: 'Engine', hint: 'provider · model · command' },
-  { key: 'briefing', label: 'Briefing', hint: 'description · goal' },
+  { key: 'briefing', label: 'Briefing', hint: 'role · goal' },
 ];
 
 function basename(path: string): string {
@@ -206,6 +207,14 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
   const [description, setDescription] = useState(
     editOf?.description ?? pendingHire?.description ?? 'a fresh harness',
   );
+  // ROLE IS IDENTITY (card agent-separate-agent-identity--2026-08-19). It lives
+  // in the REGISTRY and has its own field here — never prefilled from the store
+  // `description`, which is a LIVE STATUS the pty parser rewrites to
+  // 'on standby' (or scraped pane text) within ~4 s of idle. Prefilling identity
+  // from status is exactly how seven registry roles were wiped. Untouched →
+  // submit sends no role at all.
+  const [role, setRole] = useState<string>('');
+  const [roleTouched, setRoleTouched] = useState(false);
   const [hireMeta, setHireMeta] = useState<HireManifest | null>(editOf ? null : pendingHire);
   // Discovered (auth-scoped) model list — static curated list until the
   // adapter lands one (card agent-harness-provider-model-l-2026-08-17).
@@ -273,6 +282,31 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
       /* clipboard blocked — the textarea below is selectable as a fallback */
     }
   };
+
+  // Live status for the edit dialog's read-only row — read from the STORE so
+  // it keeps moving while the dialog is open (it is the scrape's field, not
+  // the dialog's). Unconditional hook: undefined in create mode.
+  const liveStatus = useStore((s) => s.agents.find((a) => a.id === editOf?.id)?.description);
+
+  // EDIT MODE — the role input shows the REGISTRY's word, fetched once. An
+  // absent role renders as an empty input carrying the unmistakable UNKNOWN
+  // placeholder (a human typing here is the only thing that changes identity).
+  useEffect(() => {
+    if (!editOf) return;
+    let cancelled = false;
+    window.cth
+      .hiveRegistry()
+      .then((reg) => {
+        if (!cancelled) setRole(reg.agents[editOf.id]?.role ?? '');
+      })
+      .catch(() => {
+        /* registry unreachable → empty input, UNKNOWN placeholder; save sends no role */
+        if (!cancelled) setRole('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editOf]);
 
   // Close only the modal on Esc. Capture prevents the fullscreen terminal's
   // window-level handler from also closing the view underneath.
@@ -391,11 +425,12 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
     // running terminal is untouched (hint shown in the Engine section).
     if (editOf) {
       setBusy(true);
+      // STATUS STAYS OUT: `description` is the scrape's field — the dialog no
+      // longer writes it (editing it would freeze a status the parser owns).
       updateAgent(editOf.id, {
         name: name.trim(),
         character,
         accent,
-        description: description.trim() || 'a fresh harness',
         goal: goal.trim() || undefined,
         provider,
         model,
@@ -405,7 +440,10 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
       await window.cth
         .hiveSetAgentMeta(editOf.id, {
           name: name.trim(),
-          role: description.trim() || undefined,
+          // ROLE IS IDENTITY — sent ONLY when the operator typed in the role
+          // field. An untouched (or unresolvable) role sends nothing, so no
+          // status value can ever clobber the registry role again.
+          ...(roleTouched && role.trim() ? { role: role.trim() } : {}),
           // The icon edit is EXPLICIT — overwrite semantics in the setter, so
           // the recall broadcast (registry-saved rung) keeps this pick instead
           // of the stale first-write-wins backfill (harness-icon-edit-persist).
@@ -1339,41 +1377,80 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
 
                 {section === 'briefing' && (
                   <>
-                    <Row label="Templates">
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {DESCRIPTION_TEMPLATES.map((t) => (
-                          <button
-                            key={t.label}
-                            onClick={() => {
-                              setDescription(t.description);
-                              setGoal(t.goal);
-                            }}
-                            title={t.goal}
-                            style={{
-                              padding: '3px 8px 1px',
-                              background: 'var(--cth-cream-100)',
-                              boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                              fontFamily: 'var(--cth-font-ui)',
-                              fontSize: 12,
-                              color: 'var(--cth-ink-900)',
-                              cursor: 'pointer',
-                              border: 'none',
-                            }}
-                          >
-                            {t.label}
-                          </button>
-                        ))}
-                      </div>
-                    </Row>
+                    {/* Hire-time presets fill the briefing (description+goal);
+                        an EDIT has no briefing to template — identity is typed,
+                        status is not editable. */}
+                    {!editOf && (
+                      <Row label="Templates">
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {DESCRIPTION_TEMPLATES.map((t) => (
+                            <button
+                              key={t.label}
+                              onClick={() => {
+                                setDescription(t.description);
+                                setGoal(t.goal);
+                              }}
+                              title={t.goal}
+                              style={{
+                                padding: '3px 8px 1px',
+                                background: 'var(--cth-cream-100)',
+                                boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                                fontFamily: 'var(--cth-font-ui)',
+                                fontSize: 12,
+                                color: 'var(--cth-ink-900)',
+                                cursor: 'pointer',
+                                border: 'none',
+                              }}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </Row>
+                    )}
 
-                    <Row label="Description">
-                      <input
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="what is this agent for"
-                        style={inputStyle}
-                      />
-                    </Row>
+                    {editOf ? (
+                      <>
+                        <Row label="Role (identity)">
+                          <input
+                            value={role}
+                            onChange={(e) => {
+                              setRole(e.target.value);
+                              setRoleTouched(true);
+                            }}
+                            placeholder={UNKNOWN_ROLE}
+                            style={inputStyle}
+                          />
+                          <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
+                            Identity — saved to the registry god routes on. Leave untouched to keep
+                            it; an empty registry role shows as {UNKNOWN_ROLE}.
+                          </span>
+                        </Row>
+
+                        <Row label="Live status (read-only)">
+                          <input
+                            value={liveStatus ?? ''}
+                            readOnly
+                            style={{ ...inputStyle, color: 'var(--cth-ink-500)' }}
+                          />
+                          <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
+                            Scraped from the terminal — changes on its own, never saved as identity.
+                          </span>
+                        </Row>
+                      </>
+                    ) : (
+                      <Row label="Role">
+                        <input
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          placeholder="what is this agent for"
+                          style={inputStyle}
+                        />
+                        <span style={{ fontSize: 11, color: 'var(--cth-ink-500)' }}>
+                          One-line identity — saved to the registry at hire and shown on the roster.
+                        </span>
+                      </Row>
+                    )}
 
                     <Row label="Goal (optional)">
                       <textarea

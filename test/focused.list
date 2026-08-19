@@ -149,3 +149,4 @@ test/sessionstart-rearm.test.cjs
 test/standup-owner-route.test.cjs
 test/writetasks-ipc-removed.test.cjs
 test/heartbeat-removal.test.cjs
+test/agent-role-identity.test.cjs

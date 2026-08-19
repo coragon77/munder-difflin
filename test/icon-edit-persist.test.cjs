@@ -120,8 +120,11 @@ test('the dialog edit persists office identity through every layer', () => {
   );
   const modal = read('src/renderer/src/components/AddAgentModal.tsx');
   const call = modal.slice(modal.indexOf('hiveSetAgentMeta'));
+  // Window widened (agent-separate-agent-identity-2026-08-19): the payload's
+  // role gate + its comments sit between the call and the office keys — the
+  // pin's intent is that the office keys ARE in the payload, not their distance.
   assert.ok(
-    call.slice(0, 450).includes('officeCharacter'),
+    call.slice(0, 900).includes('officeCharacter'),
     'the edit branch sends the picked character to the registry',
   );
 });

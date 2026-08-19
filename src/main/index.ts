@@ -204,6 +204,7 @@ import {
   INTEGRATION_TEMPLATES,
 } from '../shared/integrations';
 import { SYSTEM_SENDERS } from '../shared/hiveMail';
+import { UNKNOWN_ROLE } from '../shared/agentRole';
 import { RosterStore } from './roster';
 import { ControlRegistry } from './control';
 import { fetchHireManifest, readHireManifestFile } from './hire';
@@ -5201,7 +5202,10 @@ ipcMain.handle('hive:agentDirectory', () => {
     return {
       id,
       name: a.name,
-      role: a.role ?? (a.isGod ? 'orchestrator' : 'agent'),
+      // Absent role → the shared unmistakable UNKNOWN rendering (never a
+      // placeholder like 'agent' that reads like a real role — that default is
+      // how a wiped role looked staffed and caused the Ryan misroute).
+      role: a.role ?? (a.isGod ? 'orchestrator' : UNKNOWN_ROLE),
       provider: a.provider ?? 'claude',
       model: u?.model ?? null,
       status: a.status ?? 'idle',

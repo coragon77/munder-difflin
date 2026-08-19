@@ -26,6 +26,7 @@ import { tool } from '@openai/agents-realtime';
 
 import { agentWhere, plural, rosterSpeech, vacationSummaryLine } from './roster';
 import { compareAgentOrder } from '@shared/agentOrder';
+import { UNKNOWN_ROLE } from '@shared/agentRole';
 
 // ─── spoken-prose formatting helpers ────────────────────────────────────────
 
@@ -550,7 +551,10 @@ export function realtimeReadTools(): ReturnType<typeof tool>[] {
             );
           if (!e) return `I don't see an agent matching "${str(a.agentId)}".`;
           const parts: string[] = [];
-          const role = e.role ? `, the ${e.role},` : '';
+          // The directory renders an absent role as UNKNOWN_ROLE — say exactly
+          // that (it carries its own warning) instead of reading it like a title.
+          const role =
+            e.role === UNKNOWN_ROLE ? ` (${UNKNOWN_ROLE})` : e.role ? `, the ${e.role},` : '';
           const where = agentWhere(e);
           parts.push(
             `${e.name}${role} runs on ${e.provider}${e.model ? ` with model ${e.model}` : ''}, ${where}.`,
