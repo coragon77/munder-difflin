@@ -704,7 +704,7 @@ export function TaskDetail({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 720, maxWidth: '94vw', maxHeight: '90vh', display: 'flex' }}
+        style={{ width: 860, maxWidth: '94vw', maxHeight: '90vh', display: 'flex' }}
       >
         <PixelPanel
           variant="dialog"
@@ -780,6 +780,13 @@ export function TaskDetail({
                 color: 'var(--cth-ink-900)',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
+                // The god's dispatch contracts are long: the field keeps its own
+                // box (min so short notes still read as a field, max 40vh so the
+                // QA trail / deps / controls stay on stage) and scrolls inside
+                // itself (house pixel scrollbar from global.css).
+                minHeight: 96,
+                maxHeight: '40vh',
+                overflowY: 'auto',
               }}
             >
               {task.description?.trim() || (
