@@ -1884,7 +1884,11 @@ function writeFleetSnapshot(): void {
         return {
           id,
           name: a.name,
-          role: a.role ?? (a.isGod ? 'orchestrator' : 'agent'),
+          // A MISSING role must LOOK missing (registry-role-overwrite incident
+          // 2026-08-19): the old 'agent' fallback read like a real description
+          // and god routed a customer card onto the wrong agent. 'role: unknown'
+          // can never be mistaken for a role.
+          role: a.role ?? (a.isGod ? 'orchestrator' : 'role: unknown'),
           cwd: a.cwd,
           isGod: !!a.isGod,
           breaker: breaker.levelFor(id),
@@ -1910,7 +1914,8 @@ function writeFleetSnapshot(): void {
       .map(([id, a]) => ({
         id,
         name: a.name,
-        role: a.role ?? 'agent',
+        // Same rule as the active pool above: absence must look like absence.
+        role: a.role ?? 'role: unknown',
         cwd: a.cwd,
         parkedAt: a.vacationSince ?? null,
       }));

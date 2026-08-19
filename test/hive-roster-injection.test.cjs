@@ -136,6 +136,33 @@ test('the roster line carries the whole floor and its state', async (t) => {
   assert.ok(line.length < 1200, `too long for a 3-agent floor: ${line.length} chars`);
 });
 
+test('an unknown role LOOKS unknown — never a placeholder that reads like a description (registry-role-overwrite incident 2026-08-19)', async (t) => {
+  const { hive } = await floor(t);
+  snapshot(hive, {
+    agents: [
+      {
+        id: 'jim-1',
+        name: 'Jim',
+        // no role — a wiped/never-set registry field
+        breaker: 'ok',
+        tokens: 0,
+        usd: 0,
+        lastActiveSecAgo: null,
+        inboxBacklog: 0,
+      },
+    ],
+    vacation: [{ id: 'ryan-1', name: 'Ryan', cwd: '/tmp', parkedAt: null }],
+  });
+
+  const line = hive.rosterContext();
+
+  // The misroute happened because the gap rendered as plausible text; the
+  // marker must be unambiguous in BOTH the active list and the fetchable pool.
+  assert.match(line, /jim-1[^;]*role: unknown/);
+  assert.match(line, /ryan-1[^;]*role: unknown/);
+  assert.ok(!/\(agent\)/.test(line), 'no bare "agent" placeholder that reads like a role');
+});
+
 test('god gets the roster on SessionStart and on every prompt — nobody else does', async (t) => {
   const { hive, fire } = await floor(t);
   snapshot(hive);

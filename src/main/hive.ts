@@ -3252,7 +3252,9 @@ export class HiveManager {
         .sort(compareAgentOrder);
       const vacationLine = pool.length
         ? ` ON VACATION (parked, zero cost, FETCHABLE — prefer fetching a fitting one back over spawning anyone new): ` +
-          `${pool.map((v) => `${v.id}${v.name ? ` "${v.name}"` : ''} (${v.role ?? 'agent'})`).join('; ')}.`
+          // A missing role must LOOK missing (registry-role-overwrite incident
+          // 2026-08-19) — never a placeholder that reads like a description.
+          `${pool.map((v) => `${v.id}${v.name ? ` "${v.name}"` : ''} (${v.role ?? 'role: unknown'})`).join('; ')}.`
         : '';
 
       // FLOOR SEATS (card agent-harness-floormaxagents-s-2026-08-17): the
@@ -3362,7 +3364,9 @@ export class HiveManager {
       const shown = agents.slice(0, MAX);
       const rows = shown.map((a) => {
         const bits = [
-          a.role ?? 'agent',
+          // fleet.json usually carries the 'role: unknown' marker itself (the
+          // snapshot builder in index.ts adds it); this fallback covers a stale file.
+          a.role ?? 'role: unknown',
           typeof a.lastActiveSecAgo === 'number'
             ? `active ${ago(a.lastActiveSecAgo)}`
             : 'no activity yet',
