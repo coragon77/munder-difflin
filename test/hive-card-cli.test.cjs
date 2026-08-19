@@ -893,14 +893,218 @@ test('prune-done re-reads under the lock — a concurrent landing is never clobb
   );
 });
 
-test('corrupt tasks.json: refuses to write, errors cleanly', { skip: !POSIX }, async (t) => {
+test('corrupt tasks.json: refuses to write, errors cleanly, and names restore', {
+  skip: !POSIX,
+}, async (t) => {
   const s = setup(t);
   fs.writeFileSync(s.tasksPath, 'this is not json', 'utf8');
   const r = s.runFail('add', '--title', 'x', '--status', 'todo');
   assert.notEqual(r.code, 0, 'refuses to touch an unparseable ledger');
+  assert.match(r.stderr, /hive-card restore --list/, 'the refusal names the recovery COMMAND');
   assert.equal(
     fs.readFileSync(s.tasksPath, 'utf8'),
     'this is not json',
     'corrupt file not clobbered',
   );
+});
+
+// ——— restore (card agent-hive-card-restore-bound--2026-08-19) ————————————
+// The wedge Robert found: every primitive refuses an unparseable tasks.json
+// with "fix or restore it first", while the ledger gate refuses god's direct
+// writes with no override flag — the instructed fix was the one forbidden
+// operation. restore is the sanctioned way out: a known-good tasks.json read
+// out of the hive's own git history and written back through the SAME lock +
+// tempfile + rename. It has to work when the CURRENT ledger is garbage, so it
+// never reads it as a precondition.
+
+const CORRUPT = 'this is not json{{';
+
+function hiveDir(s) {
+  return path.dirname(s.tasksPath);
+}
+function gitIn(s, args) {
+  return execFileSync('git', args, { cwd: hiveDir(s), encoding: 'utf8' });
+}
+function initRepo(s) {
+  gitIn(s, ['init', '-q']);
+  gitIn(s, ['config', 'user.email', 'test@example.com']);
+  gitIn(s, ['config', 'user.name', 'Hive Test']);
+}
+function commitLedger(s, msg) {
+  gitIn(s, ['add', '-A']);
+  gitIn(s, ['-c', 'commit.gpgsign=false', 'commit', '-q', '-m', msg]);
+  return gitIn(s, ['rev-parse', 'HEAD']).trim().slice(0, 8);
+}
+
+test('restore: --list and the restore both work while tasks.json is UNPARSEABLE', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  initRepo(s);
+  const one = s.run('add', '--title', 'Card one', '--status', 'todo').trim();
+  const shaOne = commitLedger(s, 'hive: tasks (1)');
+  const two = s.run('add', '--title', 'Card two', '--status', 'todo').trim();
+  const shaTwo = commitLedger(s, 'hive: tasks (2)');
+  fs.writeFileSync(s.tasksPath, CORRUPT, 'utf8');
+
+  const list = s.run('restore', '--list');
+  assert.match(list, /restore candidates/, 'lists candidates with a corrupt ledger on disk');
+  assert.ok(list.includes(shaTwo) && list.includes(shaOne), 'both committed versions listed');
+  assert.match(list, /2 cards/, 'card count per version');
+  assert.match(list, /1 card\b/);
+  assert.ok(/\d{4}-\d{2}-\d{2}T/.test(list), 'each line carries a date');
+
+  const dry = s.run('restore');
+  assert.match(dry, /dry run/, 'dry run is the DEFAULT');
+  assert.match(dry, /nothing written/);
+  assert.ok(dry.includes(shaTwo), 'defaults to the newest usable version');
+  assert.match(dry, /UNREADABLE/, 'says the current ledger cannot be read');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), CORRUPT, 'dry run wrote nothing');
+  assert.equal(s.run('restore', '--dry-run'), dry, '--dry-run is the explicit spelling');
+
+  const out = s.run('restore', '--confirm');
+  assert.match(out, new RegExp('^restored tasks.json from ' + shaTwo), 'receipt names the source');
+  assert.deepEqual(
+    s
+      .tasks()
+      .map((c) => c.id)
+      .sort(),
+    [one, two].sort(),
+    'the good ledger is back',
+  );
+
+  const backups = fs.readdirSync(hiveDir(s)).filter((f) => f.startsWith('tasks.json.corrupt-'));
+  assert.equal(backups.length, 1, 'the corrupt file is backed up beside the target');
+  assert.equal(
+    fs.readFileSync(path.join(hiveDir(s), backups[0]), 'utf8'),
+    CORRUPT,
+    'the backup holds exactly what was there',
+  );
+  assert.ok(out.includes(backups[0]), 'the receipt names the backup');
+  assert.deepEqual(
+    fs.readdirSync(hiveDir(s)).filter((f) => f.includes('.tmp') || f.endsWith('.lock')),
+    [],
+    'no tmp or lock residue',
+  );
+
+  // The wedge is actually gone: the other subcommands write again.
+  const three = s.run('add', '--title', 'Card three', '--status', 'todo').trim();
+  assert.ok(
+    s.tasks().some((c) => c.id === three),
+    'hive-card works again after the restore',
+  );
+});
+
+test('restore: a candidate that does not parse is REFUSED, and the default skips it', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  initRepo(s);
+  const one = s.run('add', '--title', 'Card one', '--status', 'todo').trim();
+  const shaOne = commitLedger(s, 'hive: tasks (1)');
+  s.run('add', '--title', 'Card two', '--status', 'todo');
+  const shaTwo = commitLedger(s, 'hive: tasks (2)');
+  // The corruption itself got committed — the newest version is unusable.
+  fs.writeFileSync(s.tasksPath, CORRUPT, 'utf8');
+  const shaBad = commitLedger(s, 'hive: tasks (corrupt)');
+
+  const list = s.run('restore', '--list');
+  assert.match(list, /UNUSABLE/, 'the broken version is marked, not silently counted');
+
+  const r = s.runFail('restore', '--to', shaBad, '--confirm');
+  assert.notEqual(r.code, 0, 'restoring the broken version is refused');
+  assert.match(r.stderr, /refusing to restore/);
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), CORRUPT, 'nothing written on refusal');
+
+  assert.ok(s.run('restore').includes(shaTwo), 'the default picks the newest USABLE version');
+
+  s.run('restore', '--to', shaOne, '--confirm');
+  assert.deepEqual(
+    s.tasks().map((c) => c.id),
+    [one],
+    '--to restores exactly that version',
+  );
+});
+
+test('restore: with a readable ledger the dry run reports the delta it would lose', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  initRepo(s);
+  const one = s.run('add', '--title', 'Card one', '--status', 'todo').trim();
+  const sha = commitLedger(s, 'hive: tasks (1)');
+  const later = s.run('add', '--title', 'Landed after the commit', '--status', 'todo').trim();
+
+  const dry = s.run('restore', '--to', sha);
+  assert.match(dry, /2 cards on disk/, 'reads the current ledger when it parses');
+  assert.match(dry, /1 card on disk would be lost/, 'names the cost of the restore');
+  assert.ok(dry.includes(later), 'names the id that would go');
+  assert.ok(!dry.includes(one + ','), 'a card present in both is not listed as lost');
+  assert.equal(s.tasks().length, 2, 'still a dry run');
+});
+
+test('restore: goes through the tasks.json lock — a held lock blocks the write', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  initRepo(s);
+  s.run('add', '--title', 'Card one', '--status', 'todo');
+  const sha = commitLedger(s, 'hive: tasks (1)');
+  fs.writeFileSync(s.tasksPath, CORRUPT, 'utf8');
+  // A live holder (fresh mtime — younger than the 10s stale takeover).
+  const lock = s.tasksPath + '.lock';
+  fs.writeFileSync(lock, String(process.pid));
+  t.after(() => fs.rmSync(lock, { force: true }));
+
+  const r = s.runFail('restore', '--to', sha, '--confirm');
+  assert.notEqual(r.code, 0, 'refuses rather than writing behind another writer');
+  assert.match(r.stderr, /lock/i);
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), CORRUPT, 'nothing written');
+  assert.deepEqual(
+    fs.readdirSync(hiveDir(s)).filter((f) => f.startsWith('tasks.json.corrupt-')),
+    [],
+    'not even the backup — the whole restore happens inside the lock',
+  );
+});
+
+test('restore: missing history and unknown --to fail with a clear message, nothing written', {
+  skip: !POSIX,
+}, async (t) => {
+  // ensureHive git-inits the hive and commits it, so the repo (and a first
+  // tasks.json commit) is a bootstrap invariant — initRepo above only adds
+  // further commits. The no-history case is therefore a hive whose .git is
+  // gone, not a fresh one.
+  const s = setup(t);
+  fs.writeFileSync(s.tasksPath, CORRUPT, 'utf8');
+
+  const r2 = s.runFail('restore', '--to', 'no-such-sha');
+  assert.notEqual(r2.code, 0, 'an unknown --to is rejected');
+  assert.match(r2.stderr, /no commit/);
+
+  fs.rmSync(path.join(hiveDir(s), '.git'), { recursive: true, force: true });
+  const r = s.runFail('restore', '--list');
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /not a git repo/, 'says why there is nothing to restore from');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), CORRUPT, 'nothing written');
+});
+
+test('restore: argument validation — nothing written on any refusal', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  initRepo(s);
+  s.run('add', '--title', 'Card one', '--status', 'todo');
+  commitLedger(s, 'hive: tasks (1)');
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  let r = s.runFail('restore', '--dry-run', '--confirm');
+  assert.notEqual(r.code, 0, '--dry-run with --confirm rejected');
+  r = s.runFail('restore', '--list', '--confirm');
+  assert.notEqual(r.code, 0, '--list is read-only');
+  assert.match(r.stderr, /read-only/);
+  r = s.runFail('restore', '--to');
+  assert.notEqual(r.code, 0, '--to without a value rejected');
+  r = s.runFail('restore', '--force');
+  assert.notEqual(r.code, 0, 'unknown argument rejected');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
 });
