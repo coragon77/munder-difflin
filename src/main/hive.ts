@@ -907,6 +907,13 @@ export class HiveManager {
     const recallCli = join(root, 'bin', 'hive-recall');
     writeFileSync(recallCli, HIVE_RECALL_CLI, 'utf8');
     if (process.platform !== 'win32') chmodSync(recallCli, 0o755);
+    // The read-only agent-detail reader (card agent-hive-roster-show-agent-d-
+    // 2026-08-19): show/list the fields the roster line omits — above all cwd,
+    // which god's one-agent-per-directory rule needs before ruling a conflict.
+    // Same refresh policy; never writes anything.
+    const rosterCli = join(root, 'bin', 'hive-roster');
+    writeFileSync(rosterCli, HIVE_ROSTER_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(rosterCli, 0o755);
     // The inbox drain (card agent-harness-hive-inbox-cli-o-2026-08-17) —
     // print pending mail + archive to .done in one pass. Same refresh policy.
     const inboxCli = join(root, 'bin', 'hive-inbox');
@@ -7458,6 +7465,137 @@ process.stdout.write(
 try { main(); }
 catch (e) {
   process.stderr.write('hive-recall: ' + (e && e.message ? e.message : String(e)) + '\\n');
+  process.exit(1);
+}
+`;
+
+// ─── hive-roster (written to <hive>/bin/hive-roster) ──────────────────────────
+// The read-only agent-detail reader (card agent-hive-roster-show-agent-d-
+// 2026-08-19): the roster line carries name/role/state/tokens/cost but NOT
+// cwd — and god's one-agent-per-directory rule needs exactly that before
+// ruling a conflict (its root incident was a ruling made without the check).
+// The shared-state gate refuses the raw registry.json read, so THIS is the
+// sanctioned read: `show <id>` for one agent, `list` for everyone (parked
+// included — that is the fetchable vacation pool). Never writes; no telemetry
+// duplicated (model prints '-' — the registry does not persist it; the roster
+// line owns tokens/cost/breaker). State vocabulary: active / parked (vacation)
+// / archived / retired — and `fired` for a retired intern, the same flag under
+// its own provenance (hive-fire sets it; human retirement sets it for hires).
+const HIVE_ROSTER_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+function fail(msg) { throw new Error(msg); }
+function usage() {
+  fail([
+    'usage:',
+    '  hive-roster show <agent-id>  # read-only: one agent detail (cwd, role, pinned, …)',
+    '  hive-roster list             # read-only: same fields, one line per agent (parked included)',
+  ].join('\\n'));
+}
+
+const root = process.env.HIVE_ROOT;
+if (!root) {
+  process.stderr.write('hive-roster: HIVE_ROOT must be set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
+
+function readRegistry() {
+  try { return JSON.parse(fs.readFileSync(path.join(root, 'registry.json'), 'utf8')); }
+  catch (_) { fail('registry.json is not readable — cannot answer roster questions.'); }
+}
+
+// One retired flag, two vocabularies: an intern was FIRED (hive-fire), a hire
+// RETIRED (the human surface). Vacation implies archived; retired beats both.
+function liveState(a) {
+  if (a.retired) return a.role === 'intern' ? 'fired' : 'retired';
+  if (a.vacation) return 'parked';
+  if (a.archived) return 'archived';
+  return 'active';
+}
+
+// God identity is godId/isGod, NEVER the free-form role (floorCensus parity):
+// roles are user-authored, class is derived from the canonical registry facts.
+function agentClass(a, id, godId) {
+  if ((godId && id === godId) || a.isGod) return 'god';
+  if (a.role === 'intern') return 'intern';
+  return 'hire';
+}
+
+// Collapse embedded whitespace so a rogue registry name/label can never wrap
+// or inject rows (same guard as hive-card list's titles).
+function oneLine(v, max) {
+  const s = String(v || '-').replace(/\\s+/g, ' ').trim();
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function cmdShow(rawId) {
+  const id = String(rawId || '').trim();
+  if (!id) usage();
+  const reg = readRegistry();
+  // OWN-property only: a plain [id] read would happily return Object.prototype's
+  // constructor/toString for those ids and print garbage with exit 0.
+  const agents = reg.agents || {};
+  if (!Object.prototype.hasOwnProperty.call(agents, id))
+    fail('no agent "' + id + '" in registry.json — hive-roster list shows every id.');
+  const a = agents[id];
+  const lines = [
+    'id: ' + oneLine(a.id || id, 80),
+    'name: ' + oneLine(a.name, 80),
+    'role: ' + oneLine(a.role, 40),
+    'provider: ' + oneLine(a.provider || 'claude', 40),
+    // always '-': AgentMeta persists no model, and a rogue registry field must
+    // not become a second telemetry source (the roster line owns live model).
+    'model: -',
+    'class: ' + agentClass(a, id, reg.godId),
+    'state: ' + liveState(a),
+    'pinned: ' + (a.pinned ? 'yes' : 'no'),
+    'cwd: ' + oneLine(a.cwd, 400),
+    'spawnLabel: ' + oneLine(a.spawnLabel, 120),
+  ];
+  process.stdout.write(lines.join('\\n') + '\\n');
+}
+
+function cmdList() {
+  const reg = readRegistry();
+  const ids = Object.keys(reg.agents || {}).sort();
+  const lines = ids.map(function (id) {
+    const a = reg.agents[id] || {};
+    return [
+      oneLine(id, 80),
+      oneLine(a.name, 40),
+      agentClass(a, id, reg.godId),
+      liveState(a),
+      'pinned=' + (a.pinned ? 'yes' : 'no'),
+      oneLine(a.provider || 'claude', 40) + '/-',
+      'role=' + oneLine(a.role, 30),
+      oneLine(a.cwd, 200),
+      'label=' + oneLine(a.spawnLabel, 60),
+    ].join(' | ');
+  });
+  process.stdout.write(lines.join('\\n') + (lines.length ? '\\n' : ''));
+}
+
+function main() {
+  const argv = process.argv.slice(2);
+  if (argv[0] === 'show') {
+    if (argv.length !== 2) fail('show takes exactly one agent id.');
+    cmdShow(argv[1]);
+    return;
+  }
+  if (argv[0] === 'list') {
+    if (argv.length !== 1) fail('list takes no arguments.');
+    cmdList();
+    return;
+  }
+  usage();
+}
+try { main(); }
+catch (e) {
+  process.stderr.write('hive-roster: ' + (e && e.message ? e.message : String(e)) + '\\n');
   process.exit(1);
 }
 `;
