@@ -1,12 +1,22 @@
 /**
  * Shared-state PreToolUse gate (card agent-pretooluse-hook-refuse-g-2026-08-19).
  *
+ * Shared-state PreToolUse gate (card agent-pretooluse-hook-refuse-g-2026-08-19,
+ * tightened by agent-hook-r3-refuse-all-non-p-2026-08-19).
+ *
  * The operator's decision (2026-08-19): the harness must FORCE god through the
  * bin/hive-* primitives — no more hand-editing shared hive state. This module
  * decides, for one PreToolUse payload, whether the attempted Bash/Write/Edit
- * is a hand-edit of protected state, and if so returns the refusal message
- * naming the primitive to use instead. It is a HARD GATE with deliberately NO
- * override flag.
+ * touches protected state WITHOUT going through a primitive, and if so returns
+ * the refusal message naming the primitive to use instead. It is a HARD GATE
+ * with deliberately NO override flag.
+ *
+ * R3 — an EVERYTHING-gate: ALL non-primitive access is refused, reads included.
+ * Read-vs-write classification of heredoc bodies was the rot surface (god's
+ * daily pattern is read-only python heredocs against tasks.json); refusing
+ * everything leaves nothing to classify. Reads are pointed at hive-card list
+ * (Meredith, 7cb1733); every gap becomes a carded list-filter extension —
+ * which is the operator's stated policy, not a workaround.
  *
  * THE CENTRAL RULE — gate the COMMAND, not the file. The generated
  * `$HIVE_ROOT/bin/hive-*` CLIs write these exact files as subprocesses of
@@ -46,41 +56,6 @@ const DROP_DIRS = ['vacation-requests', 'spawn-requests', 'fire-requests'] as co
 /** bin/hive-* primitives (and the bundled-node launcher that runs them). */
 const PRIMITIVE_RE = /^hive-[a-z][a-z0-9-]*$/;
 const LAUNCHERS = new Set(['hive-node', 'node', 'electron']);
-
-/** Read-only inspection commands — allowed to touch protected paths. */
-const READERS = new Set([
-  'cat',
-  'head',
-  'tail',
-  'grep',
-  'rg',
-  'ls',
-  'less',
-  'more',
-  'wc',
-  'stat',
-  'file',
-  'diff',
-  'find',
-  'echo',
-  'printf',
-  'pwd',
-  'true',
-  'false',
-  'test',
-  '[',
-  'which',
-  'type',
-  'whereis',
-  'du',
-  'sort',
-  'uniq',
-  'cut',
-  'tr',
-  'md5sum',
-  'sha1sum',
-  'sha256sum',
-]);
 
 const basename = (p: string): string => p.split(/[\\/]/).filter(Boolean).pop() ?? '';
 
@@ -186,21 +161,24 @@ function redirectTargets(segment: string): string[] {
 }
 
 /** The refusal message — the feature. Names the primitive for the attempted
- *  operation; says so explicitly when nothing covers it. */
+ *  operation; says so explicitly when nothing covers it. R3 (card
+ *  agent-hook-r3-refuse-all-non-p-2026-08-19): NO read-vs-write classification
+ *  — everything non-primitive is refused, reads point at hive-card list. */
 function refusalReason(target: string, context: string): string {
   const head =
-    'REFUSED: shared hive state is primitive-owned — hand-edits are banned (operator decision 2026-08-19, no override exists).';
+    'REFUSED: shared hive state is primitive-owned — hand-access (reads AND writes) is banned outside the bin/hive-* primitives (operator decision 2026-08-19, no override exists).';
   const tail =
-    'If no primitive covers this operation, card a harness extension — do not hand-edit.';
+    'If no primitive covers this operation: MAIL THE OPERATOR and card a harness extension — do not hand-edit, and do not thrash retrying the refused command.';
   if (target.includes('tasks.json')) {
     const lines = [
       `${head} Use the card primitives instead:`,
-      `- todo→doing: \`$HIVE_ROOT/bin/hive-dispatch\` — the ONLY legal path (it enforces the paused/blocked holds).`,
+      `- reads: \`$HIVE_ROOT/bin/hive-card list [--status <s>] [--assignee <id>] [--open]\` (paused always shown) — every gap in it is a carded list-filter extension, never a raw read`,
+      `- todo→doing: \`$HIVE_ROOT/bin/hive-dispatch\` — the ONLY legal path (it enforces the paused/blocked holds)`,
       '- any other status change: `$HIVE_ROOT/bin/hive-card status <id> <status>`',
       '- assignee / title / notes / paused: `$HIVE_ROOT/bin/hive-card update <id> …`',
       '- humanQA entry: `$HIVE_ROOT/bin/hive-card ask`',
       '- removing done cards: `$HIVE_ROOT/bin/hive-card prune-done`',
-      '- reads: `$HIVE_ROOT/bin/hive-card list` / `actionable` (or cat/grep for raw inspection)',
+      '- corrupt ledger (hand-repair attempt): `hive-card restore` — git-history-backed recovery (card agent-hive-card-restore-bound--2026-08-19)',
       tail,
     ];
     const ctx = context.toLowerCase();
@@ -221,14 +199,14 @@ function refusalReason(target: string, context: string): string {
   if (target.includes('registry.json')) {
     return [
       head,
-      'registry.json is written by the harness (spawn/retire/vacation flows) and the hire CLIs (`hive-hire`, `hive-new`). No god-side primitive edits it directly.',
+      'registry.json is owned by the harness (spawn/retire/vacation flows) and the hire CLIs (`hive-hire`, `hive-new`). No god-side primitive reads or writes it directly.',
       tail,
     ].join('\n');
   }
   if (target.includes('fleet.json')) {
     return [
       head,
-      'fleet.json is written exclusively by the harness (live roster/floor state — god reads it via the injected roster line). No primitive edits it.',
+      'fleet.json is written exclusively by the harness — the live roster line is AUTO-INJECTED into your context at session start and on every prompt (rosterContext); no primitive reads or writes fleet.json directly.',
       tail,
     ].join('\n');
   }
@@ -281,8 +259,6 @@ function gateBash(command: string, hiveRoot: string, cwd?: string): SharedStateD
     if (isPrimitiveSegment(toks)) continue; // the CLIs own these files
     const hit = toks.find((t) => isProtectedPath(t, hiveRoot, cwd));
     if (!hit) continue;
-    const base = exec ? basename(exec) : '';
-    if (READERS.has(base)) continue; // read-only inspection is fine
     return { reason: refusalReason(hit, segment) };
   }
   return null;

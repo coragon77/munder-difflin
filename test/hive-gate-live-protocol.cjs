@@ -106,6 +106,21 @@ require.cache[electron] = {
   );
   console.log('=== (d) worker python (must PASS, god-only scope) →', JSON.stringify(d));
 
+  // R3 (agent-hook-r3-refuse-all-non-p-2026-08-19) — literal refusal texts:
+  // (e) a READ attempt against tasks.json
+  const e = await ask(ptu('god-1', 'Bash', { command: 'cat $HIVE_ROOT/tasks.json' }));
+  console.log('=== (e) god READ attempt (cat tasks.json) →');
+  console.log(e.hookSpecificOutput?.permissionDecisionReason ?? JSON.stringify(e));
+
+  // (f) a nothing-covers-this attempt (registry.json write)
+  const f = await ask(
+    ptu('god-1', 'Bash', {
+      command: `python3 -c "import json; json.dump({}, open('${hive.root()}/registry.json','w'))"`,
+    }),
+  );
+  console.log('=== (f) god nothing-covers-this attempt (registry.json write) →');
+  console.log(f.hookSpecificOutput?.permissionDecisionReason ?? JSON.stringify(f));
+
   server.stop();
   fs.rmSync(home, { recursive: true, force: true });
   const deny = (r) => r?.hookSpecificOutput?.permissionDecision === 'deny';
@@ -115,7 +130,11 @@ require.cache[electron] = {
     deny(b) &&
     /hive-dispatch/.test(String(b.hookSpecificOutput.permissionDecisionReason)) &&
     Object.keys(c).length === 0 &&
-    Object.keys(d).length === 0;
+    Object.keys(d).length === 0 &&
+    deny(e) &&
+    /hive-card list/.test(String(e.hookSpecificOutput.permissionDecisionReason)) &&
+    deny(f) &&
+    /mail the operator/i.test(String(f.hookSpecificOutput.permissionDecisionReason));
   console.log(ok ? 'LIVE-PROTOCOL VERIFICATION: PASS' : 'LIVE-PROTOCOL VERIFICATION: FAIL');
   process.exit(ok ? 0 : 1);
 })().catch((e) => {

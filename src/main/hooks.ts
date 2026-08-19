@@ -353,13 +353,15 @@ export class HookServer {
       }
     }
 
-    // Shared-state gate (card agent-pretooluse-hook-refuse-g-2026-08-19):
-    // god's hand-edits of shared hive state (tasks.json / registry.json /
-    // fleet.json and the vacation/spawn/fire request drop-dirs) are REFUSED
-    // at the PreToolUse boundary; the message names the bin/hive-* primitive
-    // to use instead. God-only by design — workers never touch these files
-    // (single-writer dirs), and the primitives themselves pass because the
-    // gate inspects the COMMAND, not the file. No override exists.
+    // Shared-state gate (card agent-pretooluse-hook-refuse-g-2026-08-19, R3
+    // tighten agent-hook-r3-refuse-all-non-p-2026-08-19): ALL of god's
+    // non-primitive access to shared hive state (tasks.json / registry.json /
+    // fleet.json and the vacation/spawn/fire request drop-dirs) — reads AND
+    // writes — is REFUSED at the PreToolUse boundary; the message names the
+    // bin/hive-* primitive to use instead. God-only by design — workers never
+    // touch these files (single-writer dirs), and the primitives themselves
+    // pass because the gate inspects the COMMAND, not the file. No override
+    // exists.
     if (event === 'PreToolUse' && agentId && this.hive.isGod(agentId)) {
       const gate = sharedStateGate({
         toolName: p.tool_name ?? '',

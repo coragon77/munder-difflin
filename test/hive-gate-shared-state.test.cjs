@@ -222,6 +222,8 @@ test('every bin/hive-* primitive invocation passes untouched', () => {
     '"$HIVE_ROOT/bin/hive-card" update agent-foo-1 --paused',
     '"$HIVE_ROOT/bin/hive-card" add --title t --status todo',
     '"$HIVE_ROOT/bin/hive-card" list',
+    '"$HIVE_ROOT/bin/hive-card" list --status todo --open',
+    '"$HIVE_ROOT/bin/hive-card" list --assignee pam-msvqb91b',
     '"$HIVE_ROOT/bin/hive-card" actionable',
     '"$HIVE_ROOT/bin/hive-dispatch" --card agent-foo-1 --assignee pam --body go',
     '"$HIVE_ROOT/bin/hive-hire" --name Holly --cwd /tmp --objective x',
@@ -249,21 +251,83 @@ test('compound command: primitive segment passes but hand-edit segment still ref
 
 // —————————————————————————————————————————————————————— Bash: reads pass —
 
-test('read-only inspection commands pass', () => {
-  const { root } = floor();
+test('reads of UNRELATED files pass (the gate is scoped to protected paths)', () => {
+  const { root, home } = floor();
   const cmds = [
-    'cat $HIVE_ROOT/tasks.json',
-    'grep -c doing $HIVE_ROOT/tasks.json',
-    'head -5 $HIVE_ROOT/registry.json',
-    'ls $HIVE_ROOT/spawn-requests/',
-    'stat $HIVE_ROOT/fleet.json',
-    'rg paused $HIVE_ROOT/tasks.json',
-    'wc -l $HIVE_ROOT/log.jsonl',
-    'diff $HIVE_ROOT/tasks.json /tmp/old.json',
+    `cat ${home}/notes.md`,
+    `grep -r pattern ${home}/src`,
+    `head -5 ${home}/hive/board.md`,
+    `wc -l $HIVE_ROOT/log.jsonl`,
+    'ls /tmp',
   ];
   for (const command of cmds) {
     assert.equal(gate(root, root, 'Bash', { command }), null, `must pass: ${command}`);
   }
+});
+
+// R3 (card agent-hook-r3-refuse-all-non-p-2026-08-19): refuse ALL non-primitive
+// access to protected paths, READS INCLUDED — read-vs-write classification of
+// heredoc bodies was the rot surface, so there is nothing left to classify.
+// Reads are pointed at hive-card list (Meredith, 7cb1733).
+
+test('R3: read-only cat/grep/head/rg/stat of tasks.json is REFUSED and names hive-card list', () => {
+  const { root } = floor();
+  const cmds = [
+    'cat $HIVE_ROOT/tasks.json',
+    'grep -c doing $HIVE_ROOT/tasks.json',
+    'head -5 $HIVE_ROOT/tasks.json',
+    'rg paused $HIVE_ROOT/tasks.json',
+    'stat $HIVE_ROOT/tasks.json',
+    'wc -l $HIVE_ROOT/tasks.json',
+    'diff $HIVE_ROOT/tasks.json /tmp/old.json',
+  ];
+  for (const command of cmds) {
+    const d = gate(root, root, 'Bash', { command });
+    assert.ok(d, `must refuse: ${command}`);
+    assert.match(d.reason, /hive-card list/, `must name hive-card list: ${command}`);
+  }
+});
+
+test('R3: read-only python heredoc against tasks.json is REFUSED and names hive-card list', () => {
+  const { root } = floor();
+  const cmd = `python3 - <<'EOF'\nimport json\nd = json.load(open("$HIVE_ROOT/tasks.json"))\nprint([t['id'] for t in d['tasks'] if t.get('paused')])\nEOF`;
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — reads included, heredoc bodies never classified');
+  assert.match(d.reason, /hive-card list/);
+});
+
+test('R3: ls of a drop-dir is refused with the nothing-covers message naming mail-the-operator', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', { command: 'ls $HIVE_ROOT/spawn-requests/' });
+  assert.ok(d, 'denied');
+  assert.match(d.reason, /hive-hire/);
+  assert.match(d.reason, /mail the operator/i);
+});
+
+test('R2: nothing-covers-this refusal (registry.json) names MAIL-THE-OPERATOR and no-retry', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', {
+    command: `python3 -c 'import json; json.dump({}, open("$HIVE_ROOT/registry.json","w"))'`,
+  });
+  assert.ok(d, 'denied');
+  assert.match(d.reason, /mail the operator/i);
+  assert.match(d.reason, /do not thrash retrying|do not hand-edit/);
+});
+
+test('R2: tasks.json refusal references hive-card restore for corrupt-ledger repair', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', {
+    command: `python3 -c 'import json; json.dump({}, open("$HIVE_ROOT/tasks.json","w"))'`,
+  });
+  assert.ok(d, 'denied');
+  assert.match(d.reason, /hive-card restore/);
+});
+
+test('R3: fleet.json read is refused (roster arrives via the injected roster line)', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', { command: 'cat $HIVE_ROOT/fleet.json' });
+  assert.ok(d, 'denied');
+  assert.match(d.reason, /roster/);
 });
 
 test('bare tasks.json from a cwd OUTSIDE the hive root passes (not our file)', () => {
