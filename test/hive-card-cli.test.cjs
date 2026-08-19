@@ -647,6 +647,252 @@ test('list: rejects unknown flags, bad --status, and --open with --status — no
   assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
 });
 
+// ——— ask + prune-done (card agent-hive-card-ask-prune-done-2026-08-19) ———
+// The two card mutations god used to hand-edit into tasks.json — the one file
+// its own instructions say must never be hand-edited.
+
+/** The REAL openQuestion from the renderer: the ASK ME board's selector, and
+ *  the reason `ask` appends its entries REVERSED. Scraped + transpiled rather
+ *  than imported — TasksKanban.tsx pulls in the whole React renderer, while
+ *  this function is pure and import-free. A failing scrape is itself the
+ *  signal: the CLI's ordering is calibrated against this exact walk. */
+function loadOpenQuestion(t) {
+  const ts = require('typescript');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', 'src/renderer/src/components/TasksKanban.tsx'),
+    'utf8',
+  );
+  const start = src.indexOf('export function openQuestion');
+  assert.ok(start >= 0, 'openQuestion still lives in TasksKanban.tsx');
+  let depth = 0;
+  let end = -1;
+  for (let j = src.indexOf('{', start); j < src.length; j++) {
+    if (src[j] === '{') depth++;
+    else if (src[j] === '}' && --depth === 0) {
+      end = j + 1;
+      break;
+    }
+  }
+  assert.ok(end > 0, 'openQuestion body parses');
+  const js = ts.transpileModule(src.slice(start, end).replace('export function', 'function'), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const file = path.join(os.tmpdir(), `md-openquestion-${process.pid}-${Date.now()}.cjs`);
+  fs.writeFileSync(file, `${js}\nmodule.exports = openQuestion;\n`);
+  t.after(() => fs.rmSync(file, { force: true }));
+  return require(file);
+}
+
+/** What the operator actually experiences: answer the surfaced ask, look
+ *  again, repeat. Returns the questions in the order the board shows them. */
+function drainAsks(openQuestion, card) {
+  const seen = [];
+  for (let guard = 0; guard < 20; guard++) {
+    const open = openQuestion(card);
+    if (!open) break;
+    seen.push(open.q);
+    open.a = 'answered';
+  }
+  return seen;
+}
+
+test('ask: one entry per --q, surfaced in the order given, card blocks', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const openQuestion = loadOpenQuestion(t);
+  const id = s.run('add', '--title', 'Needs the human', '--status', 'doing').trim();
+
+  const out = s.run(
+    'ask',
+    id,
+    '--q',
+    'Ship A or B?',
+    '--q',
+    'Who owns the rollout?',
+    '--q',
+    'Budget for the migration?',
+  );
+  assert.match(out, /-> blocked/, 'receipt names the block');
+  assert.match(out, /3 asks appended/, 'receipt counts the asks');
+
+  const card = s.tasks().find((c) => c.id === id);
+  assert.equal(card.status, 'blocked', 'asking the human blocks the card');
+  assert.equal(card.humanQA.length, 3, 'three separate entries — never one joined paragraph');
+  for (const e of card.humanQA) {
+    assert.ok(!Number.isNaN(Date.parse(e.askedAt)), 'each entry stamps askedAt');
+    assert.equal(e.a, undefined, 'each entry is open, with its own answer slot');
+  }
+  assert.deepEqual(
+    drainAsks(openQuestion, card),
+    ['Ship A or B?', 'Who owns the rollout?', 'Budget for the migration?'],
+    'the ASK ME board surfaces them in the order they were written',
+  );
+});
+
+test('ask: appends to history — existing entries and their answers survive untouched', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const openQuestion = loadOpenQuestion(t);
+  s.hive.writeTasks([
+    {
+      id: 'agent-with-history-2026-08-19',
+      title: 'Card with a decided question',
+      status: 'doing',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      humanQA: [
+        {
+          q: 'Old decided question?',
+          a: 'Yes, do it.',
+          askedAt: '2026-08-18T09:00:00.000Z',
+          answeredAt: '2026-08-18T10:00:00.000Z',
+        },
+        { q: 'Still-open older ask?', askedAt: '2026-08-18T11:00:00.000Z' },
+      ],
+    },
+  ]);
+  const before = s.tasks()[0].humanQA.slice(0, 2);
+
+  s.run('ask', 'agent-with-history-2026-08-19', '--q', 'New one?', '--q', 'New two?');
+  const card = s.tasks()[0];
+  assert.deepEqual(card.humanQA.slice(0, 2), before, 'history byte-identical, still first');
+  assert.equal(card.humanQA.length, 4, 'appended, nothing dropped');
+  assert.deepEqual(
+    drainAsks(openQuestion, card),
+    ['New one?', 'New two?', 'Still-open older ask?'],
+    'new asks come first, the older open one is still reachable, the answered one is done',
+  );
+});
+
+test('ask: validates and leaves the ledger untouched on refusal', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  const id = s.run('add', '--title', 'Guarded', '--status', 'doing').trim();
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  let r = s.runFail('ask', id);
+  assert.notEqual(r.code, 0, 'no --q rejected');
+  assert.match(r.stderr, /at least one --q/);
+  r = s.runFail('ask', id, '--q', '   ');
+  assert.notEqual(r.code, 0, 'blank --q rejected');
+  r = s.runFail('ask', id, '--q', 'ok', '--notes', 'nope');
+  assert.notEqual(r.code, 0, 'unknown flag rejected');
+  r = s.runFail('ask', 'no-such-card', '--q', 'ok');
+  assert.notEqual(r.code, 0, 'unknown id rejected');
+  assert.match(r.stderr, /no card with id/);
+
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched after rejections');
+});
+
+test('prune-done: defaults to a dry run — lists the ids, writes nothing', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const done = s.run('add', '--title', 'Shipped it', '--status', 'todo').trim();
+  s.run('status', done, 'done');
+  const open = s.run('add', '--title', 'Still going', '--status', 'doing').trim();
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const out = s.run('prune-done');
+  assert.match(out, /1 done card would be removed \(dry run/, 'says what WOULD happen');
+  assert.match(out, /--confirm/, 'names the confirming flag');
+  assert.ok(out.includes(done), 'lists the id');
+  assert.ok(!out.includes(open), 'lists only done cards');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'dry run wrote nothing');
+
+  const explicit = s.run('prune-done', '--dry-run');
+  assert.equal(explicit, out, '--dry-run is the explicit spelling of the default');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'still nothing written');
+});
+
+test('prune-done --confirm removes ONLY done cards', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  const ids = {};
+  for (const st of ['todo', 'doing', 'blocked', 'done']) {
+    const id = s.run('add', '--title', `Card ${st}`, '--status', 'todo').trim();
+    if (st !== 'todo') s.run('status', id, st);
+    ids[st] = id;
+  }
+  const second = s.run('add', '--title', 'Also finished', '--status', 'todo').trim();
+  s.run('status', second, 'done');
+
+  const out = s.run('prune-done', '--confirm');
+  assert.match(out, /2 done cards removed/, 'prints the count');
+  assert.ok(out.includes(ids.done) && out.includes(second), 'prints the removed ids');
+
+  const left = s
+    .tasks()
+    .map((c) => c.id)
+    .sort();
+  assert.deepEqual(left, [ids.todo, ids.doing, ids.blocked].sort(), 'only done cards went');
+
+  const empty = s.run('prune-done', '--confirm');
+  assert.match(empty, /^prune-done: 0 done cards removed\n$/, 'a clean board prunes nothing');
+  const r = s.runFail('prune-done', '--dry-run', '--confirm');
+  assert.notEqual(r.code, 0, '--dry-run with --confirm rejected');
+  const bad = s.runFail('prune-done', '--all');
+  assert.notEqual(bad.code, 0, 'unknown argument rejected');
+});
+
+test('prune-done re-reads under the lock — a concurrent landing is never clobbered', {
+  skip: !POSIX,
+}, async (t) => {
+  // The stale read-modify-write god carried by hand: read the ledger, prune,
+  // write back — losing every card another writer landed in between. The
+  // filter runs inside the lock on a fresh read, so it cannot happen.
+  const s = setup(t);
+  const doomed = [];
+  for (let i = 0; i < 4; i++) {
+    const id = s.run('add', '--title', `Finished ${i}`, '--status', 'todo').trim();
+    s.run('status', id, 'done');
+    doomed.push(id);
+  }
+
+  let readErr = null;
+  const iv = setInterval(() => {
+    try {
+      JSON.parse(fs.readFileSync(s.tasksPath, 'utf8'));
+    } catch (e) {
+      readErr = readErr ?? e;
+    }
+  }, 1);
+  t.after(() => clearInterval(iv));
+
+  const spawn = (args) =>
+    new Promise((resolve, reject) => {
+      execFile(
+        process.execPath,
+        [s.cli, ...args],
+        { env: s.env, encoding: 'utf8' },
+        (err, stdout) => (err ? reject(err) : resolve(stdout.trim())),
+      );
+    });
+  const landed = await Promise.all([
+    spawn(['prune-done', '--confirm']),
+    ...Array.from({ length: 5 }, (_, i) =>
+      spawn(['add', '--title', `Landed mid-prune ${i}`, '--status', 'doing']),
+    ),
+  ]);
+  clearInterval(iv);
+  assert.equal(readErr, null, 'every read mid-write parsed cleanly');
+
+  const cards = s.tasks();
+  for (const id of landed.slice(1)) {
+    assert.ok(
+      cards.some((c) => c.id === id),
+      `${id} survived the prune`,
+    );
+  }
+  for (const id of doomed) assert.ok(!cards.some((c) => c.id === id), `${id} was pruned`);
+  assert.deepEqual(
+    fs.readdirSync(path.dirname(s.tasksPath)).filter((f) => f.includes('.tmp')),
+    [],
+    'no tmp files left behind',
+  );
+});
+
 test('corrupt tasks.json: refuses to write, errors cleanly', { skip: !POSIX }, async (t) => {
   const s = setup(t);
   fs.writeFileSync(s.tasksPath, 'this is not json', 'utf8');
