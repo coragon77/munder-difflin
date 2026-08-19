@@ -152,3 +152,4 @@ test/heartbeat-removal.test.cjs
 test/agent-role-identity.test.cjs
 test/blocked-provenance.test.cjs
 test/card-work-rules.test.cjs
+test/mail-fold.test.cjs

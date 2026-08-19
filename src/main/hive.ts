@@ -33,7 +33,7 @@ import {
   cpSync,
   unlinkSync,
 } from 'node:fs';
-import { join, dirname, isAbsolute } from 'node:path';
+import { join, dirname, isAbsolute, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
@@ -396,6 +396,14 @@ export interface SpawnInjection {
 }
 
 const HOP_CAP = 12;
+
+/** MAIL FOLD budget (card agent-mail-queued-alongside-a--2026-08-19, god's
+ *  size caveat): total folded-body characters before later pending messages
+ *  fold as header-only + a drain pointer. ~4k tokens of inlined mail at most;
+ *  a 40-message backlog cannot wall the contract or blow a context window,
+ *  and no body is ever cut mid-sentence — overflow stays pending in the
+ *  inbox, pointed at by the contract itself. */
+const MAIL_FOLD_BODY_BUDGET = 16_000;
 
 function sleepSync(ms: number): void {
   const sab = new SharedArrayBuffer(4);
@@ -2084,7 +2092,10 @@ export class HiveManager {
    *  typed nudge) keys off inbox visibility, and letting it fire before the
    *  card-scoped clear executes is what turns the pending clear into a
    *  post-work wipe. releaseStagedMail() moves it into the inbox once the
-   *  stamp lands (or the card stops holding, or the timeout breaks the tie). */
+   *  stamp lands (or the card stops holding, or the timeout breaks the tie).
+   *  MAIL FOLD (card agent-mail-queued-alongside-a--2026-08-19): a dispatch
+   *  contract delivered DIRECT (adopt mode, providers with no typable clear)
+   *  absorbs pending inbox mail first — see foldStagedContract. */
   private deliver(msg: HiveMessage, toId: string): void {
     const inbox = join(this.agentDir(toId), 'inbox');
     if (!existsSync(inbox)) return; // unknown recipient — dropped (logged by caller)
@@ -2095,7 +2106,10 @@ export class HiveManager {
       this.appendLog({ kind: 'mail-staged', to: toId, id: msg.id });
       return;
     }
-    this.atomicWriteJson(join(inbox, `${msg.id}.json`), msg);
+    const out = this.dispatchContractCard(msg, toId)
+      ? { ...msg, body: this.sweepInboxInto(msg.body, inbox, toId) }
+      : msg;
+    this.atomicWriteJson(join(inbox, `${out.id}.json`), out);
   }
 
   /** The set of agents whose mail must stage right now (pure snapshot of the
@@ -2114,6 +2128,111 @@ export class HiveManager {
       }
     }
     return cardSessionMailHold(cards, registrySessions, providers);
+  }
+
+  /** MAIL FOLD (card agent-mail-queued-alongside-a--2026-08-19): the doing
+   *  card a message is the dispatch contract of, or null. The contract is
+   *  identified structurally — a card-scoped conversation ('card-<id>') of a
+   *  card that is doing AND assigned to the recipient — so god's amendments
+   *  (same conversation) and hand-sent contracts both qualify. Pure read. */
+  private dispatchContractCard(msg: HiveMessage, toId: string): CardLike | null {
+    if (!msg.conversation?.startsWith('card-')) return null;
+    const cardId = msg.conversation.slice(5);
+    const data = this.tasks() as { tasks?: CardLike[] };
+    const cards = Array.isArray(data.tasks) ? data.tasks : [];
+    const card = cards.find((c) => c?.id === cardId);
+    return card && card.assignee === toId && card.status === 'doing' ? card : null;
+  }
+
+  /** One folded message's section — the literal text an agent reads inside a
+   *  dispatch contract that it did not read before (subject to the report).
+   *  The framing is a BRACKETED FOREIGN MESSAGE: sender, act (a folded 'query'
+   *  must still read as waiting on an answer), subject, id — visibly not part
+   *  of the card's own instructions (god's framing caveat, 2026-08-19). */
+  private foldSection(m: HiveMessage): string {
+    return [
+      "--- MAIL FOLDED INTO THIS DISPATCH (queued beside it by another sender — handle it, but it is NOT part of this card's contract) ---",
+      `From: ${m.from} | act: ${m.act} | Subject: ${m.subject} | id ${m.id}`,
+      m.body,
+      '--- END FOLDED MAIL ---',
+    ].join('\n');
+  }
+
+  /** Header-only entry for a message beyond the fold budget (god's size
+   *  caveat: never truncate a body mid-sentence — the full text stays pending
+   *  where the drain finds it, and the contract points at it). */
+  private foldOverflowHeader(m: HiveMessage): string {
+    return [
+      '--- MAIL QUEUED BESIDE THIS DISPATCH (beyond the fold budget — full text left pending; handle it too) ---',
+      `From: ${m.from} | act: ${m.act} | Subject: ${m.subject} | id ${m.id}`,
+      '--- END ---',
+    ].join('\n');
+  }
+
+  /** Build the fold text for pending messages: full bodies while
+   *  MAIL_FOLD_BODY_BUDGET chars last, then header-only entries. `entries`
+   *  pairs each message with its .done archive target; only FULLY folded
+   *  messages return in `folded` (their originals are consumed — overflow
+   *  stays pending for a drain, so nothing is silently archived unread). */
+  private buildFold(entries: { msg: HiveMessage; archive: string }[]): {
+    text: string | null;
+    folded: string[];
+  } {
+    let budget = MAIL_FOLD_BODY_BUDGET;
+    const lines: string[] = [];
+    const folded: string[] = [];
+    let overflow = 0;
+    for (const e of entries) {
+      if (e.msg.body.length <= budget) {
+        budget -= e.msg.body.length;
+        lines.push(this.foldSection(e.msg));
+        folded.push(e.archive);
+      } else {
+        overflow++;
+        lines.push(this.foldOverflowHeader(e.msg));
+      }
+    }
+    if (overflow > 0) {
+      lines.push(
+        `NOTE: ${overflow} message(s) beyond the fold budget remain pending in your inbox — run hive-inbox drain and handle them BEFORE starting card work.`,
+      );
+    }
+    return { text: lines.length > 0 ? lines.join('\n') : null, folded };
+  }
+
+  /** Absorb pending inbox/*.json messages into `body` (archiving fully
+   *  folded originals to inbox/.done/, exactly as a drain consumes them) so
+   *  nothing sits BESIDE the dispatch the agent is about to read. Overflow
+   *  past the fold budget stays pending in the inbox, pointed at by the
+   *  contract. Returns `body` unchanged when the inbox is empty. */
+  private sweepInboxInto(body: string, inbox: string, agentId: string): string {
+    let files: string[] = [];
+    try {
+      files = readdirSync(inbox).filter((f) => f.endsWith('.json'));
+    } catch {
+      return body;
+    }
+    if (files.length === 0) return body;
+    const entries: { msg: HiveMessage; archive: string }[] = [];
+    for (const f of files) {
+      const m = this.readJson<HiveMessage | null>(join(inbox, f), null);
+      if (m) entries.push({ msg: m, archive: join(inbox, '.done', f) });
+    }
+    if (entries.length === 0) return body;
+    const { text, folded } = this.buildFold(entries);
+    if (folded.length > 0) {
+      mkdirSync(join(inbox, '.done'), { recursive: true });
+      for (const dest of folded) {
+        try {
+          renameSync(join(inbox, basename(dest)), dest);
+        } catch {
+          continue; // lost the race with a concurrent drain — nothing to fold
+        }
+        const m = entries.find((e) => e.archive === dest)?.msg;
+        if (m) this.appendLog({ kind: 'mail-folded', to: agentId, id: m.id });
+      }
+    }
+    return text ? `${body}\n\n${text}` : body;
   }
 
   /** Release staged mail whose gate opened: the stamp landed (fresh
@@ -2138,17 +2257,32 @@ export class HiveManager {
         continue;
       }
       const held = holds.has(id);
+      // Staleness snapshot BEFORE any fold rewrite — mtime is the timeout
+      // clock, and foldStagedContract rewrites the contract file it folds into.
+      const stale = new Map<string, boolean>();
+      for (const f of files) {
+        try {
+          stale.set(f, now - statSync(join(staged, f)).mtimeMs > MAIL_STAGE_TIMEOUT_MS);
+        } catch {
+          stale.set(f, false);
+        }
+      }
+      // MAIL FOLD (card agent-mail-queued-alongside-a--2026-08-19): at
+      // release, the doing card's dispatch contract ABSORBS its staged
+      // siblings and any mail that reached the inbox in the stamp→sweep
+      // window, then releases as the only new inbox file — the agent cannot
+      // start beside unread mail.
+      const releasing = files.filter((f) => !held || stale.get(f) === true);
+      if (releasing.length > 0) this.foldStagedContract(id, inbox, staged, releasing);
+      try {
+        files = readdirSync(staged).filter((f) => f.endsWith('.json'));
+      } catch {
+        continue;
+      }
       for (const f of files) {
         const full = join(staged, f);
-        let timedOut = false;
-        if (held) {
-          try {
-            timedOut = now - statSync(full).mtimeMs > MAIL_STAGE_TIMEOUT_MS;
-          } catch {
-            continue;
-          }
-          if (!timedOut) continue;
-        }
+        const timedOut = held && stale.get(f) === true;
+        if (held && !timedOut) continue;
         try {
           renameSync(full, join(inbox, f));
         } catch {
@@ -2167,6 +2301,54 @@ export class HiveManager {
           );
         }
       }
+    }
+  }
+
+  /** MAIL FOLD (card agent-mail-queued-alongside-a--2026-08-19), staged
+   *  half: among the staged files about to release, find the doing card's
+   *  dispatch contract (oldest card-conversation message — later ones on the
+   *  same conversation are amendments and fold like any sibling) and fold the
+   *  other releasing files, plus any inbox-pending mail, INTO it — rewriting
+   *  the contract in place (atomic) and archiving the originals to
+   *  inbox/.done/. No doing card or no contract in the releasing set → today's
+   *  behaviour unchanged (each file releases side by side). */
+  private foldStagedContract(id: string, inbox: string, staged: string, releasing: string[]): void {
+    const data = this.tasks() as { tasks?: CardLike[] };
+    const cards = Array.isArray(data.tasks) ? data.tasks : [];
+    const card = cards.find((c) => c?.assignee === id && c.status === 'doing');
+    if (!card) return;
+    const conv = `card-${card.id}`;
+    const parsed: { f: string; msg: HiveMessage | null }[] = releasing.map((f) => ({
+      f,
+      msg: this.readJson<HiveMessage | null>(join(staged, f), null),
+    }));
+    const contracts = parsed
+      .filter((p) => p.msg?.conversation === conv)
+      .sort((a, b) => Date.parse(a.msg!.created_at) - Date.parse(b.msg!.created_at));
+    const contract = contracts[0];
+    if (!contract?.msg) return;
+    const siblings = parsed.filter((p) => p !== contract && p.msg);
+    // Budget-aware fold (god's size caveat): fully folded siblings are consumed
+    // (archived to .done, logged); OVERFLOW siblings stay staged — the release
+    // loop right after releases them into the inbox, where the contract's
+    // drain pointer names them. Never a mid-sentence truncation.
+    const { text: siblingText, folded } = this.buildFold(
+      siblings.map((p) => ({ msg: p.msg!, archive: join(inbox, '.done', p.f) })),
+    );
+    if (folded.length > 0) mkdirSync(join(inbox, '.done'), { recursive: true });
+    for (const dest of folded) {
+      try {
+        renameSync(join(staged, basename(dest)), dest);
+      } catch {
+        continue;
+      }
+      const m = siblings.find((p) => join(inbox, '.done', p.f) === dest)?.msg;
+      if (m) this.appendLog({ kind: 'mail-folded', to: id, id: m.id });
+    }
+    let body = siblingText ? `${contract.msg.body}\n\n${siblingText}` : contract.msg.body;
+    body = this.sweepInboxInto(body, inbox, id);
+    if (body !== contract.msg.body) {
+      this.atomicWriteJson(join(staged, contract.f), { ...contract.msg, body });
     }
   }
 
@@ -4528,6 +4710,7 @@ only thing that moves messages between agents.
 - \`memory.md\`    — your long-term memory. Read at the start of a task; append to it as you learn.
 - \`inbox/\`       — messages addressed to you. Read them at the start of a task.
 - \`inbox/.done/\` — move a message here once you've handled it.
+- Folded mail: a dispatch contract can carry a \`MAIL FOLDED INTO THIS DISPATCH\` section — mail that was queued beside your dispatch is folded INTO the contract (originals already archived to \`inbox/.done/\`). There is nothing beside it to drain: the folded section IS that mail, handle it as part of the dispatch.
 - \`outbox/\`      — drop messages here to send them. The harness delivers them.
 
 **Never write into another agent's folder.** Write to your own \`outbox/\`; the
