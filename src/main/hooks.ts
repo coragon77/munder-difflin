@@ -22,6 +22,7 @@ import type { PendingWorkTracker } from './pendingWork';
 import { waitingLabel } from '../shared/waitingLabel';
 import { estimateCostUsd } from './pricing';
 import { bridgeDeliversHookContext } from '../shared/agentProvider';
+import { sharedStateGate } from './hiveGate';
 
 interface HookPayload {
   hook_event_name?: string;
@@ -347,6 +348,33 @@ export class HookServer {
             hookEventName: 'PreToolUse',
             permissionDecision: 'deny',
             permissionDecisionReason: d.reason ?? 'Denied by operator.',
+          },
+        };
+      }
+    }
+
+    // Shared-state gate (card agent-pretooluse-hook-refuse-g-2026-08-19):
+    // god's hand-edits of shared hive state (tasks.json / registry.json /
+    // fleet.json and the vacation/spawn/fire request drop-dirs) are REFUSED
+    // at the PreToolUse boundary; the message names the bin/hive-* primitive
+    // to use instead. God-only by design — workers never touch these files
+    // (single-writer dirs), and the primitives themselves pass because the
+    // gate inspects the COMMAND, not the file. No override exists.
+    if (event === 'PreToolUse' && agentId && this.hive.isGod(agentId)) {
+      const gate = sharedStateGate({
+        toolName: p.tool_name ?? '',
+        toolInput: p.tool_input,
+        hiveRoot: this.hive.root(),
+        cwd: typeof p.cwd === 'string' ? p.cwd : undefined,
+      });
+      if (gate) {
+        this.emitControl(agentId, p.tool_name, gate.reason);
+        this.emit(agentId, event, p);
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: gate.reason,
           },
         };
       }
