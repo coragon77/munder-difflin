@@ -1933,7 +1933,7 @@ export class HiveManager {
       `1. At the START of a task, read ${dir}/memory.md and EVERY file in ${dir}/inbox/ (messages other agents sent you). After handling an inbox message, move its file into ${dir}/inbox/.done/.`,
       `2. ORIENT FIRST in every directory the task touches: BEFORE grepping, reading source, or forming a plan, read that directory's own CLAUDE.md and AGENTS.md if present — they carry the per-instance rules and the cheap way in (a graphify-out/ knowledge graph, wiki index, build/test commands, house gates). Orient via them, then verify with targeted reads ONLY the specific lines you will cite — docs and graphs go stale.`,
       `3. Record durable facts, decisions, and context by appending to ${dir}/memory.md.`,
-      `4. To ask another agent for something or share information, use \`$HIVE_ROOT/bin/hive-mail --to <id> --act <request|inform|propose|query|agree|refuse|done> --subject <s> --body <b>\` (it fills the envelope and prints the receipt — never cat the file back). NEVER write into another agent's folder — the orchestrator delivers your outbox. Peer mail (worker→worker) is for coordination you two can settle yourselves — god automatically receives a compact audit copy of every peer message, so never CC him on it yourself; but for anything that changes scope, ownership, or needs a sign-off, propose to god BEFORE acting.`,
+      `4. To ask another agent for something or share information, use \`$HIVE_ROOT/bin/hive-mail --to <id> --act <request|inform|propose|query|agree|refuse|done> --subject <s> --body <b>\` (it fills the envelope and prints the receipt — never cat the file back). --body is for SHORT LITERAL strings only: if the body contains $, backticks or quotes, pipe it on stdin instead (\`hive-mail ... < body.md\` or a quoted heredoc) — the shell expands $ and backticks inside a quoted --body and that has corrupted reports (2026-08-19). NEVER write into another agent's folder — the orchestrator delivers your outbox. Peer mail (worker→worker) is for coordination you two can settle yourselves — god automatically receives a compact audit copy of every peer message, so never CC him on it yourself; but for anything that changes scope, ownership, or needs a sign-off, propose to god BEFORE acting.`,
       '5. At the END of a task, append what you learned to memory.md so future-you remembers.',
       monitorLine,
       guardrailsLine,
@@ -3545,15 +3545,20 @@ cat-verifying it re-reads the whole body into context. The CLI is the cheap
 carrier (measured: ~12% on long findings mails, ~58% on short protocol mails):
 
 \`\`\`bash
+# --body: SHORT LITERAL strings only — the shell expands $ and backticks inside it
 "$HIVE_ROOT/bin/hive-mail" --to god --act done --subject "Card X shipped @ abc1234" --body "VERIFIED: ..."
+# Any body containing $, backticks or quotes goes through STDIN — verbatim, nothing expanded:
+"$HIVE_ROOT/bin/hive-mail" --to god --act done --subject "Card X shipped @ abc1234" < body.md
+"$HIVE_ROOT/bin/hive-mail" --to god --act done --subject "Card X shipped @ abc1234" <<'EOF'
+Report text — \`fields\`, $(cmd), $vars, "quotes" all survive verbatim.
+EOF
 # → prints exactly one line: queued <id>.json   ← that IS the receipt; do NOT cat the file back
-\`\`\`
-
-- Required: \`--to\`, \`--act\` (request|inform|propose|query|agree|refuse|done), \`--subject\`, \`--body\`.
+\`\`\`\n
+- Required: \`--to\`, \`--act\` (request|inform|propose|query|agree|refuse|done), \`--subject\`, and a body from \`--body\` or stdin.
+- \`--body\` is for SHORT LITERAL strings ONLY. A body containing \`$\`, backticks or quotes MUST be piped on stdin instead — inside a quoted \`--body\` the shell runs \`$(...)\` and backticked names as commands and splices their output into your mail (two reports corrupted in one day, 2026-08-19). \`< file\` and \`<<'EOF'\` never parse the body; stdin is stored verbatim, and \`--body\` wins when both are given (same rule as hive-dispatch).
 - Optional: \`--conversation <id>\` (carry a thread), \`--in-reply-to <message id>\`.
 - The CLI fills \`id\`/\`from\`/\`hops\`/\`created_at\` and derives \`requires_reply\`
   from the act (request/query/propose expect a reply; the rest are terminal).
-- No \`--body-file\` — deliberately: the body would land in context twice.
 `;
 
 const HIVE_INBOX_MD = `## HIVE-INBOX — draining your mail (every agent)
@@ -4307,6 +4312,18 @@ to verify (the read re-costs the whole body):
 
 \`\`\`bash
 "$HIVE_ROOT/bin/hive-mail" --to <agent-id|god|broadcast> --act <request|inform|propose|query|agree|refuse|done> --subject "one-line summary" --body "the details" [--conversation <id>] [--in-reply-to <message id>]
+\`\`\`
+
+\`--body\` is for SHORT LITERAL strings only. If the body contains \`$\`, backticks
+or quotes, the shell will expand them inside the quoted \`--body\` and silently
+replace your text with command output — pipe such bodies on stdin instead,
+where nothing is parsed and the text lands verbatim:
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-mail" --to god --act done --subject "Card X shipped @ abc1234" < body.md
+"$HIVE_ROOT/bin/hive-mail" --to god --act done --subject "Card X shipped @ abc1234" <<'EOF'
+body text — \`fields\`, $(cmd), $vars, "quotes" survive verbatim
+EOF
 \`\`\`
 
 Fallback when the CLI is unavailable — write one JSON file into \`outbox/\`
@@ -5317,8 +5334,13 @@ try {
 // ONE line. Those two conditions carry the measured saving (~215-235 tok per
 // long findings mail, ~58% on the many short protocol mails): a chatty stdout
 // or a cat-the-file-back verification re-reads the body into context and the
-// win evaporates. Deliberately NO --body-file variant (measured worst carrier:
-// the body lands twice, once written, once read back).
+// win evaporates. The body comes from --body OR piped stdin — the SAME
+// readBody() rule as hive-dispatch (card agent-hive-mail-a-body-path-th-
+// 2026-08-19), because a body quoted inline in a worker's bash call gets
+// shell-expanded ($..., backticks) and has corrupted two reports in one day.
+// stdin (redirect/quoted heredoc) never parses the body — and costs no extra
+// read-back, so the one-touch property above survives. Still no --body-file
+// flag: stdin already carries files verbatim (< file.md).
 const HIVE_MAIL_CLI = `#!/usr/bin/env node
 'use strict';
 const fs = require('fs');
@@ -5360,10 +5382,29 @@ for (const k of Object.keys(flags)) {
     fail('unknown flag --' + k);
   }
 }
-for (const k of ['to', 'act', 'subject', 'body']) {
+for (const k of ['to', 'act', 'subject']) {
   if (flags[k] === undefined) fail('--' + k + ' is required.');
   if (!String(flags[k]).trim()) fail('--' + k + ' must be non-empty when given.');
 }
+if (flags.body !== undefined && !String(flags.body).trim()) {
+  fail('--body must be non-empty when given.');
+}
+
+// Body from --body OR piped stdin (card agent-hive-mail-a-body-path-th-2026-08-19):
+// SAME rule as hive-dispatch readBody() — --body wins, else stdin. stdin is the
+// expansion-proof path: a redirect or quoted heredoc never parses the body, so
+// $, backticks and quotes survive verbatim (two workers lost report text to
+// shell expansion inside double quotes on one day). Stored RAW — no trim.
+function readBody(flagBody) {
+  let b = flagBody;
+  if (b === undefined) {
+    if (process.stdin.isTTY) fail('no body — pass --body <text> for a short literal, or pipe the body on stdin (heredoc/redirect) so nothing is shell-expanded.');
+    b = fs.readFileSync(0, 'utf8');
+  }
+  if (!String(b).trim()) fail('the body is empty — --body or stdin must carry it.');
+  return b;
+}
+const body = readBody(flags.body);
 if (ACTS.indexOf(flags.act) < 0) {
   fail('--act must be one of: ' + ACTS.join(', ') + ' (got: ' + flags.act + ').');
 }
@@ -5378,7 +5419,7 @@ const msg = {
   to: flags.to.trim(),
   act: flags.act,
   subject: flags.subject,
-  body: flags.body,
+  body: body,
   hops: 0,
   requires_reply: REPLY_EXPECTED.indexOf(flags.act) >= 0,
   needs_human: false,

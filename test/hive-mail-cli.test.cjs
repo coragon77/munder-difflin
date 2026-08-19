@@ -32,6 +32,9 @@ function setup(t) {
   const env = { ...process.env, HIVE_ROOT: path.join(home, 'hive'), AGENT_ID: 'test-worker-1' };
   const run = (...args) =>
     execFileSync(process.execPath, [cli, ...args], { env, encoding: 'utf8' });
+  // Pipe exact bytes on stdin — the shell-free equivalent of `... < body.md`.
+  const runIn = (input, ...args) =>
+    execFileSync(process.execPath, [cli, ...args], { env, encoding: 'utf8', input });
   const runFail = (...args) => {
     try {
       run(...args);
@@ -40,7 +43,7 @@ function setup(t) {
       return { code: e.status ?? -1, stderr: String(e.stderr ?? '') };
     }
   };
-  return { hive, cli, outbox, env, run, runFail };
+  return { hive, cli, outbox, env, run, runIn, runFail };
 }
 
 test('ensureHive ships an executable hive-mail in hive/bin', { skip: !POSIX }, async (t) => {
@@ -133,6 +136,51 @@ test('validation: missing/bad input rejected, nothing written, stderr explains',
   assert.notEqual(r.code, 0, 'unknown flag rejected');
 
   assert.deepEqual(fs.readdirSync(s.outbox), [], 'nothing written on rejection');
+});
+
+test('stdin body: $(...), backticks, $vars and quotes survive VERBATIM (the two-mangled-reports pin)', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  // Byte-exact incident replay: this is what Creed/Toby lost to shell expansion
+  // inside double quotes. Through stdin none of it can ever be expanded.
+  const tricky = [
+    'Incident replay: field `ihreref` on order `149426`, Beleg `146214`.',
+    'Command subst: $(cat /etc/passwd) and `id -u` stay literal text.',
+    'Vars: $HOME and $' + '{X} are never substituted. Quotes: "she said \'hi\'".',
+    'Tabs\tand   spacing    stay   exact.',
+  ].join('\n');
+
+  const out = s.runIn(tricky, '--to', 'god', '--act', 'done', '--subject', 'Report body via stdin');
+  assert.match(out, /^queued [^\s]+\.json\n$/, 'still exactly one receipt line');
+  const id = path.basename(out.trim().slice('queued '.length), '.json');
+  const msg = JSON.parse(fs.readFileSync(path.join(s.outbox, `${id}.json`), 'utf8'));
+  assert.equal(msg.body, tricky, 'body is byte-identical — no trim, no expansion');
+  assert.equal(msg.from, 'test-worker-1');
+  assert.equal(msg.requires_reply, false);
+});
+
+test('stdin body: --body wins when both are given (hive-dispatch parity), empty stdin rejected', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const out = s.runIn(
+    'piped-but-ignored',
+    '--to',
+    'god',
+    '--act',
+    'inform',
+    '--subject',
+    'Flag precedence',
+    '--body',
+    'flag body wins',
+  );
+  const id = path.basename(out.trim().slice('queued '.length), '.json');
+  const msg = JSON.parse(fs.readFileSync(path.join(s.outbox, `${id}.json`), 'utf8'));
+  assert.equal(msg.body, 'flag body wins', 'same precedence rule as hive-dispatch readBody()');
+
+  const r = s.runFail('--to', 'god', '--act', 'inform', '--subject', 'x', '--body', '   ');
+  assert.notEqual(r.code, 0, 'whitespace-only --body still rejected');
 });
 
 test('router integration: a CLI-written mail routes into the inbox and archives under .sent', {
