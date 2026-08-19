@@ -6900,6 +6900,11 @@ function autoParkSweep(): void {
   const now = Date.now();
   const seen: AutoParkCandidate[] = [];
   const parks: AutoParkDecision[] = [];
+  // Sentinel honesty (review): seen[] only holds agents whose evidence the
+  // lock let us READ. A contention-skipped agent may be the one holding the
+  // floor's only done card — declaring a prune episode on a partial scan
+  // would mail god a fact we did not verify. False => suppress the sentinel.
+  let scanComplete = true;
   for (const [id, a] of Object.entries(reg.agents)) {
     if (a.archived || a.vacation || a.retired) continue;
     const row = usageById.get(id);
@@ -6932,6 +6937,7 @@ function autoParkSweep(): void {
         { ...candidate, cards: cardsByAssignee(tasks).get(id) ?? [] },
       ]);
       seen.push({ ...candidate, cards: cardsByAssignee(tasks).get(id) ?? [] });
+      scanComplete = true; // this agent's evidence was READ (not lock-skipped)
       if (d.length === 0) return null;
       const res = parkAgent(d[0].id, autoParkReason(d[0]), 'auto');
       if (!res.ok) {
@@ -6945,7 +6951,11 @@ function autoParkSweep(): void {
       parks.push(d[0]);
       return d[0];
     });
-    if (!decision) continue; // not parkable, refused, or lock contention
+    if (decision === false) {
+      scanComplete = false; // lock contention — this scan is partial
+      continue;
+    }
+    if (!decision) continue; // not parkable, or refused (logged above)
     hive.appendLog({
       kind: 'auto_park',
       agentId: decision.id,
@@ -6996,7 +7006,7 @@ function autoParkSweep(): void {
   // Post-prune sentinel (god amendment 2): the gate can NEVER fire on this
   // floor — say so ONCE, so a swept-clean ledger disables auto-park loudly,
   // not silently (the deleted-heartbeat failure mode).
-  if (evidencePruned(seen, parks)) {
+  if (scanComplete && evidencePruned(seen, parks)) {
     if (!autoParkPruneNoticeArmed) {
       autoParkPruneNoticeArmed = true;
       hive.appendLog({ kind: 'auto_park_evidence_pruned' });

@@ -175,14 +175,16 @@ test('RECENCY (god amendment 1): a done card from hours before uncarded work is 
   // The Kelly shape: flip 10min before idle started — inside idle+slack.
   const fresh = [{ id: 'a', telemetryAgeMs: idle(0), ...DRAINED, cards: [done('c', 3_700_000)] }];
   assert.equal(autoParkDecisions(fresh).length, 1, 'a flip ~1h before the sweep parks');
-  // The edge: flip exactly at idle+slack old still parks; one ms older does
-  // not — the window is idleMs + AUTO_PARK_DONE_RECENT_MS (2h for a 1h idle).
+  // The window is idleMs + AUTO_PARK_DONE_RECENT_MS (2h for a 1h idle). The
+  // exact millisecond boundary is NOT asserted: the fixture and the gate each
+  // call Date.now() separately, so a tick between them flips the outcome —
+  // back off by seconds on both sides (review: the boundary test was flaky).
   const WINDOW = AUTO_PARK_IDLE_MS + AUTO_PARK_DONE_RECENT_MS;
   const edge = (over) => [
     { id: 'a', telemetryAgeMs: idle(0), ...DRAINED, cards: [done('c', WINDOW + over)] },
   ];
-  assert.equal(autoParkDecisions(edge(1)).length, 0);
-  assert.equal(autoParkDecisions(edge(0)).length, 1);
+  assert.equal(autoParkDecisions(edge(10_000)).length, 0, '10s past the window: stale');
+  assert.equal(autoParkDecisions(edge(-10_000)).length, 1, '10s inside the window: parks');
   // A MISSING doneAt (cards done before the stamp existed) = UNKNOWN flip
   // time: fails closed — the rule reads exactly as strong as it is.
   const unstamped = [
@@ -226,6 +228,38 @@ test('POST-PRUNE sentinel (god amendment 2): the gate says so when it can never 
   );
   assert.equal(evidencePruned([{ ...parkable, pinned: true }], []), false);
   assert.equal(evidencePruned([{ ...parkable, inboxBacklog: 2 }], []), false);
+});
+
+test('WIRING: every card flip TO done stamps doneAt; every flip AWAY clears it (amendment review)', () => {
+  const src = readFileSync(join(__dirname, '..', 'src', 'main', 'hive.ts'), 'utf8');
+  const voice = readFileSync(join(__dirname, '..', 'src', 'main', 'realtimeActions.ts'), 'utf8');
+  // The amendment review found three away-flips missing the clear (ask,
+  // dispatch, hire). Rather than pin those three by line, pin the INVARIANT:
+  // count status assignments in the card-writer region vs doneAt writes —
+  // every 'status = <non-done>' must pair with a delete, every 'status =
+  // done/next' with a stamp or is one of the already-paired main writers.
+  const flips = [...src.matchAll(/card\.status = (\w+|'[^']+')/g)];
+  // 5 card-status assignments exist: updateTaskStatus, the CLI template,
+  // ask->blocked, dispatch->doing, hire->doing (verified by grep above).
+  assert.equal(flips.length, 5, `the five card flip sites, found ${flips.length}`);
+  // three spellings across two files: (status|next|card.status) === 'done'
+  const stamps = [
+    ...src.matchAll(/=== 'done'\) card\.doneAt = new Date\(\)\.toISOString\(\);/g),
+    ...voice.matchAll(/=== 'done'\) card\.doneAt = new Date\(\)\.toISOString\(\);/g),
+  ];
+  assert.equal(stamps.length, 3, 'three stamped writers (CLI template, updateTaskStatus, voice)');
+  // 6 clears: 2 else-clears (hive.ts) + ask/dispatch/hire away-flips + the
+  // voice writer's else-clear in realtimeActions.ts.
+  const clears = [
+    ...(src.match(/delete card\.doneAt;/g) ?? []),
+    ...(voice.match(/delete card\.doneAt;/g) ?? []),
+  ];
+  assert.equal(clears.length, 6, `every away-flip clears doneAt, found ${clears.length}`);
+  // The three named away-flips specifically (dot-matches-newline via [\s\S]):
+  const pairBlock = (statusLiteral) =>
+    new RegExp("card\\.status = '" + statusLiteral + "';[\\s]*delete card\\.doneAt;");
+  assert.match(src, pairBlock('blocked'), 'ask -> blocked clears doneAt');
+  assert.match(src, pairBlock('doing'), 'a -> doing flip clears doneAt');
 });
 
 test('malformed input fails CLOSED (review finding 2) — junk never parks', () => {

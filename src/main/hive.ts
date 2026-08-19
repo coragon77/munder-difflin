@@ -6189,6 +6189,7 @@ function cmdAsk(argv) {
     if (!Array.isArray(card.humanQA)) card.humanQA = [];
     for (var j = qs.length - 1; j >= 0; j--) card.humanQA.push({ q: qs[j], askedAt: askedAt });
     card.status = 'blocked';
+    delete card.doneAt; // a reopened card is not recently-done evidence (auto-park)
     // Provenance (card agent-disambiguate-blocked-ope-2026-08-19): the wait
     // is on the HUMAN — the dispatch gate sees 'human-ask' and quotes the
     // open question in its refusal. The question itself IS the reason, so
@@ -6855,6 +6856,7 @@ withLock(function () {
     }
     card.assignee = assignee;
     card.status = 'doing';
+    delete card.doneAt; // a reopened card is not recently-done evidence (auto-park)
     // The wait is over (or never existed): provenance belongs to 'blocked'.
     delete card.blockedBy;
     delete card.blockedWhy;
@@ -7117,6 +7119,7 @@ if (vals.card || vals.title) {
       if (!card) fail('no card with id "' + vals.card + '" in tasks.json.');
       card.assignee = agentId;
       card.status = 'doing';
+      delete card.doneAt; // a reopened card is not recently-done evidence (auto-park)
       if (parsed.bools.adopt) card.sessionMode = 'adopt';
       return card.id;
     }
