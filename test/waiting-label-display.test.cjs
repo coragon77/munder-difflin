@@ -9,7 +9,7 @@
  *
  * This pins the DISPLAY contract per surface:
  *   - badge derivation (statusLabel.ts → office agent card + fleet tab):
- *     pending>0 upgrades idle → 'waiting (N)', never past a
+ *     pending>0 upgrades idle → 'wait (N)', never past a
  *     stronger state (working/typing/looping), waiting keeps its count;
  *   - god's injected roster line (HiveManager.rosterContext): the fleet.json
  *     census rides the LIVE ROSTER bit so god stops reading a waiting agent
@@ -34,8 +34,8 @@ const { HiveManager } = loadTs('src/main/hive.ts');
 test('idle + pending → waiting with the count (the incident: Kevin reads waiting)', () => {
   const b = waitingBadge('idle', 1);
   assert.equal(b.status, 'waiting');
-  assert.equal(b.label, 'waiting (1)');
-  assert.equal(waitingBadge('idle', 3).label, 'waiting (3)');
+  assert.equal(b.label, 'wait (1)');
+  assert.equal(waitingBadge('idle', 3).label, 'wait (3)');
 });
 
 test('zero/absent/garbage pending changes nothing — idle stays idle', () => {
@@ -45,7 +45,7 @@ test('zero/absent/garbage pending changes nothing — idle stays idle', () => {
   assert.deepEqual(waitingBadge('idle', Number.NaN), { status: 'idle' });
   assert.deepEqual(waitingBadge('idle', 2.9), {
     status: 'waiting',
-    label: 'waiting (2)',
+    label: 'wait (2)',
   });
 });
 
@@ -66,7 +66,7 @@ test('stronger states win — a census never masks working/typing/looping/blocke
 test('an already-waiting agent gains the count on its label', () => {
   assert.deepEqual(waitingBadge('waiting', 2), {
     status: 'waiting',
-    label: 'waiting (2)',
+    label: 'wait (2)',
   });
   // count dropped to zero → back to the plain waiting badge (no stale count)
   assert.deepEqual(waitingBadge('waiting', 0), { status: 'waiting' });
@@ -120,23 +120,23 @@ async function hiveWithFleet(t, agents) {
   return hive;
 }
 
-test('the roster line says waiting (N) for a census-waiting agent', async (t) => {
+test('the roster line says wait (N) for a census-waiting agent', async (t) => {
   const hive = await hiveWithFleet(t, { pendingBackgroundWork: 1 });
   const line = hive.rosterContext();
-  assert.match(line, /kevin-1[^;]*waiting \(1\)/, 'the bit must ride kevin');
-  assert.doesNotMatch(line, /god-1[^;]*waiting/, 'god has no census here');
+  assert.match(line, /kevin-1[^;]*wait \(1\)/, 'the bit must ride kevin');
+  assert.doesNotMatch(line, /god-1[^;]*wait \(/, 'god has no census here');
 });
 
 test('sits with the other per-agent bits', async (t) => {
   const hive = await hiveWithFleet(t, { pendingBackgroundWork: 2, inboxBacklog: 3 });
   const line = hive.rosterContext();
-  assert.match(line, /kevin-1[^;]*waiting \(2\)/);
+  assert.match(line, /kevin-1[^;]*wait \(2\)/);
   assert.match(line, /kevin-1[^;]*inbox 3/);
 });
 
 test('zero or absent census adds no waiting bit (pure extension, not a fork)', async (t) => {
   for (const extra of [{}, { pendingBackgroundWork: 0 }]) {
     const hive = await hiveWithFleet(t, extra);
-    assert.doesNotMatch(hive.rosterContext(), /waiting \(/);
+    assert.doesNotMatch(hive.rosterContext(), /wait \(/);
   }
 });

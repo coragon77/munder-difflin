@@ -1023,7 +1023,7 @@ const api = {
         /** Stop payloads only: the agent's pending finite background-work count
          *  (waiting ≠ idle, card agent-harness-busy-signal-coun-2026-08-17).
          *  Present when the settle carried a census; >0 → the card reads
-         *  'waiting (N)' instead of idle. */
+         *  'wait (N)' instead of idle. */
         pendingWork?: number;
       },
     ) => cb(payload);

@@ -16,7 +16,7 @@ export interface AgentCardProps {
   accent: AccentColorName;
   status: StatusKind;
   /** Pending finite background-work census — >0 upgrades an idle badge to
-   *  'waiting (N)' (waiting ≠ idle, card
+   *  'wait (N)' (waiting ≠ idle, card
    *  agent-waiting-vs-idle-display--2026-08-17). */
   pending?: number;
   /** This agent's pty, if it has one. Only used to notice that the USER has
@@ -100,7 +100,7 @@ export function AgentCard({
 }: AgentCardProps) {
   const [hover, setHover] = useState(false);
   const typing = useHasTerminalDraft(ptyId);
-  // Waiting ≠ idle: the census upgrades an idle badge to waiting (N) — but
+  // Waiting ≠ idle: the census upgrades an idle badge to wait (N) — but
   // never past a stronger state (typing/working/…), which win by precedence.
   const badge = waitingBadge(typing ? 'typing' : status, pending);
   // The god is always framed (stands out from the row); others only when selected.
