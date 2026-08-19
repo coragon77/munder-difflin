@@ -87,6 +87,13 @@ export interface HiveMessage {
   requires_reply: boolean;
   needs_human: boolean;
   created_at: string;
+  /** MAIL FOLD bookkeeping (card agent-mail-queued-alongside-a--2026-08-19):
+   *  ids of messages whose bodies this contract has already fully folded in.
+   *  STRUCTURAL idempotence key — body.includes(id) is not (substring
+   *  collisions with bodies that legitimately quote ids, empty ids); and it
+   *  lets a later sweep RETRY the consume step for an entry whose archive
+   *  rename lost a race, without re-folding its body. */
+  foldedIds?: string[];
 }
 
 /** One hive message reshaped for the voice read-layer (`hive:messages`): the
@@ -2114,11 +2121,20 @@ export class HiveManager {
     // never quarantine the dispatch (god's durability caveat).
     try {
       if (this.dispatchContractCard(msg, toId) && !this.olderCardSiblingPending(msg, inbox)) {
-        const { text, folded } = this.buildFold(this.pendingEntries(inbox));
+        const { entries, invalid } = this.pendingEntries(inbox);
+        // Lifetime budget: the contract's own body counts against it (god's
+        // size caveat bounds what the agent READS, so the bound is total).
+        const budget = Math.max(0, MAIL_FOLD_BODY_BUDGET - msg.body.length);
+        const { text, folded } = this.buildFold(entries, budget);
         if (text) {
+          const body =
+            invalid > 0
+              ? `${msg.body}\n\n${text}\nNOTE: ${invalid} unreadable file(s) were skipped beside this contract — inspect the inbox directory by hand.`
+              : `${msg.body}\n\n${text}`;
           this.atomicWriteJson(join(inbox, `${msg.id}.json`), {
             ...msg,
-            body: `${msg.body}\n\n${text}`,
+            body,
+            ...(folded.length > 0 ? { foldedIds: folded.map((f) => f.msg.id) } : {}),
           });
           if (folded.length > 0) this.archiveFolded(folded, toId);
           return;
@@ -2197,17 +2213,24 @@ export class HiveManager {
    *  already invisible to inbox()/drain, and the fold treats them identically
    *  instead of aborting on a missing body. Each entry carries source (full
    *  path) and archive (.done destination) for the consume step. */
-  private pendingEntries(dir: string): { msg: HiveMessage; source: string; archive: string }[] {
+  private pendingEntries(dir: string): {
+    entries: { msg: HiveMessage; source: string; archive: string }[];
+    invalid: number;
+  } {
     const out: { msg: HiveMessage; source: string; archive: string }[] = [];
+    let invalid = 0;
     let files: string[] = [];
     try {
       files = readdirSync(dir).filter((f) => f.endsWith('.json'));
     } catch {
-      return out;
+      return { entries: out, invalid };
     }
     for (const f of files) {
       const m = this.readJson<Partial<HiveMessage> | null>(join(dir, f), null);
-      if (!m || typeof m.body !== 'string' || typeof m.id !== 'string') continue;
+      if (!m || typeof m.body !== 'string' || typeof m.id !== 'string' || m.id === '') {
+        invalid++;
+        continue;
+      }
       out.push({
         msg: m as HiveMessage,
         source: join(dir, f),
@@ -2217,9 +2240,9 @@ export class HiveManager {
     out.sort((a, b) => {
       const ta = Date.parse(a.msg.created_at ?? '') || 0;
       const tb = Date.parse(b.msg.created_at ?? '') || 0;
-      return ta !== tb ? ta - tb : (a.msg.id ?? '').localeCompare(b.msg.id ?? '');
+      return ta !== tb ? ta - tb : a.msg.id.localeCompare(b.msg.id);
     });
-    return out;
+    return { entries: out, invalid };
   }
 
   /** Build the fold text for pending messages: full bodies while
@@ -2227,17 +2250,20 @@ export class HiveManager {
    *  folded messages return in `folded` (their originals are consumed —
    *  overflow stays pending for a drain, so nothing is silently archived
    *  unread). */
-  private buildFold(entries: { msg: HiveMessage; source: string; archive: string }[]): {
+  private buildFold(
+    entries: { msg: HiveMessage; source: string; archive: string }[],
+    budget: number,
+  ): {
     text: string | null;
-    folded: { source: string; archive: string }[];
+    folded: { msg: HiveMessage; source: string; archive: string }[];
   } {
-    let budget = MAIL_FOLD_BODY_BUDGET;
     const lines: string[] = [];
-    const folded: { source: string; archive: string }[] = [];
+    const folded: { msg: HiveMessage; source: string; archive: string }[] = [];
     let overflow = 0;
+    let remaining = budget;
     for (const e of entries) {
-      if (e.msg.body.length <= budget) {
-        budget -= e.msg.body.length;
+      if (e.msg.body.length <= remaining) {
+        remaining -= e.msg.body.length;
         lines.push(this.foldSection(e.msg));
         folded.push(e);
       } else {
@@ -2257,7 +2283,11 @@ export class HiveManager {
    *  does) and log each. Called only AFTER the enriched contract is durably
    *  written — a crash here leaves a benign duplicate (original pending +
    *  folded copy), never a silent loss (god's durability caveat). */
-  private archiveFolded(pairs: { source: string; archive: string }[], agentId: string): void {
+  private archiveFolded(
+    pairs: { msg: HiveMessage; source: string; archive: string }[],
+    agentId: string,
+  ): void {
+    if (pairs.length === 0) return; // all-overflow fold — nothing to consume
     mkdirSync(dirname(pairs[0].archive), { recursive: true });
     for (const p of pairs) {
       try {
@@ -2265,8 +2295,7 @@ export class HiveManager {
       } catch {
         continue; // lost the race with a concurrent drain — duplicate, not a loss
       }
-      const id = basename(p.archive).replace(/\.json$/, '');
-      this.appendLog({ kind: 'mail-folded', to: agentId, id });
+      this.appendLog({ kind: 'mail-folded', to: agentId, id: p.msg.id });
     }
   }
 
@@ -2274,10 +2303,15 @@ export class HiveManager {
    *  The fold always anchors the OLDEST card-conversation message as the
    *  contract; a newer one (an amendment) must not consume and re-frame it. */
   private olderCardSiblingPending(msg: HiveMessage, inbox: string): boolean {
-    const at = Date.parse(msg.created_at ?? '') || 0;
-    return this.pendingEntries(inbox).some(
-      (e) =>
-        e.msg.conversation === msg.conversation && (Date.parse(e.msg.created_at ?? '') || 0) < at,
+    // SAME ordering as pendingEntries' sort (created_at, then id) — a
+    // same-millisecond tie must resolve identically everywhere or a later
+    // amendment can anchor over the original contract (reviewer).
+    const rank = (m: HiveMessage): [number, string] => [Date.parse(m.created_at ?? '') || 0, m.id];
+    const mine = rank(msg);
+    const below = (o: [number, string]): boolean =>
+      o[0] < mine[0] || (o[0] === mine[0] && o[1].localeCompare(mine[1]) < 0);
+    return this.pendingEntries(inbox).entries.some(
+      (e) => e.msg.conversation === msg.conversation && below(rank(e.msg)),
     );
   }
 
@@ -2347,6 +2381,14 @@ export class HiveManager {
     } catch {
       return;
     }
+    // The doing card's conversation — the timedOut CONTRACT releasing breaks
+    // the hold's tie for the WHOLE staging set: overflow siblings it could
+    // only header-point must not stay hidden in .staged for another 10-minute
+    // horizon while their drain pointer claims they are pending (reviewer
+    // blocker). Track it during the loop below.
+    const card = this.doingCardOf(id);
+    const conv = card ? `card-${card.id}` : null;
+    let contractTimedOut = false;
     for (const f of files) {
       const full = join(staged, f);
       const timedOut = held && stale.get(f) === true;
@@ -2355,6 +2397,10 @@ export class HiveManager {
         renameSync(full, join(inbox, f));
       } catch {
         continue;
+      }
+      if (timedOut && conv) {
+        const m = this.readJson<Partial<HiveMessage> | null>(join(inbox, f), null);
+        if (m?.conversation === conv) contractTimedOut = true;
       }
       this.appendLog({ kind: 'mail-released', to: id, id: f.replace(/\.json$/, '') });
       if (timedOut) {
@@ -2367,6 +2413,28 @@ export class HiveManager {
           },
           'system',
         );
+        // The timedOut CONTRACT released: break the tie for everything left —
+        // overflow siblings ride out with it instead of hiding for another
+        // timeout horizon (their drain pointer claims they are pending).
+      }
+    }
+    // The timedOut CONTRACT released: break the tie for everything left —
+    // overflow siblings ride out with it instead of hiding for another
+    // timeout horizon (their drain pointer claims they are pending).
+    if (contractTimedOut) {
+      let rest: string[] = [];
+      try {
+        rest = readdirSync(staged).filter((f) => f.endsWith('.json'));
+      } catch {
+        rest = [];
+      }
+      for (const f of rest) {
+        try {
+          renameSync(join(staged, f), join(inbox, f));
+        } catch {
+          continue;
+        }
+        this.appendLog({ kind: 'mail-released', to: id, id: f.replace(/\.json$/, '') });
       }
     }
   }
@@ -2386,34 +2454,47 @@ export class HiveManager {
     if (!card) return;
     const conv = `card-${card.id}`;
     const releasingSet = new Set(releasing);
-    const stagedEntries = this.pendingEntries(staged);
-    const contract = stagedEntries.find(
+    const stagedRead = this.pendingEntries(staged);
+    const inboxRead = this.pendingEntries(inbox);
+    const contract = stagedRead.entries.find(
       (e) => releasingSet.has(basename(e.source)) && e.msg.conversation === conv,
     ); // pendingEntries is oldest-first → the first match IS the oldest
     if (!contract) return;
-    const siblings = stagedEntries
-      .filter((e) => e !== contract)
-      .map((e) => ({ ...e, archive: join(inbox, '.done', basename(e.source)) }));
-    const inboxPending = this.pendingEntries(inbox).map((e) => ({
+    const remap = (e: { msg: HiveMessage; source: string; archive: string }) => ({
       ...e,
       archive: join(inbox, '.done', basename(e.source)),
-    }));
-    // ONE budget across staged siblings AND inbox-pending mail (reviewer
-    // blocker: two buildFold calls meant up to 2x MAIL_FOLD_BODY_BUDGET).
-    // IDEMPOTENCE: a message whose id the contract already references (fully
-    // folded OR header-pointed in an earlier pass) is never re-folded — the
-    // per-tick backstop would otherwise re-budget the overflow and swallow a
-    // large backlog 16k per tick, which is god's wall arriving in chunks.
-    const entries = [...siblings, ...inboxPending].filter(
-      (e) => !contract.msg.body.includes(e.msg.id),
-    );
-    const { text, folded } = this.buildFold(entries);
-    if (!text) return;
+    });
+    const siblings = stagedRead.entries.filter((e) => e !== contract).map(remap);
+    const inboxPending = inboxRead.entries.map(remap);
+    // IDEMPOTENCE (structural): foldedIds on the contract names what is
+    // already fully folded — entries in it are CONSUME-ONLY retries (a lost
+    // archive race heals next sweep); everything else folds. body.includes
+    // was rejected by review: ids can legitimately appear inside bodies, and
+    // an empty id matches everything.
+    const already = new Set(contract.msg.foldedIds ?? []);
+    const consumeOnly = [...siblings, ...inboxPending].filter((e) => already.has(e.msg.id));
+    const entries = [...siblings, ...inboxPending].filter((e) => !already.has(e.msg.id));
+    // Lifetime budget: the contract's current body (which may already carry
+    // earlier folds) counts against the one budget.
+    const budget = Math.max(0, MAIL_FOLD_BODY_BUDGET - contract.msg.body.length);
+    const { text, folded } = this.buildFold(entries, budget);
+    if (!text && consumeOnly.length === 0) return;
+    const invalid = stagedRead.invalid + inboxRead.invalid;
+    const body = [
+      contract.msg.body,
+      text,
+      invalid > 0
+        ? `NOTE: ${invalid} unreadable file(s) were skipped beside this contract — inspect the inbox directory by hand.`
+        : null,
+    ]
+      .filter((s) => s !== null)
+      .join('\n\n');
     this.atomicWriteJson(contract.source, {
       ...contract.msg,
-      body: `${contract.msg.body}\n\n${text}`,
+      body,
+      foldedIds: [...(contract.msg.foldedIds ?? []), ...folded.map((f) => f.msg.id)],
     });
-    this.archiveFolded(folded, id);
+    this.archiveFolded([...folded, ...consumeOnly], id);
   }
 
   /** MAIL FOLD, tick half — see releaseStagedMail. Anchor = the OLDEST
@@ -2428,29 +2509,60 @@ export class HiveManager {
     const card = this.doingCardOf(id);
     if (!card) return;
     const conv = `card-${card.id}`;
-    const pending = this.pendingEntries(inbox);
-    const anchor = pending.find((e) => e.msg.conversation === conv);
+    const inboxRead = this.pendingEntries(inbox);
+    const anchor = inboxRead.entries.find((e) => e.msg.conversation === conv);
     if (!anchor) return;
-    const siblings = pending
-      .filter((e) => e !== anchor)
-      .map((e) => ({ ...e, archive: join(inbox, '.done', basename(e.source)) }));
-    const leftovers = existsSync(staged)
-      ? this.pendingEntries(staged).map((e) => ({
-          ...e,
-          archive: join(inbox, '.done', basename(e.source)),
-        }))
-      : [];
-    // Idempotence (see foldStagedContract): skip mail the anchor already
-    // references from an earlier fold — only NEW arrivals fold in.
-    const entries = [...siblings, ...leftovers].filter((e) => !anchor.msg.body.includes(e.msg.id));
-    const { text, folded } = this.buildFold(entries);
-    if (!text) return;
-    if (!existsSync(anchor.source)) return; // drained mid-sweep — do not resurrect
-    this.atomicWriteJson(anchor.source, {
-      ...anchor.msg,
-      body: `${anchor.msg.body}\n\n${text}`,
+    const remap = (e: { msg: HiveMessage; source: string; archive: string }) => ({
+      ...e,
+      archive: join(inbox, '.done', basename(e.source)),
     });
-    this.archiveFolded(folded, id);
+    const siblings = inboxRead.entries.filter((e) => e !== anchor).map(remap);
+    const stagedRead = existsSync(staged)
+      ? this.pendingEntries(staged)
+      : { entries: [], invalid: 0 };
+    const leftovers = stagedRead.entries.map(remap);
+    // IDEMPOTENCE (structural — see foldStagedContract): foldedIds names what
+    // is already fully folded; those entries are consume-only retries.
+    const already = new Set(anchor.msg.foldedIds ?? []);
+    const consumeOnly = [...siblings, ...leftovers].filter((e) => already.has(e.msg.id));
+    const entries = [...siblings, ...leftovers].filter((e) => !already.has(e.msg.id));
+    const budget = Math.max(0, MAIL_FOLD_BODY_BUDGET - anchor.msg.body.length);
+    const { text, folded } = this.buildFold(entries, budget);
+    if (!text && consumeOnly.length === 0) return;
+    const invalid = inboxRead.invalid + stagedRead.invalid;
+    const body = [
+      anchor.msg.body,
+      text,
+      invalid > 0
+        ? `NOTE: ${invalid} unreadable file(s) were skipped beside this contract — inspect the inbox directory by hand.`
+        : null,
+    ]
+      .filter((s) => s !== null)
+      .join('\n\n');
+    // ANTI-RESURRECTATION (reviewer): a concurrent hive-inbox drain can
+    // consume the anchor between the existsSync and the write, and a plain
+    // atomicWriteJson would then RECREATE the already-read contract. Write
+    // the temp file first, re-check the anchor is still pending, and only
+    // then rename over it. ponytail: the check→rename gap is two syscalls,
+    // not atomic — a fully race-free swap needs an inbox lock protocol;
+    // the narrowed window plus the idempotent body makes the residual
+    // acceptable (worst case: the agent re-reads the same contract).
+    const tmp = `${anchor.source}.tmp-${process.pid}-${Date.now()}`;
+    this.atomicWriteJson(tmp, {
+      ...anchor.msg,
+      body,
+      foldedIds: [...(anchor.msg.foldedIds ?? []), ...folded.map((f) => f.msg.id)],
+    });
+    if (!existsSync(anchor.source)) {
+      try {
+        unlinkSync(tmp);
+      } catch {
+        /* best effort */
+      }
+      return; // drained mid-sweep — do not resurrect
+    }
+    renameSync(tmp, anchor.source);
+    this.archiveFolded([...folded, ...consumeOnly], id);
   }
 
   /** Inject a message directly (used by the orchestrator / UI / tests). */

@@ -194,7 +194,7 @@ test('fold: ONE budget across staged siblings and inbox-pending mail (no double 
   assert.ok(contract, 'contract released');
   // The combined fold must NOT fully contain BOTH 8k bodies.
   const yRuns = contract.body.match(/y{8,}/g) ?? [];
-  assert.ok(yRuns.length <= 1, `only one 9k body inlined, got ${yRuns.length}`);
+  assert.equal(yRuns.length, 1, `exactly one 9k body inlined, got ${yRuns.length}`);
   assert.match(contract.body, /Subject: (staged nine|inbox nine)/);
   assert.match(contract.body, /MAIL QUEUED BESIDE THIS DISPATCH/);
 });
@@ -337,4 +337,102 @@ test('fold: timeout release still warns god, and the folded contract carries its
     hive.inbox('god').some((m) => /mail-staged/.test(m.subject) && /dwight/.test(m.body)),
     'god is still warned about the stuck establishment',
   );
+});
+
+test('fold: all-overflow timeout fold — no crash, overflow rides out with the contract', () => {
+  const { hive, root } = foldHive([CARD()]);
+  const inbox = inboxDir(root);
+  const stagedDir = path.join(inbox, '.staged');
+  const big = 'z'.repeat(10_000);
+  hive.send(CONTRACT, 'god');
+  hive.send({ to: 'dwight', subject: 'big A', body: big }, 'god');
+  hive.send({ to: 'dwight', subject: 'big B', body: big }, 'god');
+  // Backdate ONLY the contract past the horizon; both bigs are fresh.
+  const files = fs.readdirSync(stagedDir);
+  const contractFile = files.find(
+    (f) =>
+      JSON.parse(fs.readFileSync(path.join(stagedDir, f), 'utf8')).conversation === 'card-card-1',
+  );
+  const old = new Date(Date.now() - MAIL_STAGE_TIMEOUT_MS - 5000);
+  fs.utimesSync(path.join(stagedDir, contractFile), old, old);
+  hive.routeOnce();
+  // The contract released (timeout) and fold: one big fits the budget, the
+  // other is header-pointed — but MUST NOT stay hidden in .staged (its drain
+  // pointer claims it is pending): it rides out with the contract.
+  const msgs = hive.inbox('dwight');
+  const contract = msgs.find((m) => m.conversation === 'card-card-1');
+  assert.ok(contract, 'contract released');
+  assert.ok(contract.body.includes(big), 'first big folded in full');
+  assert.match(contract.body, /Subject: big B/);
+  assert.match(contract.body, /1 message\(s\) beyond the fold budget/);
+  assert.equal(fs.readdirSync(stagedDir).length, 0, 'overflow sibling released with the contract');
+  assert.ok(
+    msgs.some((m) => m.subject === 'big B'),
+    'overflow sibling is VISIBLE',
+  );
+});
+
+test('fold: one lifetime budget across the direct fold and the tick backstop', () => {
+  const { hive } = foldHive([CARD({ sessionMode: 'adopt' })]);
+  const nine = 'q'.repeat(9_000);
+  // BEFORE the contract: folded at delivery (fits the fresh budget).
+  hive.send({ to: 'dwight', subject: 'pre note', body: nine }, 'god');
+  hive.send(CONTRACT, 'god');
+  // AFTER the contract: the backstop must see the SHRUNKEN remaining budget
+  // (lifetime 16k minus what the contract already carries) and header-point
+  // the second 9k — two per-pass budgets would inline both.
+  hive.send({ to: 'dwight', subject: 'post note', body: nine }, 'god');
+  hive.routeOnce();
+  const msgs = hive.inbox('dwight');
+  assert.equal(msgs.length, 2, 'overflow post note stays beside, pointed at');
+  const contract = msgs.find((m) => m.conversation === 'card-card-1');
+  assert.ok(contract, 'contract present');
+  const qRuns = contract.body.match(/q{8,}/g) ?? [];
+  assert.equal(qRuns.length, 1, `exactly one 9k body inlined across passes, got ${qRuns.length}`);
+  assert.match(contract.body, /Subject: post note/);
+  assert.match(contract.body, /1 message\(s\) beyond the fold budget/);
+});
+
+test('fold: idempotence is structural (foldedIds), not body substring matching', () => {
+  const { hive } = foldHive([CARD({ sessionMode: 'adopt' })]);
+  // A message whose id is a SUBSTRING of the contract body ('the') must
+  // still fold — body.includes(id) skipped it.
+  hive.send(CONTRACT, 'god');
+  hive.routeOnce(); // ensure clean baseline (no-op)
+  const tricky = hive.send(
+    { to: 'dwight', id: 'the', subject: 'tricky id', body: 'TRICKY fold me' },
+    'god',
+  );
+  assert.equal(tricky.id, 'the');
+  hive.routeOnce();
+  const msgs = hive.inbox('dwight');
+  const contract = msgs.find((m) => m.conversation === 'card-card-1');
+  assert.ok(contract, 'contract present');
+  assert.match(contract.body, /TRICKY fold me/, 'substring-colliding id still folded');
+});
+
+test('fold: equal created_at ties anchor deterministically (same rule everywhere)', () => {
+  const { hive } = foldHive([CARD({ sessionMode: 'adopt' })]);
+  const ts = '2026-08-19T10:00:00.000Z';
+  // Both same-conversation, same timestamp: the (ts, id) order must pick ONE
+  // anchor consistently — the lower id — and fold the other in. No flip
+  // between the delivery guard and the tick fold.
+  hive.send({ ...CONTRACT, id: 'aaa-contract', body: 'CONTRACT body', created_at: ts }, 'god');
+  hive.send(
+    {
+      to: 'dwight',
+      id: 'zzz-amendment',
+      subject: 'same-ts amendment',
+      body: 'AMENDMENT body',
+      conversation: 'card-card-1',
+      created_at: ts,
+    },
+    'god',
+  );
+  hive.routeOnce();
+  const msgs = hive.inbox('dwight');
+  assert.equal(msgs.length, 1, 'one message');
+  assert.equal(msgs[0].id, 'aaa-contract', 'the lower (ts,id) anchors');
+  assert.match(msgs[0].body, /CONTRACT body/);
+  assert.match(msgs[0].body, /AMENDMENT body/);
 });
