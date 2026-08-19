@@ -20,7 +20,7 @@ const { HiveManager } = loadTs('src/main/hive.ts');
 
 const POSIX = process.platform !== 'win32';
 
-function setup(t, { agentId = 'god' } = {}) {
+function setup(t, { agentId = 'god', userHome } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'md-hive-dispatch-'));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const hive = new HiveManager(() => home);
@@ -28,7 +28,16 @@ function setup(t, { agentId = 'god' } = {}) {
   const root = path.join(home, 'hive');
   const cli = path.join(root, 'bin', 'hive-dispatch');
   const tasksPath = path.join(root, 'tasks.json');
-  const env = { ...process.env, HIVE_ROOT: root, AGENT_ID: agentId };
+  // Every test gets an isolated $HOME so the claude-session existence check
+  // (--resume) never sees the developer's real ~/.claude/projects.
+  const isolatedHome = userHome ?? fs.mkdtempSync(path.join(os.tmpdir(), 'md-hive-dispatch-home-'));
+  t.after(() => fs.rmSync(isolatedHome, { recursive: true, force: true }));
+  const env = {
+    ...process.env,
+    HIVE_ROOT: root,
+    AGENT_ID: agentId,
+    HOME: isolatedHome,
+  };
   const run = (...args) =>
     execFileSyncSafe(process.execPath, [cli, ...args], { env, encoding: 'utf8' });
   const runStdin = (input, ...args) =>
@@ -174,6 +183,300 @@ test('--adopt passes through to the doing flip (sessionMode adopt)', {
   assert.equal(s.tasks().find((c) => c.id === id).sessionMode, 'adopt', '--adopt reached the flip');
 });
 
+// ─── --resume: return an agent to a card's stored conversation ────────────────
+// (card agent-hive-dispatch-blocked-ca-2026-08-19). The stamp already exists;
+// this mode makes it REACHABLE again — and refuses rather than silently
+// degrading to a fresh clear, which would wipe the pane's current work.
+
+/** Plant a claude session transcript under $HOME/.claude/projects/<proj>/. */
+function plantClaudeSession(userHome, sid, proj = '-opt-somewhere') {
+  const dir = path.join(userHome, '.claude', 'projects', proj);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${sid}.jsonl`), '{}\n', 'utf8');
+}
+
+test('--resume: flips doing, stamps sessionMode resume, keeps the sessionId, mails the contract', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const sid = 'f68d69ae-c2ac-4d4d-ae63-b244fff90453';
+  plantClaudeSession(s.env.HOME, sid);
+  s.hive.writeTasks([
+    {
+      id: 'agent-stamped-card-2026-08-18',
+      title: 'Was blocked, now back',
+      status: 'todo',
+      assignee: 'worker-1',
+      sessionId: sid,
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+
+  const r = s.run(
+    '--card',
+    'agent-stamped-card-2026-08-18',
+    '--assignee',
+    'worker-1',
+    '--resume',
+    '--body',
+    'continue the ticket',
+  );
+  assert.equal(r.code, 0, 'accepted');
+  const card = s.tasks().find((c) => c.id === 'agent-stamped-card-2026-08-18');
+  assert.equal(card.status, 'doing');
+  assert.equal(card.assignee, 'worker-1');
+  assert.equal(card.sessionMode, 'resume', 'the resume mode is stamped for the watcher/audit');
+  assert.equal(card.sessionId, sid, 'the stored conversation id is PRESERVED, never restamped');
+  assert.equal(s.outboxMails().length, 1, 'contract mail queued on the card conversation');
+});
+
+test('--resume refuses when the card carries no sessionId — never a silent fresh fallback', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  s.hive.writeTasks([
+    {
+      id: 'agent-unstamped-card-2026-08-19',
+      title: 'Never ran',
+      status: 'todo',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'human',
+    },
+  ]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const r = s.run(
+    '--card',
+    'agent-unstamped-card-2026-08-19',
+    '--assignee',
+    'worker-1',
+    '--resume',
+    '--body',
+    'c',
+  );
+  assert.notEqual(r.code, 0, 'refused');
+  assert.match(r.stderr, /no sessionId|carries no sessionId/i, 'refusal names the missing stamp');
+  assert.match(r.stderr, /wipe|fresh/i, 'refusal says why it will not fall back to fresh');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
+  assert.deepEqual(s.outboxMails(), [], 'no mail queued');
+});
+
+test('--resume refuses when the stored session is gone from disk', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  s.hive.writeTasks([
+    {
+      id: 'agent-gone-session-2026-08-19',
+      title: 'Old stamp, dead session',
+      status: 'todo',
+      assignee: 'worker-1',
+      sessionId: '00000000-0000-4000-8000-000000000000',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const r = s.run(
+    '--card',
+    'agent-gone-session-2026-08-19',
+    '--assignee',
+    'worker-1',
+    '--resume',
+    '--body',
+    'c',
+  );
+  assert.notEqual(r.code, 0, 'refused');
+  assert.match(r.stderr, /gone|no longer|not found/i, 'refusal says the session is gone');
+  assert.match(
+    r.stderr,
+    /00000000-0000-4000-8000-000000000000/,
+    'refusal names the dead session id',
+  );
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
+  assert.deepEqual(s.outboxMails(), [], 'no mail queued');
+});
+
+test('--resume needs --card (a --title card is new — nothing stored to resume)', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const r = s.run('--title', 'Brand new', '--assignee', 'worker-1', '--resume', '--body', 'c');
+  assert.notEqual(r.code, 0, 'refused');
+  assert.match(r.stderr, /--resume.*--card|--card.*--resume/, 'error pairs the flag with --card');
+  assert.deepEqual(s.outboxMails(), [], 'no mail queued');
+});
+
+test('--adopt and --resume are mutually exclusive', { skip: !POSIX }, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const sid = '11111111-2222-4333-8444-555555555555';
+  plantClaudeSession(s.env.HOME, sid);
+  s.hive.writeTasks([
+    {
+      id: 'agent-both-flags-2026-08-19',
+      title: 'T',
+      status: 'todo',
+      assignee: 'worker-1',
+      sessionId: sid,
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+  const r = s.run(
+    '--card',
+    'agent-both-flags-2026-08-19',
+    '--assignee',
+    'worker-1',
+    '--adopt',
+    '--resume',
+    '--body',
+    'c',
+  );
+  assert.notEqual(r.code, 0, 'refused');
+  assert.match(r.stderr, /adopt.*resume|resume.*adopt/, 'error names both flags');
+});
+
+test('plain re-dispatch clears a stale sessionMode — a leftover adopt must not hijack the flip', {
+  skip: !POSIX,
+}, (t) => {
+  // Regression shape of the live card agent-sst-ticket-3110: dispatched --adopt
+  // once, then blocked; the 'adopt' mode SURVIVED (nothing consumed it), so a
+  // plain re-dispatch would adopt whatever conversation is currently live
+  // instead of resuming the card's stamp.
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const sid = 'f68d69ae-c2ac-4d4d-ae63-b244fff90453';
+  plantClaudeSession(s.env.HOME, sid);
+  s.hive.writeTasks([
+    {
+      id: 'agent-stale-adopt-2026-08-18',
+      title: 'Stale adopt',
+      status: 'todo',
+      assignee: 'worker-1',
+      sessionId: sid,
+      sessionMode: 'adopt',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+  const r = s.run(
+    '--card',
+    'agent-stale-adopt-2026-08-18',
+    '--assignee',
+    'worker-1',
+    '--body',
+    'c',
+  );
+  assert.equal(r.code, 0);
+  const card = s.tasks().find((c) => c.id === 'agent-stale-adopt-2026-08-18');
+  assert.equal(card.sessionMode, undefined, 'stale mode cleared — fresh default, no adopt hijack');
+  assert.equal(card.sessionId, sid, 'stamp preserved for the watcher resume');
+});
+
+test("--resume session store is provider-aware: pi and codex check the agent's own sessions tree", {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry({
+    'pi-worker': {
+      id: 'pi-worker',
+      name: 'Pi One',
+      archived: false,
+      vacation: false,
+      provider: 'pi',
+    },
+    'codex-worker': {
+      id: 'codex-worker',
+      name: 'Codex One',
+      archived: false,
+      vacation: false,
+      provider: 'codex',
+    },
+  });
+  const piSid = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const piSessions = path.join(s.root, 'agents', 'pi-worker', '.pi-agent', 'sessions');
+  fs.mkdirSync(piSessions, { recursive: true });
+  fs.writeFileSync(path.join(piSessions, `20260819T10-00-00_${piSid}.jsonl`), '{}\n');
+  const cxSid = '11112222-3333-4444-8555-666666666666';
+  const cxSessions = path.join(
+    s.root,
+    'agents',
+    'codex-worker',
+    '.codex',
+    'sessions',
+    '2026',
+    '08',
+  );
+  fs.mkdirSync(cxSessions, { recursive: true });
+  fs.writeFileSync(path.join(cxSessions, `rollout-2026-08-19T10-00-00-${cxSid}.jsonl`), '{}\n');
+
+  s.hive.writeTasks([
+    {
+      id: 'agent-pi-card-2026-08-19',
+      title: 'Pi card',
+      status: 'todo',
+      assignee: 'pi-worker',
+      sessionId: piSid,
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'agent',
+    },
+    {
+      id: 'agent-cx-gone-card-2026-08-19',
+      title: 'Codex dead stamp',
+      status: 'todo',
+      assignee: 'codex-worker',
+      sessionId: '99999999-9999-4999-8999-999999999999',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+
+  const pi = s.run(
+    '--card',
+    'agent-pi-card-2026-08-19',
+    '--assignee',
+    'pi-worker',
+    '--resume',
+    '--body',
+    'c',
+  );
+  assert.equal(pi.code, 0, 'pi: the <ts>_<sid>.jsonl file in the agent tree satisfies the check');
+  assert.equal(s.tasks().find((c) => c.id === 'agent-pi-card-2026-08-19').sessionMode, 'resume');
+
+  const cx = s.run(
+    '--card',
+    'agent-cx-gone-card-2026-08-19',
+    '--assignee',
+    'codex-worker',
+    '--resume',
+    '--body',
+    'c',
+  );
+  assert.notEqual(cx.code, 0, 'codex: a stamp with no rollout file on disk is refused');
+  assert.match(cx.stderr, /gone|no longer|not found/i);
+});
+
 test('parked assignee: queues the vacation recall before the mail', {
   skip: !POSIX,
 }, (t) => {
@@ -235,12 +538,54 @@ test('refuses when the assignee is active on a DIFFERENT card — nothing writte
   assert.deepEqual(s.outboxMails(), [], 'no mail queued');
 });
 
-test('blocked cards also count as active; done/todo cards do not', {
+test('a BLOCKED card does NOT occupy its assignee — the dispatch lands, the blocked card is untouched', {
   skip: !POSIX,
 }, (t) => {
   const s = setup(t);
   s.writeRegistry(WORKERS);
   s.hive.writeTasks([
+    {
+      id: 'agent-blocked-eng-2026-08-18',
+      title: 'Waiting on the customer',
+      status: 'blocked',
+      assignee: 'worker-1',
+      sessionId: 'f68d69ae-c2ac-4d4d-ae63-b244fff90453',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+
+  const r = s.run('--title', 'New work meanwhile', '--assignee', 'worker-1', '--body', 'c');
+  assert.equal(r.code, 0, 'a blocked card waits on someone else — its owner is dispatchable');
+
+  const blocked = s.tasks().find((c) => c.id === 'agent-blocked-eng-2026-08-18');
+  assert.equal(blocked.status, 'blocked', 'blocked card keeps its status');
+  assert.equal(blocked.assignee, 'worker-1', 'blocked card KEEPS its assignee (who-did-what)');
+  assert.equal(
+    blocked.sessionId,
+    'f68d69ae-c2ac-4d4d-ae63-b244fff90453',
+    'blocked card keeps its conversation stamp for the later --resume',
+  );
+});
+
+test('a DOING card still occupies its assignee (only doing counts as busy)', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  s.hive.writeTasks([
+    {
+      id: 'agent-doing-eng-2026-08-18',
+      title: 'D',
+      status: 'doing',
+      assignee: 'worker-1',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      origin: 'agent',
+    },
     {
       id: 'agent-blocked-eng-2026-08-18',
       title: 'B',
@@ -253,22 +598,9 @@ test('blocked cards also count as active; done/todo cards do not', {
     },
   ]);
   const r = s.run('--title', 'New', '--assignee', 'worker-1', '--body', 'c');
-  assert.notEqual(r.code, 0, 'blocked assignee refused');
-
-  s.hive.writeTasks([
-    {
-      id: 'agent-done-eng-2026-08-18',
-      title: 'D',
-      status: 'done',
-      assignee: 'worker-1',
-      dependsOn: [],
-      priority: 3,
-      createdAt: '2026-08-18T00:00:00.000Z',
-      origin: 'agent',
-    },
-  ]);
-  const ok = s.run('--title', 'New2', '--assignee', 'worker-1', '--body', 'c');
-  assert.equal(ok.code, 0, 'done assignments do not block a fresh dispatch');
+  assert.notEqual(r.code, 0, 'the doing card still refuses');
+  assert.match(r.stderr, /agent-doing-eng-2026-08-18/, 'refusal names the DOING card');
+  assert.doesNotMatch(r.stderr, /agent-blocked-eng/, 'the blocked card is not the blocker');
 });
 
 test('refuses a PAUSED target card — names the hold, tells god to ask the operator, writes nothing', {

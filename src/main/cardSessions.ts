@@ -98,11 +98,15 @@ export interface CardLike {
   assignee?: string;
   status?: string;
   sessionId?: string;
-  /** Written by `hive-card status <id> doing --adopt`: the assignee's CURRENT
-   *  conversation IS this card's engagement — lead only + stamp, NO clear,
-   *  no age limit (god's explicit word beats the young-session heuristic).
+  /** Written by `hive-dispatch --adopt` / `hive-card status <id> doing
+   *  --adopt`: the assignee's CURRENT conversation IS this card's engagement —
+   *  lead only + stamp, NO clear, no age limit (god's explicit word beats the
+   *  young-session heuristic). `hive-dispatch --resume` writes 'resume': the
+   *  card's stored sessionId is where the work lives; the watcher takes the
+   *  resume branch below (the mode's job is refusing dispatches with no/gone
+   *  stamps at the CLI, never a fresh fallback — that would wipe a pane).
    *  Absent = fresh (the default). Consumed on the →doing transition. */
-  sessionMode?: 'adopt';
+  sessionMode?: 'adopt' | 'resume';
 }
 
 /** One queued pane action derived from a card transition. */

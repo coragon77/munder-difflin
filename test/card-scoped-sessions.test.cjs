@@ -390,6 +390,26 @@ test('explicit --adopt wins over the already-live no-op (re-adopt still leads)',
   assert.equal(actions[0].session, 'live-now');
 });
 
+test('explicit --resume mode: the stored stamp wins — resume, never adopt, even over a young live session', () => {
+  // hive-dispatch --resume (card agent-hive-dispatch-blocked-ca-2026-08-19):
+  // the card's sessionId is where the work lives. A stale 'adopt' would hijack
+  // the flip into the agent's current conversation; the young-session
+  // heuristic cannot apply either (the card HAS a stamp). The mode routes to
+  // the resume branch — /resume <stamp> + lead.
+  const now = 1_000_000;
+  const actions = cardSessionDecisions(
+    [CARD({ sessionMode: 'resume', sessionId: 'f68d69ae-c2ac-4d4d-ae63-b244fff90453' })],
+    { 'card-1': { status: 'blocked' } },
+    { dwight: 'a-young-live-conversation' },
+    { dwight: 'claude' },
+    { dwight: now - 30_000 }, // 30s old — young enough to adopt if the stamp were absent
+    now,
+  );
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].kind, 'resume');
+  assert.equal(actions[0].command, '/resume f68d69ae-c2ac-4d4d-ae63-b244fff90453');
+});
+
 test('explicit --adopt without a live conversation falls through to fresh (nothing to adopt)', () => {
   const actions = cardSessionDecisions(
     [CARD({ sessionMode: 'adopt' })],
@@ -820,7 +840,7 @@ test('mailHold: doing card with no stamp → agent held; established/adopt/other
       CARD({ id: 'done-card', status: 'done' }), // not doing → never held
       CARD({ id: 'adopted', sessionMode: 'adopt' }), // adopt → mail flows (connected)
       CARD({ id: 'established', sessionId: 'live-1' }), // stamp == live → not held
-      CARD({ id: 'resumable', sessionId: 'paused-session' }), // resume pending → held
+      CARD({ id: 'resumable', sessionId: 'paused-session', sessionMode: 'resume' }), // --resume dispatch: held until the resumed conversation reports in
     ],
     { dwight: 'live-1' },
     { dwight: 'claude' },

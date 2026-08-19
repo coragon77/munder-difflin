@@ -217,6 +217,35 @@ test('status doing --fresh is the explicit default — no marker', { skip: !POSI
   assert.equal(card.sessionMode, undefined, 'absent marker = fresh (the default)');
 });
 
+test('a plain or --fresh doing flip CLEARS a stale sessionMode adopt — no hijack on re-flip', {
+  skip: !POSIX,
+}, async (t) => {
+  // Regression shape of the live card agent-sst-ticket-3110: an --adopt flip
+  // leaves sessionMode:'adopt' on the card forever (the watcher consumes the
+  // transition, not the field). Blocked→doing without --adopt must NOT adopt
+  // whatever conversation happens to be live — it resumes the card's stamp
+  // instead (the watcher's sessionId branch), so the stale marker has to go.
+  const s = setup(t);
+  s.hive.writeTasks([
+    {
+      id: 'agent-stale-adopt-2026-08-18',
+      title: 'Stale adopt marker',
+      status: 'blocked',
+      assignee: 'kevin-1',
+      sessionId: 'f68d69ae-c2ac-4d4d-ae63-b244fff90453',
+      sessionMode: 'adopt',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-18T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+  s.run('status', 'agent-stale-adopt-2026-08-18', 'doing');
+  const card = s.tasks().find((c) => c.id === 'agent-stale-adopt-2026-08-18');
+  assert.equal(card.sessionMode, undefined, 'stale adopt cleared by the plain flip');
+  assert.equal(card.sessionId, 'f68d69ae-c2ac-4d4d-ae63-b244fff90453', 'stamp kept');
+});
+
 test('status --adopt/--fresh validate: only doing, not both, needs assignee, unknown flags rejected', {
   skip: !POSIX,
 }, async (t) => {

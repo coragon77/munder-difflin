@@ -140,8 +140,12 @@ test('godLine teaches hive-dispatch as the guarded dispatch interface', () => {
     'teaches the guarded create/adopt, assign, recall, doing, and mail flow',
   );
   assert.ok(
-    /REFUSES[^.]+DIFFERENT[^.]+doing\/blocked card/.test(prompt),
-    'teaches the conflicting-card guard',
+    /REFUSES[^.]+DIFFERENT[^.]+DOING card/.test(prompt),
+    'teaches the conflicting-card guard (DOING only)',
+  );
+  assert.ok(
+    /BLOCKED card does NOT occupy its assignee/.test(prompt),
+    'teaches that a blocked card frees the agent for other work (owner stays recorded)',
   );
   assert.ok(
     /vacation-requests\/, hive-card, and hive-mail[^.]+FALLBACK/.test(prompt),
