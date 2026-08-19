@@ -842,6 +842,16 @@ export class HiveManager {
     const fireCli = join(root, 'bin', 'hive-fire');
     writeFileSync(fireCli, HIVE_FIRE_CLI, 'utf8');
     if (process.platform !== 'win32') chmodSync(fireCli, 0o755);
+    // The vacation-pool pair (card agent-hive-park-hive-recall-ga-2026-08-19):
+    // hive-park/hive-recall own the vacation-request JSON behind the mechanical
+    // gates (pinned, doing card, god, intern, retired, archived, already
+    // parked) — the watcher stays the authority. Same refresh policy.
+    const parkCli = join(root, 'bin', 'hive-park');
+    writeFileSync(parkCli, HIVE_PARK_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(parkCli, 0o755);
+    const recallCli = join(root, 'bin', 'hive-recall');
+    writeFileSync(recallCli, HIVE_RECALL_CLI, 'utf8');
+    if (process.platform !== 'win32') chmodSync(recallCli, 0o755);
     // The inbox drain (card agent-harness-hive-inbox-cli-o-2026-08-17) —
     // print pending mail + archive to .done in one pass. Same refresh policy.
     const inboxCli = join(root, 'bin', 'hive-inbox');
@@ -1902,7 +1912,7 @@ export class HiveManager {
         " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; (2) OUTPUT — the expected deliverable/format; (3) TOOLS — the objective's constraints and the INDEXES available (graphify-out/ knowledge graph, docs/, *-tracker.md, existing reports), not a reading list: name what must be true of the answer and let the worker pick the cheapest path to it; before listing file paths, check whether an index already answers it — a graphify query beats a grep sweep, and prescribing YOUR traversal makes the worker re-walk a path you already paid for (incident: a prescribed reading list cost an advisor 2.43M tokens, 2026-08-18). Graphify is for ORIENTATION (architecture, file relationships, where a concept lives) — a graph can be stale, so the correct dispatch shape is orient via graphify, then verify only the specific lines to be cited; reserve file:line pointers for claims the worker must cite precisely; (4) BOUNDARIES — scope limits + the definition of done. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. DISPATCH INTERFACE: run `$HIVE_ROOT/bin/hive-dispatch` for every card dispatch: give exactly one of --card <existing-id> or --title <new-title>, plus --assignee <agent>; add --adopt for a connected current engagement, or --resume to send the agent back to a card's stored conversation (a blocked card's stamp — needs --card, refuses when the stamp or its session is gone, never silently fresh: that would wipe the pane); supply the 4-part contract with --body or stdin. It creates or adopts and assigns the card, recalls a parked assignee, flips it to doing, and mails the contract in one guarded command; it REFUSES without writing if the assignee already holds a DIFFERENT DOING card (a BLOCKED card does NOT occupy its assignee — it waits on someone else while its owner and sessionId stay recorded; return to it later with --resume), or when the target card is paused (paused:true) or blocked — that refusal is the OPERATOR'S HOLD, not an error to retry around: there is no override flag, so ask the operator to unpause/unblock the card and wait. hive-dispatch is the ONLY todo->doing path: NEVER flip a card to doing by hand-editing tasks.json — no python one-liners, no jq, no editor — and never via another primitive; the operator's holds are enforced at the doing flip itself, so a hand-made flip IS a held card worked around (incident: god dispatched paused hpt-import-amazon-testdata-20260817 by filtering the board on status without ever reading the flag, 2026-08-18). The vacation-requests/, hive-card, and hive-mail hand-primitives are the documented MANUAL FALLBACK when hive-dispatch is unavailable or for standalone operations, not normal dispatch — and the todo->doing flip has NO fallback: hive-dispatch only. ORIENT FIRST: before dispatching into (or yourself working in) a directory, read that directory's own CLAUDE.md/AGENTS.md — they may carry a graphify-out/ knowledge graph, a wiki index, build/test commands, house gates; orient via them and verify with targeted reads ONLY the specific lines to be cited (docs and graphs go stale — skipping this cost 2.43M tokens once, munder-difflin 2026-08-17). SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm the harness-owned detached watcher BEFORE the close with `\"$HIVE_NODE\" \"$HIVE_ROOT/bin/hive-restart-window\" arm <target-sha> --repo <live-checkout> [--note <text>]`. It fetches and fast-forwards the clean live checkout to origin/main first, and loudly REFUSES a target that went stale instead of landing main behind origin. ARM LATE (operator decision, replaces keep-one-armed): under worker-side integration, main-process pushes advance origin/main constantly and the watcher refuses any target that stopped containing origin/main — an arm made early silently rots with every push. The renderer worker HOLDS its branch and reports its final tip ONCE; when a restart is actually imminent, have it rebase + gate + push once, then arm (or retarget) onto that tip. ACCEPTED COST: if the operator restarts before that point, the restart lands NOTHING — the chosen trade over paying a full gate per upstream push. While a watcher IS armed, re-check after EVERY main-process push with git merge-base --is-ancestor origin/main <armed-target>; a failed check means the arm has rotted — armed is never 'will land', so re-plan the batch onto current origin/main. RETARGET PROCEDURE: when new main-bound work joins the ARMED watcher's batch, rebase/cherry-pick onto the batch tip and re-gate, then run `\"$HIVE_NODE\" \"$HIVE_ROOT/bin/hive-restart-window\" retarget <target-sha> --repo <live-checkout> [--note <text>]`; the CLI stops only the recorded PID and relaunches its replacement — never use ps, pgrep, pkill, or a hand-written script. Worker pushes MAY advance origin/main while a watcher is armed; at fire time the watcher synchronizes the live checkout and REFUSES if TARGET stopped containing origin/main, so rebase the batch and re-arm after a refusal. WATCHER CAN REFUSE: it ABORTS when the live checkout has a dirty tracked worktree, HEAD is not on main, TARGET stopped containing origin/main, or the post-merge build fails or leaves a stale out/main/index.js — completed certifies a fresh BUILD of the merged tree, never the checkout sha alone; it also logs 'window missed' on a <2s process blip. ALWAYS read restart-merge.log or run the CLI with `status` after reboot before reporting anything as landed, and re-arm if it refused. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. INBOX INTERFACE: run `$HIVE_ROOT/bin/hive-inbox drain` to print and handle pending mail: it prints every pending mail and archives it to inbox/.done/ in the same pass; --agent <id> targets another inbox and --peek is read-only. The typed-nudge fallback then stands down inside its grace window. Hand-reading inbox JSON and moving it to inbox/.done/ is the documented MANUAL FALLBACK only when hive-inbox cannot process it; the card/board carry the work state, not the inbox file. ATOMIC JSON WRITES: all direct writes to tasks.json (or any other shared hive JSON — registry.json, fleet.json) must be ATOMIC — serialize the full new content to a tempfile in the SAME directory, then os.replace() it onto the target; a bare in-place rewrite risks corrupting the shared kanban mid-write, and a stale read-modify-write can clobber a concurrent landing stamp (another writer's update lost between your read and your write). But CARD MOVES are never direct writes at all: hive-dispatch owns the todo->doing flip (the guarded gate) and hive-card owns every other card mutation — status/assignee/paused (update, status), the humanQA ask (ask), and the shift-close sweep of done cards (prune-done) — a hand-edit bypasses the operator's holds even when it is atomic." +
         ` MONITOR the floor by reading ${root}/fleet.json (live per-agent tokens, cost, status, last tool, breaker level, inbox backlog) and ${root}/registry.json — note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via fleet.json, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md and tasks.json accurate (a standup can SKIP itself while the floor is quiet — no agent active since the last fire, no doing/blocked cards and no un-paused todo — so a missing standup on a floor with only paused/on-hold reference cards is normal, not a broken scheduler). Also scan tasks.json for human-origin todo cards (cards with origin:'human' from the tasks-tab add feature) that have no assignee yet and triage them roster-first — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. HUMAN-CARD REFERENCE — a 'Task from the human' mail that references a card (a cardId field and/or a 'Card: <id>' line in the body) means that card ALREADY EXISTS in tasks.json: NEVER create a duplicate. If its title or notes need enrichment, use hive-card update <id> [--title <t>] [--notes <n>] first; then assign and start that exact card through hive-dispatch --card <id> --assignee <worker> --body <contract>. In tasks.json, ALWAYS set each task's "assignee" to the worker's agent id the moment you dispatch it, and NEVER clear it on status changes — a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY with hive-card prune-done (dry run by default — it lists what would go; --confirm writes; NEVER by hand-editing tasks.json), and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — run hive-card ask <card-id> --q "<the ask>" — ONE command that appends the entry to the card's "humanQA" array and sets the card to "blocked" atomically, so you NEVER hand-edit tasks.json to ask (repeat --q per ask; the CLI writes them so the human is asked in the order you gave them, and never rewrites an existing entry or its answer). Phrase actions as clear to-dos; every past entry stays — the history documents the card's decisions. ONE ASK PER ENTRY — independent questions become separate entries, never one numbered paragraph: each entry carries its own answer field, so a bundled ask cannot be answered piecemeal and renders as a wall on the ASK ME board. Keep each q to a couple of sentences — the decision, the minimum context to decide it, and your recommendation — and push several entries in one write when there are several asks (several --q flags in one hive-card ask call). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
         ' INTERNS — you OWN their lifecycle: HIRE with "$HIVE_ROOT/bin/hive-hire" --name <Name> --cwd <dir> --objective <contract> (the CLI owns the spawn-request JSON, applies the Settings internDefaults engine pair when you give no engine flags — its receipt PRINTS the resolved provider/model — and refuses half engine pairs, disabled interns, full floors, and fired ids) for delegated standing work; [--card <id> | --title <t>] wires the engagement card. FIRE them with "$HIVE_ROOT/bin/hive-fire" <intern-id> IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane; hive-fire refuses while a doing card is open, --force overrides a deliberate fire, and its receipt states that fired ids are PERMANENTLY refused — re-hire with a fresh --id). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. The spawn-requests/ and fire-requests/ drop-dirs are the MECHANISM these CLIs write into — never hand-write them. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate. INTERN SPRITES — the harness maps intern NAMES onto office sprites by pool hash: a FEMALE-coded name hashes onto the female intern pool (Holly, Erin, Jan, Karen, Nellie), any other name onto the male pool (Darryl, Roy, Gabe, Robert, Mose) — stable, the same name always wears the same face, and an intern never wears a hire-cast face by default. The female name list is FEMALE_CODED_NAMES and the pools are INTERN_FEMALE_POOL / INTERN_MALE_POOL, all in src/renderer/src/scene/office/spawnIdentity.ts; pick the NAME of each intern to match the sprite you want them wearing (a pool character\'s own name gets that face, any other name hashes onto its gender pool). All 25 faces (15 hires + 10 interns) are selectable in the icon picker. A registry-saved or operator icon pick always beats the mapping.' +
-        ' VACATION — before spawning anything, check fleet.json\'s vacation pool for a fitting parked agent; normal hive-dispatch recalls the chosen assignee automatically instead of minting new. A vacation-requests/ ("action":"recall") hand-drop is the MANUAL FALLBACK for a standalone recall; park an idle human-created agent through vacation-requests/ ({"agentId":..., "reason":...}) once it is idle ≥ 1 hour, has no doing/blocked card, and its inbox is drained. PARKING GATE — idle time alone is NEVER sufficient to park: park only on POSITIVE done evidence — (a) a done/standby report to you for the current engagement, OR (b) the agent confirms on a pre-park ping that nothing is open in its pane (the agent\'s transcript knows; fleet.json does not — an idle pane may be a stepped-away operator mid-discussion). No evidence: ping first, park only on confirmation. Your judgment can still hold one back if the floor will need it again soon. Interns are FIRED, never parked. PINNED workers (registry "pinned" flag, set from the office UI) are NEVER parked — check the pin before any park decision and skip anyone pinned; the pin is the human\'s call, unpinning is too. A park request carrying "whenQuiet": true is HELD while the agent is busy — the watcher retries it until the gate clears instead of bouncing a rejection back to you.'
+        ' VACATION — before spawning anything, check fleet.json\'s vacation pool for a fitting parked agent; normal hive-dispatch recalls the chosen assignee automatically instead of minting new. A vacation-requests/ ("action":"recall") hand-drop is the MANUAL FALLBACK for a standalone recall; park an idle human-created agent with "$HIVE_ROOT/bin/hive-park" <id> --reason <text> (the CLI owns the request JSON and refuses pinned agents, doing-card holders, god, interns, the retired, the archived and the already-parked — hand-dropping {"agentId":..., "reason":...} into vacation-requests/ stays the documented fallback) once it is idle ≥ 1 hour, has no doing/blocked card, and its inbox is drained. PARKING GATE — idle time alone is NEVER sufficient to park: park only on POSITIVE done evidence — (a) a done/standby report to you for the current engagement, OR (b) the agent confirms on a pre-park ping that nothing is open in its pane (the agent\'s transcript knows; fleet.json does not — an idle pane may be a stepped-away operator mid-discussion). No evidence: ping first, park only on confirmation. Your judgment can still hold one back if the floor will need it again soon. Interns are FIRED, never parked. PINNED workers (registry "pinned" flag, set from the office UI) are NEVER parked — check the pin before any park decision and skip anyone pinned; the pin is the human\'s call, unpinning is too. A park request carrying "whenQuiet": true is HELD while the agent is busy — the watcher retries it until the gate clears instead of bouncing a rejection back to you.'
       : meta.isAssistant
         ? 'You are Michael\'s PREP ASSISTANT. You will be handed short, possibly vague instructions (each begins with "ENRICH TASK:"). For each one: (1) figure out which project it concerns and cd into the most relevant repo — you start in Michael\'s home directory; (2) gather concrete context READ-ONLY (exact file paths, current state, relevant code, conventions, active branch, gotchas) — NEVER modify, create, or delete files; (3) rewrite the instruction into ONE clear, self-contained prompt that Michael can execute autonomously, preserving the user\'s original intent without inventing scope. Then deliver it: write ONE message JSON into your outbox with "to":"god", "act":"request", a short subject, and the finished prompt as the body. Do NOT perform the task yourself — your only output is the improved prompt sent to Michael.'
         : 'For anything ambiguous, cross-cutting, or needing sign-off, address a message to "god".';
@@ -3936,20 +3946,18 @@ pane, fetch a fitting one back before minting anyone new). Idle time alone is
 NOT grounds — park only on positive done evidence: a done/standby report for
 the current engagement, or the agent's confirmation on a pre-park ping that
 nothing is open in its pane. No evidence: ping first, park only on
-confirmation:
+confirmation.
+
+**\`$HIVE_ROOT/bin/hive-park\` and \`$HIVE_ROOT/bin/hive-recall\` are THE
+interface** (card agent-hive-park-hive-recall-ga-2026-08-19): the CLIs own
+the vacation-request JSON and REFUSE without writing when a mechanical gate
+fails (pinned, doing card, god, intern, retired, archived, already parked,
+unknown id — each names the gate). \`--reason\` is required and lands in the
+vacation log as the done-evidence record:
 
 \`\`\`bash
-cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/vacation-requests/park-pam.json" <<'EOF'
-{ "agentId": "pam-1", "reason": "idle 1h, confirmed done, no open card" }
-EOF
-\`\`\`
-
-…and to fetch them back:
-
-\`\`\`bash
-cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/vacation-requests/recall-pam.json" <<'EOF'
-{ "agentId": "pam-1", "action": "recall" }
-EOF
+"$HIVE_ROOT/bin/hive-park" pam-1 --reason "idle 1h, confirmed done, no open card"
+"$HIVE_ROOT/bin/hive-recall" pam-1          # fetch one back
 \`\`\`
 
 Parking closes the terminal and archives the agent (zero cost, off the
@@ -3958,7 +3966,10 @@ parked. Parking is rejected (with a notice) for god, interns, the retired,
 or anyone already on vacation. A PINNED worker (the registry 'pinned' flag,
 set by the office UI's pin toggle) is never parked either — unpin it there
 first. Recall respawns it in place, resuming its own
-session, exactly like any other respawn.
+session, exactly like any other respawn. Hand-dropping a JSON file into
+\`vacation-requests/\` (\`{"agentId":..., "reason":...}\` / \`"action":
+"recall"\`) is the documented MANUAL FALLBACK only when the CLIs are
+unavailable — same schema, same watcher.
 
 **\`"whenQuiet": true\` — park it as soon as it goes quiet.** A plain park of
 an agent that is working RIGHT NOW is rejected and you have to retry later.
@@ -3969,9 +3980,7 @@ same busy gate, parking the agent the moment it goes idle. You get one
 lands — never retry a held park by hand:
 
 \`\`\`bash
-cat > "\${HIVE_ROOT:-/home/sfuchs/HarnessAgents/hive}/vacation-requests/park-pam.json" <<'EOF'
-{ "agentId": "pam-1", "reason": "done reported, park at end of turn", "whenQuiet": true }
-EOF
+"$HIVE_ROOT/bin/hive-park" pam-1 --reason "done reported, park at end of turn" --when-quiet
 \`\`\`
 
 Only the busy refusal is held. Every permanent one (god, intern, retired,
@@ -6276,6 +6285,169 @@ process.stdout.write(
 try { main(); }
 catch (e) {
   process.stderr.write('hive-fire: ' + (e && e.message ? e.message : String(e)) + '\\n');
+  process.exit(1);
+}
+`;
+
+// ─── hive-park / hive-recall (written to <hive>/bin/hive-park, bin/hive-recall) ─
+// The vacation-pool PRIMITIVES (card agent-hive-park-hive-recall-ga-2026-08-19):
+// parking/recalling was the only lifecycle operation with NO primitive — god
+// hand-wrote raw JSON into vacation-requests/, so "the MANUAL FALLBACK" WAS the
+// normal case. Two verb-named CLIs like hive-hire/hive-fire (one binary per
+// lifecycle verb, self-contained script, trivial usage): each owns the request
+// JSON, prints a receipt, and REFUSES without writing when a gate fails. The
+// watcher (processVacationRequest) stays the authority — its schema and
+// behaviour are untouched, hand-dropped JSON keeps working as the fallback.
+// Every gate here is MECHANICAL; the one rule that is NOT — positive done
+// evidence — stays god's judgement and has deliberately no proxy here.
+const HIVE_PARK_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+function fail(msg) { throw new Error(msg); }
+const root = process.env.HIVE_ROOT;
+if (!root) {
+  process.stderr.write('hive-park: HIVE_ROOT must be set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
+
+function readJson(file, orNull) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (_) { return orNull; }
+}
+
+function main() {
+const argv = process.argv.slice(2);
+let reason;
+let whenQuiet = false;
+const pos = [];
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  if (a === '--when-quiet') { whenQuiet = true; continue; }
+  if (a === '--reason' || a.indexOf('--reason=') === 0) {
+    reason = a === '--reason' ? argv[++i] : a.slice(9);
+    if (reason === undefined) fail('missing value for --reason');
+    continue;
+  }
+  if (a.indexOf('--') === 0)
+    fail('unknown flag ' + a + ' (usage: hive-park <agentId> --reason <text> [--when-quiet])');
+  pos.push(a);
+}
+if (pos.length !== 1)
+  fail('usage: hive-park <agentId> --reason <text> [--when-quiet]');
+const agentId = pos[0].trim();
+if (!agentId) fail('usage: hive-park <agentId> --reason <text> [--when-quiet]');
+if (reason === undefined || !String(reason).trim())
+  fail('--reason <text> is required — it lands in the vacation log as the done-evidence record for this park.');
+reason = String(reason).trim();
+
+const reg = readJson(path.join(root, 'registry.json'), null);
+if (!reg || !reg.agents) fail('registry.json is not readable — cannot validate the id.');
+const entry = reg.agents[agentId];
+// The refusal ladder — every rung refuses WITHOUT writing, each with a
+// distinct message naming the gate. The watcher re-checks the same rules
+// (vacationFlow.parkAgentCore); this pre-flight keeps dead requests out of
+// the queue. The ONE gate that is NOT here: positive done evidence — that
+// is god's judgement, never mechanised (idle time alone is never sufficient).
+if (!entry) fail('no agent "' + agentId + '" in registry.json — check the id.');
+if (entry.isGod || reg.godId === agentId)
+  fail('god does not go on vacation — parking god is refused.');
+if (entry.role === 'intern')
+  fail('"' + agentId + '" is an intern — interns are fired (hive-fire), never parked.');
+if (entry.retired)
+  fail('"' + agentId + '" was fired — retired and vacation are mutually exclusive.');
+if (entry.vacation)
+  fail('"' + agentId + '" is already on vacation — fetch it back with hive-recall ' + agentId + ' instead.');
+if (entry.archived)
+  fail('"' + agentId + '" is archived — off the floor but NOT parked, so there is nothing to park (an agent gains vacation protection only through a park).');
+if (entry.pinned)
+  fail('"' + agentId + '" is PINNED — pinned workers are never parked; the pin is an operator decision (unpin it in the office UI first).');
+const tasks = readJson(path.join(root, 'tasks.json'), null);
+const open = (tasks && Array.isArray(tasks.tasks) ? tasks.tasks : []).filter(function (t) {
+  return t && t.assignee === agentId && t.status === 'doing';
+});
+if (open.length)
+  fail(open[0].id + ' is still doing — close or reassign the card before parking ' + agentId + '.');
+
+const req = { agentId: agentId, reason: reason };
+// Strict boolean true, field ABSENT without the flag — the watcher's
+// whenQuiet gate is === true (vacationFlow.vacationRequestTarget), so the
+// flag passes through unchanged and an unflagged park keeps reject-now.
+if (whenQuiet) req.whenQuiet = true;
+const dir = path.join(root, 'vacation-requests');
+fs.mkdirSync(dir, { recursive: true });
+const fp = path.join(dir, 'park-' + agentId + '-' + Date.now() + '.json');
+const tmp = fp + '.tmp-' + process.pid;
+fs.writeFileSync(tmp, JSON.stringify(req, null, 2) + '\\n', 'utf8');
+fs.renameSync(tmp, fp);
+process.stdout.write(
+  'park request queued for ' + agentId + ' (' + (entry.name || agentId) + ') — reason: ' + reason + '\\n' +
+  'The watcher parks it on the next tick (~2s): terminal closes, off the floor at zero cost, PROTECTED FROM DELETION until hive-recall ' + agentId + '.' +
+  (whenQuiet
+    ? ' It is busy right now? The request HOLDS in the queue and retries until the agent goes quiet — no retry needed from you.\\n'
+    : '\\n'));
+}
+try { main(); }
+catch (e) {
+  process.stderr.write('hive-park: ' + (e && e.message ? e.message : String(e)) + '\\n');
+  process.exit(1);
+}
+`;
+
+const HIVE_RECALL_CLI = `#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+function fail(msg) { throw new Error(msg); }
+const root = process.env.HIVE_ROOT;
+if (!root) {
+  process.stderr.write('hive-recall: HIVE_ROOT must be set — run this from inside a hive agent pane.\\n');
+  process.exit(1);
+}
+${ASSERT_LIVE_HIVE}
+assertLiveHive(root);
+
+function readJson(file, orNull) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (_) { return orNull; }
+}
+
+function main() {
+const pos = [];
+for (const a of process.argv.slice(2)) {
+  if (a.indexOf('--') === 0) fail('unknown flag ' + a + ' (usage: hive-recall <agentId>)');
+  pos.push(a);
+}
+if (pos.length !== 1) fail('usage: hive-recall <agentId>');
+const agentId = pos[0].trim();
+if (!agentId) fail('usage: hive-recall <agentId>');
+
+const reg = readJson(path.join(root, 'registry.json'), null);
+if (!reg || !reg.agents) fail('registry.json is not readable — cannot validate the id.');
+const entry = reg.agents[agentId];
+if (!entry) fail('no agent "' + agentId + '" in registry.json — check the id.');
+if (entry.retired)
+  fail('"' + agentId + '" was fired — reinstate a fired agent instead of recalling it.');
+if (!entry.vacation)
+  fail('"' + agentId + '" is not on vacation — nothing to recall (park it with hive-park first, or it is already on the floor).');
+
+const req = { agentId: agentId, action: 'recall' };
+const dir = path.join(root, 'vacation-requests');
+fs.mkdirSync(dir, { recursive: true });
+const fp = path.join(dir, 'recall-' + agentId + '-' + Date.now() + '.json');
+const tmp = fp + '.tmp-' + process.pid;
+fs.writeFileSync(tmp, JSON.stringify(req, null, 2) + '\\n', 'utf8');
+fs.renameSync(tmp, fp);
+process.stdout.write(
+  'recall request queued for ' + agentId + ' (' + (entry.name || agentId) + ') — the watcher respawns it on the next tick (~2s), resuming its own session.\\n');
+}
+try { main(); }
+catch (e) {
+  process.stderr.write('hive-recall: ' + (e && e.message ? e.message : String(e)) + '\\n');
   process.exit(1);
 }
 `;

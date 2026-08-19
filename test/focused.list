@@ -142,3 +142,4 @@ test/gpu-compositing-switch.test.cjs
 test/router-cc-god.test.cjs
 test/one-agent-per-directory-physical.test.cjs
 test/actionable-watch.test.cjs
+test/hive-park-recall-cli.test.cjs
