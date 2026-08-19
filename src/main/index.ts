@@ -5957,7 +5957,11 @@ registerRealtimeActionIpc({
           provider: o.provider ?? o.hive?.provider ?? 'claude',
           cwd: res.worktreePath ?? o.cwd,
           command: o.command,
-          role: o.hive?.role,
+          // REGISTRY ROLE FIRST (agent-active-floor-agents-rend-2026-08-19):
+          // restores/restarts/revives carry no meta role; savedId (read above
+          // for the sprite) is the durable identity every other surface
+          // resolves from. Meta role = the fresh-hire fallback.
+          role: savedId?.role ?? o.hive?.role,
           worktreePath: res.worktreePath,
           spawnLabel: o.hive?.spawnLabel,
           character: savedId?.officeCharacter,
@@ -6014,6 +6018,9 @@ registerRealtimeActionIpc({
         id,
         character: savedId?.officeCharacter,
         accent: savedId?.officeAccent,
+        // REGISTRY ROLE (agent-active-floor-agents-rend-2026-08-19): the
+        // unarchive direction RE-CARDS the agent from this payload.
+        role: savedId?.role,
         // A voice unarchive re-cards the agent in the BACKGROUND — no pane
         // focus steal (card agent-harness-remaining-force--2026-08-17), same
         // pattern as b4bb8d4/0b3ab0e. The archive direction reads only { id },

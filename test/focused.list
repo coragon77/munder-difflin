@@ -154,3 +154,4 @@ test/blocked-provenance.test.cjs
 test/card-work-rules.test.cjs
 test/mail-fold.test.cjs
 test/monitor-role-status.test.cjs
+test/monitor-live-agent-role.test.cjs

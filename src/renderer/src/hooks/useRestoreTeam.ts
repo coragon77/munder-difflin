@@ -278,6 +278,13 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
               );
               return {
                 ...a,
+                // REGISTRY ROLE (card agent-active-floor-agents-rend-2026-08-19):
+                // the restorable row is a PRE-STAMP snapshot — it was filed by
+                // reconcileWithLivePtys before its live row ever got stamped —
+                // so identity resolves from the registry entry read above, the
+                // same source the parked shelf and the boot stamp resolve from.
+                // The row's own value is the fallback for a hive-disabled spawn.
+                role: entry?.role ?? a.role,
                 character: identity.character,
                 accent: identity.accent,
                 provider,

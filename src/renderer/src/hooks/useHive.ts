@@ -382,6 +382,11 @@ export function useHive(config: HarnessConfig | null): void {
         project: 'hive',
         tmuxTarget: '',
         cwd: config.harnessHome!,
+        // ROLE (card agent-active-floor-agents-rend-2026-08-19): removeAgent
+        // above just dropped the stamped row, and this rebuild runs AFTER the
+        // one-shot boot stamp — nothing else would stamp it. Same value the
+        // spawn meta and the registry carry.
+        role: 'orchestrator (god)',
         status: 'idle',
         action: 'running the floor',
         progress: 0,
