@@ -56,6 +56,7 @@ import { MCP_CATALOG } from '../shared/mcpCatalog';
 import { hasInboxMonitor } from '../shared/providerAutomation';
 import { cardSessionMailHold, MAIL_STAGE_TIMEOUT_MS, type CardLike } from './cardSessions';
 import { waitingLabel } from '../shared/waitingLabel';
+import { isSystemMail } from '../shared/hiveMail';
 import { compareAgentOrder } from '../shared/agentOrder';
 import { expandTilde } from './fs';
 
@@ -1932,7 +1933,7 @@ export class HiveManager {
       `1. At the START of a task, read ${dir}/memory.md and EVERY file in ${dir}/inbox/ (messages other agents sent you). After handling an inbox message, move its file into ${dir}/inbox/.done/.`,
       `2. ORIENT FIRST in every directory the task touches: BEFORE grepping, reading source, or forming a plan, read that directory's own CLAUDE.md and AGENTS.md if present — they carry the per-instance rules and the cheap way in (a graphify-out/ knowledge graph, wiki index, build/test commands, house gates). Orient via them, then verify with targeted reads ONLY the specific lines you will cite — docs and graphs go stale.`,
       `3. Record durable facts, decisions, and context by appending to ${dir}/memory.md.`,
-      `4. To ask another agent for something or share information, use \`$HIVE_ROOT/bin/hive-mail --to <id> --act <request|inform|propose|query|agree|refuse|done> --subject <s> --body <b>\` (it fills the envelope and prints the receipt — never cat the file back). NEVER write into another agent's folder — the orchestrator delivers your outbox.`,
+      `4. To ask another agent for something or share information, use \`$HIVE_ROOT/bin/hive-mail --to <id> --act <request|inform|propose|query|agree|refuse|done> --subject <s> --body <b>\` (it fills the envelope and prints the receipt — never cat the file back). NEVER write into another agent's folder — the orchestrator delivers your outbox. Peer mail (worker→worker) is for coordination you two can settle yourselves — god automatically receives a compact audit copy of every peer message, so never CC him on it yourself; but for anything that changes scope, ownership, or needs a sign-off, propose to god BEFORE acting.`,
       '5. At the END of a task, append what you learned to memory.md so future-you remembers.',
       monitorLine,
       guardrailsLine,
@@ -2229,6 +2230,40 @@ export class HiveManager {
         continue;
       }
       this.deliver(msg, t);
+    }
+    // AUTO-CC GOD ON PEER MAIL (card auto-cc-god-on-wo-2026-08-18, god's
+    // Option-B ruling): every registered worker→worker message drops a
+    // compact audit copy into god's inbox — god audits everything but is
+    // never WOKEN by it. The copy is shaped so the EXISTING classification
+    // seams skip it on every wake rail (monitor flt(), renderer nudge
+    // isFyiMail, heartbeat godActionableInboxCount): from 'system' + act
+    // 'inform' is FYI by definition — no skip-filter arm anywhere. It keeps
+    // the ORIGINAL id (it points at the archived body in the sender's
+    // outbox/.sent and the recipient's inbox/.done) and is delivered
+    // directly: no new outbox message, no hops increment, no loop risk.
+    // Exempt: god/human-directed mail (god already holds it), god-sent,
+    // broadcast fan-out, and senders not in the registry (system senders,
+    // webhooks) — the CC covers peer coordination between real workers only.
+    if (
+      msg.to !== 'broadcast' &&
+      targets.length === 1 &&
+      targets[0] !== godId &&
+      msg.from !== godId &&
+      !isSystemMail(msg.from) &&
+      reg.agents[msg.from]
+    ) {
+      this.deliver(
+        {
+          ...msg,
+          from: 'system',
+          act: 'inform',
+          requires_reply: false,
+          needs_human: false,
+          subject: `[cc ${msg.from}->${msg.to}] ${msg.subject}`,
+          body: `[auto-cc] ${msg.from} mailed ${msg.to} (${msg.act}): "${msg.subject}" — full body archived as ${msg.id}.json in ${msg.from}'s outbox/.sent and ${msg.to}'s inbox/.done. Audit copy, no reply expected.`,
+        },
+        godId,
+      );
     }
     this.appendLog({
       kind: 'message',
@@ -4314,6 +4349,7 @@ flags INFERRED ones as unverified (root incident #3216, 2026-08-17).
   who is its sole scribe (the standup clerk alone may append its one escalation
   line per anomalous standup).
 - Re-reading a message you already moved to \`.done/\` is a no-op. Don't reprocess.
+- Peer mail (agent→agent) needs no CC: the router drops a compact audit copy into god's inbox automatically (it never wakes him). Settle coordination directly between yourselves, but propose to god BEFORE acting on anything that changes scope or ownership, or needs a sign-off.
 
 ## The work: board.md vs tasks.json
 There are two shared surfaces, both in the hive root:
