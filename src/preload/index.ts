@@ -1260,9 +1260,6 @@ const api = {
   },
 
   // ─── Task kanban (hive/tasks.json) ───────────────────────────────────────
-  /** Overwrite the hive task ledger with the full task list and commit it. */
-  hiveWriteTasks: (tasks: HiveTask[]): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('hive:writeTasks', tasks),
   /** Answer or dismiss one open ASK ME question under the task-ledger lock. */
   hiveResolveHumanQuestion: (
     id: string,

@@ -8,8 +8,7 @@ import { useStore, agentClassOf, displayAgentName } from '@/store/store';
 
 /** A card on the task kanban. Mirrors HiveTask in the main/preload process —
  *  re-declared locally so the renderer doesn't reach into the preload package
- *  (same convention as store/config.ts). Structurally compatible with
- *  window.cth.hiveWriteTasks. */
+ *  (same convention as store/config.ts). */
 export interface HumanQA {
   q: string;
   a?: string;
