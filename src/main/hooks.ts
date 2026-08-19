@@ -14,6 +14,7 @@ import { createServer, type Server } from 'node:net';
 import { existsSync, rmSync } from 'node:fs';
 import { Notification, type WebContents } from 'electron';
 import type { HiveManager } from './hive';
+import type { AgentProvider } from '../shared/agentProvider';
 import type { HarnessConfig } from './config';
 import type { ControlRegistry } from './control';
 import type { CircuitBreaker } from './breaker';
@@ -22,6 +23,7 @@ import type { PendingWorkTracker } from './pendingWork';
 import { waitingLabel } from '../shared/waitingLabel';
 import { estimateCostUsd } from './pricing';
 import { bridgeDeliversHookContext } from '../shared/agentProvider';
+import { hasInboxMonitor } from '../shared/providerAutomation';
 import { sharedStateGate } from './hiveGate';
 
 interface HookPayload {
@@ -58,6 +60,31 @@ interface HookPayload {
    *  {taskId, timeoutMs, persistent?}, the arm-time classification the census
    *  uses to exclude never-completing (persistent) monitors. */
   tool_response?: { taskId?: unknown; persistent?: boolean };
+}
+
+/** Card agent-sessionstart-must-tell-e-2026-08-19. A harness restart (the
+ *  operator's KILL button) kills every agent's inbox monitor silently — the
+ *  Monitor-tool task dies with the agent's session, the deferred tool list
+ *  resets, and NOTHING tells the agent: an agent stalling on a doing card is
+ *  caught by the standup's stalled detector, a dead inbox monitor is caught
+ *  by nothing (the typed-nudge fallback covers the unread-mail symptom but
+ *  never names the cause). So the SessionStart boundary says it plainly:
+ *  fresh session → the old monitor is dead → rearm now. Pinned by
+ *  test/sessionstart-rearm.test.cjs; capability-gated by hasInboxMonitor so
+ *  providers with no agent-armable wake primitive (pi, codex, …) get no noise
+ *  — their typed nudge IS the mechanism. No duplicate of the arming command
+ *  (it lives in the system prompt's INBOX WAKE clause, re-applied on every
+ *  respawn): two copies would drift apart. No restart-vs-first-start branch:
+ *  SessionStart `source` is optional and shim-dependent, and the action is
+ *  identical either way — "unless you armed it in THIS session" makes one
+ *  literal correct for startup, resume and clear alike. */
+const SESSION_START_REARM =
+  'INBOX MONITOR — this is a FRESH session: the inbox monitor you armed in any earlier session is DEAD (a restart or session clear kills every Monitor task silently — nothing else will tell you). REARM it NOW — unless you armed it in THIS session — using the INBOX WAKE command in your system prompt (a redundant arm is cheaper than a missed one). If you cannot arm it, do nothing: the typed nudge remains the fallback.';
+
+/** The rearm line for an agent's provider — null when the provider has no
+ *  agent-armable inbox monitor (capability absent, never a default). */
+function sessionStartRearmFor(provider: AgentProvider | undefined): string | null {
+  return provider !== undefined && hasInboxMonitor(provider) ? SESSION_START_REARM : null;
 }
 
 export class HookServer {
@@ -456,12 +483,20 @@ export class HookServer {
     // HiveManager.rosterContext.
     const roster = wantsRoster ? this.hive.rosterContext(agentId, event === 'SessionStart') : null;
 
-    if (steer || roster) {
+    // Same boundary, every monitor-capable agent (not just god — their
+    // monitors die identically on a restart). Merges with roster/steer: only
+    // ONE additionalContext may be returned per hook.
+    const rearm =
+      event === 'SessionStart' && agentId
+        ? sessionStartRearmFor(this.hive.providerOf(agentId))
+        : null;
+
+    if (steer || roster || rearm) {
       this.emit(agentId, event, p);
       return {
         hookSpecificOutput: {
           hookEventName: event,
-          additionalContext: [roster, steer].filter(Boolean).join('\n\n'),
+          additionalContext: [roster, rearm, steer].filter(Boolean).join('\n\n'),
         },
       };
     }

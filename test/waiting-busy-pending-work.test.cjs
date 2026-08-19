@@ -171,6 +171,9 @@ test('HookServer feeds the tracker from live payload shapes (Monitor arm → Sto
     isGod() {
       return false;
     },
+    providerOf() {
+      return undefined;
+    },
     appendCostLedger() {},
   };
   const srv = new HookServer(

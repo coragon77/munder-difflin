@@ -145,3 +145,4 @@ test/actionable-watch.test.cjs
 test/hive-park-recall-cli.test.cjs
 test/hive-gate-shared-state.test.cjs
 test/tasks-writers-locked.test.cjs
+test/sessionstart-rearm.test.cjs
