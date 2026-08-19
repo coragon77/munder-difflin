@@ -184,6 +184,8 @@ import {
   clerkPrompt,
   detectAnomalies,
   ledgerDisqualifiesQuiet,
+  ownerStallMail,
+  routeStalled,
   standupTarget,
   summarizeAnomalies,
 } from './standup';
@@ -1047,9 +1049,28 @@ async function runStandupClerk(): Promise<void> {
   // rare-urgent kinds stay hourly on purpose.
   const fleetJson = readJson('fleet.json');
   const tasksJson = readJson('tasks.json');
-  const escalatedBefore =
-    (cfg.missions ?? []).find((m) => m.id === OPS_STANDUP_MISSION.id)?.escalatedTodos ?? [];
-  const anomalies = detectAnomalies(fleetJson, tasksJson, cfg, undefined, escalatedBefore);
+  const standupMission = (cfg.missions ?? []).find((m) => m.id === OPS_STANDUP_MISSION.id);
+  const escalatedBefore = standupMission?.escalatedTodos ?? [];
+  const found = detectAnomalies(fleetJson, tasksJson, cfg, undefined, escalatedBefore);
+  // Owner-first stall escalation (card agent-route-stalled-doing-card-2026-08-
+  // 19): a stalled doing-card mails its OWNER first — resume it or flip it
+  // blocked with a reason — and reaches god only on silence past the grace
+  // window (a presumed dead session). God stays out of the common loop.
+  const routing = routeStalled(found, standupMission?.stalledNotices ?? {});
+  for (const a of routing.toOwners) {
+    if (!a.owner) continue;
+    hive.send(
+      {
+        to: a.owner,
+        act: 'request',
+        subject: `Standup: card ${a.cardId} looks stalled — resume it or flip it blocked`,
+        body: ownerStallMail(a),
+        ...(a.cardId ? { cardId: a.cardId } : {}),
+      },
+      'scheduler',
+    );
+  }
+  const anomalies = routing.toGod;
   const qualifying = detectAnomalies(fleetJson, tasksJson, cfg, undefined, [])
     .filter((a) => a.kind === 'todo-unattended')
     .map((a) => a.subject);
@@ -1057,7 +1078,9 @@ async function runStandupClerk(): Promise<void> {
     const current = readConfig().missions ?? [];
     writeConfig({
       missions: current.map((m) =>
-        m.id === OPS_STANDUP_MISSION.id ? { ...m, escalatedTodos: qualifying } : m,
+        m.id === OPS_STANDUP_MISSION.id
+          ? { ...m, escalatedTodos: qualifying, stalledNotices: routing.nextNotices }
+          : m,
       ),
     });
   } catch {
@@ -1066,12 +1089,21 @@ async function runStandupClerk(): Promise<void> {
   // The clerk's "done" back to the scheduler: the cycle is recorded in the hive
   // log (and lastFiredAt is stamped by the caller) whether or not god hears.
   try {
-    hive.appendLog({ kind: 'standup', by: 'clerk', anomalies: anomalies.length });
+    hive.appendLog({
+      kind: 'standup',
+      by: 'clerk',
+      anomalies: found.length,
+      ownerNotices: routing.toOwners.length,
+    });
   } catch {
     /* logging is best-effort */
   }
   if (!anomalies.length) {
-    console.log('[standup] clerk: nothing to escalate — god stays silent');
+    // Stalls routed to their owners leave god silent: the owner was asked, the
+    // silence deadline rides the persisted notice, not god's attention.
+    console.log(
+      `[standup] clerk: ${routing.toOwners.length} stall notice(s) mailed to owners — god stays silent`,
+    );
     return;
   }
   const pausedIds = ((tasksJson as { tasks?: unknown[] } | null)?.tasks ?? []).filter(

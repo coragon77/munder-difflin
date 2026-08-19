@@ -40,6 +40,13 @@ export interface ScheduledMission {
    *  standup fire, so an old backlog card escalates ONCE, not hourly. Written
    *  by the standup clerk every fire (same read-modify-write as lastFiredAt). */
   escalatedTodos?: string[];
+  /** Owner-first stall escalation state (card agent-route-stalled-doing-card-
+   *  2026-08-19): cardId -> ISO time the owner was first mailed about the
+   *  stall. Persisted with the mission (the escalatedTodos pattern): a card
+   *  whose owner stays silent past the grace window escalates to god; a card
+   *  that stops qualifying leaves the map, so a later stall is a fresh first
+   *  notice. Written by the standup clerk every fire. */
+  stalledNotices?: Record<string, string>;
   /** Actionable-watch transition state (card agent-actionable-card-watch-fi-
    *  2026-08-19): the ids the watch last reported to god. Persisted with the
    *  mission (the escalatedTodos pattern) so a reboot does not re-fire the

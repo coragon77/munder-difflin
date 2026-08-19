@@ -46,6 +46,12 @@ export interface Anomaly {
   subject: string;
   /** One human-readable sentence — also the deterministic fallback text. */
   detail: string;
+  /** stalled only: the card id — the key of the owner-first escalation state. */
+  cardId?: string;
+  /** stalled only: the owner, but ONLY when it is on the floor (maillable). An
+   *  owner missing from fleet.json cannot answer mail, so that finding keeps
+   *  god's path from the first standup. */
+  owner?: string;
 }
 
 /** The slice of `fleet.json` the clerk reasons about (see writeFleetSnapshot). */
@@ -89,6 +95,14 @@ export interface StandupBudgets {
  *  standup after it starts rather than the second. Also the age gate for
  *  todo-unattended — same "presumed mid-dispatch" horizon. */
 export const STALLED_SEC = 1800;
+
+/** Owner-first stall escalation (card agent-route-stalled-doing-card-2026-08-
+ *  19): a fresh stall mails the OWNER, not god. Only when the owner stays
+ *  silent past this second horizon does it escalate to god — silence that
+ *  long means a dead session, whose repair already exists (`hive-dispatch
+ *  --resume`). Reuses the stall horizon itself: with the hourly standup the
+ *  owner gets one full standup cycle to answer. */
+export const STALLED_OWNER_GRACE_SEC = STALLED_SEC;
 
 /** The quiet-floor LEDGER half (card agent-every-non-paused-todo-ke-2026-08-
  *  18): a ledger with any card in 'doing'/'blocked' OR any NON-PAUSED 'todo'
@@ -164,6 +178,8 @@ export function detectAnomalies(
       out.push({
         kind: 'stalled',
         subject: c.id,
+        cardId: c.id,
+        // No `owner`: not on the floor, cannot answer mail — god's path stays.
         detail: `card ${c.id} is 'doing' but its owner "${owner}" is not on the floor`,
       });
       continue;
@@ -174,6 +190,8 @@ export function detectAnomalies(
     out.push({
       kind: 'stalled',
       subject: a.id,
+      cardId: c.id,
+      owner,
       detail: `${a.name ?? a.id} has been idle ${mins(idle)} while holding card ${c.id}`,
     });
   }
@@ -287,6 +305,84 @@ export function summarizeAnomalies(anomalies: Anomaly[]): string {
   if (!anomalies.length) return '';
   const head = `${anomalies.length} standup finding${anomalies.length === 1 ? '' : 's'}:`;
   return [head, ...anomalies.map((a) => `- [${a.kind}] ${a.detail}`)].join('\n');
+}
+
+/** The owner-first stall mail (card agent-route-stalled-doing-card-2026-08-
+ *  19). Deterministic on purpose — it is a fixed contract, not prose for an
+ *  LLM to paraphrase. It offers BOTH legitimate outcomes and makes the
+ *  deliberate-waiting convention discoverable: a blocked card costs the owner
+ *  nothing (the dispatch busy-check counts only 'doing' cards), and god
+ *  returns to it with `hive-dispatch --resume`. */
+export function ownerStallMail(a: Anomaly): string {
+  return [
+    `The standup sees your card ${a.cardId} in 'doing' while you look idle: ${a.detail}.`,
+    '',
+    'Two legitimate answers — take one, then reply:',
+    `1. RESUME the card: get back to work on it now.`,
+    `2. FLIP IT TO BLOCKED with a reason: if you are deliberately waiting (a`,
+    `   restart window, an external answer, another card's output), run`,
+    `   hive-card status ${a.cardId} blocked and say what you are waiting on.`,
+    `   A blocked card costs you NOTHING — the dispatch busy-check counts only`,
+    `   'doing' cards, so it frees you, and god returns to it later with`,
+    `   hive-dispatch --card ${a.cardId} --resume; the card keeps your sessionId.`,
+    '',
+    "'Doing' + silence is the one state the harness cannot read. If you stay",
+    'silent past the next standup this escalates to god as a presumed dead',
+    `session — whose repair is hive-dispatch --resume, exactly what this mail`,
+    'exists to avoid.',
+  ].join('\n');
+}
+
+/** Route the stalled findings (card agent-route-stalled-doing-card-2026-08-
+ *  19): the harness ASKS the owner, never infers — "stalled" vs "waiting by
+ *  instruction" is impossible harness-side and trivial agent-side (the parking
+ *  gate already codifies that: the agent's transcript knows, fleet.json does
+ *  not).
+ *
+ *  - a stalled card with an owner on the floor and NO prior notice → mail the
+ *    owner (`toOwners`), record the notice in `nextNotices`;
+ *  - noticed and silent past STALLED_OWNER_GRACE_SEC → escalate to god
+ *    (`toGod`), detail rewritten to name the dead-session repair;
+ *  - noticed but still inside the grace window → neither (no hourly nag);
+ *  - an owner NOT on the floor cannot answer mail → god from the first fire;
+ *  - every non-stalled finding passes through to god unchanged.
+ *
+ *  `nextNotices` keeps exactly the still-stalled cards with a notice (so an
+ *  escalated card is not re-mailed to the owner every hour), and drops any
+ *  card that stopped qualifying — if it stalls again later, that is a NEW
+ *  episode and the owner gets a fresh first notice. */
+export function routeStalled(
+  anomalies: Anomaly[],
+  notices: Record<string, string>,
+  now = Date.now(),
+): { toOwners: Anomaly[]; toGod: Anomaly[]; nextNotices: Record<string, string> } {
+  const toOwners: Anomaly[] = [];
+  const toGod: Anomaly[] = [];
+  const nextNotices: Record<string, string> = {};
+  for (const a of anomalies) {
+    if (a.kind !== 'stalled' || !a.cardId || !a.owner) {
+      toGod.push(a);
+      continue;
+    }
+    const noticed = notices[a.cardId];
+    if (!noticed) {
+      toOwners.push(a);
+      nextNotices[a.cardId] = new Date(now).toISOString();
+      continue;
+    }
+    nextNotices[a.cardId] = noticed;
+    if (now - Date.parse(noticed) >= STALLED_OWNER_GRACE_SEC * 1000) {
+      toGod.push({
+        ...a,
+        detail:
+          `${a.detail} — the owner was mailed about this and stayed silent past the grace window; ` +
+          `presume a dead session, the repair already exists: hive-dispatch --card ${a.cardId} ` +
+          `--assignee ${a.owner} --resume (it refuses only when the stored session is gone)`,
+      });
+    }
+    // else: inside the grace window — the owner was asked, wait for the answer.
+  }
+  return { toOwners, toGod, nextNotices };
 }
 
 /** One appended board line — board.md is narrative prose, so a multi-line

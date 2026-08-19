@@ -146,3 +146,4 @@ test/hive-park-recall-cli.test.cjs
 test/hive-gate-shared-state.test.cjs
 test/tasks-writers-locked.test.cjs
 test/sessionstart-rearm.test.cjs
+test/standup-owner-route.test.cjs

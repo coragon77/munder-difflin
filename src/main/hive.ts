@@ -3702,6 +3702,14 @@ read-modify-write can clobber a concurrent writer's update). Use the
 "$HIVE_ROOT/bin/hive-card" status <card-id> done     # verifiably complete
 \`\`\`
 
+- DELIBERATE WAITING IS BLOCKED, NOT DOING: if you must hold a card you own
+  (a restart window, an external answer, another card's output), flip it
+  \`blocked\` with the reason in your reply — never sit on it as \`doing\` while
+  idle. A blocked card costs you NOTHING: the dispatch busy-check counts only
+  \`doing\` cards, so it frees you, your sessionId stays stamped on the card,
+  and god returns to it later with \`hive-dispatch --card <id> --resume\`. The
+  standup treats \`doing\` + idle as anomalous and asks YOU first — blocked-with-
+  reason is the one waiting state that needs no explanation.
 - The default doing-flip is \`--fresh\`: the harness clears the pane and starts a
   fresh card-scoped conversation (never while the pane is busy — it waits for
   idle). Use \`--adopt\` when the card is connected to the conversation you are
