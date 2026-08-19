@@ -49,10 +49,10 @@ test('UNKNOWN_ROLE is one shared constant with the agreed unmistakable wording',
   const { UNKNOWN_ROLE } = loadTs('src/shared/agentRole.ts');
   assert.equal(
     UNKNOWN_ROLE,
-    'role: UNKNOWN — ask before routing',
-    'the exact string god specified — the main-side roster line (Jessica) and every renderer surface say the same thing',
+    'role: unknown',
+    "the exact string the main-side roster line ships (Jessica, a3cd126) — one vocabulary across god's roster and the renderer, per the dispatch's match-her-wording rule",
   );
-  assert.ok(/UNKNOWN/.test(UNKNOWN_ROLE), 'visibly UNKNOWN, never title-cased prose');
+  assert.ok(/unknown/i.test(UNKNOWN_ROLE), 'visibly unknown, never a plausible role');
 });
 
 // ─── the edit dialog: identity in, status out ──────────────────────────────

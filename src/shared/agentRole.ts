@@ -6,6 +6,7 @@
  * a customer agent's pane). One shared constant so every surface — the
  * renderer's agent directory + edit dialog (card
  * agent-separate-agent-identity--2026-08-19) and the main-side roster line god
- * reads (card agent-stop-the-registry-role-d-2026-08-19) — says the same thing.
+ * reads (card agent-stop-the-registry-role-d-2026-08-19, a3cd126) — says the
+ * exact same string.
  */
-export const UNKNOWN_ROLE = 'role: UNKNOWN — ask before routing';
+export const UNKNOWN_ROLE = 'role: unknown';
