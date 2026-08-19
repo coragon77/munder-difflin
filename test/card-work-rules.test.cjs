@@ -102,7 +102,10 @@ test("god mode: workers get no integrationLine (unchanged) — and god's briefin
     assert.ok(!p.includes('INTEGRATION — WORKER-SIDE'), `mode ${mode}: not in god briefing`);
     assert.ok(!p.includes('fresh-context reviewer'), `mode ${mode}: reviewer rule is worker-side`);
     assert.ok(!p.includes('never merge red'), `mode ${mode}: red-gate rule is worker-side`);
-    assert.ok(!p.includes('report your final tip ONCE'), `mode ${mode}: held-branch rule is worker-side`);
+    assert.ok(
+      !p.includes('report your final tip ONCE'),
+      `mode ${mode}: held-branch rule is worker-side`,
+    );
   }
 });
 
@@ -126,10 +129,7 @@ test('COMMANDS.md integration section (workers/lean render) carries the same thr
     );
   }
   const godMd = renderCommandsMd('god');
-  assert.ok(
-    !godMd.includes('## Integration — worker-side'),
-    'god render: no integration section',
-  );
+  assert.ok(!godMd.includes('## Integration — worker-side'), 'god render: no integration section');
   for (const marker of [
     'fresh-context reviewer',
     'never merge red',
