@@ -1996,6 +1996,13 @@ export class HiveManager {
     const sddAuthzLine = sddAuthorized
       ? 'OPERATOR AUTHORIZATION — SUBAGENTS FOR SKILL EXECUTION: the operator authorizes Agent-tool subagents for skill-driven plan execution (superpowers SDD) — treat such use as user-requested. Scoped to skill execution, NOT blanket subagent use. God dispatches carry this authorization; use cheap model overrides for mechanical tasks.'
       : '';
+    // FIXTURES-ONLY TESTING (card agent-move-the-three-card-work-2026-08-19,
+    // amendment addendum C): god wrote this by hand into dispatches ("test
+    // against a fixture copy, never the live one") and it existed nowhere
+    // standing. Every-agent rule (a live-floor test's writes are
+    // unrecoverable), so it earns its spawn-prompt sentence. Volatile-free.
+    const fixturesLine =
+      "FIXTURES-ONLY TESTING: never exercise the hive lifecycle primitives or shared state (the bin/hive-* CLIs, tasks.json / registry.json / fleet.json, the drop-dirs) as a test against the LIVE floor — test against fixture copies; a test's writes to the live floor are unrecoverable.";
     // DONE-REPORT EVIDENCE LABELS (card agent-harness-verified-vs-infe-2026-08-17):
     // root incident #3216 — an unverified inference shipped as a finding in a
     // done-report and lean-god relayed it to the operator. Worker-side half of
@@ -2003,11 +2010,11 @@ export class HiveManager {
     // numbers a how-counted. Mode-independent (done-reports happen in every
     // mode); god's receiving rule lives in the lean godLine. Volatile-free.
     const reportContractLine = !meta.isGod
-      ? 'DONE-REPORT EVIDENCE LABELS: every claim in a done/standby report to god is labeled VERIFIED (name the check you ran — the command and what it printed, or the file/line you read) or INFERRED (concluded without a direct check — say what would verify it); quantitative headline numbers carry a one-line how-counted (the exact command/filter behind the number). Never present an inference as a finding.'
+      ? 'DONE-REPORT EVIDENCE LABELS: every claim in a done/standby report to god is labeled VERIFIED (name the check you ran — the command and what it printed, or the file/line you read) or INFERRED (concluded without a direct check — say what would verify it); quantitative headline numbers carry a one-line how-counted (the exact command/filter behind the number). Never present an inference as a finding. An unlabeled claim is a defect in the report.'
       : '';
     const integrationLine =
       !meta.isGod && integrationMode !== 'god'
-        ? `INTEGRATION — WORKER-SIDE (integrationMode '${integrationMode}'): you integrate your OWN work — once your gates are green (typecheck + lint + tests, the house gate), merge YOUR OWN branch into its target branch, push it, and report the pushed hash${integrationMode === 'lean' ? ' AND your gate results (lean posture: god records them without re-verifying — your evidence is the record)' : ''} to god (god records it; no re-QA). Boundaries that ALWAYS override: renderer/preload-touching branches NEVER merge into the live checkout while the app runs — route them to god's restart-window mechanism instead of merging yourself; a skill that hard-codes 'never push — the operator's manual call' (asol-git-merge-main, asol-git-merge-singletenant) keeps overriding; an explicit boundary in god's dispatch (e.g. 'NO push') beats the mode default.`
+        ? `INTEGRATION — WORKER-SIDE (integrationMode '${integrationMode}'): you integrate your OWN work — once your gates are green (typecheck + lint + tests, the house gate) AND, on anything non-trivial, a fresh-context reviewer subagent has reviewed the green diff (its findings — INCLUDING any you did not act on, and why — go in your done-report; the floor runs lean, there is no QA pass behind you), merge YOUR OWN branch into its target branch, push it, and report the pushed hash${integrationMode === 'lean' ? ' AND your gate results (lean posture: god records them without re-verifying — your evidence is the record)' : ''} to god (god records it; no re-QA). A red gate, or a rebase conflict you cannot cleanly resolve, means STOP and mail god — never merge red, never force past it. When god holds your renderer/preload branch for a restart window: hold it un-rebased, report your final tip ONCE, and rebase + gate + push when god calls the window. Boundaries that ALWAYS override: renderer/preload-touching branches NEVER merge into the live checkout while the app runs — route them to god's restart-window mechanism instead of merging yourself; a skill that hard-codes 'never push — the operator's manual call' (asol-git-merge-main, asol-git-merge-singletenant) keeps overriding; an explicit boundary in god's dispatch (e.g. 'NO push') beats the mode default.`
         : '';
     const slackLine = meta.isGod
       ? 'SLACK REPLIES: When composing a Slack reply (or writing the `result` field of a Slack-origin kanban card), you MUST: (1) directly address what the user asked — never a bare "done"; (2) include the relevant specifics, outcome, and details; (3) format for Slack mrkdwn — open with a short *bold* headline, use bullet points for multiple items, wrap code/paths in `backtick` blocks, keep it concise (no walls of text). When finishing a Slack-origin task, always write a complete, user-facing, well-formatted `result` on the kanban card — the system posts it verbatim to Slack as the done reply.'
@@ -2034,6 +2041,7 @@ export class HiveManager {
       monitorLine,
       guardrailsLine,
       questionRoutingLine,
+      fixturesLine,
       reportContractLine,
       integrationLine,
       sddAuthzLine,
@@ -3758,6 +3766,12 @@ read-modify-write can clobber a concurrent writer's update). Use the
 - \`--assignee\` defaults to your \`$AGENT_ID\` (god EXCEPTED — a card god mints
   without \`--assignee\` stays UNASSIGNED until dispatch); the card's \`origin\` is 'agent'.
 - Card work for SOMEONE ELSE is god's dispatch job — message god instead.
+- If work you thought bounded turns ARCHITECTURAL mid-card — the shape is not
+  obvious from the contract, or it introduces a new abstraction, a new field on
+  shared state, a new status, a new IPC surface, anything other agents must
+  learn — STOP BEFORE THE NEXT EDIT and mail god the design: verdict first,
+  rejected alternatives with their failure modes, then the concrete
+  recommendation.
 
 **Keep your card's status current** (the ledger is how the floor sees you):
 
@@ -4285,9 +4299,18 @@ const INTEGRATION_WORKERS_MD = `
 
 The operator has moved integration (merge + push) from god to the workers.
 When your own work's gates are green (the house gate: typecheck + lint +
-tests), merge YOUR OWN branch into its target branch, push it, and report
+tests) — and, on anything non-trivial, a fresh-context reviewer subagent has
+reviewed the green diff, its findings (including any you did not act on, and
+why) in your done-report; the floor runs lean, there is no QA pass behind
+you — merge YOUR OWN branch into its target branch, push it, and report
 the pushed hash to god — god records the hash on the card/board, no re-QA.
 God's budget no longer pays for mechanical integration.
+
+Conduct: a red gate, or a rebase conflict you cannot cleanly resolve, means
+STOP and mail god — never merge red, never force past it. When god holds
+your renderer/preload branch for a restart window, hold it un-rebased,
+report your final tip once, and rebase + gate + push when god calls the
+window.
 
 Boundaries that ALWAYS override this mode default:
 - Renderer/preload-touching branches NEVER merge into the live checkout while
@@ -4557,7 +4580,8 @@ Every claim in a done-report (or standby report) to god carries its evidence lab
 Quantitative headline numbers ("3,837 of 4,061 groups") carry a one-line **how counted** —
 the exact command or filter that produced the number. An unlabeled scale or infrastructure
 claim reads as a finding; under the lean posture god relays VERIFIED claims as facts and
-flags INFERRED ones as unverified (root incident #3216, 2026-08-17).
+flags INFERRED ones as unverified (root incident #3216, 2026-08-17). An unlabeled claim is
+a defect in the report.
 
 ## Rules of the road
 - Only \`request\`, \`query\`, and \`propose\` expect a reply. \`inform\` and \`done\` are terminal —
@@ -4574,6 +4598,9 @@ flags INFERRED ones as unverified (root incident #3216, 2026-08-17).
   line per anomalous standup).
 - Re-reading a message you already moved to \`.done/\` is a no-op. Don't reprocess.
 - Peer mail (agent→agent) needs no CC: the router drops a compact audit copy into god's inbox automatically (it never wakes him). Settle coordination directly between yourselves, but propose to god BEFORE acting on anything that changes scope or ownership, or needs a sign-off.
+- **Fixtures-only testing**: never exercise the hive lifecycle primitives or shared state as
+  a test against the live floor — test against fixture copies; a live test's writes are
+  unrecoverable.
 
 ## The work: board.md vs tasks.json
 There are two shared surfaces, both in the hive root:

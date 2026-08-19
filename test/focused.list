@@ -151,3 +151,4 @@ test/writetasks-ipc-removed.test.cjs
 test/heartbeat-removal.test.cjs
 test/agent-role-identity.test.cjs
 test/blocked-provenance.test.cjs
+test/card-work-rules.test.cjs
