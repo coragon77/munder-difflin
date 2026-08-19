@@ -493,6 +493,160 @@ test("update: --assignee '' clears the assignee, untouched fields stay", {
   assert.ok(!('assignee' in c), 'the key is gone, not an empty string');
 });
 
+// ——— list (card agent-hive-card-list-a-read-on-2026-08-19): the READ-ONLY
+// board reader — one line per card, fixed columns, paused rendered
+// UNCONDITIONALLY. God's ad-hoc python heredocs read whatever fields their
+// author remembered (2026-08-18: filtered on status alone, never read
+// paused, dispatched a held card) — this subcommand is the replacement.
+
+function seedBoard(s) {
+  const mk = (over) => ({
+    dependsOn: [],
+    priority: 3,
+    createdAt: '2026-08-19T00:00:00.000Z',
+    origin: 'agent',
+    ...over,
+  });
+  // Ledger order deliberately shuffled: done, blocked, todo×2, doing.
+  s.hive.writeTasks([
+    mk({ id: 'l-done', title: 'Shipped long ago', status: 'done', assignee: 'stanley-1' }),
+    mk({
+      id: 'l-blocked',
+      title: 'Waiting on customer',
+      status: 'blocked',
+      assignee: 'jessica-1',
+    }),
+    mk({
+      id: 'l-todo-held',
+      title: 'Held import',
+      status: 'todo',
+      assignee: 'kevin-1',
+      paused: true,
+    }),
+    mk({ id: 'l-todo', title: 'Fresh backlog', status: 'todo' }),
+    mk({ id: 'l-doing', title: 'In flight', status: 'doing', assignee: 'kevin-1' }),
+  ]);
+}
+
+const L_HELD = 'todo | l-todo-held | kevin-1 | paused=yes | Held import';
+const L_TODO = 'todo | l-todo | - | paused=no | Fresh backlog';
+const L_DOING = 'doing | l-doing | kevin-1 | paused=no | In flight';
+const L_BLOCKED = 'blocked | l-blocked | jessica-1 | paused=no | Waiting on customer';
+const L_DONE = 'done | l-done | stanley-1 | paused=no | Shipped long ago';
+
+const linesOf = (out) => out.split('\n').filter(Boolean);
+
+test('list: no filters — every card, fixed columns, paused ALWAYS rendered, grouped order', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedBoard(s);
+  // Group order todo→doing→blocked→done, stable within a group (the held
+  // todo precedes the fresh one in the ledger and must stay first).
+  assert.deepEqual(linesOf(s.run('list')), [L_HELD, L_TODO, L_DOING, L_BLOCKED, L_DONE]);
+});
+
+test('list: --open is the working set todo+doing+blocked — done excluded', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedBoard(s);
+  assert.deepEqual(linesOf(s.run('list', '--open')), [L_HELD, L_TODO, L_DOING, L_BLOCKED]);
+});
+
+test('list: --status selects one status', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  seedBoard(s);
+  assert.deepEqual(linesOf(s.run('list', '--status', 'doing')), [L_DOING]);
+  assert.deepEqual(linesOf(s.run('list', '--status', 'done')), [L_DONE]);
+});
+
+test('list: --assignee filter keeps held cards VISIBLE with paused=yes — the incident read', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedBoard(s);
+  // Filtering by owner is exactly the 2026-08-18 shape: the answer must
+  // still surface paused=yes, never silently drop the hold column.
+  assert.deepEqual(linesOf(s.run('list', '--assignee', 'kevin-1')), [L_HELD, L_DOING]);
+});
+
+test('list: filters AND together', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  seedBoard(s);
+  assert.deepEqual(linesOf(s.run('list', '--status', 'todo', '--assignee', 'kevin-1')), [L_HELD]);
+});
+
+test('list: READ-ONLY under every flag combo — ledger byte-identical, no lock/tmp residue', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedBoard(s);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+  const combos = [
+    [],
+    ['--open'],
+    ['--status', 'done'],
+    ['--status=done'],
+    ['--assignee', 'kevin-1'],
+    ['--status', 'todo', '--assignee', 'kevin-1'],
+  ];
+  for (const args of combos) {
+    s.run('list', ...args);
+    assert.equal(
+      fs.readFileSync(s.tasksPath, 'utf8'),
+      before,
+      'ledger untouched by: list ' + args.join(' '),
+    );
+  }
+  const residue = fs
+    .readdirSync(path.dirname(s.tasksPath))
+    .filter((f) => f.includes('.tmp') || f.endsWith('.lock'));
+  assert.deepEqual(residue, [], 'no lock or tmp files left behind');
+});
+
+test('list: long titles truncate, embedded newlines flatten — one card per line', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  s.hive.writeTasks([
+    {
+      id: 'l-long',
+      title: 'X'.repeat(300) + '\nINJECTED SECOND LINE',
+      status: 'todo',
+      dependsOn: [],
+      priority: 3,
+      createdAt: '2026-08-19T00:00:00.000Z',
+      origin: 'agent',
+    },
+  ]);
+  const out = s.run('list');
+  const lines = linesOf(out);
+  assert.equal(lines.length, 1, 'exactly one line — no wrap, no injected row');
+  assert.ok(!out.includes('INJECTED'), 'a newline in a title cannot add rows');
+  const title = lines[0].split(' | ')[4];
+  assert.ok(title.endsWith('…'), 'over-long title truncated');
+  assert.equal(title.length, 80, 'title column capped at 80');
+});
+
+test('list: rejects unknown flags, bad --status, and --open with --status — nothing written', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedBoard(s);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+  let r = s.runFail('list', '--paused');
+  assert.notEqual(r.code, 0, 'list takes no mutation flags');
+  r = s.runFail('list', '--paused', 'now');
+  assert.notEqual(r.code, 0, 'valued mutation flag rejected');
+  assert.match(r.stderr, /unknown flag/i);
+  r = s.runFail('list', '--status', 'nonsense');
+  assert.notEqual(r.code, 0, 'bad status rejected');
+  r = s.runFail('list', '--open', '--status', 'todo');
+  assert.notEqual(r.code, 0, '--open with --status rejected');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger untouched');
+});
+
 test('corrupt tasks.json: refuses to write, errors cleanly', { skip: !POSIX }, async (t) => {
   const s = setup(t);
   fs.writeFileSync(s.tasksPath, 'this is not json', 'utf8');

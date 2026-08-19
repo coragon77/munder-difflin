@@ -3704,6 +3704,21 @@ cards — the card is never duplicated):
   line. A dep-waiting todo stays dispatchable (a dependency is not an
   operator hold); it is just correctly waiting, so it is not listed.
 
+**Read the board** (read-only, every pane — the replacement for piping python
+at tasks.json):
+
+\`\`\`bash
+"$HIVE_ROOT/bin/hive-card" list [--status <todo|doing|blocked|done>] [--assignee <id>] [--open]
+\`\`\`
+
+- One line per card, fixed columns: \`status | id | assignee | paused | title\`.
+  The paused column is ALWAYS rendered — never filter a board read on status
+  alone (incident 2026-08-18: god did exactly that and dispatched a card the
+  operator had deliberately held).
+- \`--open\` = the working set (todo, doing, blocked). Filters AND together;
+  no filters = every card. Order: todo, doing, blocked, done groups, stable
+  within a group. Read-only under every argument combination.
+
 All subcommands validate before writing and refuse an unparseable ledger
 instead of clobbering it. Errors explain themselves on stderr (exit 1).`;
 
@@ -5080,6 +5095,8 @@ function usage() {
     '  hive-card status <id> <todo|doing|blocked|done> [--adopt|--fresh]',
     '  hive-card update <id> [--title <t>] [--notes <n>] [--assignee <id>] [--paused|--resume]',
     '  hive-card actionable  # read-only: the ACTIONABLE roster line + full id list',
+    '  hive-card list [--status <todo|doing|blocked|done>] [--assignee <id>] [--open]',
+    '                # read-only: one line per card — paused is ALWAYS shown',
   ].join('\\n'));
 }
 
@@ -5137,6 +5154,49 @@ const renderActionableLineFn = ${renderActionableLine};
 function cmdActionable() {
   const ids = actionableCardsFn(readLedger());
   process.stdout.write([renderActionableLineFn(ids)].concat(ids).join('\\n') + '\\n');
+}
+
+// The read-only board reader (card agent-hive-card-list-a-read-on-2026-08-19):
+// god's ad-hoc python heredocs read whatever fields their author happened to
+// remember — the 2026-08-18 incident filtered on status alone, never read
+// paused, and dispatched a card the operator had deliberately held. One line
+// per card, fixed columns, paused rendered UNCONDITIONALLY. No lock, no
+// write, under any argument combination.
+const TITLE_MAX = 80;
+function cmdList(argv) {
+  const openFlag = argv.indexOf('--open') >= 0;
+  const flags = parseFlags(argv.filter(function (a) { return a !== '--open'; }));
+  for (const k of Object.keys(flags)) {
+    if (['status', 'assignee'].indexOf(k) < 0) fail('unknown flag --' + k);
+  }
+  let want = null;
+  if (openFlag) {
+    if (flags.status !== undefined) fail('give either --open or --status, not both.');
+    want = ['todo', 'doing', 'blocked'];
+  } else if (flags.status !== undefined) {
+    if (ALL_STATUSES.indexOf(flags.status) < 0) {
+      fail('--status must be one of: ' + ALL_STATUSES.join(', ') + ' (got: ' + flags.status + ').');
+    }
+    want = [flags.status];
+  }
+  const data = readLedger();
+  const lines = [];
+  for (const st of ALL_STATUSES) {
+    if (want && want.indexOf(st) < 0) continue;
+    for (const t of data.tasks) {
+      if (!t || t.status !== st) continue;
+      if (flags.assignee !== undefined && (t.assignee || '-') !== flags.assignee) continue;
+      // One card per terminal line: collapse embedded whitespace and cap the
+      // title so a rogue ledger entry can never wrap or inject rows.
+      const title = String(t.title || '').replace(/\\s+/g, ' ').trim();
+      lines.push(
+        st + ' | ' + t.id + ' | ' + (t.assignee || '-') + ' | paused=' +
+        (t.paused === true ? 'yes' : 'no') + ' | ' +
+        (title.length > TITLE_MAX ? title.slice(0, TITLE_MAX - 1) + '…' : title),
+      );
+    }
+  }
+  process.stdout.write(lines.join('\\n') + (lines.length ? '\\n' : ''));
 }
 
 function writeLedger(data) {
@@ -5356,6 +5416,7 @@ try {
   else if (cmd === 'status') cmdStatus(process.argv.slice(3));
   else if (cmd === 'update') cmdUpdate(process.argv.slice(3));
   else if (cmd === 'actionable') cmdActionable();
+  else if (cmd === 'list') cmdList(process.argv.slice(3));
   else usage();
 } catch (e) {
   process.stderr.write('hive-card: ' + (e && e.message ? e.message : String(e)) + '\\n');
