@@ -224,6 +224,31 @@ test('godLine carries the HUMAN-CARD REFERENCE rule (no duplicate cards)', () =>
   assert.ok(/hive-card update/.test(p), 'must name the enrichment tool (hive-card update)');
 });
 
+test('godLine carries the ONE ASK PER ENTRY humanQA shaping rule', () => {
+  // Card agent-godline-one-question-per-2026-08-19: god bundled FOUR
+  // decisions into one numbered humanQA paragraph — the operator: "shouldn't
+  // this be 4 questions in ask me instead of one? The display is not coded
+  // for a long ass question with numbering." An entry is the unit of ANSWERING
+  // (each carries its own "a"), so independent asks must land as separate
+  // entries, each short enough to render on the ASK ME board.
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/ONE ASK PER ENTRY/.test(p), 'the rule must be named');
+  assert.ok(
+    /independent questions become separate entries/.test(p),
+    'independent asks become separate humanQA entries',
+  );
+  assert.ok(/never one numbered paragraph/.test(p), 'the bundled numbered paragraph is banned');
+  assert.ok(
+    /cannot be answered piecemeal/.test(p),
+    'names why: each entry carries its own answer field',
+  );
+  assert.ok(
+    /couple of sentences/.test(p) && /recommendation/.test(p),
+    'caps q length: decision + minimum context + recommendation',
+  );
+  assert.ok(/push several entries in one write/.test(p), 'several asks still ship as one write');
+});
+
 test('godLine carries the ENGAGEMENT-AWARE CARD FLIPS rule', () => {
   // Card agent-harness-engagement-aware-2026-08-17: --adopt for connected/
   // running engagements, fresh default, idle-gated clears, every card carries
