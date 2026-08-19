@@ -54,6 +54,7 @@ import {
 } from '../shared/agentProvider';
 import { MCP_CATALOG } from '../shared/mcpCatalog';
 import { hasInboxMonitor } from '../shared/providerAutomation';
+import { cardSessionMailHold, MAIL_STAGE_TIMEOUT_MS, type CardLike } from './cardSessions';
 import { waitingLabel } from '../shared/waitingLabel';
 import { compareAgentOrder } from '../shared/agentOrder';
 import { expandTilde } from './fs';
@@ -1971,11 +1972,97 @@ export class HiveManager {
     };
   }
 
-  /** Atomically deliver a message into a recipient agent's inbox. */
+  /** Atomically deliver a message into a recipient agent's inbox. MAIL
+   *  STAGING (card agent-card-session-clear-loses-2026-08-19): while the
+   *  recipient has a 'doing' card whose card-scoped conversation is not yet
+   *  established, mail lands in inbox/.staged instead — the wake (monitor or
+   *  typed nudge) keys off inbox visibility, and letting it fire before the
+   *  card-scoped clear executes is what turns the pending clear into a
+   *  post-work wipe. releaseStagedMail() moves it into the inbox once the
+   *  stamp lands (or the card stops holding, or the timeout breaks the tie). */
   private deliver(msg: HiveMessage, toId: string): void {
     const inbox = join(this.agentDir(toId), 'inbox');
     if (!existsSync(inbox)) return; // unknown recipient — dropped (logged by caller)
+    if (this.mailHolds().has(toId)) {
+      const staged = join(inbox, '.staged');
+      mkdirSync(staged, { recursive: true });
+      this.atomicWriteJson(join(staged, `${msg.id}.json`), msg);
+      this.appendLog({ kind: 'mail-staged', to: toId, id: msg.id });
+      return;
+    }
     this.atomicWriteJson(join(inbox, `${msg.id}.json`), msg);
+  }
+
+  /** The set of agents whose mail must stage right now (pure snapshot of the
+   *  board + registry through cardSessionMailHold). Shared by deliver() and
+   *  the release sweep so both sides gate on ONE definition. */
+  private mailHolds(): Set<string> {
+    const data = this.tasks() as { tasks?: CardLike[] };
+    const cards = Array.isArray(data.tasks) ? data.tasks : [];
+    const reg = this.registry().agents;
+    const registrySessions: Record<string, string | undefined> = {};
+    const providers: Record<string, AgentProvider | undefined> = {};
+    for (const t of cards) {
+      if (t?.assignee) {
+        registrySessions[t.assignee] = reg[t.assignee]?.sessionId;
+        providers[t.assignee] = reg[t.assignee]?.provider;
+      }
+    }
+    return cardSessionMailHold(cards, registrySessions, providers);
+  }
+
+  /** Release staged mail whose gate opened: the stamp landed (fresh
+   *  conversation established), the holding card stopped being doing/assigned,
+   * or the staging horizon passed — the timeout also mails god so a stuck
+   * establishment (dead spawn, window down, restart mid-transition) is VISIBLE
+   * instead of silently delaying the dispatch forever. Called from the router
+   * tick, next to the outbox drain that stages. */
+  private releaseStagedMail(): void {
+    const root = this.root();
+    if (!root) return;
+    const holds = this.mailHolds();
+    const now = Date.now();
+    for (const id of this.agentIds()) {
+      const inbox = join(root, 'agents', id, 'inbox');
+      const staged = join(inbox, '.staged');
+      if (!existsSync(staged)) continue;
+      let files: string[] = [];
+      try {
+        files = readdirSync(staged).filter((f) => f.endsWith('.json'));
+      } catch {
+        continue;
+      }
+      const held = holds.has(id);
+      for (const f of files) {
+        const full = join(staged, f);
+        let timedOut = false;
+        if (held) {
+          try {
+            timedOut = now - statSync(full).mtimeMs > MAIL_STAGE_TIMEOUT_MS;
+          } catch {
+            continue;
+          }
+          if (!timedOut) continue;
+        }
+        try {
+          renameSync(full, join(inbox, f));
+        } catch {
+          continue;
+        }
+        this.appendLog({ kind: 'mail-released', to: id, id: f.replace(/\.json$/, '') });
+        if (timedOut) {
+          this.send(
+            {
+              to: this.registry().godId ?? 'god',
+              act: 'inform',
+              subject: `[mail-staged] timeout release for ${id}`,
+              body: `Mail for ${id} was held in inbox/.staged for over ${Math.round(MAIL_STAGE_TIMEOUT_MS / 60_000)} minutes waiting for its doing card's card-scoped conversation to establish (the fresh clear never landed — dead spawn, window down, or a restart mid-transition). It has now been delivered, so the agent may wake into the WRONG (pre-clear) conversation: check the card and steer the pane by hand if the conversation needs restarting.`,
+            },
+            'system',
+          );
+        }
+      }
+    }
   }
 
   /** Inject a message directly (used by the orchestrator / UI / tests). */
@@ -2260,6 +2347,7 @@ export class HiveManager {
       }
     }
     if (routed > 0) this.commit(`hive: routed ${routed} message(s)`);
+    this.releaseStagedMail();
     return routed;
   }
 

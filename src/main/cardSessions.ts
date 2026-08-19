@@ -22,6 +22,15 @@
 //     HiveManager.recordSession) — so the stamp converges to the post-clear
 //     conversation without racing the queue.
 //
+// MAIL STAGING (card agent-card-session-clear-loses-2026-08-19): the dispatch
+// mail and the clear are two INDEPENDENT channels racing for one agent, and the
+// wake (monitor/nudge keyed on inbox visibility) can start the card's work in
+// the PRE-clear conversation — turning the pending clear into a post-work
+// wipe. So the router stages mail in inbox/.staged while the assignee's doing
+// card is un-established (cardSessionMailHold) and releases it when the stamp
+// lands — sequencing the channels at their common dependency: mail visibility.
+// See cardSessionMailHold below and HiveManager.deliver/releaseStagedMail.
+//
 // SAFETY: the FIRST tick after boot only snapshots — a restart must never
 // re-clear a working pane (no transition observed live = no action). Actions
 // fire only on transitions seen between two consecutive ticks. A failed emit
@@ -32,6 +41,55 @@ import { join } from 'node:path';
 import { composeSessionCommand } from './sessionRequests';
 import type { AgentProvider } from '../shared/agentProvider';
 import type { CardSessionMarker } from '../shared/cardSessions';
+
+/** How long dispatch mail may sit in inbox/.staged before the router gives up
+ *  on the card-scoped conversation ever establishing (broken spawn, window
+ *  down, restart mid-transition) and releases it WITH a god notice. The healthy
+ *  chain (spawn → tick → clear typed at idle → session reports → stamp) is
+ *  well under a minute; this is the "something is broken, make it visible"
+ *  horizon, not a tuning knob. */
+export const MAIL_STAGE_TIMEOUT_MS = 10 * 60_000;
+
+/** MAIL STAGING (card agent-card-session-clear-loses-2026-08-19): a dispatch
+ *  reaches its assignee over TWO independent channels — the typed card-scoped
+ *  clear (this watcher) and the inbox mail (which wakes the agent through the
+ *  in-pane monitor or the renderer's typed nudge). They RACE, and the wake can
+ *  win: the agent starts the card's work in the PRE-clear conversation, and the
+ *  clear — typed input that only executes at an idle prompt — degenerates into
+ *  a post-turn wipe of the conversation that just did the work. No busy/idle
+ *  gate can fix an ordering violation, so the fix sequences the channels at
+ *  their common dependency: MAIL VISIBILITY. While an assignee has a 'doing'
+ *  card whose conversation is not yet established, the router stages mail in
+ *  inbox/.staged (invisible to the monitor's `ls inbox/*.json`, to
+ *  hive.inbox()/the nudge, and to `hive-inbox drain` — all non-recursive
+ *  *.json listings) and releases it once the stamp lands (the fresh
+ *  conversation reported in) or the card stops holding (blocked/done/reassign).
+ *  PURE: cards + registry sessions + providers → the set of agentIds whose mail
+ *  must stage right now. Never holds when the establishment mechanism does not
+ *  exist for the provider (no typable clear for a fresh card; no typable resume
+ *  — pi's picker — for a paused one): there the watcher itself types nothing,
+ *  and holding mail would only delay the dispatch to the timeout. Adopt-mode
+ *  cards never hold: the engagement is connected, mail in the live
+ *  conversation is the intent. */
+export function cardSessionMailHold(
+  cards: CardLike[],
+  registrySessions: Record<string, string | undefined>,
+  providers: Record<string, AgentProvider | undefined> = {},
+): Set<string> {
+  const held = new Set<string>();
+  for (const card of cards) {
+    if (!card.assignee || card.status !== 'doing' || card.sessionMode === 'adopt') continue;
+    if (card.sessionId && card.sessionId === registrySessions[card.assignee]) continue; // established
+    const mechanism = card.sessionId
+      ? composeSessionCommand(
+          { verb: 'resume', sessionId: card.sessionId },
+          providers[card.assignee],
+        ).ok
+      : composeSessionCommand({ verb: 'clear' }, providers[card.assignee]).ok;
+    if (mechanism) held.add(card.assignee);
+  }
+  return held;
+}
 
 /** Minimal structural card the watcher needs (subset of hive.HiveTask). */
 export interface CardLike {

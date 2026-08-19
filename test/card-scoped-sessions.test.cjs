@@ -24,7 +24,8 @@ const os = require('node:os');
 const path = require('node:path');
 const loadTs = require('./load-ts.cjs');
 
-const { cardSessionDecisions, cardSessionTick } = loadTs('src/main/cardSessions.ts');
+const { cardSessionDecisions, cardSessionTick, cardSessionMailHold, MAIL_STAGE_TIMEOUT_MS } =
+  loadTs('src/main/cardSessions.ts');
 const { cardSessionActionStillValid } = loadTs('src/shared/cardSessions.ts');
 const { HiveManager } = loadTs('src/main/hive.ts');
 
@@ -506,6 +507,42 @@ function setCards(tmp, tasks) {
   fs.writeFileSync(path.join(tmp, 'tasks.json'), JSON.stringify({ tasks }));
 }
 
+/** Hand-built hive with dwight (claude) + god, an inbox each, and the given
+ *  cards on the board — the deliver()/routeOnce() staging surface. */
+function stagedHive(tasks) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'staged-'));
+  const root = path.join(tmp, 'hive');
+  for (const id of ['god', 'dwight']) {
+    fs.mkdirSync(path.join(root, 'agents', id, 'inbox'), { recursive: true });
+  }
+  fs.writeFileSync(
+    path.join(root, 'registry.json'),
+    JSON.stringify({
+      godId: 'god',
+      agents: {
+        god: { id: 'god', name: 'God', cwd: '/g', status: 'idle', lastSeen: 0 },
+        dwight: {
+          id: 'dwight',
+          name: 'Dwight',
+          cwd: '/w',
+          status: 'idle',
+          lastSeen: 0,
+          sessionId: 'old-engagement',
+          provider: 'claude',
+        },
+      },
+    }),
+  );
+  fs.writeFileSync(path.join(root, 'tasks.json'), JSON.stringify({ tasks }));
+  return { hive: new HiveManager(() => tmp), root };
+}
+
+/** Rewrite the board through the manager's own ledger (writeTasks) so the
+ *  release sweep sees a consistent tasks.json. */
+function setCardsStaged(hive, tasks) {
+  hive.writeTasks(tasks);
+}
+
 test('tick: clear then lead are emitted in order; god is informed; snapshot advances', () => {
   const tmp = tmpHive();
   setCards(tmp, [CARD({ status: 'todo' })]);
@@ -770,4 +807,101 @@ test('tick: restart safety holds — a doing card present at BOOT never fires', 
   cardSessionTick(deps, seen); // boot tick
   cardSessionTick(deps, seen); // second tick: card SEEN doing at boot — still no action
   assert.equal(emitted.length, 0, 'a restart never re-clears a working pane');
+});
+
+// ——— mail staging (card agent-card-session-clear-loses-2026-08-19): the ———
+// ——— wake must not beat the clear — dispatch mail is held in             ———
+// ——— inbox/.staged/ until the card's conversation is established         ———
+
+test('mailHold: doing card with no stamp → agent held; established/adopt/others → not', () => {
+  const hold = cardSessionMailHold(
+    [
+      CARD({ id: 'fresh' }), // doing, no sessionId → held
+      CARD({ id: 'done-card', status: 'done' }), // not doing → never held
+      CARD({ id: 'adopted', sessionMode: 'adopt' }), // adopt → mail flows (connected)
+      CARD({ id: 'established', sessionId: 'live-1' }), // stamp == live → not held
+      CARD({ id: 'resumable', sessionId: 'paused-session' }), // resume pending → held
+    ],
+    { dwight: 'live-1' },
+    { dwight: 'claude' },
+  );
+  // One agent, several cards: ANY blocking card holds the agent's mail.
+  assert.equal(hold.has('dwight'), true);
+});
+
+test('mailHold: provider without a typable clear/resume is never held (mail must flow)', () => {
+  // A provider whose clear is NO_CONTEXT_COMMANDS (null) can never establish a
+  // card conversation by typed command — holding its mail would just delay the
+  // dispatch for the timeout. pi's resume is a picker → the resume path is a
+  // noResume mail to god, so a pi resume-card must not hold mail either.
+  const exotic = cardSessionMailHold(
+    [CARD({ id: 'fresh' })],
+    { dwight: 'old' },
+    { dwight: 'copilot' },
+  );
+  assert.equal(exotic.has('dwight'), false, 'no typable clear → no hold');
+  const piResume = cardSessionMailHold(
+    [CARD({ id: 'r', sessionId: 'paused-session' })],
+    { dwight: 'old' },
+    { dwight: 'pi' },
+  );
+  assert.equal(piResume.has('dwight'), false, 'no typable resume (pi picker) → no hold');
+});
+
+test('router: dispatch mail to an unstamped doing card lands in inbox/.staged, invisible to inbox()', () => {
+  const { hive, root } = stagedHive([CARD()]);
+  hive.send({ to: 'dwight', subject: 'dispatch', body: 'the contract' }, 'god');
+  const staged = path.join(root, 'agents', 'dwight', 'inbox', '.staged');
+  assert.equal(fs.readdirSync(staged).length, 1, 'mail staged, not delivered');
+  assert.equal(
+    fs.readdirSync(path.join(root, 'agents', 'dwight', 'inbox')).length,
+    1,
+    'only .staged in inbox',
+  );
+  assert.equal(
+    hive.inbox('dwight').length,
+    0,
+    'staged mail is invisible to the renderer/nudge surface',
+  );
+});
+
+test('router: the stamp opens the gate — routeOnce releases staged mail into the inbox', () => {
+  const { hive, root } = stagedHive([CARD()]);
+  hive.send({ to: 'dwight', subject: 'dispatch', body: 'the contract' }, 'god');
+  // The card-scoped clear executed: a NEW conversation reported in → stamp.
+  hive.recordSession('dwight', 'fresh-card-conversation');
+  hive.routeOnce();
+  assert.equal(hive.inbox('dwight').length, 1, 'released after the stamp');
+  assert.equal(fs.readdirSync(path.join(root, 'agents', 'dwight', 'inbox', '.staged')).length, 0);
+});
+
+test('router: a card that stops being doing (blocked) releases staged mail without a stamp', () => {
+  const { hive } = stagedHive([CARD()]);
+  hive.send({ to: 'dwight', subject: 'dispatch', body: 'the contract' }, 'god');
+  setCardsStaged(hive, [CARD({ status: 'blocked' })]);
+  hive.routeOnce();
+  assert.equal(hive.inbox('dwight').length, 1, 'no doing card → gate open → released');
+});
+
+test('router: adopt-mode mail flows straight to the inbox (connected engagement)', () => {
+  const { hive } = stagedHive([CARD({ sessionMode: 'adopt' })]);
+  hive.send({ to: 'dwight', subject: 'dispatch', body: 'the contract' }, 'god');
+  assert.equal(hive.inbox('dwight').length, 1, 'adopt never stages');
+});
+
+test('router: staged mail older than the timeout is released WITH a god notice', () => {
+  const { hive, root } = stagedHive([CARD()]);
+  hive.send({ to: 'dwight', subject: 'dispatch', body: 'the contract' }, 'god');
+  // Backdate the staged file past the horizon.
+  const stagedDir = path.join(root, 'agents', 'dwight', 'inbox', '.staged');
+  const f = path.join(stagedDir, fs.readdirSync(stagedDir)[0]);
+  const old = new Date(Date.now() - MAIL_STAGE_TIMEOUT_MS - 5000);
+  fs.utimesSync(f, old, old);
+  hive.routeOnce();
+  assert.equal(hive.inbox('dwight').length, 1, 'timeout released the mail');
+  const godInbox = hive.inbox('god');
+  assert.ok(
+    godInbox.some((m) => /mail-staged/.test(m.subject) && /dwight/.test(m.body)),
+    'god is told the dispatch mail landed late and why',
+  );
 });
