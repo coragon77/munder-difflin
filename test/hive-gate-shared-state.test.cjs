@@ -428,6 +428,15 @@ test('R2: nothing-covers-this refusal (registry.json) names MAIL-THE-OPERATOR an
   assert.match(d.reason, /do not thrash retrying|do not hand-edit/);
 });
 
+test('registry.json refusal points READS at bin/hive-roster show/list (Pam 357610e)', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', { command: 'cat $HIVE_ROOT/registry.json' });
+  assert.ok(d, 'denied');
+  assert.match(d.reason, /hive-roster (show|list)/);
+  // writes stay uncovered — the sentence must not claim more (god's boundary)
+  assert.match(d.reason, /no god-side primitive writes it directly/i);
+});
+
 test('R2: tasks.json refusal references hive-card restore for corrupt-ledger repair', () => {
   const { root } = floor();
   const d = gate(root, root, 'Bash', {

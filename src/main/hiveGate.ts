@@ -350,7 +350,7 @@ function refusalReason(target: string, context: string): string {
   if (target.includes('registry.json')) {
     return [
       head,
-      'registry.json is owned by the harness (spawn/retire/vacation flows) and the hire CLIs (`hive-hire`, `hive-new`). No god-side primitive reads or writes it directly.',
+      'registry.json is owned by the harness (spawn/retire/vacation flows) and the hire CLIs (`hive-hire`, `hive-new`). Reads: `$HIVE_ROOT/bin/hive-roster show <id>` / `list` (cwd, role, pinned, state — Pam, 357610e). No god-side primitive WRITES it directly.',
       tail,
     ].join('\n');
   }
