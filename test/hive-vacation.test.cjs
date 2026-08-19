@@ -47,7 +47,7 @@ const vacationPool = (hive) =>
     .map(([id, a]) => ({
       id,
       name: a.name,
-      role: a.role ?? 'agent',
+      role: a.role ?? 'role: unknown',
       cwd: a.cwd,
       parkedAt: a.vacationSince ?? null,
     }));
@@ -114,6 +114,27 @@ test('ending a vacation demotes to ARCHIVED — it never revives anyone', async 
   // the floor. Coming back is a respawn, not this.
   assert.equal(entry.archived, true, 'ending a vacation must not put anyone back on the floor');
   assert.deepEqual(activeIds(hive), []);
+});
+
+test('parking leaves the role byte-identical (registry-role-overwrite incident 2026-08-19)', async (t) => {
+  const { home, hive } = floor(t);
+  await hive.ensureAgent({
+    id: 'ryan-1',
+    name: 'Ryan',
+    provider: 'claude',
+    role: 'Owns merlin_oegb',
+    cwd: '/tmp',
+  });
+  const before = hive.registry().agents['ryan-1'].role;
+
+  hive.setVacation('ryan-1', true);
+
+  // A wipe that read "on standby" on the roster line misrouted Ryan's customer
+  // onto a harness card and destroyed his pane — park/recall may NEVER touch
+  // the role. Assert the persisted file, not just the in-memory copy.
+  assert.equal(hive.registry().agents['ryan-1'].role, before);
+  const onDisk = JSON.parse(fs.readFileSync(path.join(home, 'hive', 'registry.json'), 'utf8'));
+  assert.equal(onDisk.agents['ryan-1'].role, before, 'the persisted role survives a park');
 });
 
 test('the retired and god are refused — vacation is for the living and the led', async (t) => {
