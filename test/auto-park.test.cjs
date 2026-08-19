@@ -264,9 +264,57 @@ test('WIRING: autoParkIdle defaults ON for existing installs too', () => {
   assert.match(defaults, /autoParkIdle: true/, 'DEFAULTS carries autoParkIdle: true');
 });
 
+test('WIRING: hive-dispatch re-reads vacation AFTER its doing-flip (the round-2 residual race)', () => {
+  const src = readFileSync(join(__dirname, '..', 'src', 'main', 'hive.ts'), 'utf8');
+  // The dispatch CLI must not trust its PRE-LOCK registry snapshot at the
+  // recall decision point: a park that interleaved with the flip is only
+  // visible in a fresh disk read. Without this, a doing holder can stay
+  // parked with no recall — the exact hole review round 2 closed.
+  assert.match(
+    src,
+    /const parkedNow = \(readRegistry\(\)\.agents\[assignee\] \|\| entry\)\.vacation === true;/,
+    'the recall decision reads vacation from disk, falling back to the stale entry',
+  );
+  assert.match(src, /if \(parkedNow\) \{/, 'the recall gates on the fresh flag');
+});
+
 test('WIRING: ParkOrigin carries the auto member (shared refusal ladder, honest logs)', () => {
   const src = readFileSync(join(__dirname, '..', 'src', 'main', 'vacationFlow.ts'), 'utf8');
   assert.match(src, /'operator' \| 'request' \| 'auto'/);
+});
+
+test('BEHAVIOR: inboxBacklogStrict — missing .staged is 0, staged mail counts, unreadable is null', (t0) => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const { HiveManager } = loadTs('src/main/hive.ts');
+  const home = fs.mkdtempSync(join(os.tmpdir(), 'md-autopark-'));
+  t0.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const hive = new HiveManager(() => home);
+  // inboxBacklogStrict is a pure filesystem read — the agent dir needs no
+  // registry entry, just the inbox path itself.
+  // HiveManager.root() nests a hive/ dir under the resolver's value — fixture
+  // paths must nest under it (recorded lesson from card-scoped sessions).
+  const inbox = join(home, 'hive', 'agents', 'w1', 'inbox');
+  fs.mkdirSync(inbox, { recursive: true });
+  // The COMMON case: inbox with no .staged dir must be a true 0 — returning
+  // null here would block every park forever (the heartbeat shape).
+  assert.equal(hive.inboxBacklogStrict('w1'), 0);
+  // Staged mail (undelivered dispatch contracts) counts as pending.
+  fs.mkdirSync(join(inbox, '.staged'), { recursive: true });
+  fs.writeFileSync(join(inbox, '.staged', 'm1.json'), '{}');
+  assert.equal(hive.inboxBacklogStrict('w1'), 1);
+  // Direct + staged both count.
+  fs.writeFileSync(join(inbox, 'm2.json'), '{}');
+  assert.equal(hive.inboxBacklogStrict('w1'), 2);
+  // No inbox dir at all = no mail ever arrived = 0 (not null).
+  assert.equal(hive.inboxBacklogStrict('nobody'), 0);
+  // UNREADABLE inbox = null (unknown ≠ drained). A file where the inbox dir
+  // should be makes readdir fail with ENOTDIR — deterministic on every
+  // platform/privilege, unlike a chmod-000 dir (root reads through those).
+  const w2inbox = join(home, 'hive', 'agents', 'w2', 'inbox');
+  fs.mkdirSync(join(home, 'hive', 'agents', 'w2'), { recursive: true });
+  fs.writeFileSync(w2inbox, 'not a dir');
+  assert.equal(hive.inboxBacklogStrict('w2'), null);
 });
 
 test('BEHAVIOR: origin auto enforces the busy gate like a request (review finding 4)', () => {

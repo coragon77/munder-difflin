@@ -77,6 +77,24 @@ function unknownCount(v: number | undefined): boolean {
   return typeof v !== 'number' || !Number.isInteger(v) || v < 0;
 }
 
+/** Index a ledger read by assignee. Accepts BOTH tasks.json shapes — the
+ *  wrapper object (hive.tasks()) AND the bare array withLedgerLock hands its
+ *  callback — because the sweep reads the ledger in both places and a shape
+ *  mismatch at either silently degrades to "no evidence" (review round 2,
+ *  the dead-mechanism blocker: cardsOf(.tasks on an array) is undefined). */
+export function cardsByAssignee(ledger: unknown): Map<string, { id?: string; status?: string }[]> {
+  const list = Array.isArray(ledger) ? ledger : ((ledger as { tasks?: unknown[] })?.tasks ?? []);
+  const byAssignee = new Map<string, { id?: string; status?: string }[]>();
+  for (const t of list as { assignee?: string; id?: string; status?: string }[]) {
+    const owner = t?.assignee?.trim();
+    if (!owner) continue;
+    const cards = byAssignee.get(owner) ?? [];
+    cards.push({ id: t.id, status: t.status });
+    byAssignee.set(owner, cards);
+  }
+  return byAssignee;
+}
+
 /** A park the sweep wants to perform. */
 export interface AutoParkDecision {
   id: string;

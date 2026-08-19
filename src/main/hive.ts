@@ -3236,6 +3236,16 @@ export class HiveManager {
       return 0;
     }
   }
+  /** Count *.json files in one directory; null = UNREADABLE (never used for
+   *  a missing dir — callers existSync first so ENOENT can't masquerade as
+   *  unknown). Shared by the display count's strict sibling below. */
+  private countJsonFiles(dir: string): number | null {
+    try {
+      return readdirSync(dir).filter((f) => f.endsWith('.json')).length;
+    } catch {
+      return null;
+    }
+  }
   /** The park-gate's inbox read (card agent-auto-park-idle-agents-th-2026-08-19,
    *  review finding 3): unlike inboxBacklog — which is a DISPLAY count and
    *  reads every failure as 0 — this FAILS CLOSED for a decision that must
@@ -3248,17 +3258,15 @@ export class HiveManager {
   inboxBacklogStrict(id: string): number | null {
     const inbox = join(this.agentDir(id), 'inbox');
     if (!existsSync(inbox)) return 0;
-    const countJson = (dir: string): number | null => {
-      try {
-        return readdirSync(dir).filter((f) => f.endsWith('.json')).length;
-      } catch {
-        return null;
-      }
-    };
-    const direct = countJson(inbox);
-    if (direct === null) return null;
-    const staged = countJson(join(inbox, '.staged'));
+    // ENOENT on the STAGED subdir is the COMMON case (mail only stages during
+    // card-session transitions) — a missing .staged is a true 0, not unknown;
+    // returning null for it would block every park forever (the heartbeat
+    // shape: a mechanism that can never fire).
+    const stagedDir = join(inbox, '.staged');
+    const staged = existsSync(stagedDir) ? this.countJsonFiles(stagedDir) : 0;
     if (staged === null) return null;
+    const direct = this.countJsonFiles(inbox);
+    if (direct === null) return null;
     return direct + staged;
   }
   /** Install the Antigravity (`agy`) lifecycle-hook bridge: write the normalizer
@@ -6868,8 +6876,16 @@ withLock(function () {
 
 // Parked assignee: queue the recall the poller consumes (~1.5s), exactly like
 // god's hand-dropped vacation-request ({"agentId":..., "action":"recall"}).
+// The flag is RE-READ FROM DISK here, not the pre-lock registry snapshot: the
+// auto-park sweep parks INSIDE the ledger lock, so a park that interleaved
+// with this dispatch's doing-flip is visible in registry.json by now, while
+// the stale 'entry' would still say vacation:false — leaving a doing holder
+// parked with no recall (card agent-auto-park-idle-agents-th-2026-08-19,
+// review round 2). A park AFTER this flip cannot happen at all: the sweep's
+// evidence read is serialized behind this doing card by the same lock.
 let recalled = false;
-if (entry.vacation === true) {
+const parkedNow = (readRegistry().agents[assignee] || entry).vacation === true;
+if (parkedNow) {
   const dir = path.join(root, 'vacation-requests');
   fs.mkdirSync(dir, { recursive: true });
   const fp = path.join(dir, 'recall-' + Date.now() + '-' + Math.random().toString(16).slice(2, 8) + '.json');
