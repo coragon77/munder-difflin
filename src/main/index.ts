@@ -102,6 +102,16 @@ import {
 } from './vacationFlow';
 import { startCardSessionWatcher } from './cardSessions';
 import type { CardSessionMarker } from '../shared/cardSessions';
+
+// Whole-window flicker test (card agent-add-disable-gpu-composit-2026-08-19):
+// the flicker spread from the xterm panes to the office floor, pointing below
+// xterm at GPU compositing / the NVIDIA driver. Chromium reads this switch at
+// GPU-process startup — appended after app.whenReady() it would be a silent
+// no-op, hence module top level. A/B without a rebuild:
+//   MD_ENABLE_GPU_COMPOSITING=1 npm run dev   (restores default compositing)
+if (process.env.MD_ENABLE_GPU_COMPOSITING !== '1') {
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+}
 import { HookServer } from './hooks';
 import { CircuitBreaker, type BreakerInput } from './breaker';
 import type { UsageProvider } from './usage';
