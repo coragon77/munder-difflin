@@ -6870,59 +6870,90 @@ function autoParkSweep(): void {
   const reg = hive.registry();
   const usageById = new Map(telemetry.snapshot().usage.map((u) => [u.agentId, u]));
   const now = Date.now();
-  // The card evidence and the park itself run INSIDE the ledger lock: a
-  // hive-dispatch doing-flip (CLI or main writer, same lock) can never
-  // interleave between "all cards done" and the park — "a doing/blocked
-  // holder is never parked" holds mechanically, not just observationally.
-  // Lock contention (a writer held it ~5s) just skips this sweep — the next
-  // one is 60s out.
-  hive.withLedgerLock((tasks) => {
-    const cardsByAssignee = new Map<string, { id?: string; status?: string }[]>();
-    for (const t of tasks) {
+  const cardsOf = (tasks: unknown): Map<string, { id?: string; status?: string }[]> => {
+    const byAssignee = new Map<string, { id?: string; status?: string }[]>();
+    for (const t of (tasks as { tasks?: { assignee?: string; id?: string; status?: string }[] })
+      .tasks ?? []) {
       const owner = t?.assignee?.trim();
       if (!owner) continue;
-      const list = cardsByAssignee.get(owner) ?? [];
+      const list = byAssignee.get(owner) ?? [];
       list.push({ id: t.id, status: t.status });
-      cardsByAssignee.set(owner, list);
+      byAssignee.set(owner, list);
     }
-    const candidates = Object.entries(reg.agents)
-      .filter(([, a]) => !a.archived && !a.vacation && !a.retired)
-      .map(([id, a]) => {
-        const row = usageById.get(id);
-        return {
-          id,
-          role: a.role,
-          // Both god spellings, as parkAgentCore itself checks them.
-          isGod: !!a.isGod || reg.godId === id,
-          pinned: a.pinned,
-          archived: a.archived,
-          vacation: a.vacation,
-          retired: a.retired,
-          telemetryAgeMs: row && row.ts > 0 ? now - row.ts : undefined,
-          pendingBackgroundWork: pendingWork.countFor(id),
-          inboxBacklog: hive.inboxBacklog(id),
-          cards: cardsByAssignee.get(id) ?? [],
-        };
-      });
-    for (const d of autoParkDecisions(candidates)) {
+    return byAssignee;
+  };
+  for (const [id, a] of Object.entries(reg.agents)) {
+    if (a.archived || a.vacation || a.retired) continue;
+    const row = usageById.get(id);
+    const candidate = {
+      id,
+      role: a.role,
+      // Both god spellings, as parkAgentCore itself checks them.
+      isGod: !!a.isGod || reg.godId === id,
+      pinned: a.pinned,
+      archived: a.archived,
+      vacation: a.vacation,
+      retired: a.retired,
+      telemetryAgeMs: row && row.ts > 0 ? now - row.ts : undefined,
+      pendingBackgroundWork: pendingWork.countFor(id),
+      // undefined when UNREADABLE — unknown ≠ drained (review finding 3).
+      inboxBacklog: hive.inboxBacklogStrict(id) ?? undefined,
+    };
+    // ONE ledger-lock acquisition per agent, evidence read FRESH inside it
+    // (review finding 1, the blocker): the card evidence and the park share
+    // one short critical section — the same shape every other ledger writer
+    // uses — instead of one long lease across N parks that a 10s stale
+    // takeover could steal mid-park. Contention (a writer held the lock ~5s)
+    // just skips this agent; the next sweep is 60s out.
+    const parked = hive.withLedgerLock((tasks) => {
+      const decision = autoParkDecisions([{ ...candidate, cards: cardsOf(tasks).get(id) ?? [] }]);
+      if (decision.length === 0) return null;
+      const d = decision[0];
       const res = parkAgent(d.id, autoParkReason(d), 'auto');
-      if (res.ok) {
-        hive.appendLog({ kind: 'auto_park', agentId: d.id, idleMs: d.idleMs, evidence: d.evidence });
-        console.log(`[auto-park] parked ${d.id} — ${autoParkReason(d)}`);
-        informGod(
-          `[auto-park] ${d.id}`,
-          `${d.id} was parked by the harness at ${new Date(now).toISOString()} on positive done evidence: ${autoParkReason(d)}. It is zero-cost and protected from deletion; fetch it back with hive-recall ${d.id} (a dispatch to it recalls it automatically). The pin flag (office UI) is the standing protection if this one should never be auto-parked.`,
-        );
-      } else {
-        // Refusals log only: a busy race retries on the next sweep, a permanent
-        // refusal means the registry already moved (parked/pinned/retired) and
-        // the candidate stops qualifying. parkAgentCore logged its own row.
+      if (!res.ok) {
+        // Refusals log only: a busy race retries on the next sweep, a
+        // permanent refusal means the registry already moved and the
+        // candidate stops qualifying. parkAgentCore logged its own row.
         hive.appendLog({ kind: 'auto_park_refused', agentId: d.id, error: res.error ?? null });
         console.log(`[auto-park] refused ${d.id}: ${res.error}`);
+        return null;
       }
-    }
-    return true;
-  });
+      hive.appendLog({ kind: 'auto_park', agentId: d.id, idleMs: d.idleMs, evidence: d.evidence });
+      console.log(`[auto-park] parked ${d.id} — ${autoParkReason(d)}`);
+      informGod(
+        `[auto-park] ${d.id}`,
+        `${d.id} was parked by the harness at ${new Date(now).toISOString()} on positive done evidence: ${autoParkReason(d)}. It is zero-cost and protected from deletion; fetch it back with hive-recall ${d.id} (a dispatch to it recalls it automatically). The pin flag (office UI) is the standing protection if this one should never be auto-parked.`,
+      );
+      // BACKSTOP — the residual race the lock cannot close (a >10s park can
+      // have its lease stale-taken mid-park; a hive-dispatch doing-flip can
+      // then land while we park). Re-read the ledger NOW: if a doing/blocked
+      // card appeared for this agent, the invariant "a doing/blocked holder
+      // is never parked" was violated by the interleave — restore it by
+      // recalling the agent (the respawn resumes its session; the dispatch
+      // contract in its inbox drains on the next turn) and tell god.
+      const after = cardsOf(hive.tasks()).get(id) ?? [];
+      const violation = after.find((c) => c?.status === 'doing' || c?.status === 'blocked');
+      if (violation) {
+        hive.appendLog({
+          kind: 'auto_park_undone',
+          agentId: d.id,
+          cardId: violation.id ?? null,
+        });
+        console.warn(
+          `[auto-park] undone: ${violation.id} went doing/blocked during the park of ${d.id} — recalling`,
+        );
+        informGod(
+          `[auto-park undone] ${d.id}`,
+          `A dispatch landed on card ${violation.id} for ${d.id} at the same moment the auto-park closed its pane (a lock race the park backstop caught). The agent was recalled immediately — its pane resumes the same session and the dispatch mail drains on the next turn. No action needed; this notice exists so a seat that flickers is explainable.`,
+        );
+        recallAgent(d.id, { background: true }).catch((e) =>
+          console.error(`[auto-park] recall-backstop failed for ${d.id}:`, e),
+        );
+      }
+      return d.id;
+    });
+    if (parked === false) continue; // lock contention — next sweep retries
+  }
 }
 
 /** Total tokens (input+output+cache) a worker has burned so far, from the usage

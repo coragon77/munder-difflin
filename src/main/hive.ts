@@ -3236,6 +3236,31 @@ export class HiveManager {
       return 0;
     }
   }
+  /** The park-gate's inbox read (card agent-auto-park-idle-agents-th-2026-08-19,
+   *  review finding 3): unlike inboxBacklog — which is a DISPLAY count and
+   *  reads every failure as 0 — this FAILS CLOSED for a decision that must
+   *  not treat unknown as drained. Returns the number of pending mail files
+   *  (inbox/*.json PLUS inbox/.staged/*.json — staged mail is undelivered
+   *  dispatch contracts waiting on a card-session transition, i.e. exactly
+   *  the pending work a park must respect), or null when the inbox is
+   *  UNREADABLE (a readdir failure is unknown, not empty). A missing inbox
+   *  dir is a true 0: no dir means no mail ever arrived. */
+  inboxBacklogStrict(id: string): number | null {
+    const inbox = join(this.agentDir(id), 'inbox');
+    if (!existsSync(inbox)) return 0;
+    const countJson = (dir: string): number | null => {
+      try {
+        return readdirSync(dir).filter((f) => f.endsWith('.json')).length;
+      } catch {
+        return null;
+      }
+    };
+    const direct = countJson(inbox);
+    if (direct === null) return null;
+    const staged = countJson(join(inbox, '.staged'));
+    if (staged === null) return null;
+    return direct + staged;
+  }
   /** Install the Antigravity (`agy`) lifecycle-hook bridge: write the normalizer
    *  shim and merge a `munder-hive` hook group into agy's global hooks.json so a
    *  Gemini worker reports PreToolUse/PostToolUse/Stop/PreInvocation/PostInvocation
@@ -4556,7 +4581,8 @@ on a fully quiet floor where the standup skips itself — and god is mailed an
 kind:'auto_park' row). \`hive-park\` remains the manual path (parking
 decisively early, or on a standby confirmation without a card);
 \`hive-recall\` fetches anyone back, and a dispatch to a parked assignee
-recalls it automatically. Settings → autoParkIdle:false is the kill-switch.`;
+recalls it automatically. The \`autoParkIdle:false\` config flag is the
+kill-switch (a config-file switch — there is no Settings-UI control for it).`;
 
 /** The '## KITTY SATELLITE' section appended to COMMANDS.md — the god-facing
  *  remote-control surface for the satellite kitty. Every claim here is

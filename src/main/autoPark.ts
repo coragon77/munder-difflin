@@ -46,7 +46,10 @@ export const AUTO_PARK_SWEEP_MS = 60_000;
 
 /** One agent as the sweep sees it — every field the decision needs, nothing
  *  the decision cannot use (registry flags + telemetry age + inbox backlog +
- *  pending background work + the agent's assigned cards). */
+ *  pending background work + the agent's assigned cards). Every numeric is
+ *  optional-but-typed: a malformed value (NaN, ±Infinity, a string, a
+ *  negative) counts as UNKNOWN and fails toward NOT parking — a gate that
+ *  must not be weakened may not fail open on junk (review finding 2). */
 export interface AutoParkCandidate {
   id: string;
   role?: string;
@@ -60,10 +63,18 @@ export interface AutoParkCandidate {
   telemetryAgeMs?: number;
   /** Finite background work spawned from the current conversation. */
   pendingBackgroundWork?: number;
-  /** Pending mail files in the agent's inbox. */
+  /** Pending mail in the agent's inbox. Pass undefined (NOT 0) when the
+   *  backlog is unreadable — unknown ≠ drained (inboxBacklogStrict). */
   inboxBacklog?: number;
-  /** Every card in tasks.json assigned to this agent. */
-  cards: { id?: string; status?: string }[];
+  /** Every card in tasks.json assigned to this agent. A non-array value is
+   *  no evidence (fail closed), never a crash. */
+  cards?: { id?: string; status?: string }[];
+}
+
+/** A count that cannot be proven to be a non-negative integer → the caller
+ *  treats it as unknown and skips (never parks). */
+function unknownCount(v: number | undefined): boolean {
+  return typeof v !== 'number' || !Number.isInteger(v) || v < 0;
 }
 
 /** A park the sweep wants to perform. */
@@ -86,24 +97,29 @@ export function autoParkDecisions(candidates: AutoParkCandidate[]): AutoParkDeci
     if (c.role === 'intern') continue; // interns are FIRED, never parked
     if (c.pinned) continue; // the operator's standing "never park this one"
     if (c.archived || c.vacation || c.retired) continue; // off the floor
-    // Idle ≥ 1h, PROVABLE: a telemetry row that old. No row = absence, and
-    // absence is ambiguous (fresh spawn? no-plane provider?) — fail toward
-    // not parking.
-    if (typeof c.telemetryAgeMs !== 'number') continue;
-    if (c.telemetryAgeMs < AUTO_PARK_IDLE_MS) continue;
+    // Idle ≥ 1h, PROVABLE: a finite, non-negative telemetry age that old.
+    // NaN/Infinity/negative (clock skew, junk rows) are UNKNOWN — fail toward
+    // not parking (review finding 2: the old typeof check passed NaN).
+    const age = c.telemetryAgeMs;
+    if (typeof age !== 'number' || !Number.isFinite(age) || age < 0) continue;
+    if (age < AUTO_PARK_IDLE_MS) continue;
     // Waiting ≠ idle: pending finite background work keeps the seat honest.
-    if ((c.pendingBackgroundWork ?? 0) > 0) continue;
-    // Inbox drained: pending mail may be work god already dispatched.
-    if ((c.inboxBacklog ?? 0) > 0) continue;
+    // A malformed count is unknown → treated as >0, never parked on.
+    if (unknownCount(c.pendingBackgroundWork) || (c.pendingBackgroundWork ?? 0) > 0) continue;
+    // Inbox drained, PROVABLY: a readable backlog of exactly 0. Unknown
+    // (unreadable inbox — inboxBacklogStrict null) or >0 blocks: pending mail
+    // may be work god already dispatched.
+    if (unknownCount(c.inboxBacklog) || (c.inboxBacklog ?? 0) > 0) continue;
     // POSITIVE DONE EVIDENCE — the gate. At least one done card, and not a
     // single non-done one (doing/blocked per the prose rule, todo as the
-    // stricter churn guard above). A missing card list is no evidence.
-    const cards = c.cards ?? [];
+    // stricter churn guard above). A missing/non-array card list is no
+    // evidence.
+    const cards = Array.isArray(c.cards) ? c.cards : [];
     if (cards.length === 0) continue;
     if (!cards.every((card) => card?.status === 'done')) continue;
     out.push({
       id: c.id,
-      idleMs: c.telemetryAgeMs,
+      idleMs: age,
       evidence: cards.map((card) => card.id ?? '?').join(', '),
     });
   }
