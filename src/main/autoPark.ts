@@ -83,13 +83,23 @@ function unknownCount(v: number | undefined): boolean {
  *  mismatch at either silently degrades to "no evidence" (review round 2,
  *  the dead-mechanism blocker: cardsOf(.tasks on an array) is undefined). */
 export function cardsByAssignee(ledger: unknown): Map<string, { id?: string; status?: string }[]> {
-  const list = Array.isArray(ledger) ? ledger : ((ledger as { tasks?: unknown[] })?.tasks ?? []);
+  // Array.isArray is the ONLY shape proof — a junk wrapper's .tasks (an
+  // object, a string, a number) is NOT iterable and must become an empty
+  // list, never a throw (round-3: `{tasks:{}}` reached for...of and threw).
+  const raw = Array.isArray(ledger) ? ledger : (ledger as { tasks?: unknown })?.tasks;
+  const list: unknown[] = Array.isArray(raw) ? raw : [];
   const byAssignee = new Map<string, { id?: string; status?: string }[]>();
-  for (const t of list as { assignee?: string; id?: string; status?: string }[]) {
-    const owner = t?.assignee?.trim();
+  for (const t of list) {
+    // A malformed row (non-object, non-string assignee) is skipped — one
+    // junk card in the ledger must not take down the whole sweep.
+    if (!t || typeof t !== 'object') continue;
+    const assignee = (t as { assignee?: unknown }).assignee;
+    if (typeof assignee !== 'string') continue;
+    const owner = assignee.trim();
     if (!owner) continue;
+    const card = t as { id?: string; status?: string };
     const cards = byAssignee.get(owner) ?? [];
-    cards.push({ id: t.id, status: t.status });
+    cards.push({ id: card.id, status: card.status });
     byAssignee.set(owner, cards);
   }
   return byAssignee;

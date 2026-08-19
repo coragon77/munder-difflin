@@ -30,8 +30,13 @@ const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const loadTs = require('./load-ts.cjs');
 
-const { autoParkDecisions, autoParkReason, AUTO_PARK_IDLE_MS, AUTO_PARK_SWEEP_MS } =
-  loadTs('src/main/autoPark.ts');
+const {
+  autoParkDecisions,
+  autoParkReason,
+  cardsByAssignee,
+  AUTO_PARK_IDLE_MS,
+  AUTO_PARK_SWEEP_MS,
+} = loadTs('src/main/autoPark.ts');
 
 const done = (id) => ({ id, status: 'done' });
 const idle = (over) => AUTO_PARK_IDLE_MS + over;
@@ -270,17 +275,60 @@ test('WIRING: hive-dispatch re-reads vacation AFTER its doing-flip (the round-2 
   // recall decision point: a park that interleaved with the flip is only
   // visible in a fresh disk read. Without this, a doing holder can stay
   // parked with no recall — the exact hole review round 2 closed.
+  // The pin proves ORDERING, not just existence (round 3): the vacation
+  // re-read must come AFTER the ledger write that flips the card to doing —
+  // a pin that matched the expression anywhere in hive.ts would pass with
+  // the check hoisted above the flip, the exact stale-snapshot bug.
+  const iFlip = src.indexOf('writeLedger(data)');
+  const iReread = src.indexOf('const parkedNow =');
+  assert.ok(iFlip >= 0 && iReread > iFlip, 'the vacation re-read follows the doing-flip write');
   assert.match(
     src,
-    /const parkedNow = \(readRegistry\(\)\.agents\[assignee\] \|\| entry\)\.vacation === true;/,
-    'the recall decision reads vacation from disk, falling back to the stale entry',
+    /const reread = readRegistry\(\);\s*\n.*const parkedNow = \(\(reread && reread\.agents\[assignee\]\) \|\| entry\)\.vacation === true;/,
+    'the re-read is null-guarded (readRegistry answers null on failure)',
   );
-  assert.match(src, /if \(parkedNow\) \{/, 'the recall gates on the fresh flag');
 });
 
 test('WIRING: ParkOrigin carries the auto member (shared refusal ladder, honest logs)', () => {
   const src = readFileSync(join(__dirname, '..', 'src', 'main', 'vacationFlow.ts'), 'utf8');
   assert.match(src, /'operator' \| 'request' \| 'auto'/);
+});
+
+test('cardsByAssignee reads BOTH ledger shapes and NEVER throws on junk (round 3)', () => {
+  // The live round-2 bug: withLedgerLock's callback receives the task ARRAY,
+  // but the sweep's inline helper read `.tasks` off it — undefined → zero
+  // cards → no evidence → nobody EVER parked (dead mechanism, caught only by
+  // review). This pin makes the shape contract executable; the junk cases pin
+  // round 3's finding that `{tasks:{}}` threw at the for...of.
+  const cards = [
+    { id: 'c1', assignee: 'kelly', status: 'done' },
+    { id: 'c2', assignee: 'kelly', status: 'doing' },
+    { id: 'c3', assignee: 'ada', status: 'done' },
+    { id: 'c4', status: 'todo' }, // unassigned — indexed nowhere
+  ];
+  // BARE array (withLedgerLock callback shape) and WRAPPER (hive.tasks())
+  const fromArray = cardsByAssignee(cards);
+  const fromWrapper = cardsByAssignee({ tasks: cards });
+  for (const m of [fromArray, fromWrapper]) {
+    assert.deepEqual(m.get('kelly'), [
+      { id: 'c1', status: 'done' },
+      { id: 'c2', status: 'doing' },
+    ]);
+    assert.deepEqual(m.get('ada'), [{ id: 'c3', status: 'done' }]);
+    assert.equal(m.has('c4'), false);
+  }
+  // junk wrappers/rows are safely empty or skipped — never a throw
+  assert.equal(cardsByAssignee(null).size, 0);
+  assert.equal(cardsByAssignee({ tasks: {} }).size, 0);
+  assert.equal(cardsByAssignee({ tasks: 'nope' }).size, 0);
+  const junkRows = cardsByAssignee([
+    { id: 'j1', assignee: 42, status: 'done' }, // non-string assignee
+    'not-a-card',
+    null,
+    { id: 'j2', assignee: 'real', status: 'done' },
+  ]);
+  assert.deepEqual(junkRows.get('real'), [{ id: 'j2', status: 'done' }]);
+  assert.equal(junkRows.size, 1);
 });
 
 test('BEHAVIOR: inboxBacklogStrict — missing .staged is 0, staged mail counts, unreadable is null', (t0) => {

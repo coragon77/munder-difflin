@@ -6884,7 +6884,14 @@ withLock(function () {
 // review round 2). A park AFTER this flip cannot happen at all: the sweep's
 // evidence read is serialized behind this doing card by the same lock.
 let recalled = false;
-const parkedNow = (readRegistry().agents[assignee] || entry).vacation === true;
+// readRegistry() answers null on ANY read/parse failure — guard it: fall
+// back to the (older, pre-lock) entry rather than dereferencing null after
+// the doing write (round 3). Failing OPEN here (treating unreadable as
+// not-parked) is safe: no park can interleave AFTER this flip (serialized
+// by the ledger lock), so the stale flag can only MISS a park that already
+// fully completed — and that case is covered by the backstop notice.
+const reread = readRegistry();
+const parkedNow = ((reread && reread.agents[assignee]) || entry).vacation === true;
 if (parkedNow) {
   const dir = path.join(root, 'vacation-requests');
   fs.mkdirSync(dir, { recursive: true });

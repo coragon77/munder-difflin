@@ -6835,7 +6835,15 @@ async function processVacationRequest(filePath: string): Promise<void> {
     }
     return;
   }
-  if (!res.ok) {
+  // IDEMPOTENT RECALL (round 3): a recall request can race another restorer
+  // — the auto-park backstop recalls directly when a dispatch/park interleave
+  // is caught, while hive-dispatch queues a request for the same agent. The
+  // loser's "not on vacation — nothing to recall" answer means the goal is
+  // ALREADY ACHIEVED, not failure: treat it as success so god hears one clean
+  // [recalled] story instead of a rejection next to a restored floor seat.
+  const alreadyRestored =
+    recall && !res.ok && /not on vacation|already on the floor/.test(res.error ?? '');
+  if (!res.ok && !alreadyRestored) {
     fail(res.error ?? 'unknown error');
     return;
   }
