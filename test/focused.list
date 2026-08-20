@@ -159,3 +159,4 @@ test/auto-park.test.cjs
 test/hive-roster-cli.test.cjs
 test/hive-offhome-skills.test.cjs
 test/orient-inject.test.cjs
+test/orient-gate.test.cjs

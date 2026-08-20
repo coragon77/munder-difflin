@@ -25,6 +25,7 @@ import { estimateCostUsd } from './pricing';
 import { bridgeDeliversHookContext } from '../shared/agentProvider';
 import { hasInboxMonitor } from '../shared/providerAutomation';
 import { sharedStateGate } from './hiveGate';
+import { orientGate, type OrientSessionState } from './orientGate';
 
 interface HookPayload {
   hook_event_name?: string;
@@ -143,6 +144,11 @@ export class HookServer {
    *  Cleared when a hook sees the backlog drained, so a FRESH steer after a
    *  clear/delivery notifies again instead of staying silent. */
   private steerBacklogNotified = new Set<string>();
+
+  /** Orient-gate (Card B) seen-state: per agent, keyed on the payload
+   *  session_id, in-memory only — a restart refires once per root by design
+   *  (spec §5: stale state rots, one self-healing refusal doesn't). */
+  private orientState = new Map<string, OrientSessionState>();
 
   constructor(
     private hive: HiveManager,
@@ -444,6 +450,59 @@ export class HookServer {
             permissionDecisionReason: gate.reason,
           },
         };
+      }
+    }
+
+    // Orient gate — Card B, the orient-first BACKSTOP (card agent-harness-b-
+    // access-time-or-2026-08-20, spec docs/superpowers/specs/2026-08-20-
+    // access-time-orient-gate.md): Card A fires on what the DISPATCH says; a
+    // directory discovered MID-TASK is invisible to it. For ALL agents
+    // (god's own prompt carries the same orient-first rule), a Read/Grep/
+    // Glob/Edit/Bash call that enters a docs-carrying directory this session
+    // has not oriented in is refused ONCE with a pointer naming the file;
+    // record-before-deny makes the verbatim retry pass. Wired DIRECTLY AFTER
+    // the sharedStateGate block so an operator pause or shared-state refusal
+    // wins first and is never double-reported. Fails open — a broken gate
+    // never blocks a tool call (spec §10).
+    if (event === 'PreToolUse' && agentId) {
+      try {
+        const orient = orientGate(this.orientState.get(agentId), {
+          toolName: p.tool_name,
+          toolInput: p.tool_input,
+          sessionId: p.session_id,
+          sessionCwd: typeof p.cwd === 'string' ? p.cwd : '',
+          probe: existsSync,
+          // LAZY: registry access only once detection actually runs — the
+          // overwhelming inside-cwd majority costs one startsWith (spec §9).
+          context: () => {
+            const reg = this.hive.registry();
+            const cwds: string[] = [];
+            for (const a of Object.values(reg.agents)) {
+              if (a && a.archived !== true && typeof a.cwd === 'string' && a.cwd.trim())
+                cwds.push(a.cwd);
+            }
+            const entry = reg.agents[agentId];
+            return {
+              sessionCwd: typeof entry?.cwd === 'string' ? entry.cwd : '',
+              provider: (entry?.provider ?? '') as string,
+              registryCwds: cwds,
+            };
+          },
+        });
+        this.orientState.set(agentId, orient.state);
+        if (orient.deny) {
+          this.emitControl(agentId, p.tool_name, orient.deny);
+          this.emit(agentId, event, p);
+          return {
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason: orient.deny,
+            },
+          };
+        }
+      } catch (_) {
+        /* fail open — no hookSpecificOutput, the call proceeds */
       }
     }
 
