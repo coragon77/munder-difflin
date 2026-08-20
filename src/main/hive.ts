@@ -42,6 +42,7 @@ import type { AgentUsageSample } from './usage';
 // 18) — serialized verbatim (toString) into the generated bin/ CLIs below so
 // the gate, the lister and the roster injection run identical code.
 import { actionableCards, assigneeById, cardHeld, renderActionableLine } from './actionableCards';
+import { orientationBlock } from './orientInject';
 import { COMMAND_GROUPS } from '../shared/claudeCommands';
 import {
   isClaudeProvider,
@@ -6810,6 +6811,12 @@ function storedSessionExists(assignee, provider, sid) {
 // disagree, test/actionable-cards.test.cjs fails before it can ship.
 const cardHeldFn = ${cardHeld};
 
+// ONE pure detect-probe-render function for the ORIENT FIRST injection,
+// serialized verbatim from src/main/orientInject.ts the same way cardHeld
+// is (card agent-harness-orient-first-mus-2026-08-20) — the code these CLIs
+// run is the code the main-process tests exercise.
+const orientationBlockFn = ${orientationBlock};
+
 function main() {
 const parsed = parseArgs(process.argv.slice(2));
 const vals = parsed.vals;
@@ -6820,7 +6827,7 @@ const reg = readRegistry();
 if (!reg) fail('registry.json is not readable/parseable — cannot validate the assignee.');
 const entry = reg.agents[assignee];
 if (!entry) fail('no agent "' + assignee + '" in registry.json (ids look like creed-msx8l6ju — resolve names via registry.json).');
-const body = readBody(vals.body);
+let body = readBody(vals.body);
 
 // Mode flags are mutually exclusive, and --resume only makes sense for an
 // EXISTING card (a --title card is new — no stored conversation). Checked
@@ -6834,6 +6841,7 @@ if (parsed.bools.resume && !vals.card)
 // create-or-adopt + assign + doing flip.
 let cardId = '';
 let cardTitle = '';
+let cardDescription = '';
 withLock(function () {
   const data = readLedger();
   // BUSY = DOING ONLY (card agent-hive-dispatch-blocked-ca-2026-08-19): a
@@ -6965,6 +6973,7 @@ withLock(function () {
     else delete card.sessionMode;
     cardId = card.id;
     cardTitle = card.title || cardId;
+    cardDescription = typeof card.description === 'string' ? card.description : '';
   } else {
     const title = vals.title.trim();
     if (!title) fail('--title must be non-empty when given.');
@@ -6987,6 +6996,32 @@ withLock(function () {
   }
   writeLedger(data);
 });
+
+// ORIENT-FIRST INJECTION (card agent-harness-orient-first-mus-2026-08-20,
+// spec docs/superpowers/specs/2026-08-20-dispatch-orient-injection.md): when
+// the contract body / card title / card notes reference a directory that
+// carries onboarding docs, append the ORIENT FIRST block BELOW a blank-line
+// separator — god's contract stays byte-identical above it, and the mail
+// archive is the audit trail (no log.jsonl write). This is the orient-first
+// rule AS MECHANISM: it fires for advisory / non-file access where the prose
+// rule's trigger never did. Detection = registry cwd match (deepest root
+// wins) + basename idiom + absolute-path upward walk + the assignee's cwd.
+// FAIL OPEN is non-negotiable: the whole detect-probe-render path sits in
+// try/catch and a broken injector never blocks a dispatch; probes are
+// existsSync only (orientationBlockFn).
+try {
+  var orientCwds = [];
+  if (reg && reg.agents) {
+    for (var orientId in reg.agents) {
+      var orientEntry = reg.agents[orientId];
+      if (orientEntry && orientEntry.archived !== true && typeof orientEntry.cwd === 'string' && orientEntry.cwd.trim()) orientCwds.push(orientEntry.cwd);
+    }
+  }
+  var orientBlock = orientationBlockFn(
+    body + '\\n' + cardTitle + (cardDescription ? '\\n' + cardDescription : ''),
+    entry.cwd || '', entry.provider || '', orientCwds, fs.existsSync);
+  if (orientBlock) body = body + '\\n\\n' + orientBlock;
+} catch (_) { /* fail open — the dispatch proceeds with the body unmodified */ }
 
 // Parked assignee: queue the recall the poller consumes (~1.5s), exactly like
 // god's hand-dropped vacation-request ({"agentId":..., "action":"recall"}).
@@ -7120,6 +7155,10 @@ function slug(s) {
 }
 function sleepMs(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
 
+// ORIENT-FIRST INJECTION — the same pure detect-probe-render function,
+// serialized verbatim from src/main/orientInject.ts (cardHeld pattern).
+const orientationBlockFn = ${orientationBlock};
+
 const ledgerPath = path.join(root, 'tasks.json');
 const lockPath = ledgerPath + '.lock';
 function withLock(fn) {
@@ -7182,6 +7221,18 @@ if (prior && prior.retired)
   fail('id "' + agentId + '" was FIRED — fired ids are permanently refused by the harness. Re-hire with a fresh --id (memory/inbox of the old one are kept).');
 if (prior && !prior.archived)
   fail('"' + agentId + '" is already on the floor — fire it first or pick another --id.');
+
+// ORIENT-FIRST INJECTION (card agent-harness-orient-first-mus-2026-08-20,
+// spec §2 secondary site): --cwd is DECLARED, so no detection is needed —
+// append the ORIENT FIRST block for exactly that directory to the intern's
+// objective. Interns are the least-oriented agents on the floor; skipping
+// them would reopen the gap at its widest point. Same fail-open wrap as
+// hive-dispatch; probes are existsSync only.
+try {
+  var hireProvider = hasProvider ? vals.provider.trim() : (((floor && floor.internDefaults) || {}).provider || '');
+  var hireBlock = orientationBlockFn(cwd, cwd, hireProvider, [cwd], fs.existsSync);
+  if (hireBlock) objective = objective + '\\n\\n' + hireBlock;
+} catch (_) { /* fail open — the hire proceeds with the objective unmodified */ }
 
 // The spawn-request THIS tool owns: engine fields appear ONLY as an explicit
 // pair; without them the harness resolver applies internDefaults.

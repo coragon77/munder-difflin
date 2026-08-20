@@ -942,3 +942,63 @@ test('corrupt tasks.json: refuses, never clobbers', { skip: !POSIX }, (t) => {
   assert.notEqual(r.code, 0);
   assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), 'this is not json', 'corrupt file preserved');
 });
+
+// ─── ORIENT FIRST injection (card agent-harness-orient-first-mus-2026-08-20) ─
+// Spec docs/superpowers/specs/2026-08-20-dispatch-orient-injection.md: the
+// dispatch pipeline detects referenced directories and appends the ORIENT
+// FIRST block below a separator. Fixtures only — never the live floor.
+
+test('dispatch naming a docs-carrying directory: the mail body ends with the ORIENT FIRST block', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const inst = fs.mkdtempSync(path.join(os.tmpdir(), 'md-orient-inst-'));
+  t.after(() => fs.rmSync(inst, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(inst, 'graphify-out'));
+  fs.writeFileSync(path.join(inst, 'CLAUDE.md'), 'docs\n');
+  fs.writeFileSync(path.join(inst, 'graphify-out', 'graph.json'), '{}\n');
+
+  const body = 'Fix the export in ' + inst + '/qbase — details on the card.';
+  const r = s.run('--title', 'Orient test', '--assignee', 'worker-1', '--body', body);
+  assert.equal(r.code, 0, `dispatch lands: ${r.stderr}`);
+  const mail = s.outboxMails().at(-1);
+  assert.ok(
+    mail.body.startsWith(body + '\n\n--- ORIENT FIRST (injected by hive-dispatch) ---'),
+    "god's contract stays byte-identical above the separator",
+  );
+  assert.match(
+    mail.body,
+    new RegExp('- ' + inst.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ': read CLAUDE\\.md first'),
+  );
+  assert.match(mail.body, /graphify query/, 'graphify line present when graph.json exists');
+});
+
+test('dispatch naming no directory: the delivered body is byte-identical (no marker)', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const body = 'please review the plan and report back';
+  const r = s.run('--title', 'Quiet test', '--assignee', 'worker-1', '--body', body);
+  assert.equal(r.code, 0, `dispatch lands: ${r.stderr}`);
+  assert.equal(s.outboxMails().at(-1).body, body, 'no block, no marker — silent');
+});
+
+test('card title naming the directory triggers the block even when the body does not', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const inst = fs.mkdtempSync(path.join(os.tmpdir(), 'md-orient-title-'));
+  t.after(() => fs.rmSync(inst, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(inst, 'AGENTS.md'), 'docs\n');
+  const id = s
+    .run('--title', 'work in ' + inst, '--assignee', 'worker-1', '--body', 'carry on')
+    .stdout.trim()
+    .split(' ')[1];
+  // Re-dispatch the existing card: title comes from the ledger this time.
+  const r = s.run('--card', id, '--assignee', 'worker-1', '--body', 'carry on');
+  assert.equal(r.code, 0, `re-dispatch lands: ${r.stderr}`);
+  assert.match(s.outboxMails().at(-1).body, /--- ORIENT FIRST/, 'title was scanned');
+});

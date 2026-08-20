@@ -108,11 +108,18 @@ function templateOf(name) {
 // agent-hive-mail-silently-destr-2026-08-18) — splice its evaluated body in
 // where the raw token appears, mirroring template evaluation.
 const GUARD_TOKEN = '${' + 'ASSERT_LIVE_HIVE}';
+// hive-hire interpolates the orient-first injector (card agent-harness-
+// orient-first-mus-2026-08-20): splice the evaluated function source in,
+// mirroring template evaluation.
+const ORIENT_TOKEN = '${' + 'orientationBlock}';
 function cliSource(name) {
-  const raw = templateOf(name);
-  return raw.includes(GUARD_TOKEN)
-    ? raw.split(GUARD_TOKEN).join(templateOf('ASSERT_LIVE_HIVE'))
-    : raw;
+  let raw = templateOf(name);
+  if (raw.includes(GUARD_TOKEN)) raw = raw.split(GUARD_TOKEN).join(templateOf('ASSERT_LIVE_HIVE'));
+  if (raw.includes(ORIENT_TOKEN)) {
+    const { orientationBlock } = loadTs('src/main/orientInject.ts');
+    raw = raw.split(ORIENT_TOKEN).join(orientationBlock.toString());
+  }
+  return raw;
 }
 
 function withFakeHive(fn) {
@@ -393,4 +400,59 @@ test('fleet mirror: the floor snapshot type carries the intern settings the CLI 
         src.includes('writeFleetSnapshot')),
     'writeFleetSnapshot mirrors internsEnabled + internDefaults into fleet.json for the CLIs',
   );
+});
+
+// ─── ORIENT FIRST injection (card agent-harness-orient-first-mus-2026-08-20) ─
+// Spec §2 secondary site: hive-hire's --cwd is DECLARED, no detection needed —
+// the spawn objective carries the block for exactly that directory. Interns
+// are the least-oriented agents on the floor; acceptance criterion §10.3.
+
+test('hive-hire: the spawn objective carries the ORIENT FIRST block for --cwd', () => {
+  withFakeHive((root) => {
+    const inst = fs.mkdtempSync(path.join(os.tmpdir(), 'hire-orient-'));
+    fs.mkdirSync(path.join(inst, 'graphify-out'));
+    fs.writeFileSync(path.join(inst, 'CLAUDE.md'), 'docs\n');
+    fs.writeFileSync(path.join(inst, 'graphify-out', 'graph.json'), '{}\n');
+    try {
+      const r = runCli(
+        'HIVE_HIRE_CLI',
+        ['--name', 'Newbie', '--cwd', inst, '--objective', 'write docs'],
+        root,
+      );
+      assert.equal(r.code, 0, `receipt: ${r.out}${r.err}`);
+      const queued = fs
+        .readdirSync(path.join(root, 'spawn-requests'))
+        .filter((f) => f.endsWith('.json'));
+      const req = JSON.parse(fs.readFileSync(path.join(root, 'spawn-requests', queued[0]), 'utf8'));
+      assert.ok(
+        req.objective.startsWith('write docs\n\n--- ORIENT FIRST (injected by hive-dispatch) ---'),
+        'the objective stays byte-identical above the separator',
+      );
+      assert.match(req.objective, /read CLAUDE\.md first/, 'the docs file is named');
+      assert.match(req.objective, /graphify query/, 'the graph line is present');
+    } finally {
+      fs.rmSync(inst, { recursive: true, force: true });
+    }
+  });
+});
+
+test('hive-hire: a docs-less --cwd leaves the objective byte-identical', () => {
+  withFakeHive((root) => {
+    const inst = fs.mkdtempSync(path.join(os.tmpdir(), 'hire-nodocs-'));
+    try {
+      const r = runCli(
+        'HIVE_HIRE_CLI',
+        ['--name', 'Newbie', '--cwd', inst, '--objective', 'write docs'],
+        root,
+      );
+      assert.equal(r.code, 0, `receipt: ${r.out}${r.err}`);
+      const queued = fs
+        .readdirSync(path.join(root, 'spawn-requests'))
+        .filter((f) => f.endsWith('.json'));
+      const req = JSON.parse(fs.readFileSync(path.join(root, 'spawn-requests', queued[0]), 'utf8'));
+      assert.equal(req.objective, 'write docs', 'silent when there is nothing to orient on');
+    } finally {
+      fs.rmSync(inst, { recursive: true, force: true });
+    }
+  });
 });
