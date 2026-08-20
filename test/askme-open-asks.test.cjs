@@ -21,8 +21,9 @@
  *     addressable. Any index mismatch falls back to the tail-first text
  *     match, so a valid text match can never fail on a stale index.
  *
- * The .tsx wiring (AskMeTab draft keys `${taskId}:${index}`) is pinned at the
- * source level — same convention as tasks-tab-field-survival for JSX files.
+ * The .tsx wiring (AskMeTab draft keys `${taskId}:${index}`, the ◀ i/N ▶
+ * pager consuming openAsks()) is pinned at the source level — same
+ * convention as tasks-tab-field-survival for JSX files.
  */
 
 const test = require('node:test');
@@ -187,11 +188,11 @@ test('resolveHumanQuestion without index keeps the historical tail-first behavio
 // ─── source-level pins (.tsx / preload wiring — JSX and electron modules
 //     are not loadTs-compilable; same convention as field-survival) ─────────
 
-test('AskMeTab drafts are keyed taskId:humanQA-index and writes carry the index', () => {
+test('AskMeTab pages openAsks(): one ask at a time, drafts keyed taskId:index', () => {
   const src = read('src/renderer/src/components/AskMeTab.tsx');
   // one draft per open entry — the key must carry the entry index
   assert.match(src, /`\$\{task\.id\}:\$\{o\.index\}`/);
-  // answer + dismiss both address the selected entry, not openQuestion()
+  // answer + dismiss both address the displayed entry, not openQuestion()
   assert.doesNotMatch(src, /openQuestion\(/);
   assert.match(
     src,
@@ -200,6 +201,21 @@ test('AskMeTab drafts are keyed taskId:humanQA-index and writes carry the index'
   assert.match(
     src,
     /hiveResolveHumanQuestion\(\s*task\.id,\s*o\.entry\.q,\s*undefined,\s*o\.index,?\s*\)/,
+  );
+  // the pager consumes openAsks(), never a re-derived order
+  assert.match(src, /const asks = openAsks\(t\)/);
+  // position indicator i/N between the triangles
+  assert.match(src, /\{p \+ 1\}\/\{asks\.length\}/);
+  assert.match(src, /◀/);
+  assert.match(src, /▶/);
+  // landing rule: clamp the stored position against the CURRENT open list
+  assert.match(src, /Math\.min\(page\[t\.id\] \?\? 0, asks\.length - 1\)/);
+  // the list/expand presentation is gone
+  assert.doesNotMatch(
+    src,
+    /setExpanded|setPage\(\{ \.\.\.page, \[t\.id\]: p [+-] 1 \}\)/.source
+      ? /setExpanded/
+      : /setExpanded/,
   );
 });
 
