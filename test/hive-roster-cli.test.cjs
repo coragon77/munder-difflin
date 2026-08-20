@@ -320,6 +320,20 @@ test('ensureHive ships an executable hive-roster built from the EVALUATED templa
 // ─── set-capabilities: the write side (card agent-no-primitive-can-set-an--) ──
 // The CLI never writes registry.json — it drops a request JSON into
 // capability-requests/ and the harness watcher applies it (single writer).
+test('hive-roster show prints capabilities — full-replace needs the current list readable', () => {
+  withFakeHive((root) => {
+    const reg = JSON.parse(fs.readFileSync(path.join(root, 'registry.json'), 'utf8'));
+    reg.agents['pam-1'].capabilities = ['email', 'tickets'];
+    fs.writeFileSync(path.join(root, 'registry.json'), JSON.stringify(reg, null, 2));
+    const r = runCli(['show', 'pam-1'], root);
+    assert.equal(r.code, 0, r.err);
+    assert.ok(r.out.split('\n').includes('capabilities: email, tickets'), r.out);
+    // The absent case reads as empty, never as a plausible inherited value.
+    const r2 = runCli(['show', 'pin-1'], root);
+    assert.ok(r2.out.split('\n').includes('capabilities: -'), r2.out);
+  });
+});
+
 test('hive-roster set-capabilities drops a request file and never touches the registry', () => {
   withFakeHive((root) => {
     const before = fs.readFileSync(path.join(root, 'registry.json'), 'utf8');

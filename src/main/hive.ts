@@ -1540,12 +1540,15 @@ export class HiveManager {
     if (!root) return { ok: false, error: 'hive disabled (no harnessHome)' };
     try {
       const reg = this.registry();
-      const agent = reg.agents[id];
-      if (!agent)
+      // OWN-property only (review blocker): a plain [id] lookup happily returns
+      // Object.prototype's __proto__/constructor/toString, and writing back would
+      // pollute the prototype while reporting success — same guard as cmdShow.
+      if (!Object.prototype.hasOwnProperty.call(reg.agents, id) || !reg.agents[id])
         return {
           ok: false,
           error: `no agent "${id}" in registry.json — hive-roster list shows every id.`,
         };
+      const agent = reg.agents[id];
       const { capabilities, error } = normalizeCapabilities(caps);
       if (error) return { ok: false, error };
       // An all-empty request ("  ", 42, …) is REFUSED, never a silent clear —
@@ -7634,6 +7637,10 @@ function cmdShow(rawId) {
     'class: ' + agentClass(a, id, reg.godId),
     'state: ' + liveState(a),
     'pinned: ' + (a.pinned ? 'yes' : 'no'),
+    // Full-replace semantics make this the inspect-before-replace surface: the
+    // registry itself is gate-refused, so 'show' is where the current list is
+    // read before omitting/keeping entries (review finding).
+    'capabilities: ' + oneLine((a.capabilities || []).join(', '), 200),
     'cwd: ' + oneLine(a.cwd, 400),
     'spawnLabel: ' + oneLine(a.spawnLabel, 120),
   ];
@@ -7685,8 +7692,9 @@ function cmdSetCapabilities(rawId, rawCaps) {
   fs.renameSync(tmp, fp);
   process.stdout.write(
     'queued ' + path.basename(fp) + ' — capabilities for ' + id + ' become [' + caps.join(', ') +
-    '] when the harness watcher applies it (\u2264 ~2s tick; the roster line and detail panel follow).\\n' +
-    'verify with: hive-roster show ' + id + '\\n');
+    '] when the harness watcher applies it (\u2264 ~2s tick).\\n' +
+    'The office UI picks the change up on the next respawn of the agent or an app restart (no live push — that would be a renderer change).\\n' +
+    'current list: hive-roster show ' + id + '\\n');
 }
 
 function main() {

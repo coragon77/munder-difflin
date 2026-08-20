@@ -103,6 +103,19 @@ test('setCapabilities on an unknown agent refuses and writes nothing', async (t)
   assert.equal(fs.readFileSync(regPath(f.home), 'utf8'), beforeText, 'registry untouched');
 });
 
+test('setCapabilities refuses PROTOTYPE keys and never pollutes Object.prototype (review blocker)', async (t) => {
+  const f = await seededFloor(t);
+  const beforeText = fs.readFileSync(regPath(f.home), 'utf8');
+  for (const poison of ['__proto__', 'constructor', 'toString']) {
+    const res = f.hive.setCapabilities(poison, ['tickets']);
+    assert.equal(res.ok, false, poison);
+    assert.match(res.error ?? '', /no agent/, 'refusal names the unknown id');
+  }
+  assert.equal(fs.readFileSync(regPath(f.home), 'utf8'), beforeText, 'registry untouched');
+  assert.equal({}.capabilities, undefined, 'Object.prototype not polluted');
+  assert.equal(Object.prototype.hasOwnProperty.call(Object.prototype, 'capabilities'), false);
+});
+
 // ─── respawn survival (pinned WITH the write, per the card) ────────────────
 
 test('a respawn whose meta omits capabilities does not erase them', async (t) => {
