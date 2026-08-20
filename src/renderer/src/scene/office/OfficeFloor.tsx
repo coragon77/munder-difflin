@@ -1862,7 +1862,6 @@ export function OfficeFloor() {
             c.hideThought();
             c.setIdle();
             break;
-          case 'idle':
           default:
             c.setStatusGlyph('none');
             // The god runs the floor from its desk; everyone else wanders when idle.

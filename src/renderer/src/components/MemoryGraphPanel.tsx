@@ -642,7 +642,6 @@ function actColor(act?: MessageAct): string {
       return 'var(--cth-mint)';
     case 'refuse':
       return 'var(--cth-coral)';
-    case 'inform':
     default:
       return 'var(--cth-ink-300)';
   }
