@@ -94,6 +94,16 @@ for (const tool of ['Write', 'Edit', 'write', 'edit']) {
     assert.match(d.reason, /hive-fire/);
   });
 
+  test(`${tool} into capability-requests/ is refused and names hive-roster set-capabilities`, () => {
+    const { root } = floor();
+    const d = gate(root, root, tool, {
+      file_path: path.join(root, 'capability-requests', 'caps-pam.json'),
+    });
+    assert.ok(d, 'denied');
+    assert.match(d.reason, /hive-roster/);
+    assert.match(d.reason, /set-capabilities/);
+  });
+
   test(`${tool} to board.md passes (god is the sole scribe)`, () => {
     const { root } = floor();
     assert.equal(gate(root, root, tool, { file_path: path.join(root, 'board.md') }), null);

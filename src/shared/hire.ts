@@ -155,6 +155,37 @@ function str(v: unknown): v is string {
   return typeof v === 'string';
 }
 
+/** The ONE capability-list rule, shared by hire manifests, the registry write
+ *  (HiveManager.setCapabilities) and the capability-requests/ consumer (card
+ *  agent-no-primitive-can-set-an--2026-08-20): an array of at most 12 items,
+ *  non-strings dropped, each trimmed and capped at 40 chars, empties dropped.
+ *  Returns undefined for an all-empty result (no capabilities). */
+export function normalizeCapabilities(raw: unknown): { capabilities?: string[]; error?: string } {
+  if (!Array.isArray(raw) || raw.length > 12)
+    return { error: '"capabilities" must be an array of at most 12 items' };
+  const capabilities = raw
+    .filter(str)
+    .map((c) => c.trim().slice(0, 40))
+    .filter(Boolean);
+  return { capabilities: capabilities.length > 0 ? capabilities : undefined };
+}
+
+/** A capability-requests/ request file — what hive-roster set-capabilities
+ *  drops and the main-process watcher consumes. Same validation vocabulary as
+ *  every other request drop-dir: parse, then refuse loudly. */
+export function parseCapabilityRequest(
+  raw: unknown,
+): { ok: true; agentId: string; capabilities: string[] } | { ok: false; error: string } {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+    return { ok: false, error: 'request must be a JSON object' };
+  const o = raw as Record<string, unknown>;
+  const agentId = typeof o.agentId === 'string' ? o.agentId.trim() : '';
+  if (!agentId) return { ok: false, error: '"agentId" is required' };
+  const { capabilities, error } = normalizeCapabilities(o.capabilities);
+  if (error) return { ok: false, error };
+  return { ok: true, agentId, capabilities: capabilities ?? [] };
+}
+
 function capped(
   v: unknown,
   max: number,
@@ -268,15 +299,9 @@ export function validateHireManifest(raw: unknown): HireValidation {
 
   let capabilities: string[] | undefined;
   if (o.capabilities !== undefined) {
-    if (!Array.isArray(o.capabilities) || o.capabilities.length > 12) {
-      errors.push('"capabilities" must be an array of at most 12 items');
-    } else {
-      capabilities = o.capabilities
-        .filter(str)
-        .map((c) => c.trim().slice(0, 40))
-        .filter(Boolean);
-      if (capabilities.length === 0) capabilities = undefined;
-    }
+    const norm = normalizeCapabilities(o.capabilities);
+    if (norm.error) errors.push(norm.error);
+    else capabilities = norm.capabilities;
   }
 
   let isolate: boolean | undefined;

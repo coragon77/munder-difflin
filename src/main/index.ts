@@ -218,7 +218,7 @@ import { parseTicketsState } from '../shared/tickets';
 import { RosterStore } from './roster';
 import { ControlRegistry } from './control';
 import { fetchHireManifest, readHireManifestFile } from './hire';
-import { parseHireDeepLink, type HireManifest } from '../shared/hire';
+import { parseHireDeepLink, parseCapabilityRequest, type HireManifest } from '../shared/hire';
 import { ClosingTimeController } from './closingTime';
 import {
   inferAgentProvider,
@@ -6210,6 +6210,14 @@ function vacationRequestsDir(): string | null {
   return root ? join(root, 'vacation-requests') : null;
 }
 
+/** HIVE_ROOT/capability-requests — the queue dir hive-roster set-capabilities
+ *  drops capability writes into (card agent-no-primitive-can-set-an--2026-08-20).
+ *  Mirrors the other drop-dirs; consumed on the same worker tick. */
+function capabilityRequestsDir(): string | null {
+  const root = hive.root();
+  return root ? join(root, 'capability-requests') : null;
+}
+
 /** Move a processed request out of the queue so it's never reprocessed. Works
  *  for BOTH queue dirs (fire requests archive beside themselves). */
 function archiveRequestIn(
@@ -6890,6 +6898,47 @@ async function processVacationRequest(filePath: string): Promise<void> {
   archiveRequestIn(vacationRequestsDir(), filePath, '.done');
 }
 
+/** Capability-request — hive-roster set-capabilities dropping the FULL new
+ *  capability list for one agent (card agent-no-primitive-can-set-an--2026-08-20).
+ *  JSON: `{ "agentId": "...", "capabilities": ["..."] }`. Validation is the ONE
+ *  shared rule (shared/hire.ts normalizeCapabilities — the same one hire
+ *  manifests use); the write itself is HiveManager.setCapabilities, which changes
+ *  ONLY the capabilities array (byte-identical preservation, pinned by test).
+ *  Failures mail god and archive to .failed exactly like fire/vacation requests;
+ *  successes stay quiet — the roster line and log.jsonl row speak for them. */
+function processCapabilityRequest(filePath: string): void {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    informGod(
+      '[capabilities rejected] unparseable request',
+      `Could not parse capability-request ${basename(filePath)} — ${String(e)}`,
+    );
+    archiveRequestIn(capabilityRequestsDir(), filePath, '.failed');
+    return;
+  }
+  const plan = parseCapabilityRequest(raw);
+  if (!plan.ok) {
+    informGod(
+      '[capabilities rejected]',
+      `Capability-request ${basename(filePath)} rejected: ${plan.error}.`,
+    );
+    archiveRequestIn(capabilityRequestsDir(), filePath, '.failed');
+    return;
+  }
+  const res = hive.setCapabilities(plan.agentId, plan.capabilities);
+  if (!res.ok) {
+    informGod(
+      '[capabilities rejected]',
+      `Capability-request ${basename(filePath)} rejected: ${res.error ?? 'unknown error'}.`,
+    );
+    archiveRequestIn(capabilityRequestsDir(), filePath, '.failed');
+    return;
+  }
+  archiveRequestIn(capabilityRequestsDir(), filePath, '.done');
+}
+
 /** Auto-park sweep throttle (GC_SWEEP_MS precedent): the tick fires every
  *  1.5s; an hour-scale rule needs one registry+tasks+telemetry read a minute. */
 let lastAutoParkSweepAt = 0;
@@ -7214,6 +7263,22 @@ async function ephemeralWorkerTick(): Promise<void> {
       for (const f of files) await processVacationRequest(join(vdir, f));
     }
 
+    // (2e) Capability requests — hive-roster set-capabilities setting an
+    //      agent's full capability list post-hire. Pure registry write, no
+    //      PTY machinery; every outcome archives the request (.done/.failed).
+    const cdir = capabilityRequestsDir();
+    if (cdir && existsSync(cdir)) {
+      let files: string[] = [];
+      try {
+        files = readdirSync(cdir)
+          .filter((f) => f.endsWith('.json'))
+          .sort();
+      } catch {
+        /* dir vanished */
+      }
+      for (const f of files) processCapabilityRequest(join(cdir, f));
+    }
+
     // (2d) Auto-park — the evidence-gated idle sweep (autoPark.ts). Throttled;
     //      stateless per run (registry + tasks + telemetry + inbox fs are the
     //      state), so an app restart just resumes on the next due sweep.
@@ -7262,6 +7327,17 @@ function startEphemeralWorkerWatcher(): void {
   if (vdir) {
     try {
       mkdirSync(vdir, { recursive: true });
+    } catch {
+      /* noop */
+    }
+  }
+  // capability-requests/ rides the same bootstrap rule (a first-ever
+  // `hive-roster set-capabilities` must not fail on a missing dir — though the
+  // CLI also mkdirs it defensively, both sides stay idempotent).
+  const capdir = capabilityRequestsDir();
+  if (capdir) {
+    try {
+      mkdirSync(capdir, { recursive: true });
     } catch {
       /* noop */
     }

@@ -51,7 +51,12 @@ export interface SharedStateGateInput {
 const PROTECTED_FILES = ['tasks.json', 'registry.json', 'fleet.json'] as const;
 
 /** CLI-owned drop-dirs. Their names are hive-global; any reference counts. */
-const DROP_DIRS = ['vacation-requests', 'spawn-requests', 'fire-requests'] as const;
+const DROP_DIRS = [
+  'vacation-requests',
+  'spawn-requests',
+  'fire-requests',
+  'capability-requests',
+] as const;
 
 /** bin/hive-* primitives (and the bundled-node launcher that runs them). */
 const PRIMITIVE_RE = /^hive-[a-z][a-z0-9-]*$/;
@@ -379,6 +384,13 @@ function refusalReason(target: string, context: string): string {
     return [
       head,
       'fire-requests/ is a CLI-owned drop-dir. Fire with `$HIVE_ROOT/bin/hive-fire` <intern-id> — never hand-drop files.',
+      tail,
+    ].join('\n');
+  }
+  if (target.includes('capability-requests')) {
+    return [
+      head,
+      "capability-requests/ is a CLI-owned drop-dir. Set an agent's capabilities with `$HIVE_ROOT/bin/hive-roster set-capabilities <id> <cap>[,<cap>…]` — never hand-drop files.",
       tail,
     ].join('\n');
   }

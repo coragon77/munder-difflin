@@ -53,6 +53,7 @@ import {
   type HirePermissionMode,
 } from '../shared/agentProvider';
 import { MCP_CATALOG } from '../shared/mcpCatalog';
+import { normalizeCapabilities } from '../shared/hire';
 import { hasInboxMonitor } from '../shared/providerAutomation';
 import { cardSessionMailHold, MAIL_STAGE_TIMEOUT_MS, type CardLike } from './cardSessions';
 import { waitingLabel } from '../shared/waitingLabel';
@@ -1515,6 +1516,59 @@ export class HiveManager {
     } catch {
       /* best-effort — never crash a lifecycle handler */
       return false;
+    }
+  }
+
+  /**
+   *  Set an agent's capabilities AFTER hire (card
+   *  agent-no-primitive-can-set-an--2026-08-20). Until this, nothing could
+   *  change them post-hire: hive-hire stamps at spawn, the renderer edit
+   *  dialog wipes role as collateral, and the shared-state gate refuses hand
+   *  edits. Called by the capability-requests/ watcher (the queue hive-roster
+   *  set-capabilities drops into) — the main process stays the single registry
+   *  writer, same as every other request drop-dir.
+   *
+   *  THE point of the card is field preservation: ONLY the capabilities array
+   *  changes — no lastSeen bump, no key reorder, siblings untouched (pinned by
+   *  test/hive-capabilities.test.cjs, byte-identical). Full-replace semantics:
+   *  the caller states the complete list (remove one by omitting it).
+   *  Validation is the ONE shared rule (shared/hire.ts normalizeCapabilities)
+   *  — the same one hire manifests use.
+   */
+  setCapabilities(id: string, caps: string[]): { ok: boolean; error?: string } {
+    const root = this.root();
+    if (!root) return { ok: false, error: 'hive disabled (no harnessHome)' };
+    try {
+      const reg = this.registry();
+      const agent = reg.agents[id];
+      if (!agent)
+        return {
+          ok: false,
+          error: `no agent "${id}" in registry.json — hive-roster list shows every id.`,
+        };
+      const { capabilities, error } = normalizeCapabilities(caps);
+      if (error) return { ok: false, error };
+      // An all-empty request ("  ", 42, …) is REFUSED, never a silent clear —
+      // the sanctioned surface (hive-roster set-capabilities) cannot express
+      // "clear all", so an empty normalize result can only be garbage.
+      if (!capabilities)
+        return {
+          ok: false,
+          error: 'no valid capability names — give the FULL list (clear-all is not a thing)',
+        };
+      agent.capabilities = capabilities ?? [];
+      this.writeJson(join(root, 'registry.json'), reg);
+      this.appendLog({ kind: 'capabilities', agentId: id, capabilities: agent.capabilities });
+      this.commit(`hive: set capabilities ${id}`);
+      try {
+        this.onRosterChange?.();
+      } catch {
+        /* snapshot is best-effort */
+      }
+      return { ok: true };
+    } catch {
+      /* best-effort — never crash the watcher tick */
+      return { ok: false, error: 'registry write failed' };
     }
   }
 
@@ -7497,7 +7551,12 @@ catch (e) {
 // ruling a conflict (its root incident was a ruling made without the check).
 // The shared-state gate refuses the raw registry.json read, so THIS is the
 // sanctioned read: `show <id>` for one agent, `list` for everyone (parked
-// included — that is the fetchable vacation pool). Never writes; no telemetry
+// included — that is the fetchable vacation pool). Never writes REGISTRY.JSON
+// directly; the ONE write verb (set-capabilities, card
+// agent-no-primitive-can-set-an--2026-08-20) drops a request into
+// capability-requests/ and the harness watcher applies it — the main process
+// stays the single registry writer, exactly like hive-hire/hive-park/hive-fire
+// ride their drop-dirs. No telemetry
 // duplicated (model prints '-' — the registry does not persist it; the roster
 // line owns tokens/cost/breaker). State vocabulary: active / parked (vacation)
 // / archived / retired — and `fired` for a retired intern, the same flag under
@@ -7513,6 +7572,7 @@ function usage() {
     'usage:',
     '  hive-roster show <agent-id>  # read-only: one agent detail (cwd, role, pinned, …)',
     '  hive-roster list             # read-only: same fields, one line per agent (parked included)',
+    '  hive-roster set-capabilities <agent-id> <cap>[,<cap>…]  # set the FULL capability list (post-hire)',
   ].join('\\n'));
 }
 
@@ -7600,11 +7660,45 @@ function cmdList() {
   process.stdout.write(lines.join('\\n') + (lines.length ? '\\n' : ''));
 }
 
+function cmdSetCapabilities(rawId, rawCaps) {
+  const id = String(rawId || '').trim();
+  if (!id) usage();
+  // Full-replace semantics: the argument IS the complete list (remove a
+  // capability by omitting it). Same normalization the harness applies —
+  // trim, drop empties, at most 12, 40 chars each — so a bad argv fails HERE
+  // instead of bouncing off the watcher later.
+  const caps = String(rawCaps || '')
+    .split(',')
+    .map(function (c) { return c.trim().slice(0, 40); })
+    .filter(Boolean);
+  if (caps.length === 0) fail('no capability names in "' + rawCaps + '" — give the FULL list, e.g. tickets,email');
+  if (caps.length > 12) fail('at most 12 capabilities (got ' + caps.length + ').');
+  const reg = readRegistry();
+  const agents = reg.agents || {};
+  if (!Object.prototype.hasOwnProperty.call(agents, id))
+    fail('no agent "' + id + '" in registry.json — hive-roster list shows every id.');
+  const dir = path.join(root, 'capability-requests');
+  fs.mkdirSync(dir, { recursive: true });
+  const fp = path.join(dir, 'caps-' + Date.now() + '-' + Math.random().toString(16).slice(2, 8) + '.json');
+  const tmp = fp + '.tmp-' + process.pid;
+  fs.writeFileSync(tmp, JSON.stringify({ agentId: id, capabilities: caps, created_at: new Date().toISOString() }, null, 2) + '\\n', 'utf8');
+  fs.renameSync(tmp, fp);
+  process.stdout.write(
+    'queued ' + path.basename(fp) + ' — capabilities for ' + id + ' become [' + caps.join(', ') +
+    '] when the harness watcher applies it (\u2264 ~2s tick; the roster line and detail panel follow).\\n' +
+    'verify with: hive-roster show ' + id + '\\n');
+}
+
 function main() {
   const argv = process.argv.slice(2);
   if (argv[0] === 'show') {
     if (argv.length !== 2) fail('show takes exactly one agent id.');
     cmdShow(argv[1]);
+    return;
+  }
+  if (argv[0] === 'set-capabilities') {
+    if (argv.length !== 3) fail('set-capabilities takes exactly an agent id and a comma-separated capability list.');
+    cmdSetCapabilities(argv[1], argv[2]);
     return;
   }
   if (argv[0] === 'list') {

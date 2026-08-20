@@ -316,3 +316,52 @@ test('ensureHive ships an executable hive-roster built from the EVALUATED templa
   );
   assert.ok(out.split('\n').includes('cwd: /x'));
 });
+
+// ─── set-capabilities: the write side (card agent-no-primitive-can-set-an--) ──
+// The CLI never writes registry.json — it drops a request JSON into
+// capability-requests/ and the harness watcher applies it (single writer).
+test('hive-roster set-capabilities drops a request file and never touches the registry', () => {
+  withFakeHive((root) => {
+    const before = fs.readFileSync(path.join(root, 'registry.json'), 'utf8');
+    const r = runCli(['set-capabilities', 'pam-1', 'email,tickets'], root);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /queued|capability-requests/, 'a receipt names the queue');
+    assert.equal(
+      fs.readFileSync(path.join(root, 'registry.json'), 'utf8'),
+      before,
+      'the CLI itself never writes registry.json',
+    );
+    const q = path.join(root, 'capability-requests');
+    const files = fs.readdirSync(q).filter((f) => f.endsWith('.json'));
+    assert.equal(files.length, 1, 'exactly one request file');
+    const req = JSON.parse(fs.readFileSync(path.join(q, files[0]), 'utf8'));
+    assert.equal(req.agentId, 'pam-1');
+    assert.deepEqual(req.capabilities, ['email', 'tickets']);
+  });
+});
+
+test('hive-roster set-capabilities refuses bad argv without writing anything', () => {
+  withFakeHive((root) => {
+    for (const args of [
+      ['set-capabilities'],
+      ['set-capabilities', 'pam-1'],
+      ['set-capabilities', 'pam-1', ''],
+      ['set-capabilities', 'pam-1', 'a', 'b'],
+    ]) {
+      const r = runCli(args, root);
+      assert.notEqual(r.code, 0, JSON.stringify(args));
+      const q = path.join(root, 'capability-requests');
+      assert.ok(!fs.existsSync(q) || fs.readdirSync(q).length === 0, 'no request written');
+    }
+  });
+});
+
+test('hive-roster set-capabilities whitespace-splits and drops empties like the harness will', () => {
+  withFakeHive((root) => {
+    const r = runCli(['set-capabilities', 'pam-1', ' tickets ,, email , '], root);
+    assert.equal(r.code, 0, r.err);
+    const q = path.join(root, 'capability-requests');
+    const req = JSON.parse(fs.readFileSync(path.join(q, fs.readdirSync(q)[0]), 'utf8'));
+    assert.deepEqual(req.capabilities, ['tickets', 'email']);
+  });
+});
