@@ -12,12 +12,11 @@
  * comes from claude's own Stop payload, which carries `background_tasks` — a
  * live snapshot of its task registry (types: shell, subagent, workflow,
  * monitor, MCP task, teammate, dream, auto-mode scan, cloud session), already
- * filtered upstream to running+backgrounded. Persistent monitors (the
- * inbox-wake loop every agent arms) are EXCLUDED by the taskId learned at arm
- * time from PostToolUse(Monitor).tool_response.persistent — counting them
- * would make the whole floor permanently busy and no clear/park would ever
- * fire. Anything the harness cannot classify COUNTS (safe direction: a
- * deferred clear costs minutes, a fired one costs a context).
+ * filtered upstream to running+backgrounded. MONITORS NEVER COUNT (card
+ * agent-harness-fix-the-staging--2026-08-20): they are skipped by type at
+ * settle time — see the wedge test below for why the old by-taskId exclusion
+ * could not hold. Anything the harness cannot classify COUNTS (safe direction:
+ * a deferred clear costs minutes, a fired one costs a context).
  *
  * Pure decision in vacationBusy() + PendingWorkTracker (pendingWork.ts)
  * because index.ts is the Electron main entry and untestable from this
@@ -55,10 +54,10 @@ test('zero pending work changes nothing (pure extension, not a fork)', () => {
 
 const task = (over) => ({ id: 't1', type: 'shell', status: 'running', description: 'ci', ...over });
 
-test('a Stop settle with finite background tasks counts them', () => {
+test('a Stop settle with finite background tasks counts them (monitors never count)', () => {
   const tr = new PendingWorkTracker();
   tr.recordSettle('kevin', [task({ id: 'b1' }), task({ id: 'b2', type: 'monitor' })]);
-  assert.equal(tr.countFor('kevin'), 2);
+  assert.equal(tr.countFor('kevin'), 1);
 });
 
 test('empty settle → zero (the honest idle)', () => {
@@ -67,16 +66,48 @@ test('empty settle → zero (the honest idle)', () => {
   assert.equal(tr.countFor('kevin'), 0);
 });
 
-test('persistent monitors are excluded — the floor must not go permanently busy', () => {
+test('monitors never count — persistent or one-shot, armed or not', () => {
   const tr = new PendingWorkTracker();
-  // Arm-time classification: PostToolUse(Monitor).tool_response carries
-  // taskId + persistent. The inbox-wake loop arms persistent:true.
+  // Arm-time classification still happens (PostToolUse(Monitor).tool_response
+  // carries taskId + persistent) — but the census skips monitors BY TYPE, so
+  // it no longer depends on the session-scoped arm bookkeeping surviving.
   tr.recordMonitorArm('kevin', 'mon-inbox', true);
   tr.recordSettle('kevin', [
     task({ id: 'mon-inbox', type: 'monitor' }),
     task({ id: 'mon-ci', type: 'monitor' }),
   ]);
-  assert.equal(tr.countFor('kevin'), 1, 'inbox monitor excluded, one-shot CI monitor counts');
+  assert.equal(tr.countFor('kevin'), 0);
+});
+
+test('THE WEDGE (incident 2026-08-20): a monitor armed before a session boundary still never counts after the boundary wipes the arm bookkeeping', () => {
+  // Stanley's sequence, verified live: persistent inbox monitor armed →
+  // compaction fires SessionStart (resetAgent wipes the arm set) → the monitor
+  // SURVIVES (it is process-scoped, not conversation-scoped) and stays in
+  // background_tasks → the old by-taskId exclusion no longer knew it → it
+  // counted as pending finite work forever → vacationBusy busy → both delivery
+  // gates closed permanently. Type-skip makes this structurally impossible.
+  const tr = new PendingWorkTracker();
+  tr.recordMonitorArm('stanley', 'mon-inbox', true);
+  tr.recordSettle('stanley', [task({ id: 'mon-inbox', type: 'monitor' })]);
+  assert.equal(tr.countFor('stanley'), 0);
+  tr.resetAgent('stanley'); // SessionStart: compact or in-place clear
+  tr.recordSettle('stanley', [task({ id: 'mon-inbox', type: 'monitor' })]);
+  assert.equal(tr.countFor('stanley'), 0, 'orphaned monitor never counts');
+  assert.equal(vacationBusy(5 * 60_000, 5 * 60_000, true, tr.countFor('stanley')), false);
+});
+
+test('the arm set still drives the rearm-aware nudge (its surviving consumer)', () => {
+  const tr = new PendingWorkTracker();
+  assert.equal(tr.hasPersistentMonitor('kevin'), false);
+  tr.recordMonitorArm('kevin', 'mon-inbox', true);
+  assert.equal(tr.hasPersistentMonitor('kevin'), true);
+  tr.recordMonitorArm('kevin', 'mon-ci', false); // finite re-arm de-classifies
+  assert.equal(tr.hasPersistentMonitor('kevin'), true);
+  tr.recordMonitorArm('kevin', 'mon-inbox', false);
+  assert.equal(tr.hasPersistentMonitor('kevin'), false);
+  tr.recordMonitorArm('kevin', 'mon-inbox', true);
+  tr.resetAgent('kevin'); // fresh conversation: no rearm seen yet
+  assert.equal(tr.hasPersistentMonitor('kevin'), false);
 });
 
 test('unclassifiable task types COUNT (safe direction)', () => {
@@ -123,20 +154,19 @@ test('SessionStart resets the agent — a fresh conversation inherits no stale c
   const tr = new PendingWorkTracker();
   tr.recordMonitorArm('kevin', 'mon-inbox', true);
   tr.recordSettle('kevin', [task({ id: 'b1' })]);
+  assert.equal(tr.countFor('kevin'), 1);
   tr.resetAgent('kevin');
   assert.equal(tr.countFor('kevin'), 0);
-  // The persistent set died with the session too: a reused monitor id in the
-  // NEW session counts until re-classified at its own arm time.
+  // A surviving monitor id in the NEW session still never counts (type-skip).
   tr.recordSettle('kevin', [task({ id: 'mon-inbox', type: 'monitor' })]);
-  assert.equal(tr.countFor('kevin'), 1);
+  assert.equal(tr.countFor('kevin'), 0);
 });
 
-test("agents are independent — one agent's monitor does not shadow another's", () => {
+test("agents are independent — one agent's census does not shadow another's", () => {
   const tr = new PendingWorkTracker();
-  tr.recordMonitorArm('kevin', 'mon-inbox', true);
-  tr.recordSettle('kevin', [task({ id: 'mon-inbox', type: 'monitor' })]);
-  tr.recordSettle('pam', [task({ id: 'mon-inbox', type: 'monitor' })]);
-  assert.equal(tr.countFor('kevin'), 0);
+  tr.recordSettle('kevin', [task({ id: 'b1' })]);
+  tr.recordSettle('pam', [task({ id: 'b2' }), task({ id: 'mon', type: 'monitor' })]);
+  assert.equal(tr.countFor('kevin'), 1);
   assert.equal(tr.countFor('pam'), 1);
 });
 
@@ -214,8 +244,8 @@ test('HookServer feeds the tracker from live payload shapes (Monitor arm → Sto
   });
   assert.equal(
     tracker.countFor('kevin'),
-    2,
-    'persistent inbox monitor excluded; CI monitor + CI shell count',
+    1,
+    'both monitors skipped by type; only the CI shell counts',
   );
   // And the busy signal reads busy on an otherwise completely idle pane.
   assert.equal(vacationBusy(5 * 60_000, 5 * 60_000, true, tracker.countFor('kevin')), true);

@@ -250,8 +250,10 @@ export class HookServer {
 
     // Session boundaries reset the pending-work census (card
     // agent-harness-busy-signal-coun-2026-08-17): a fresh conversation
-    // inherits no stale census, and the dead session's persistent-monitor ids
-    // die with it (the new session re-arms and re-classifies within minutes).
+    // inherits no stale census, and the monitor-arm id set resets for the
+    // rearm-aware nudge. The census itself no longer depends on this wipe —
+    // monitors are skipped by type (card agent-harness-fix-the-staging--
+    // 2026-08-20).
     if ((event === 'SessionStart' || event === 'SessionEnd') && agentId) {
       this.pendingWork?.resetAgent(agentId);
     }
@@ -355,12 +357,10 @@ export class HookServer {
     if (event === 'PostToolUse' && agentId) {
       this.breaker?.recordToolUse(agentId, p.tool_name, p.tool_input);
       if (p.tool_name) this.telemetry?.recordHookSpan(agentId, p.tool_name);
-      // Monitor arm-time classification: the census excludes persistent
-      // (never-completing) monitors by the taskId learned HERE — counting them
-      // would make the whole floor permanently busy and no clear/park would
-      // ever fire. One-shot monitors (persistent false/absent) still count.
-      // A PERSISTENT arm is also the durable registry fact behind the
-      // rearm-aware nudge (recordInboxMonitorArm — one write per lifetime).
+      // Monitor arm-time classification feeds the rearm-aware nudge
+      // (recordMonitorArm → hasPersistentMonitor, and recordInboxMonitorArm —
+      // one write per lifetime — for the durable registry fact). The census
+      // itself skips monitors by type at settle time (pendingWork.ts).
       if (p.tool_name === 'Monitor') {
         const persistent = p.tool_response?.persistent === true;
         this.pendingWork?.recordMonitorArm(agentId, p.tool_response?.taskId, persistent);

@@ -71,12 +71,12 @@ export const MAIL_STAGE_TIMEOUT_MS = 10 * 60_000;
  *  and holding mail would only delay the dispatch to the timeout. Adopt-mode
  *  cards never hold: the engagement is connected, mail in the live
  *  conversation is the intent. */
-export function cardSessionMailHold(
+export function cardSessionHoldCards(
   cards: CardLike[],
   registrySessions: Record<string, string | undefined>,
   providers: Record<string, AgentProvider | undefined> = {},
-): Set<string> {
-  const held = new Set<string>();
+): CardLike[] {
+  const held: CardLike[] = [];
   for (const card of cards) {
     if (!card.assignee || card.status !== 'doing' || card.sessionMode === 'adopt') continue;
     if (card.sessionId && card.sessionId === registrySessions[card.assignee]) continue; // established
@@ -86,9 +86,19 @@ export function cardSessionMailHold(
           providers[card.assignee],
         ).ok
       : composeSessionCommand({ verb: 'clear' }, providers[card.assignee]).ok;
-    if (mechanism) held.add(card.assignee);
+    if (mechanism) held.push(card);
   }
   return held;
+}
+
+/** The agentId set form of cardSessionHoldCards — kept as the shared gate
+ *  definition for deliver() and the release sweep. */
+export function cardSessionMailHold(
+  cards: CardLike[],
+  registrySessions: Record<string, string | undefined>,
+  providers: Record<string, AgentProvider | undefined> = {},
+): Set<string> {
+  return new Set(cardSessionHoldCards(cards, registrySessions, providers).map((c) => c.assignee!));
 }
 
 /** Minimal structural card the watcher needs (subset of hive.HiveTask). */
@@ -464,7 +474,26 @@ function firedAt(): string {
 /** Polling cadence — matches the hive router / spawn / session watchers. */
 const CARD_TICK_MS = 1500;
 let cardWatchTimer: ReturnType<typeof setInterval> | null = null;
-const cardSeen: CardSeen = {};
+/** The watcher's transition memory. Exported for ONE consumer outside the
+ *  tick loop — HiveManager's staging-timeout release (R4, below) — which must
+ *  consume a still-pending transition on the SAME memory the running watcher
+ *  re-decides from. Tests reset it between runs. */
+export const cardSeen: CardSeen = {};
+
+/** R4 — disarm the late-wipe trap (card agent-harness-fix-the-staging--
+ *  2026-08-20). The staging timeout released a dispatch into the PRE-clear
+ *  conversation; the watcher's still-pending →doing transition would then
+ *  type the /clear HOURS LATER into the very conversation that absorbed the
+ *  released mail and did the card's work. Consuming the transition records
+ *  the card as already-'doing' so the re-decide finds no transition — the
+ *  late clear can never fire. Per-transition, not per-card: a later genuine
+ *  re-flip (blocked→doing) still fires. The operator steers by hand; the
+ *  timeout god-notice says so — now the code agrees. */
+export function consumeCardTransitions(cardIds: string[]): void {
+  for (const id of cardIds) {
+    if (id) cardSeen[id] = { status: 'doing' };
+  }
+}
 
 /** Start the watcher. Idempotent; re-reads deps.root() every tick. */
 export function startCardSessionWatcher(deps: CardSessionDeps): void {

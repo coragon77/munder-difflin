@@ -55,7 +55,12 @@ import {
 } from '../shared/agentProvider';
 import { MCP_CATALOG } from '../shared/mcpCatalog';
 import { hasInboxMonitor } from '../shared/providerAutomation';
-import { cardSessionMailHold, MAIL_STAGE_TIMEOUT_MS, type CardLike } from './cardSessions';
+import {
+  cardSessionHoldCards,
+  consumeCardTransitions,
+  MAIL_STAGE_TIMEOUT_MS,
+  type CardLike,
+} from './cardSessions';
 import { waitingLabel } from '../shared/waitingLabel';
 import { isSystemMail } from '../shared/hiveMail';
 import { compareAgentOrder } from '../shared/agentOrder';
@@ -2197,10 +2202,11 @@ export class HiveManager {
     this.atomicWriteJson(join(inbox, `${msg.id}.json`), msg);
   }
 
-  /** The set of agents whose mail must stage right now (pure snapshot of the
-   *  board + registry through cardSessionMailHold). Shared by deliver() and
-   *  the release sweep so both sides gate on ONE definition. */
-  private mailHolds(): Set<string> {
+  /** The cards holding mail in staging right now (pure snapshot of the board
+   *  + registry through cardSessionHoldCards). Shared by deliver() and the
+   *  release sweep so both sides gate on ONE definition; the timeout release
+   *  also uses the card ids to disarm the watcher's pending transition (R4). */
+  private mailHoldCards(): CardLike[] {
     const data = this.tasks() as { tasks?: CardLike[] };
     const cards = Array.isArray(data.tasks) ? data.tasks : [];
     const reg = this.registry().agents;
@@ -2212,7 +2218,12 @@ export class HiveManager {
         providers[t.assignee] = reg[t.assignee]?.provider;
       }
     }
-    return cardSessionMailHold(cards, registrySessions, providers);
+    return cardSessionHoldCards(cards, registrySessions, providers);
+  }
+
+  /** The set of agents whose mail must stage right now. */
+  private mailHolds(): Set<string> {
+    return new Set(this.mailHoldCards().map((c) => c.assignee!));
   }
 
   /** The agent's FIRST doing card, or null (mail-fold anchor lookup). */
@@ -2378,12 +2389,21 @@ export class HiveManager {
   private releaseStagedMail(): void {
     const root = this.root();
     if (!root) return;
-    const holds = this.mailHolds();
+    const holdCards = this.mailHoldCards();
+    const holds = new Set(holdCards.map((c) => c.assignee!));
     const now = Date.now();
     for (const id of this.agentIds()) {
       const inbox = join(root, 'agents', id, 'inbox');
       const staged = join(inbox, '.staged');
-      if (existsSync(staged)) this.releaseStagedAgent(id, inbox, staged, holds.has(id), now);
+      if (existsSync(staged))
+        this.releaseStagedAgent(
+          id,
+          inbox,
+          staged,
+          holds.has(id),
+          now,
+          holdCards.filter((c) => c.assignee === id).map((c) => c.id),
+        );
       // MAIL FOLD, tick half (reviewer blocker: the direct fold is
       // delivery-order dependent — mail routed after the contract lands
       // BESIDE it): every router tick, if the agent's doing card has its
@@ -2399,13 +2419,17 @@ export class HiveManager {
   }
 
   /** The staged release for ONE agent (the original releaseStagedMail body):
-   *  staleness snapshot, contract fold, then the timed/ungated releases. */
+   *  staleness snapshot, contract fold, then the timed/ungated releases.
+   *  `heldCardIds` are the cards currently holding THIS agent's mail — when
+   *  the TIMEOUT gate releases under an active hold, their pending watcher
+   *  transitions are consumed (R4: the late-wipe trap disarm). */
   private releaseStagedAgent(
     id: string,
     inbox: string,
     staged: string,
     held: boolean,
     now: number,
+    heldCardIds: string[],
   ): void {
     let files: string[] = [];
     try {
@@ -2463,6 +2487,13 @@ export class HiveManager {
       // behind that latency (round-3 high).
       if (timedOut && hasCard && !tieBroken) {
         tieBroken = true;
+        // R4 — DISARM THE LATE-WIPE TRAP (card agent-harness-fix-the-
+        // staging--2026-08-20): this release lands in the PRE-clear
+        // conversation and the agent may start the card's work there; the
+        // watcher's still-pending →doing transition would otherwise type the
+        // /clear into that very conversation hours later. Consume it — the
+        // timeout notice below already tells the operator to steer by hand.
+        if (heldCardIds.length > 0) consumeCardTransitions(heldCardIds);
         let rest: string[] = [];
         try {
           rest = readdirSync(staged).filter((r) => r.endsWith('.json'));
@@ -2484,7 +2515,7 @@ export class HiveManager {
             to: this.registry().godId ?? 'god',
             act: 'inform',
             subject: `[mail-staged] timeout release for ${id}`,
-            body: `Mail for ${id} was held in inbox/.staged for over ${Math.round(MAIL_STAGE_TIMEOUT_MS / 60_000)} minutes waiting for its doing card's card-scoped conversation to establish (the fresh clear never landed — dead spawn, window down, or a restart mid-transition). It has now been delivered, so the agent may wake into the WRONG (pre-clear) conversation: check the card and steer the pane by hand if the conversation needs restarting.`,
+            body: `Mail for ${id} was held in inbox/.staged for over ${Math.round(MAIL_STAGE_TIMEOUT_MS / 60_000)} minutes waiting for its doing card's card-scoped conversation to establish (the fresh clear never landed — dead spawn, window down, or a restart mid-transition). It has now been delivered, so the agent may wake into the WRONG (pre-clear) conversation: check the card and steer the pane by hand if the conversation needs restarting. The card's pending pane transition was consumed with this release — no deferred /clear will fire late into the conversation that absorbs the mail.`,
           },
           'system',
         );

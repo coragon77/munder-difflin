@@ -24,8 +24,15 @@ const os = require('node:os');
 const path = require('node:path');
 const loadTs = require('./load-ts.cjs');
 
-const { cardSessionDecisions, cardSessionTick, cardSessionMailHold, MAIL_STAGE_TIMEOUT_MS } =
-  loadTs('src/main/cardSessions.ts');
+const {
+  cardSessionDecisions,
+  cardSessionTick,
+  cardSessionMailHold,
+  cardSessionHoldCards,
+  consumeCardTransitions,
+  cardSeen,
+  MAIL_STAGE_TIMEOUT_MS,
+} = loadTs('src/main/cardSessions.ts');
 const { cardSessionActionStillValid } = loadTs('src/shared/cardSessions.ts');
 const { HiveManager } = loadTs('src/main/hive.ts');
 
@@ -923,5 +930,124 @@ test('router: staged mail older than the timeout is released WITH a god notice',
   assert.ok(
     godInbox.some((m) => /mail-staged/.test(m.subject) && /dwight/.test(m.body)),
     'god is told the dispatch mail landed late and why',
+  );
+});
+
+// ——— R4: the timeout release disarms the late-wipe trap ——————————————————
+// A timeout release delivers the dispatch into the PRE-clear conversation;
+// the watcher's still-pending transition would then type the /clear into the
+// very conversation that absorbed the mail — hours later. The release must
+// consume the transition (card agent-harness-fix-the-staging--2026-08-20).
+
+function resetWatcherSeen() {
+  for (const k of Object.keys(cardSeen)) delete cardSeen[k];
+}
+
+test('R4: timeout release consumes the deferred transition — no late /clear fires', () => {
+  resetWatcherSeen();
+  const tmp = tmpHive();
+  setCards(tmp, [CARD({ status: 'todo' })]);
+  const { deps, emitted } = fakeDeps(tmp, {
+    dwight: { sessionId: 'old-engagement', provider: 'claude' },
+  });
+  cardSessionTick(deps, cardSeen); // boot snapshot
+  // The flip lands while the pane is busy: the clear is DEFERRED (the trap arm).
+  setCards(tmp, [CARD()]);
+  deps.busy = () => true;
+  cardSessionTick(deps, cardSeen);
+  assert.equal(emitted.length, 0, 'busy pane: deferred, nothing emitted');
+  // The staged dispatch times out and releases into the pre-clear conversation.
+  consumeCardTransitions(['card-1']);
+  // Pane goes quiet — the deferred re-decide must NOT fire the clear now.
+  deps.busy = () => false;
+  cardSessionTick(deps, cardSeen);
+  assert.equal(emitted.length, 0, 'consumed transition never fires the late clear');
+});
+
+test('R4: a later genuine re-flip still fires (consume is per-transition, not per-card)', () => {
+  resetWatcherSeen();
+  const tmp = tmpHive();
+  setCards(tmp, [CARD({ status: 'todo' })]);
+  const { deps, emitted } = fakeDeps(tmp, {
+    dwight: { sessionId: 'old-engagement', provider: 'claude' },
+  });
+  cardSessionTick(deps, cardSeen);
+  setCards(tmp, [CARD()]);
+  consumeCardTransitions(['card-1']);
+  cardSessionTick(deps, cardSeen);
+  assert.equal(emitted.length, 0, 'consumed');
+  setCards(tmp, [CARD({ status: 'blocked' })]);
+  cardSessionTick(deps, cardSeen);
+  setCards(tmp, [CARD()]); // blocked → doing again: a REAL new transition
+  cardSessionTick(deps, cardSeen);
+  assert.ok(emitted.length > 0, 're-flip fires normally');
+});
+
+test('R4: routeOnce timeout release consumes through the WATCHER memory (end to end)', () => {
+  resetWatcherSeen();
+  const tmp = tmpHive();
+  setCards(tmp, [CARD({ status: 'todo' })]);
+  const { deps, emitted } = fakeDeps(tmp, {
+    dwight: { sessionId: 'old-engagement', provider: 'claude' },
+  });
+  cardSessionTick(deps, cardSeen); // boot snapshot
+  setCards(tmp, [CARD()]);
+  deps.busy = () => true;
+  cardSessionTick(deps, cardSeen); // deferred — the transition stays pending
+  assert.equal(emitted.length, 0);
+  // Same board through the router: stage a dispatch and age it past the horizon.
+  const { hive, root } = stagedHive([CARD()]);
+  hive.send({ to: 'dwight', subject: 'dispatch', body: 'the contract' }, 'god');
+  const stagedDir = path.join(root, 'agents', 'dwight', 'inbox', '.staged');
+  const f = path.join(stagedDir, fs.readdirSync(stagedDir)[0]);
+  const old = new Date(Date.now() - MAIL_STAGE_TIMEOUT_MS - 5000);
+  fs.utimesSync(f, old, old);
+  hive.routeOnce(); // timeout release → consumes card-1's transition
+  assert.equal(hive.inbox('dwight').length, 1, 'released');
+  // The pane goes quiet: the watcher re-decides against ITS OWN memory and
+  // must find the transition consumed — no late /clear into the conversation
+  // that just absorbed the released mail.
+  deps.busy = () => false;
+  cardSessionTick(deps, cardSeen);
+  assert.equal(emitted.length, 0, 'the trap is disarmed end to end');
+});
+
+test('R4: a stamp-landing release does NOT consume (the clear already won)', () => {
+  resetWatcherSeen();
+  const tmp = tmpHive();
+  setCards(tmp, [CARD({ status: 'todo' })]);
+  const { deps, emitted } = fakeDeps(tmp, {
+    dwight: { sessionId: 'old-engagement', provider: 'claude' },
+  });
+  cardSessionTick(deps, cardSeen);
+  setCards(tmp, [CARD()]);
+  deps.busy = () => true;
+  cardSessionTick(deps, cardSeen); // deferred
+  const { hive } = stagedHive([CARD()]);
+  hive.send({ to: 'dwight', subject: 'dispatch', body: 'the contract' }, 'god');
+  hive.recordSession('dwight', 'fresh-card-conversation'); // stamp lands → gate a
+  hive.routeOnce();
+  assert.equal(hive.inbox('dwight').length, 1);
+  // The pending transition is still legitimate here (no timeout happened).
+  deps.busy = () => false;
+  setCards(tmp, [CARD({ sessionId: undefined })]);
+  cardSessionTick(deps, cardSeen);
+  assert.ok(emitted.length > 0, 'non-timeout release leaves the transition armed');
+});
+
+test('mailHold: holdCards returns the holding cards themselves (one definition)', () => {
+  const cards = [
+    CARD(),
+    CARD({ id: 'card-2', status: 'blocked' }),
+    CARD({ id: 'card-3', sessionId: 's', sessionMode: 'adopt' }),
+  ];
+  const held = cardSessionHoldCards(cards, { dwight: 'elsewhere' }, { dwight: 'claude' });
+  assert.deepEqual(
+    held.map((c) => c.id),
+    ['card-1'],
+  );
+  assert.deepEqual(
+    [...cardSessionMailHold(cards, { dwight: 'elsewhere' }, { dwight: 'claude' })],
+    ['dwight'],
   );
 });
