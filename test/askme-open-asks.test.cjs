@@ -211,3 +211,98 @@ test('preload and IPC pass the optional index through with validation', () => {
   assert.match(main, /'hive:resolveHumanQuestion'[\s\S]*?index/);
   assert.match(main, /Number\.isInteger/);
 });
+
+// ─── Stefan's literal acceptance scenario, exercised against a REAL ledger ──
+// ('answer question 3/8 first'): the day's actual write pattern is many
+// single-ask calls, so 8 calls land in chronological array order. Each check
+// below drives the exact call sequence AskMeTab makes — resolveHumanQuestion
+// (id, q, text, index) on a fresh locked ledger read — never a source read.
+
+/** 8 single-ask calls at ascending times → array in call order. */
+function eightAsksCard() {
+  return {
+    id: 'eight-1',
+    title: 'Eight open asks',
+    status: 'blocked',
+    dependsOn: [],
+    priority: 1,
+    createdAt: '2026-08-20T00:00:00.000Z',
+    humanQA: Array.from({ length: 8 }, (_, i) => ({
+      q: `Question ${i + 1}/8`,
+      askedAt: `2026-08-20T1${i}:00:00.000Z`,
+    })),
+  };
+}
+
+test('3/8 answered FIRST writes exactly entry 3; 1/8, 2/8 and the rest stay open on the board', (t) => {
+  const { hive, ledger } = setup(t, [eightAsksCard()]);
+  const before = openAsks(JSON.parse(fs.readFileSync(ledger, 'utf8')).tasks[0]);
+  assert.equal(before.length, 8);
+
+  // the board renders all 8; the human expands #3 and answers it
+  assert.equal(hive.resolveHumanQuestion('eight-1', 'Question 3/8', 'answering 3 first', 2), true);
+
+  const after = JSON.parse(fs.readFileSync(ledger, 'utf8')).tasks[0];
+  assert.equal(after.humanQA[2].a, 'answering 3 first');
+  assert.ok(after.humanQA[2].answeredAt);
+  for (const i of [0, 1, 3, 4, 5, 6, 7]) {
+    assert.equal(after.humanQA[i].a, undefined);
+    assert.equal(after.humanQA[i].dismissedAt, undefined);
+  }
+  // stays ON the board: blocked + remaining open asks (waitsOnHuman's inputs)
+  const remaining = openAsks(after);
+  assert.equal(after.status, 'blocked');
+  assert.equal(remaining.length, 7);
+  assert.deepEqual(
+    remaining.map((o) => o.entry.q),
+    [
+      'Question 1/8',
+      'Question 2/8',
+      'Question 4/8',
+      'Question 5/8',
+      'Question 6/8',
+      'Question 7/8',
+      'Question 8/8',
+    ],
+  );
+});
+
+test('the remaining 7 keep their draft keys — a draft on 4/8 never lands on 5/8', (t) => {
+  const { hive, ledger } = setup(t, [eightAsksCard()]);
+  const keyOf = (task, o) => `${task.id}:${o.index}`;
+  const before = openAsks(JSON.parse(fs.readFileSync(ledger, 'utf8')).tasks[0]);
+  hive.resolveHumanQuestion('eight-1', 'Question 3/8', 'done with 3', 2);
+  const after = openAsks(JSON.parse(fs.readFileSync(ledger, 'utf8')).tasks[0]);
+  // distinct per entry…
+  assert.equal(new Set(before.map((o) => keyOf({ id: 'eight-1' }, o))).size, 8);
+  // …and unchanged for every entry that is still open: paging away and back
+  // finds the same key, so the draft typed there is the draft found there
+  const beforeKeys = new Map(before.map((o) => [o.entry.q, keyOf({ id: 'eight-1' }, o)]));
+  for (const o of after) assert.equal(keyOf({ id: 'eight-1' }, o), beforeKeys.get(o.entry.q));
+});
+
+test('scrambled out-of-order answering closes every entry exactly once, then none remain', (t) => {
+  const { hive, ledger } = setup(t, [eightAsksCard()]);
+  const order = [7, 0, 4, 1, 6, 3, 5]; // answer #3 first was the previous test; scramble the rest
+  for (const i of order) {
+    assert.equal(hive.resolveHumanQuestion('eight-1', `Question ${i + 1}/8`, `a${i}`, i), true);
+  }
+  assert.equal(hive.resolveHumanQuestion('eight-1', 'Question 3/8', 'a2', 2), true);
+  const after = JSON.parse(fs.readFileSync(ledger, 'utf8')).tasks[0];
+  for (const e of after.humanQA) {
+    assert.ok(e.a); // every entry answered, exactly its own answer
+    assert.equal(e.a, `a${Number(e.q.slice('Question '.length, -2)) - 1}`);
+  }
+  // board-empty condition: no open asks left → the card leaves ASK ME
+  assert.equal(openAsks(after).length, 0);
+});
+
+test('dismissing 3/8 sets dismissedAt on exactly that entry; board keeps 7', (t) => {
+  const { hive, ledger } = setup(t, [eightAsksCard()]);
+  assert.equal(hive.resolveHumanQuestion('eight-1', 'Question 3/8', undefined, 2), true);
+  const after = JSON.parse(fs.readFileSync(ledger, 'utf8')).tasks[0];
+  assert.ok(after.humanQA[2].dismissedAt);
+  assert.equal(after.humanQA[2].a, undefined);
+  assert.equal(openAsks(after).length, 7);
+  assert.equal(after.status, 'blocked'); // task itself stays blocked on the kanban
+});
