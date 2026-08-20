@@ -363,6 +363,107 @@ test('unclosed $( inside double quotes stays live (refuse-biased)', () => {
   assert.ok(d, 'denied');
 });
 
+// —————— Heredoc bodies stay gated (card agent-r3-gate-exclude-heredoc--2026-08-19) ———————
+// Ruling (a) — the data-sink allowlist — was implemented and then REVERTED
+// after the cold-context review round proved the exclusion cannot be made
+// sound without real shell parsing. Every test in this section pins a shape
+// that defeats body-exclusion; together they are the reason the gate keeps
+// scanning heredoc bodies as command text. Do not re-attempt without a real
+// tokenizer (god's boundary clause: a false refusal beats a false allow).
+
+test("god's board.md repro stays REFUSED — the accepted cost of a sound gate", () => {
+  const { root } = floor();
+  const cmd = "cat >> board.md <<'EOF'\n… prose that merely mentions registry.json …\nEOF";
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — body exclusion is unsound, so prose trips the gate');
+});
+
+test('stray quote in a heredoc body does not mask a later command (finding 2 holds)', () => {
+  const { root } = floor();
+  const cmd = 'cat >> board.md <<EOF\n"\nEOF\ncat tasks.json';
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — the command after the terminator is its own segment');
+  assert.match(d.reason, /hive-card list/);
+});
+
+test('the << line stays fully evaluated — redirect onto tasks.json refuses', () => {
+  const { root } = floor();
+  const cmd = 'cat >> $HIVE_ROOT/tasks.json <<EOF\nbody prose\nEOF';
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — the operand is on the line, not in the body');
+});
+
+test('UNQUOTED delimiter expands $( ) in the body — the body is shell-executed', () => {
+  const { root } = floor();
+  const cmd = 'cat <<EOF\n$(cat tasks.json)\nEOF';
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — unquoted-heredoc bodies are expanded by the shell');
+});
+
+test('a fake << inside a comment must not create a body span', () => {
+  const { root } = floor();
+  const cmd = "cat /dev/null # <<'EOF'\ncat tasks.json\nEOF";
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — the read after the comment is live');
+});
+
+test('here-string <<< is not a heredoc body either', () => {
+  const { root } = floor();
+  const cmd = 'cat <<<EOF\ncat tasks.json\n<EOF';
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied');
+});
+
+test('process substitution routes a body to an interpreter with no |;& on the line', () => {
+  const { root } = floor();
+  const cmd = "cat <<'EOF' > >(python3 -)\nopen('tasks.json','w').write('{}')\nEOF";
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — sink-name matching cannot see the >(...) consumer');
+});
+
+test('persist-then-execute: the body of a script written to disk runs ungated', () => {
+  const { root } = floor();
+  const cmd = "cat > /tmp/pwn.sh <<'EOF'\ncat tasks.json\nEOF\nbash /tmp/pwn.sh";
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied — the gate cannot inspect file contents later');
+});
+
+test('unknown exec keeps full body scanning (refuse-biased)', () => {
+  const { root } = floor();
+  const cmd = "mylang - <<'EOF'\nread tasks.json\nEOF";
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied');
+});
+
+test('sed heredoc body is scanned (sed takes scripts)', () => {
+  const { root } = floor();
+  const cmd = "sed -e '' <<'EOF'\nmentions tasks.json\nEOF";
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied');
+});
+
+test('pipelines refuse in both directions — the << chunk may be an interpreter', () => {
+  const { root } = floor();
+  const a = "python3 - <<'PY' | cat\nopen('tasks.json','w').write('{}')\nPY";
+  assert.ok(gate(root, root, 'Bash', { command: a }), 'denied — heredoc on an interpreter chunk');
+  const b = 'cat <<EOF | python3 -\nimport json; json.load(open("tasks.json"))\nEOF';
+  assert.ok(gate(root, root, 'Bash', { command: b }), 'denied — body reaches an interpreter');
+});
+
+test('sort is not excludable either (--compress-program spawns a program)', () => {
+  const { root } = floor();
+  const cmd = "sort -S 1 --compress-program=sh <<'EOF'\nmentions tasks.json\nEOF";
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied');
+});
+
+test('unterminated heredoc keeps scanning the tail (refuse-biased)', () => {
+  const { root } = floor();
+  const cmd = 'cat >> board.md <<EOF\nmentions tasks.json with no terminator';
+  const d = gate(root, root, 'Bash', { command: cmd });
+  assert.ok(d, 'denied');
+});
+
 // —————————————————————————————————————————————————————— Bash: reads pass —
 
 test('reads of UNRELATED files pass (the gate is scoped to protected paths)', () => {
