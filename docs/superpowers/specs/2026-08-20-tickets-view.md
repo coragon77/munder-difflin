@@ -24,7 +24,16 @@ three-phase pipeline around a deterministic script, `overview.py`:
 So the structured data already exists as JSON; what's missing is one merged,
 stable-contract file and a harness surface that shows it.
 
-## 2. Who writes the JSON — the one open point (Stefan decides)
+## 2. Who writes the JSON — DECIDED and SHIPPED (2026-08-20)
+
+Stefan approved option B in Robert's pane and Robert implemented it the same day:
+`cmd_finish` in BOTH skill repos now writes the contract file — asol-claude-skills
+commit `6c2f6a3`, asol-skills (pi companion, `skills/ticket-overview/`) commit
+`9a9b1e2`. Verified with a live standalone `finish` run: 95 tickets, 21 active,
+21 recaps, `generated_at` matching state.json, markdown note unchanged. Note
+`generated_at` is **local time `"YYYY-MM-DD HH:MM"`** (the script's `now_iso()`),
+not ISO-8601-Z — parse accordingly for the 26 h staleness rule. §4–§10 remain
+the open implementation work. Original decision text kept below for context.
 
 **Recommended (option B): `overview.py finish` writes one additional file,**
 `~/.cache/ticket-overview/tickets.json` — the merged view (table + recaps), the
@@ -62,7 +71,7 @@ Shape (version-gated; unknown fields ignored):
 ```json
 {
   "version": 1,
-  "generated_at": "2026-08-20T08:31:42Z",
+  "generated_at": "2026-08-20 08:31",
   "redmine_base": "https://redmine.asol.at",
   "tickets": [
     {
