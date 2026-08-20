@@ -679,6 +679,35 @@ test('godLine TOOLS clause keeps the graphify calibration', () => {
   );
 });
 
+test('godLine defers analysis questions to role-marked advisors (lean)', () => {
+  // Card agent-godline-defer-analysis-q-2026-08-20, root: Redmine #3230 — god
+  // answered an analysis question inline and wrong. The rule lives in the
+  // LEAN-GOD POSTURE clause beside DEFAULT-DELEGATE; the advisor is resolved
+  // BY ROLE from the live roster line (never named — roles are user-authored,
+  // so the string must stay role-keyed, not name-keyed).
+  const lean = injectedPrompt.call(null, GOD, '/a', '/h', false, false, true, 'lean');
+  assert.ok(/DEFER ANALYSIS TO ADVISORS:/.test(lean), 'the advisor-deferral rule is present');
+  assert.ok(
+    /an analysis, design or data-model question is a CARD for an agent whose ROLE marks it as an advisor/.test(
+      lean,
+    ),
+    'analysis/design/data-model questions are cards for a role-marked advisor',
+  );
+  assert.ok(
+    /from the LIVE ROSTER line, never from remembered names/.test(lean),
+    'the advisor is resolved from the live roster line, never by remembered name',
+  );
+  assert.ok(
+    /writing a design recommendation into a dispatch or an operator reply, that paragraph IS an advisor card/.test(
+      lean,
+    ),
+    'a design recommendation god catches himself writing is itself the trigger',
+  );
+  // The rule is lean-only: 'god'/'workers' briefings do not carry the clause.
+  const g = injectedPrompt.call(null, GOD, '/a', '/h', false, false);
+  assert.ok(!g.includes('DEFER ANALYSIS TO ADVISORS'), 'no advisor rule outside lean');
+});
+
 test('hive-root AGENTS.md pins hive-dispatch as the only todo->doing gate', () => {
   // Same card as the godLine pin: a rule that lives only in god's memory or
   // only in the godLine does not survive a fresh install's floor briefing —
