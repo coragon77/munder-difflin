@@ -15,6 +15,7 @@ import {
 import {
   clearCommandForProvider,
   compactionCommandForProvider,
+  isCompactionCommand,
   nudgeGraceMsForProvider,
   remoteControlCommandForProvider,
   terminalReadyToReceive,
@@ -287,6 +288,14 @@ export function useHive(config: HarnessConfig | null): void {
   // must leave the agent alone — set while its boot sequence is typing so nothing
   // collides with /remote-control + the orientation prompt.
   const bootGraceUntil = useRef<Record<string, number>>({});
+  // R2 (card agent-harness-fix-the-staging--2026-08-20): a DELIVERED compaction
+  // holds this agent's queue until a session boundary arrives (released in the
+  // hook-event effect below) — compaction runs ~2min inside the REPL and
+  // anything typed during it is swallowed (Cause A of the staging wedge).
+  // Value is the release deadline; the bounded horizon follows the 30-min
+  // automation-safety expiry pattern so a provider that never reports the
+  // boundary cannot strand the queue forever.
+  const compactHoldUntil = useRef<Record<string, number>>({});
   // Agents whose one-time TUI protocol seed (Crush, seedDelivery:'type-into-tui')
   // has already been typed — guards effect #3b against re-seeding. (ondev-b)
   const seeded = useRef<Set<string>>(new Set());
@@ -451,6 +460,14 @@ export function useHive(config: HarnessConfig | null): void {
     return window.cth.onHiveHookEvent((e) => {
       if (!e.agentId) return;
       lastHookEventAt.current[e.agentId] = Date.now();
+      // R2: session boundaries mean the pane is no longer mid-compaction —
+      // release any post-compact queue hold (the drain sets it when it
+      // delivers a compact command). Stop is the provider-agnostic settle;
+      // SessionStart fires when claude finishes the compaction itself;
+      // PostCompact covers engines that emit it instead.
+      if (e.event === 'SessionStart' || e.event === 'PostCompact' || e.event === 'Stop') {
+        compactHoldUntil.current[e.agentId] = 0;
+      }
       const { updateAgent, agents } = useStore.getState();
       const self = agents.find((a) => a.id === e.agentId);
       if (!self) return;
@@ -879,6 +896,8 @@ export function useHive(config: HarnessConfig | null): void {
   useEffect(() => {
     if (!config?.onboardingComplete) return;
     const FLUSH_COOLDOWN_MS = 4500;
+    // R2: ceiling for the post-compaction queue hold (see compactHoldUntil).
+    const COMPACT_HOLD_MAX_MS = 30 * 60_000;
     // A message that fails this many PTY writes (dead/crashed pty that the store
     // still thinks is idle) is dropped WITH a console.warn — bounded so the drain
     // never spins forever on a corpse, loud so the loss is diagnosable. (#113)
@@ -908,6 +927,10 @@ export function useHive(config: HarnessConfig | null): void {
       if (control?.autoDeliveryPaused && !next.manual) return { sent: false };
       // Hold queued messages until the target finishes its boot sequence.
       if ((bootGraceUntil.current[target.id] ?? 0) >= now) return { sent: false };
+      // R2: the pane is mid-compaction (a compact command was delivered and no
+      // session boundary has arrived since) — anything typed now is swallowed
+      // (Cause A of the staging wedge), so hold the queue.
+      if ((compactHoldUntil.current[target.id] ?? 0) >= now) return { sent: false };
       // The user owns the prompt: a draft they are writing, or a menu they
       // opened, holds delivery. Both blocks expire after half an hour, and when
       // one does we simply type after whatever is there — automation never
@@ -936,17 +959,32 @@ export function useHive(config: HarnessConfig | null): void {
       // Re-validate the card's CURRENT state before typing anything: a stale
       // clear is not a no-op, it WIPES the working conversation. Drop silently —
       // the watcher re-fires on the next transition if steering is still needed.
-      // Fail-open on a fetch error so a hiccup can never strand a live card.
+      // Fail-open on a fetch error: a hiccup must never strand a live card —
+      // HOLD the message (retry next flush) instead of dropping it (R5, card
+      // agent-harness-fix-the-staging--2026-08-20: the old catch-to-null fell
+      // into the stale-drop below, failing CLOSED against this comment).
       if (next.cardFor) {
-        const data = await window.cth.hiveTasks().catch(() => null);
-        const card =
-          data && typeof data === 'object' && Array.isArray((data as { tasks?: unknown[] }).tasks)
-            ? ((data as { tasks: Array<Record<string, unknown> | undefined> }).tasks.find(
-                (t) => t?.id === next.cardFor!.cardId,
-              ) as CardSnapshotLike | undefined)
-            : undefined;
-        if (!cardSessionActionStillValid(card, next.cardFor)) {
-          removeQueuedMessage(srcId, next.id);
+        let data: unknown;
+        let fetched = false;
+        try {
+          data = await window.cth.hiveTasks();
+          fetched = true;
+        } catch {
+          /* hold below — fail open */
+        }
+        if (fetched) {
+          const card =
+            data && typeof data === 'object' && Array.isArray((data as { tasks?: unknown[] }).tasks)
+              ? ((data as { tasks: Array<Record<string, unknown> | undefined> }).tasks.find(
+                  (t) => t?.id === next.cardFor!.cardId,
+                ) as CardSnapshotLike | undefined)
+              : undefined;
+          if (!cardSessionActionStillValid(card, next.cardFor)) {
+            removeQueuedMessage(srcId, next.id);
+            return { sent: false };
+          }
+        } else {
+          // fetch error: keep the message queued, re-validate next flush
           return { sent: false };
         }
       }
@@ -977,6 +1015,13 @@ export function useHive(config: HarnessConfig | null): void {
           },
         );
         if (sent) {
+          // R2: a delivered compaction starts a ~2min REPL run during which the
+          // next queued message would be swallowed (Cause A) — hold the queue
+          // until a session boundary clears the marker above (bounded by
+          // COMPACT_HOLD_MAX_MS).
+          if (isCompactionCommand(next.instruction ?? next.text)) {
+            compactHoldUntil.current[target.id] = Date.now() + COMPACT_HOLD_MAX_MS;
+          }
           delete sendFailures[next.id];
           return { sent: true, message: next };
         }
@@ -1298,6 +1343,11 @@ export function useHive(config: HarnessConfig | null): void {
         const verb = command.trimStart().split(/\s+/)[0];
         const queued = messageQueues[a.id] ?? [];
         if (queued.some((m) => m.text.trimStart().startsWith(verb))) continue;
+        // R3 (card agent-harness-fix-the-staging--2026-08-20): a card-scoped
+        // clear is already queued — the conversation is about to restart, so
+        // compacting the dying one is pointless, and its run window is exactly
+        // what swallows the clear.
+        if (action === 'compact' && queued.some((m) => m.cardFor?.kind === 'clear')) continue;
         enqueueMessage(a.id, command);
       }
     };

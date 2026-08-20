@@ -1029,6 +1029,26 @@ export const useStore = create<State>((set) => ({
       if (isCompactionCommand(trimmed) && queued.some((m) => isCompactionCommand(m.text))) {
         return s;
       }
+      // A CARD-SCOPED CLEAR BEATS A PARKED COMPACT (card agent-harness-fix-
+      // the-staging--2026-08-20, R3): the clear restarts the pane's
+      // conversation for a kanban card, so a compaction queued ahead of it
+      // would run against the conversation the clear is about to end — and
+      // its ~2-minute run window is exactly what swallows the clear when the
+      // drain types it into the compacting REPL (Cause A of the staging
+      // wedge). Evict the compact and take ITS position: the clear must not
+      // slide behind messages queued after the compact, those would be typed
+      // into the pre-clear conversation and wiped. Plain (non-card) clears
+      // don't evict — the collision that cost dispatches is the watcher-vs-
+      // trigger one, and an operator typing both keeps both.
+      let base = queued;
+      let insertAt = -1;
+      if (meta?.cardFor?.kind === 'clear') {
+        const compactAt = queued.findIndex((m) => isCompactionCommand(m.text));
+        if (compactAt >= 0) {
+          base = queued.filter((m) => !isCompactionCommand(m.text));
+          insertAt = compactAt; // the clear takes the slot the compact sat in
+        }
+      }
       const msg: QueuedMessage = {
         id: newQueuedId(),
         text: trimmed,
@@ -1038,9 +1058,11 @@ export const useStore = create<State>((set) => ({
         ...(meta?.inboxFor ? { inboxFor: meta.inboxFor } : {}),
         ...(meta?.cardFor ? { cardFor: meta.cardFor } : {}),
       };
+      const next = [...base];
+      next.splice(insertAt >= 0 ? insertAt : next.length, 0, msg);
       const messageQueues = {
         ...s.messageQueues,
-        [agentId]: [...(s.messageQueues[agentId] ?? []), msg],
+        [agentId]: next,
       };
       persistQueues(messageQueues);
       return { messageQueues };
