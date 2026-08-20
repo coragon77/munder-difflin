@@ -46,8 +46,8 @@ A manifest is untrusted input. The format is designed so it **cannot**:
 - **Auto-spawn an agent.** Import only pre-fills the form. A human reviews every field —
   the modal shows an "imported" banner — and clicks spawn.
 - **Name an executable.** There is no `command` field. The spawn binary always comes from the
-  user's locally configured provider preset (`claude`, `agy`, `codex`). `provider: "custom"`
-  is rejected.
+  user's locally configured provider preset (`claude`, `agy`, `codex`, `pi`, … — any preset
+  except `custom`). `provider: "custom"` is rejected.
 - **Smuggle shell syntax.** `commandFlags` entries must match `^[A-Za-z0-9._/=:,@%+-]{1,100}$`
   (no quotes, whitespace, semicolons, pipes, backticks), the first entry must be flag-shaped
   (`-…`), and args are passed to node-pty as argv — never through a shell.
@@ -67,7 +67,7 @@ text the agent will act on. That's exactly why import never skips the review ste
 | `goal` | string ≤ 4000 | | standing mission text |
 | `character` | string ≤ 24 | | office cast id; unknown → default sprite |
 | `accent` | string ≤ 24 | | color name; unknown → default |
-| `provider` | `claude` \| `antigravity` \| `agy` \| `codex` | | `agy` = alias for `antigravity`; omit = user default |
+| `provider` | `claude` \| `codex` \| `grok` \| `kimi` \| `antigravity` \| `agy` \| `qwen` \| `opencode` \| `crush` \| `pi` \| `copilot` | | `agy` = alias for `antigravity`; any preset except `custom`; omit = user default |
 | `model` | string ≤ 80 | | provider model id/label |
 | `commandFlags` | string[] ≤ 16 | | flag-shaped tokens appended to the locally-built command |
 | `capabilities` | string[] ≤ 12 | | hive routing tags |

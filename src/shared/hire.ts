@@ -21,6 +21,7 @@
  *     auto-enabled (consistent with "import only pre-fills; human clicks spawn").
  */
 
+import { AGENT_PROVIDER_PRESETS, type AgentProvider } from './agentProvider';
 import { mcpCatalogEntry } from './mcpCatalog';
 
 export const HIRE_SPEC_V1 = 'munder-difflin/hire@1';
@@ -35,9 +36,12 @@ export const BUNDLED_SKILL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /** Providers a manifest may request ('agy' is accepted as an alias for
- *  'antigravity'). 'custom' is deliberately NOT allowed — it would let a
- *  manifest choose an arbitrary local binary. */
-export type HireProvider = 'claude' | 'antigravity' | 'codex';
+ *  'antigravity'): every provider preset except 'custom', which is
+ *  deliberately NOT allowed — it would let a manifest choose an arbitrary
+ *  local binary. DERIVED from AGENT_PROVIDER_PRESETS so the hire spec can
+ *  never drift behind the presets again (card agent-hire-dialog-spec-cannot--
+ *  2026-08-20: the hand-maintained three-value list once omitted 'pi'). */
+export type HireProvider = Exclude<AgentProvider, 'custom'>;
 
 export interface HireManifest {
   /** Spec tag; exactly `munder-difflin/hire@1` for this version. */
@@ -90,7 +94,9 @@ export interface HireValidation {
   consentRequired?: string[];
 }
 
-const PROVIDERS: readonly string[] = ['claude', 'antigravity', 'codex'];
+const PROVIDERS: readonly string[] = AGENT_PROVIDER_PRESETS.filter((p) => p.id !== 'custom').map(
+  (p) => p.id,
+);
 const MAX_BYTES = 64 * 1024;
 
 /** A flag ("-x", "--flag", "--flag=value") or a bare value token that may follow
