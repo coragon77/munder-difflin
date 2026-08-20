@@ -6,7 +6,10 @@
  * stamps blockedBy=$AGENT_ID (+ optional --why → blockedWhy); `hive-card
  * ask` stamps blockedBy='human-ask'. The hive-dispatch gate refuses exactly
  * as before EXCEPT the recorded owner's own --resume return (blockedBy =
- * card assignee = --assignee); the refusal wording splits by kind (human-ask
+ * card assignee = --assignee), plus one more pass on human-ask cards: once
+ * EVERY humanQA ask is answered or dismissed the human hold is over and the
+ * owner's --resume sails through (card agent-hive-dispatch-refuses-a--
+ * 2026-08-20); the refusal wording splits by kind (human-ask
  * quotes the open question, agent-wait names who, no-provenance keeps
  * today's wording), paused is checked FIRST and stays absolute, and legacy
  * blocked cards without blockedBy fail closed.
@@ -408,5 +411,151 @@ test('paused is checked FIRST and stays absolute — a provenance stamp never lo
   assert.notEqual(r.code, 0, 'refused even for the recorded owner resume');
   assert.match(r.stderr, /paused:true/, 'the paused wording wins');
   assert.match(r.stderr, /no override/i);
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger byte-identical');
+});
+
+// ─── human-ask with every ask resolved: the hold is over ────────────────────
+// Card agent-hive-dispatch-refuses-a--2026-08-20: when EVERY humanQA entry
+// carries an answer (or a dismissal), the human hold's reason is spent — the
+// recorded owner's --resume return passes the gate instead of being refused
+// by a message that admits the asks are all answered. One UNanswered ask
+// keeps refusing everyone (pinned by the open-question tests above).
+
+function humanAskCard(sid, qa) {
+  return {
+    id: 'agent-asked-card-2026-08-20',
+    title: 'Waiting on the human',
+    status: 'blocked',
+    assignee: 'worker-1',
+    sessionId: sid,
+    blockedBy: 'human-ask',
+    humanQA: qa,
+    dependsOn: [],
+    priority: 3,
+    createdAt: '2026-08-20T00:00:00.000Z',
+    origin: 'agent',
+  };
+}
+
+const ALL_RESOLVED_QA = [
+  {
+    q: 'Third ask',
+    a: 'ship it',
+    askedAt: '2026-08-20T00:00:00.000Z',
+    answeredAt: '2026-08-20T01:00:00.000Z',
+  },
+  { q: 'Second ask', askedAt: '2026-08-20T00:00:01.000Z', dismissedAt: '2026-08-20T01:00:01.000Z' },
+  {
+    q: 'First ask',
+    a: 'take A',
+    askedAt: '2026-08-20T00:00:02.000Z',
+    answeredAt: '2026-08-20T01:00:02.000Z',
+  },
+];
+
+test("all asks answered/dismissed: the recorded owner's --resume sails through", {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const sid = 'f68d69ae-c2ac-4d4d-ae63-b244fff90460';
+  plantClaudeSession(s.env.HOME, sid);
+  s.hive.writeTasks([humanAskCard(sid, ALL_RESOLVED_QA)]);
+
+  const r = s.runDispatch([
+    '--card',
+    'agent-asked-card-2026-08-20',
+    '--assignee',
+    'worker-1',
+    '--resume',
+    '--body',
+    'answers are in — continue',
+  ]);
+  assert.equal(r.code, 0, `owner resume lands once every ask is resolved: ${r.stderr}`);
+  const card = s.tasks().find((c) => c.id === 'agent-asked-card-2026-08-20');
+  assert.equal(card.status, 'doing');
+  assert.equal(card.sessionMode, 'resume');
+  assert.equal(card.sessionId, sid, 'the stored conversation is preserved');
+  assert.equal(card.blockedBy, undefined, 'provenance is cleared with the wait');
+  assert.equal(s.outboxMails().length, 1, 'contract mail queued');
+});
+
+test("one UNanswered ask left: even the owner's --resume is STILL refused", {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const sid = 'f68d69ae-c2ac-4d4d-ae63-b244fff90461';
+  plantClaudeSession(s.env.HOME, sid);
+  const qa = ALL_RESOLVED_QA.map((e) => ({ ...e }));
+  delete qa[0].a; // the tail entry (asked last) loses its answer again
+  delete qa[0].answeredAt;
+  s.hive.writeTasks([humanAskCard(sid, qa)]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const r = s.runDispatch([
+    '--card',
+    'agent-asked-card-2026-08-20',
+    '--assignee',
+    'worker-1',
+    '--resume',
+    '--body',
+    'c',
+  ]);
+  assert.notEqual(r.code, 0, 'a single open ask keeps the hold for everyone');
+  assert.match(r.stderr, /WAITING ON THE HUMAN/);
+  assert.match(r.stderr, /"Third ask"/, 'quotes the one open question');
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger byte-identical');
+});
+
+test('all asks resolved but NO --resume: refused, naming the exact return command', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const sid = 'f68d69ae-c2ac-4d4d-ae63-b244fff90462';
+  plantClaudeSession(s.env.HOME, sid);
+  s.hive.writeTasks([humanAskCard(sid, ALL_RESOLVED_QA)]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const r = s.runDispatch([
+    '--card',
+    'agent-asked-card-2026-08-20',
+    '--assignee',
+    'worker-1',
+    '--body',
+    'c',
+  ]);
+  assert.notEqual(r.code, 0, 'the sanctioned clear is the owner resume, not a fresh dispatch');
+  assert.match(r.stderr, /ALL answered or dismissed/i, 'admits the hold is over');
+  assert.match(
+    r.stderr,
+    /hive-dispatch --card agent-asked-card-2026-08-20 --assignee worker-1 --resume/,
+    'names the exact command that clears it',
+  );
+  assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger byte-identical');
+});
+
+test("all asks resolved but a DIFFERENT agent's --resume: refused, naming the owner", {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const sid = 'f68d69ae-c2ac-4d4d-ae63-b244fff90463';
+  plantClaudeSession(s.env.HOME, sid);
+  s.hive.writeTasks([humanAskCard(sid, ALL_RESOLVED_QA)]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  const r = s.runDispatch([
+    '--card',
+    'agent-asked-card-2026-08-20',
+    '--assignee',
+    'worker-2',
+    '--resume',
+    '--body',
+    'c',
+  ]);
+  assert.notEqual(r.code, 0, 'the hold is over for the OWNER, not for anyone');
+  assert.match(r.stderr, /--assignee worker-1 --resume/, 'points at the owner return');
   assert.equal(fs.readFileSync(s.tasksPath, 'utf8'), before, 'ledger byte-identical');
 });

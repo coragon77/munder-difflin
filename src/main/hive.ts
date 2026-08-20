@@ -4217,7 +4217,9 @@ mail) was five hand-steps. ONE command now:
   stamped by \`hive-card status blocked\` / \`hive-card ask\`). The ONE legal way
   through is the recorded owner's own \`--resume\` return (\`blockedBy\` = the
   card's assignee = \`--assignee\`); a \`human-ask\` refusal quotes the open
-  question (answer it on the ASK ME board — never retry), an agent-wait
+  question (answer it on the ASK ME board — never retry), and once EVERY
+  \`humanQA\` ask is answered or dismissed the hold is over — the owner's
+  \`--resume\` passes. An agent-wait
   refusal names who the card waits on, and a legacy blocked card with no
   \`blockedBy\` stays operator-held. hive-dispatch is the ONLY
   todo->doing path — never flip a card to doing by hand-editing tasks.json
@@ -4312,7 +4314,9 @@ take — this blocks the card and puts the ask on the office ASK ME board):
 - Existing entries and their answers are never touched — the history stays.
 - The card flips to \`blocked\` with \`blockedBy: 'human-ask'\` (dispatch refuses
   it by QUOTING the open question); the answer lands in the same entry AND
-  arrives as inbox mail. Do not park human questions in separate files.
+  arrives as inbox mail. Once EVERY ask is answered or dismissed the hold is
+  over and the recorded owner's \`hive-dispatch --card <id> --assignee <owner>
+  --resume\` passes the gate. Do not park human questions in separate files.
 
 **Shift close: prune the done cards** (god's job, at shift close only):
 
@@ -6646,7 +6650,9 @@ function usage() {
     '  a WAIT gated on provenance (blockedBy). The one legal way through is',
     "  the recorded owner's own --resume return (blockedBy = the card's",
     '  assignee = --assignee); a human-ask refusal quotes the open question',
-    '  (answer it on the ASK ME board), an agent-wait refusal names who the',
+    '  (answer it on the ASK ME board) — and once EVERY ask is answered or',
+    "  dismissed the hold is over: the owner's own --resume passes.",
+    '  An agent-wait refusal names who the',
     '  card waits on, and a blocked card with no blockedBy stays',
     '  operator-held. It also refuses a',
     '  target todo that already carries a DIFFERENT assignee — that is a',
@@ -6891,13 +6897,28 @@ withLock(function () {
               if (qe && typeof qe.q === 'string' && !qe.a && !qe.dismissedAt) { openQ = qe; break; }
             }
           }
-          fail('refused: card "' + card.id + '" is blocked WAITING ON THE HUMAN' +
-            (openQ ? ': "' + openQ.q + '"' : ' (its humanQA asks are all answered or dismissed — check the card)') +
-            '. The answer lands on the card (ASK ME board / tasks tab) and wakes the asker — answer it there, ' +
-            'do not retry this dispatch. Never flip a held card to doing by hand-editing tasks.json — ' +
-            'hive-dispatch is the only todo->doing path precisely so holds cannot be worked around.');
-        }
-        if (prov !== '') {
+          // HOLD OVER = every ask answered or dismissed (card agent-hive-
+          // dispatch-refuses-a--2026-08-20): the gate exists so work cannot
+          // run AHEAD of the human's answers — once every entry carries an
+          // answer the reason is spent (the harness's own answer mail tells
+          // the asker to continue). The recorded owner's --resume return
+          // then passes, exactly like an agent-wait whose wait ended; the
+          // doing flip below clears the provenance. A single UNanswered ask
+          // keeps refusing everyone, owner included — that refusal IS the
+          // hold, and it keeps quoting the open question.
+          var holdOver = !openQ && parsed.bools.resume && card.assignee === assignee;
+          if (!holdOver) {
+            fail('refused: card "' + card.id + '" is blocked WAITING ON THE HUMAN' +
+              (openQ
+                ? ': "' + openQ.q + '". The answer lands on the card (ASK ME board / tasks tab) and wakes the asker — answer it there, do not retry this dispatch.'
+                : ' — but its humanQA asks are ALL answered or dismissed, so the human hold is OVER. ' +
+                  (card.assignee
+                    ? 'Return the owner with hive-dispatch --card ' + card.id + ' --assignee ' + card.assignee + ' --resume (or clear the card with hive-card status ' + card.id + ' todo).'
+                    : 'Clear the card with hive-card status ' + card.id + ' todo.')) +
+              ' Never flip a held card to doing by hand-editing tasks.json — ' +
+              'hive-dispatch is the only todo->doing path precisely so holds cannot be worked around.');
+          }
+        } else if (prov !== '') {
           fail('refused: card "' + card.id + '" is blocked, waiting on "' + prov + '"' +
             (card.blockedWhy ? ' — "' + card.blockedWhy + '"' : '') + '. This is a recorded WAIT, not an error to retry: ' +
             (prov === card.assignee
@@ -6905,10 +6926,11 @@ withLock(function () {
               : 'resolve the wait with "' + prov + '", then unblock with hive-card status ' + card.id + ' doing|todo.') +
             ' Never flip a held card to doing by hand-editing tasks.json — ' +
             'hive-dispatch is the only todo->doing path precisely so holds cannot be worked around.');
+        } else {
+          fail('refused: card "' + card.id + '" is blocked (status blocked) — blocked cards wait on the operator. ' +
+            'Ask the operator to unblock it. There is no override, and never flip a held card to doing by ' +
+            'hand-editing tasks.json — hive-dispatch is the only todo->doing path precisely so this hold cannot be worked around.');
         }
-        fail('refused: card "' + card.id + '" is blocked (status blocked) — blocked cards wait on the operator. ' +
-          'Ask the operator to unblock it. There is no override, and never flip a held card to doing by ' +
-          'hand-editing tasks.json — hive-dispatch is the only todo->doing path precisely so this hold cannot be worked around.');
       }
     }
     // NOMINATION GUARD (card agent-hive-dispatch-nomination-2026-08-19): a
