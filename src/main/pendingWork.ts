@@ -29,9 +29,10 @@
  *
  * STALENESS: the census is a snapshot from the last settle. Work that dies
  * WITHOUT waking the agent (a background shell killed by its timeout)
- * produces no new Stop, so the snapshot could wedge the gates forever. TTL bounds it: finite
- * monitors max out at claude's 1h timeout ceiling (3600000ms, MonitorInput
- * schema), so 75min covers every finite task with margin. Work whose
+ * produces no new Stop, so the snapshot could wedge the gates forever. TTL bounds it:
+ * claude's 1h ceiling for timed background tasks (3600000ms, MonitorInput
+ * schema — monitors themselves never count) leaves 75min covering every
+ * finite task with margin. Work whose
  * completion DOES wake the agent self-heals — the wake produces activity, the
  * re-settle produces a fresh census.
  *

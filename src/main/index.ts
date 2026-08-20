@@ -6666,8 +6666,8 @@ function parkAgent(agentId: string, reason?: string, origin: ParkOrigin = 'reque
         const provider = hive.registry().agents[agentId]?.provider;
         const providerReportsTelemetry =
           isClaudeProvider(provider) || bridgeOf(provider) !== undefined;
-        // Waiting ≠ idle: pending finite background work (CI monitor, background
-        // shell, in-flight subagent) keeps the agent busy even at a silent prompt.
+        // Waiting ≠ idle: pending finite background work (background shell,
+        // in-flight subagent) keeps the agent busy even at a silent prompt.
         return vacationBusy(
           telemetryAgeMs,
           ptyIdleMs,

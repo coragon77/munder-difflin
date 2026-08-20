@@ -27,9 +27,9 @@
 // wake (monitor/nudge keyed on inbox visibility) can start the card's work in
 // the PRE-clear conversation — turning the pending clear into a post-work
 // wipe. So the router stages mail in inbox/.staged while the assignee's doing
-// card is un-established (cardSessionMailHold) and releases it when the stamp
+// card is un-established (cardSessionHoldCards) and releases it when the stamp
 // lands — sequencing the channels at their common dependency: mail visibility.
-// See cardSessionMailHold below and HiveManager.deliver/releaseStagedMail.
+// See cardSessionHoldCards below and HiveManager.deliver/releaseStagedMail.
 //
 // SAFETY: the FIRST tick after boot only snapshots — a restart must never
 // re-clear a working pane (no transition observed live = no action). Actions
@@ -89,16 +89,6 @@ export function cardSessionHoldCards(
     if (mechanism) held.push(card);
   }
   return held;
-}
-
-/** The agentId set form of cardSessionHoldCards — kept as the shared gate
- *  definition for deliver() and the release sweep. */
-export function cardSessionMailHold(
-  cards: CardLike[],
-  registrySessions: Record<string, string | undefined>,
-  providers: Record<string, AgentProvider | undefined> = {},
-): Set<string> {
-  return new Set(cardSessionHoldCards(cards, registrySessions, providers).map((c) => c.assignee!));
 }
 
 /** Minimal structural card the watcher needs (subset of hive.HiveTask). */

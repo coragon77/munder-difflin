@@ -27,7 +27,6 @@ const loadTs = require('./load-ts.cjs');
 const {
   cardSessionDecisions,
   cardSessionTick,
-  cardSessionMailHold,
   cardSessionHoldCards,
   consumeCardTransitions,
   cardSeen,
@@ -35,6 +34,10 @@ const {
 } = loadTs('src/main/cardSessions.ts');
 const { cardSessionActionStillValid } = loadTs('src/shared/cardSessions.ts');
 const { HiveManager } = loadTs('src/main/hive.ts');
+
+/** The agentId-set view of the hold (what deliver()/the sweep gate on). */
+const holdSet = (cards, sessions, providers) =>
+  new Set(cardSessionHoldCards(cards, sessions, providers).map((c) => c.assignee));
 
 const CARD = (over = {}) => ({
   id: 'card-1',
@@ -841,7 +844,7 @@ test('tick: restart safety holds — a doing card present at BOOT never fires', 
 // ——— inbox/.staged/ until the card's conversation is established         ———
 
 test('mailHold: doing card with no stamp → agent held; established/adopt/others → not', () => {
-  const hold = cardSessionMailHold(
+  const hold = holdSet(
     [
       CARD({ id: 'fresh' }), // doing, no sessionId → held
       CARD({ id: 'done-card', status: 'done' }), // not doing → never held
@@ -861,13 +864,9 @@ test('mailHold: provider without a typable clear/resume is never held (mail must
   // card conversation by typed command — holding its mail would just delay the
   // dispatch for the timeout. pi's resume is a picker → the resume path is a
   // noResume mail to god, so a pi resume-card must not hold mail either.
-  const exotic = cardSessionMailHold(
-    [CARD({ id: 'fresh' })],
-    { dwight: 'old' },
-    { dwight: 'copilot' },
-  );
+  const exotic = holdSet([CARD({ id: 'fresh' })], { dwight: 'old' }, { dwight: 'copilot' });
   assert.equal(exotic.has('dwight'), false, 'no typable clear → no hold');
-  const piResume = cardSessionMailHold(
+  const piResume = holdSet(
     [CARD({ id: 'r', sessionId: 'paused-session' })],
     { dwight: 'old' },
     { dwight: 'pi' },
@@ -1046,8 +1045,5 @@ test('mailHold: holdCards returns the holding cards themselves (one definition)'
     held.map((c) => c.id),
     ['card-1'],
   );
-  assert.deepEqual(
-    [...cardSessionMailHold(cards, { dwight: 'elsewhere' }, { dwight: 'claude' })],
-    ['dwight'],
-  );
+  assert.deepEqual([...holdSet(cards, { dwight: 'elsewhere' }, { dwight: 'claude' })], ['dwight']);
 });

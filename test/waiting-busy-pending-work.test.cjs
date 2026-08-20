@@ -3,10 +3,12 @@
 /**
  * waiting-busy-pending-work (card agent-harness-busy-signal-coun-2026-08-17).
  *
- * Live incident class: Kevin arms a one-shot CI monitor, settles at the prompt,
- * and the harness reads him IDLE (telemetry silent, pane quiet) — so the
- * idle-gated clear fires and wipes the conversation the monitor was going to
- * wake. Exactly the context wipe the idle gate was built to prevent.
+ * Live incident class: Kevin settles at the prompt while a finite background
+ * task (a CI shell) is still running, and the harness reads him IDLE
+ * (telemetry silent, pane quiet) — so the idle-gated clear fires and wipes
+ * the conversation the completion was going to wake. Exactly the context wipe
+ * the idle gate was built to prevent. (Monitors are the exception: they never
+ * count, by type — see pendingWork.ts and the wedge test below.)
  *
  * The fix: busy = recentActivity OR pendingFiniteBackgroundWork. The census
  * comes from claude's own Stop payload, which carries `background_tasks` — a
