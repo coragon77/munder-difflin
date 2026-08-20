@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { PixelButton } from './PixelButton';
 import { PixelBadge } from './PixelBadge';
 import { useStore } from '@/store/store';
-import { type HiveTask, openQuestion, waitsOnHuman } from './TasksKanban';
+import { type HiveTask, waitsOnHuman } from './TasksKanban';
+import { openAsks, type OpenAsk } from './openAsks';
 
 /**
  * ASK ME — first-class human feedback through the task system.
@@ -10,14 +11,19 @@ import { type HiveTask, openQuestion, waitsOnHuman } from './TasksKanban';
  * Tasks the god can only move with the human's input sit here. An entry isn't
  * necessarily a question — it can be a TO-DO only the human can perform
  * (create an account, approve a purchase, provide credentials, test on a real
- * device). Each card shows the open ask, a place to respond (an answer, or a
- * "done, here's the result" confirmation), and the CASCADE of downstream
- * tasks stuck waiting on this one — so "why isn't X done?" reads as "ah,
- * because I still owe something here."
+ * device). Each card shows ALL of its open asks, oldest first (openAsks —
+ * card agent-ask-me-board-switch-thro-2026-08-20): the first entry expanded,
+ * the rest collapsed to one line that expands on click. Every expanded entry
+ * has its own answer box, respond button and dismiss ✕ — the entries are
+ * independent, answering or dismissing one never touches the others — plus
+ * the CASCADE of downstream tasks stuck waiting on this one, so "why isn't X
+ * done?" reads as "ah, because I still owe something here."
  *
  * Sending an answer does two things atomically-ish:
  *   1. writes it into the card's humanQA entry in hive/tasks.json (the
- *      decision is documented ON the task, forever), and
+ *      decision is documented ON the task, forever) — addressed by the
+ *      entry's array index, with the question text as the checked guard, so
+ *      even two identical question texts resolve to the exact entry, and
  *   2. mails the god so it picks the answer up, unblocks the card, and the
  *      work continues — no separate HumanQuestion.md side-channel anymore.
  */
@@ -46,12 +52,18 @@ export function AskMeTab() {
   const agents = useStore((s) => s.agents);
   const restorable = useStore((s) => s.restorableAgents);
   const [tasks, setTasks] = useState<HiveTask[]>([]);
-  // Drafts live in the STORE (keyed by task id) — switching tabs unmounts this
-  // view, and a half-typed answer must survive the round trip.
+  // Drafts live in the STORE (keyed by `${taskId}:${humanQA index}` — one per
+  // open entry) — switching tabs unmounts this view, and a half-typed answer
+  // must survive the round trip. The index is a stable key: the humanQA array
+  // is append-only, so a concurrent append never moves it.
   const drafts = useStore((s) => s.answerDrafts);
   const setAnswerDraft = useStore((s) => s.setAnswerDraft);
   const openTaskDetail = useStore((s) => s.openTaskDetail);
   const [sending, setSending] = useState<string | null>(null);
+  // Which non-first entries are expanded. The FIRST (oldest) entry is always
+  // expanded; expansion is one-way and purely local — it does not need to
+  // survive tab switches. Keyed like the drafts.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -77,15 +89,17 @@ export function AskMeTab() {
 
   const waiting = tasks.filter(waitsOnHuman);
 
-  const sendAnswer = async (task: HiveTask) => {
-    const text = (drafts[task.id] ?? '').trim();
-    const open = openQuestion(task);
-    if (!text || !open || sending) return;
-    setSending(task.id);
+  const sendAnswer = async (task: HiveTask, o: OpenAsk) => {
+    const key = `${task.id}:${o.index}`;
+    const text = (drafts[key] ?? '').trim();
+    if (!text || sending) return;
+    setSending(key);
     try {
-      // 1) Document the answer ON the card. Main re-reads and patches only this
-      // open question under tasks.json.lock; never overwrite the stale ledger.
-      const saved = await window.cth.hiveResolveHumanQuestion(task.id, open.q, text);
+      // 1) Document the answer ON the card, on exactly this entry. Main
+      // re-reads and patches only the addressed open question under
+      // tasks.json.lock; never overwrite the stale ledger. The index makes
+      // the write precise even when two asks share one question text.
+      const saved = await window.cth.hiveResolveHumanQuestion(task.id, o.entry.q, text, o.index);
       if (!saved?.ok) throw new Error(saved?.error ?? 'failed to save answer');
       await refresh();
       // 2) Tell the god, so the card gets unblocked and work continues.
@@ -96,47 +110,85 @@ export function AskMeTab() {
           subject: `HUMAN ANSWER on task "${task.title}"`,
           body: [
             `The human answered the open question on task ${task.id} ("${task.title}"):`,
-            `Q: ${open.q}`,
+            `Q: ${o.entry.q}`,
             `A: ${text}`,
             "The answer is also recorded in the card's humanQA. Act on it, unblock the card, and continue the work.",
           ].join('\n'),
         },
         'human',
       );
-      setAnswerDraft(task.id, '');
+      setAnswerDraft(key, '');
     } catch {
       /* leave the draft so the user can retry */
     }
     setSending(null);
   };
 
-  // Dismiss the open ask off the ASK ME board WITHOUT answering it. We mark the
-  // open humanQA entry `dismissedAt` (no fabricated answer) so openQuestion()
-  // stops returning it and the card leaves this view — the question itself stays
-  // on the card, so the Q&A history is never dropped (protocol). The task stays
-  // blocked on the kanban; the god can re-ask by appending a fresh humanQA entry.
-  // Like answers, dismissals are targeted main-process writes under the ledger lock.
-  const dismiss = async (task: HiveTask) => {
-    const open = openQuestion(task);
-    if (!open || sending === task.id) return;
+  // Dismiss ONE open ask off the ASK ME board WITHOUT answering it — never
+  // touching the card's other open entries. We mark that humanQA entry
+  // `dismissedAt` (no fabricated answer) so it leaves the board; the question
+  // itself stays on the card, so the Q&A history is never dropped (protocol).
+  // The task stays blocked on the kanban until its LAST open entry is
+  // answered or dismissed; the god can re-ask by appending a fresh entry.
+  // Like answers, dismissals are targeted main-process writes under the
+  // ledger lock.
+  const dismiss = async (task: HiveTask, o: OpenAsk) => {
+    const key = `${task.id}:${o.index}`;
+    if (sending === key) return;
     const next = tasks.map((t) => {
       if (t.id !== task.id) return t;
-      const qa = (t.humanQA ?? []).map((e) =>
-        e === open || (e.q === open.q && !e.a && !e.dismissedAt)
-          ? { ...e, dismissedAt: new Date().toISOString() }
-          : e,
+      const qa = (t.humanQA ?? []).map((e, i) =>
+        i === o.index ? { ...e, dismissedAt: new Date().toISOString() } : e,
       );
       return { ...t, humanQA: qa };
     });
-    setTasks(next); // optimistic — the card disappears immediately
+    setTasks(next); // optimistic — the entry disappears immediately
     try {
-      const saved = await window.cth.hiveResolveHumanQuestion(task.id, open.q);
+      const saved = await window.cth.hiveResolveHumanQuestion(
+        task.id,
+        o.entry.q,
+        undefined,
+        o.index,
+      );
       if (!saved?.ok) throw new Error(saved?.error ?? 'failed to dismiss question');
       await refresh();
     } catch {
       void refresh(); // restore the fresh ledger so the user can retry
     }
   };
+
+  const dismissX = (onDismiss: () => void, disabled: boolean) => (
+    <button
+      onClick={onDismiss}
+      disabled={disabled}
+      title="dismiss — clear this ask off the ASK ME board without answering (history kept)"
+      aria-label="dismiss this ask"
+      style={{
+        flexShrink: 0,
+        width: 18,
+        height: 18,
+        padding: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        lineHeight: 1,
+        border: 'none',
+        cursor: disabled ? 'default' : 'pointer',
+        background: 'transparent',
+        color: 'var(--cth-ink-500)',
+        fontFamily: 'var(--cth-font-ui)',
+        fontSize: 13,
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) e.currentTarget.style.color = 'var(--cth-coral)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = 'var(--cth-ink-500)';
+      }}
+    >
+      ✕
+    </button>
+  );
 
   return (
     // Body text is set in the mono face (VT323) — the same readable font the
@@ -172,8 +224,9 @@ export function AskMeTab() {
         </div>
       )}
       {waiting.map((t) => {
-        const open = openQuestion(t)!;
+        const asks = openAsks(t);
         const stuck = dependentsTree(t.id, tasks);
+        const answeredCount = t.humanQA?.filter((e) => e.a).length ?? 0;
         return (
           <div
             key={t.id}
@@ -184,7 +237,7 @@ export function AskMeTab() {
               flexDirection: 'column',
             }}
           >
-            {/* header: title + assignee */}
+            {/* header: title + assignee + open-ask count */}
             <div
               style={{
                 display: 'flex',
@@ -217,110 +270,140 @@ export function AskMeTab() {
                 {t.title}
               </button>
               {nameFor(t.assignee) && <PixelBadge status="blocked" label={nameFor(t.assignee)!} />}
-              {/* Dismiss — clears this ask off the board without answering it.
-                  The card's Q&A history is preserved (the question stays on the
-                  card, just marked dismissed). */}
-              <button
-                onClick={() => void dismiss(t)}
-                disabled={sending === t.id}
-                title="dismiss — clear this off the ASK ME board without answering (history kept)"
-                aria-label="dismiss this ask"
+              <div
                 style={{
-                  flexShrink: 0,
-                  width: 18,
-                  height: 18,
-                  padding: 0,
-                  marginLeft: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  lineHeight: 1,
-                  border: 'none',
-                  cursor: sending === t.id ? 'default' : 'pointer',
-                  background: 'transparent',
-                  color: 'var(--cth-ink-500)',
-                  fontFamily: 'var(--cth-font-ui)',
-                  fontSize: 13,
-                }}
-                onMouseEnter={(e) => {
-                  if (sending !== t.id) e.currentTarget.style.color = 'var(--cth-coral)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = 'var(--cth-ink-500)';
+                  fontFamily: 'var(--cth-font-display)',
+                  fontSize: 8,
+                  color: 'var(--cth-coral)',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                ✕
-              </button>
+                {asks.length} OPEN ASK{asks.length === 1 ? '' : 'S'}
+              </div>
             </div>
 
             <div style={{ padding: 9, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* the question */}
-              <div
-                style={{
-                  fontSize: 15,
-                  lineHeight: '19px',
-                  color: 'var(--cth-ink-900)',
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {open.q}
-              </div>
+              {/* every open ask, oldest first; first expanded, the rest
+                  collapsed one-liners. Each entry answers/dismisses alone. */}
+              {asks.map((o, i) => {
+                const key = `${t.id}:${o.index}`;
+                const isOpen = i === 0 || !!expanded[key];
+                if (!isOpen) {
+                  return (
+                    <div
+                      key={o.index}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                        padding: '3px 6px',
+                      }}
+                    >
+                      <button
+                        onClick={() => setExpanded({ ...expanded, [key]: true })}
+                        title="show the answer box for this ask"
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          padding: 0,
+                          textAlign: 'left',
+                          fontFamily: 'var(--cth-font-mono)',
+                          fontSize: 13,
+                          color: 'var(--cth-ink-700)',
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <span style={{ color: 'var(--cth-ink-300)' }}>▸ </span>
+                        {o.entry.q}
+                      </button>
+                      {dismissX(() => void dismiss(t, o), sending === key)}
+                    </div>
+                  );
+                }
+                return (
+                  <div key={o.index} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {/* the question */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                      <div
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          fontSize: 15,
+                          lineHeight: '19px',
+                          color: 'var(--cth-ink-900)',
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        {o.entry.q}
+                      </div>
+                      {dismissX(() => void dismiss(t, o), sending === key)}
+                    </div>
 
-              {/* answer box */}
-              <textarea
-                value={drafts[t.id] ?? ''}
-                onChange={(e) => setAnswerDraft(t.id, e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void sendAnswer(t);
-                }}
-                rows={3}
-                placeholder="Your answer — or 'done', with the result… (Ctrl+Enter to send)"
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '6px 8px',
-                  resize: 'vertical',
-                  background: 'var(--cth-paper-100)',
-                  border: 'none',
-                  boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
-                  fontFamily: 'var(--cth-font-mono)',
-                  fontSize: 15,
-                  lineHeight: '18px',
-                  color: 'var(--cth-ink-900)',
-                  outline: 'none',
-                }}
-              />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <PixelButton
-                  variant="primary"
-                  size="sm"
-                  disabled={!(drafts[t.id] ?? '').trim() || sending === t.id}
-                  onClick={() => void sendAnswer(t)}
+                    {/* answer box */}
+                    <textarea
+                      value={drafts[key] ?? ''}
+                      onChange={(e) => setAnswerDraft(key, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void sendAnswer(t, o);
+                      }}
+                      rows={3}
+                      placeholder="Your answer — or 'done', with the result… (Ctrl+Enter to send)"
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '6px 8px',
+                        resize: 'vertical',
+                        background: 'var(--cth-paper-100)',
+                        border: 'none',
+                        boxShadow: 'inset 0 0 0 1px var(--cth-ink-100)',
+                        fontFamily: 'var(--cth-font-mono)',
+                        fontSize: 15,
+                        lineHeight: '18px',
+                        color: 'var(--cth-ink-900)',
+                        outline: 'none',
+                      }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <PixelButton
+                        variant="primary"
+                        size="sm"
+                        disabled={!(drafts[key] ?? '').trim() || sending === key}
+                        onClick={() => void sendAnswer(t, o)}
+                      >
+                        {sending === key ? 'sending…' : 'respond & unblock'}
+                      </PixelButton>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {answeredCount > 0 && (
+                <button
+                  onClick={() => openTaskDetail(t.id)}
+                  title="open the task detail with the full Q&A history"
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    padding: 0,
+                    fontSize: 10,
+                    color: 'var(--cth-ink-700)',
+                    fontFamily: 'var(--cth-font-display)',
+                    textDecoration: 'underline',
+                    alignSelf: 'flex-start',
+                  }}
                 >
-                  {sending === t.id ? 'sending…' : 'respond & unblock'}
-                </PixelButton>
-                {(t.humanQA?.filter((e) => e.a).length ?? 0) > 0 && (
-                  <button
-                    onClick={() => openTaskDetail(t.id)}
-                    title="open the task detail with the full Q&A history"
-                    style={{
-                      border: 'none',
-                      background: 'transparent',
-                      cursor: 'pointer',
-                      padding: 0,
-                      fontSize: 10,
-                      color: 'var(--cth-ink-700)',
-                      fontFamily: 'var(--cth-font-display)',
-                      textDecoration: 'underline',
-                    }}
-                  >
-                    VIEW {t.humanQA!.filter((e) => e.a).length} EARLIER ANSWER
-                    {t.humanQA!.filter((e) => e.a).length === 1 ? '' : 'S'}
-                  </button>
-                )}
-              </div>
+                  VIEW {answeredCount} EARLIER ANSWER{answeredCount === 1 ? '' : 'S'}
+                </button>
+              )}
 
-              {/* the cascade: what's stuck behind this answer */}
+              {/* the cascade: what's stuck behind this card's answers */}
               {stuck.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <div

@@ -2964,20 +2964,34 @@ export class HiveManager {
     this.commit(`hive: tasks (${tasks.length})`);
   }
 
-  /** Resolve one still-open human question from a fresh, locked ledger read. */
-  resolveHumanQuestion(id: string, question: string, answer?: string): boolean {
+  /** Resolve one still-open human question from a fresh, locked ledger read.
+   *  `index` (optional, card agent-ask-me-board-switch-thro-2026-08-20): when
+   *  it points at an OPEN entry whose q strictly equals `question`, patch
+   *  exactly that entry — two IDENTICAL open texts become addressable. The
+   *  index is never trusted alone: any mismatch (stale index, closed entry,
+   *  different q) falls back to the tail-first text match, so a valid text
+   *  match cannot fail because an index went stale. */
+  resolveHumanQuestion(id: string, question: string, answer?: string, index?: number): boolean {
     return this.withLedgerLock((tasks) => {
       const qa = tasks.find((task) => task?.id === id)?.humanQA;
       if (!Array.isArray(qa)) return false;
-      for (let i = qa.length - 1; i >= 0; i--) {
-        const entry = qa[i];
-        if (entry?.q !== question || entry.a || entry.dismissedAt) continue;
+      const isOpen = (entry: HumanQA | undefined) =>
+        !!entry && entry.q === question && !entry.a && !entry.dismissedAt;
+      const patch = (entry: HumanQA) => {
         if (answer === undefined) entry.dismissedAt = new Date().toISOString();
         else {
           entry.a = answer;
           entry.answeredAt = new Date().toISOString();
         }
         this.writeTasks(tasks);
+      };
+      if (typeof index === 'number' && Number.isInteger(index) && index >= 0 && isOpen(qa[index])) {
+        patch(qa[index]);
+        return true;
+      }
+      for (let i = qa.length - 1; i >= 0; i--) {
+        if (!isOpen(qa[i])) continue;
+        patch(qa[i]);
         return true;
       }
       return false;

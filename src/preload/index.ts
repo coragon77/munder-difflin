@@ -1259,13 +1259,17 @@ const api = {
   },
 
   // ─── Task kanban (hive/tasks.json) ───────────────────────────────────────
-  /** Answer or dismiss one open ASK ME question under the task-ledger lock. */
+  /** Answer or dismiss one open ASK ME question under the task-ledger lock.
+   *  `index` (optional): precise write target for duplicate question texts —
+   *  must agree with `question` on an OPEN entry, else main falls back to
+   *  the tail-first text match. */
   hiveResolveHumanQuestion: (
     id: string,
     question: string,
     answer?: string,
+    index?: number,
   ): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('hive:resolveHumanQuestion', id, question, answer),
+    ipcRenderer.invoke('hive:resolveHumanQuestion', id, question, answer, index),
   /** Idempotently add one dispatched Slack work item under the ledger lock. */
   hiveEnsureSlackCard: (
     messageId: string,

@@ -285,8 +285,12 @@ interface State {
    *  "assign" from anywhere in the app). seq-keyed like ccTabRequest. */
   dispatchSeedRequest: { text: string; cardId?: string; seq: number } | null;
   requestDispatchSeed: (text: string, cardId?: string) => void;
-  /** Unsent ASK ME answer drafts, keyed by task id — so switching tabs (which
-   *  unmounts the ask-me view) doesn't eat a half-typed answer. */
+  /** Unsent ASK ME answer drafts, keyed by `${taskId}:${humanQA index}` —
+   *  one per open ask, so switching tabs (which unmounts the ask-me view)
+   *  doesn't eat a half-typed answer on ANY of a card's open entries. The
+   *  index is stable: humanQA is append-only. Not persisted (memory-only
+   *  store) — keys orphaned by ledger changes are harmless and die with the
+   *  session. */
   answerDrafts: Record<string, string>;
   setAnswerDraft: (taskId: string, text: string) => void;
   /** Unsent composer drafts, per agent — so switching agents (which remounts the

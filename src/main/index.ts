@@ -4642,13 +4642,23 @@ ipcMain.handle('hive:send', (_evt, partial: Partial<HiveMessage>, from: unknown)
 });
 ipcMain.handle(
   'hive:resolveHumanQuestion',
-  (_evt, id: unknown, question: unknown, answer: unknown) => {
+  (_evt, id: unknown, question: unknown, answer: unknown, index: unknown) => {
     if (typeof id !== 'string' || !id || typeof question !== 'string' || !question.trim())
       return { ok: false, error: 'invalid task or question' };
     if (answer !== undefined && (typeof answer !== 'string' || !answer.trim()))
       return { ok: false, error: 'invalid answer' };
+    // Optional precise write target (card agent-ask-me-board-switch-thro-
+    // 2026-08-20): a valid integer index; anything else falls back to the
+    // tail-first text match inside resolveHumanQuestion.
+    if (index !== undefined && (typeof index !== 'number' || !Number.isInteger(index) || index < 0))
+      return { ok: false, error: 'invalid question index' };
     if (!hive.enabled()) return { ok: false, error: 'hive disabled (no harnessHome)' };
-    return hive.resolveHumanQuestion(id, question, answer as string | undefined)
+    return hive.resolveHumanQuestion(
+      id,
+      question,
+      answer as string | undefined,
+      index as number | undefined,
+    )
       ? { ok: true }
       : { ok: false, error: 'open question not found or ledger busy — re-poll' };
   },
