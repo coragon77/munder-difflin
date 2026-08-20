@@ -1149,6 +1149,9 @@ export function useHive(config: HarnessConfig | null): void {
         // agent-restore-parked-agents-de-2026-08-19); description stays the
         // status field the scrape owns.
         role: rec.role,
+        // Registry capabilities when the broadcast carries them; else the prior
+        // card's (recall broadcasts used to omit them — the archived card knew).
+        capabilities: rec.capabilities ?? prior?.capabilities,
         project,
         tmuxTarget: '',
         cwd: rec.cwd,
@@ -1233,7 +1236,7 @@ export function useHive(config: HarnessConfig | null): void {
               .getState()
               .archiveAgent(e.id, { vacation: true, vacationSince: e.vacationSince ?? undefined });
           }
-          useStore.getState().updateAgent(e.id, { role: e.role });
+          useStore.getState().updateAgent(e.id, { role: e.role, capabilities: e.capabilities });
         }
       })
       .catch(() => {

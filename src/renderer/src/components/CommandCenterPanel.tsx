@@ -18,6 +18,12 @@ import { MemoryGraphPanel } from './MemoryGraphPanel';
 import { useFleetTelemetry, useBurnWindow } from '@/hooks/useTelemetry';
 import { waitingBadge } from '@/statusLabel';
 import { COMMAND_GROUPS } from '@shared/claudeCommands';
+import {
+  parseGeneratedAt,
+  TICKETS_STALE_MS,
+  type TicketRow,
+  type TicketsState,
+} from '@shared/tickets';
 import { useStore, triggerHistoryVisible, agentClassOf, type Agent } from '@/store/store';
 import { UNKNOWN_ROLE } from '@shared/agentRole';
 import { usePtyParser } from '@/hooks/usePtyParser';
@@ -50,6 +56,7 @@ type CCTab =
   | 'floor'
   | 'tasks'
   | 'board'
+  | 'tickets'
   | 'human'
   | 'triggers'
   | 'trigger-history'
@@ -80,6 +87,7 @@ const TABS: { key: CCTab; label: string; icon: Parameters<typeof Icon>[0]['name'
   { key: 'floor', label: 'monitor', icon: 'mcp' },
   { key: 'tasks', label: 'tasks', icon: 'check' },
   { key: 'board', label: 'board', icon: 'ledger' },
+  { key: 'tickets', label: 'tickets', icon: 'ledger' },
   { key: 'human', label: 'ask me', icon: 'bell' },
   { key: 'triggers', label: 'triggers', icon: 'clock' },
   { key: 'trigger-history', label: 'history', icon: 'ledger' },
@@ -414,6 +422,7 @@ export function CommandCenterPanel({
         {tab === 'floor' && <FloorTab seed={dispatchSeed} />}
         {tab === 'tasks' && <TasksKanban />}
         {tab === 'board' && <BoardTab />}
+        {tab === 'tickets' && <TicketsTab />}
         {tab === 'human' && <AskMeTab />}
         {tab === 'triggers' && <TriggersTab />}
         {tab === 'trigger-history' && <TriggerHistoryTab />}
@@ -525,6 +534,223 @@ function BoardTab() {
       )}
     </div>
   );
+}
+
+// ─── Tickets tab — the /ticket-overview digest, read-only ────────────────────
+
+/** The skill's tickets.json (spec §5): Stefan's Redmine queue — floor-wide
+ *  data, whoever ran the skill — so it lives here in the Command Center,
+ *  sibling of the board. BoardTab's shape exactly: 5s poll, keep last good
+ *  on error. The freshness header is MANDATORY, not optional (the board once
+ *  sat three days stale unnoticed): generated_at > 26h shows the warning
+ *  badge (§7). Read-only v1 — rows link out to Redmine; click-to-dispatch is
+ *  the named extension point (§8), deliberately not built. */
+function TicketsTab() {
+  const [state, setState] = useState<TicketsState | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const s = await window.cth.tickets();
+        if (alive) setState(s); // null (missing/unparsable/version) IS a state: the empty one
+      } catch {
+        /* keep last good */
+      }
+    };
+    void refresh();
+    const timer = setInterval(refresh, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  if (!state) {
+    return (
+      <Scroll>
+        <Muted>No ticket data yet — run /ticket-overview (Angela owns it).</Muted>
+      </Scroll>
+    );
+  }
+
+  // LOCAL "YYYY-MM-DD HH:MM", never ISO-Z (the spec's TRAP) — an off-format
+  // value parses to null and we show the absolute string only, never a
+  // guessed relative time or badge.
+  const genMs = parseGeneratedAt(state.generated_at);
+  const stale = genMs !== null && Date.now() - genMs > TICKETS_STALE_MS;
+
+  return (
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--cth-paper-200)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 10px',
+          flexShrink: 0,
+          borderBottom: '1px solid var(--cth-ink-300)',
+        }}
+      >
+        <span
+          style={{
+            fontFamily: 'var(--cth-font-display)',
+            fontSize: 9,
+            color: 'var(--cth-ink-500)',
+          }}
+        >
+          TICKETS
+        </span>
+        <span
+          style={{
+            marginLeft: 'auto',
+            fontSize: 11,
+            color: 'var(--cth-ink-300)',
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span>
+            {state.tickets.length} open
+            {genMs !== null ? ` — refreshed ${agoShort(Date.now() - genMs)}` : ''} (
+            {state.generated_at})
+          </span>
+          {stale && (
+            <span
+              style={{
+                fontFamily: 'var(--cth-font-display)',
+                fontSize: 7,
+                lineHeight: '11px',
+                background: 'var(--cth-status-working)',
+                color: 'var(--cth-ink-900)',
+                padding: '1px 4px 0',
+                flexShrink: 0,
+              }}
+            >
+              STALE — {state.generated_at}
+            </span>
+          )}
+        </span>
+      </div>
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          padding: 10,
+        }}
+      >
+        {state.tickets.map((t) => (
+          <TicketsRow key={t.id} t={t} redmineBase={state.redmine_base} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TicketsRow({ t, redmineBase }: { t: TicketRow; redmineBase: string }) {
+  const url = `${redmineBase}/issues/${t.id}`;
+  return (
+    <div
+      style={{
+        padding: '5px 2px',
+        borderBottom: '1px solid var(--cth-ink-100)',
+      }}
+    >
+      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', minWidth: 0 }}>
+        <a
+          href={url}
+          onClick={(e) => {
+            e.preventDefault();
+            void window.cth.openExternal?.(url);
+          }}
+          style={{
+            fontFamily: 'var(--cth-font-mono)',
+            fontSize: 11,
+            color: 'var(--cth-sky)',
+            flexShrink: 0,
+          }}
+        >
+          #{t.id}
+        </a>
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: 12,
+            lineHeight: '15px',
+            color: t.active ? 'var(--cth-ink-900)' : 'var(--cth-ink-500)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {t.subject}
+        </span>
+        <span style={ticketMeta}>{t.priority}</span>
+        <span style={ticketMeta}>{t.status}</span>
+        <span style={ticketMeta}>{t.project}</span>
+        <span style={ticketMeta}>{t.roles}</span>
+        <span style={ticketMeta}>{t.updated_on.slice(0, 10)}</span>
+      </div>
+      {t.recap && (
+        <div
+          style={{
+            fontSize: 11,
+            lineHeight: '14px',
+            color: 'var(--cth-ink-500)',
+            margin: '2px 0 0 38px',
+          }}
+        >
+          <RecapLine recap={t.recap} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ticketMeta: React.CSSProperties = {
+  fontSize: 11,
+  color: 'var(--cth-ink-300)',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+};
+
+/** A recap is 1–2 lines with ONE markdown marker to honor: `**Next:**`
+ *  renders bold (spec §5). Not worth a markdown dependency for one marker. */
+function RecapLine({ recap }: { recap: string }) {
+  const i = recap.indexOf('**Next:**');
+  if (i === -1) return <>{recap}</>;
+  // Markdown-faithful: **Next:** bolds the MARKER only, not the sentence after it.
+  return (
+    <>
+      {recap.slice(0, i)}
+      <strong>Next:</strong> {recap.slice(i + 9).trim()}
+    </>
+  );
+}
+
+/** Compact relative time for the freshness header ("4h ago") — the spoken
+ *  prose variant in realtime/tools.ts is not exported and says it out loud. */
+function agoShort(ms: number): string {
+  const m = Math.round(ms / 60_000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
 }
 
 // ─── Floor tab — roster, model, dispatch, dirs, assistant ────────────────────

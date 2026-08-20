@@ -528,6 +528,9 @@ export function AddAgentModal({ onClose, config, onConfigChange, editOf }: AddAg
       // hire-time identity input; the boot reconcile keeps the row's role in
       // step with the registry thereafter.
       role: description.trim() || undefined,
+      // Manifest capabilities ride the registry (hive block below); stamp the
+      // card too so capability-gated affordances don't wait for a reconcile.
+      capabilities: hireMeta?.capabilities,
       project: basename(spawnedCwd),
       tmuxTarget: '',
       cwd: spawnedCwd,

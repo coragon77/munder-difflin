@@ -51,6 +51,11 @@ export interface Agent {
    *  live status scrape usePtyParser owns. Absent/empty renders as the
    *  shared UNKNOWN_ROLE constant. */
   role?: string;
+  /** Registry capabilities (AgentMeta.capabilities) — the gate for
+   *  capability-keyed affordances (the tickets-view deep link, spec §6).
+   *  Stamped from the registry beside `role`: spawn broadcasts + the boot
+   *  reconcile. Never user-editable from the renderer. */
+  capabilities?: string[];
   project: string;
   /** legacy field — populated only for the seeded mock agents */
   tmuxTarget: string;

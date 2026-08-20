@@ -279,6 +279,7 @@ export async function recallAgentCore(
       cwd: res.worktreePath ?? cwd,
       command,
       role: entry.role,
+      capabilities: entry.capabilities,
       worktreePath: res.worktreePath,
       // The registry-saved office identity (card agent-icon-persistence-
       //  20260817): the renderer prefers it over its own shelf rows, so a

@@ -262,6 +262,33 @@ export function AgentDetailPanel({ agent }: AgentDetailPanelProps) {
             <Icon name="code" /> IDE
           </span>
         </PixelButton>
+        {/* Capability-gated deep link to the tickets tab (card
+            agent-implement-the-tickets-vi-2026-08-20, spec §6): shown only for
+            agents whose registry capabilities include 'tickets' (the producing
+            agent — Angela). Floor-wide data lives in the god's Command Center,
+            so the click selects god and requests the tab (the office task
+            board → 'tasks' precedent). The capability itself is added by god
+            via a direct registry edit — NOT the edit dialog (role-wipe bug,
+            card agent-stop-the-registry-role-d). */}
+        {agent.capabilities?.includes('tickets') && (
+          <PixelButton
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              const st = useStore.getState();
+              const god = st.agents.find((a) => a.isGod);
+              if (god) st.select(god.id);
+              st.requestCommandCenterTab('tickets');
+            }}
+          >
+            <span
+              title="Open the tickets digest in the Command Center"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
+              <Icon name="ledger" /> TICKETS
+            </span>
+          </PixelButton>
+        )}
         <PixelButton
           variant="secondary"
           size="sm"

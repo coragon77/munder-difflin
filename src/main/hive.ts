@@ -1035,7 +1035,12 @@ export class HiveManager {
     reg.agents[meta.id] = {
       ...prev,
       ...meta,
-      capabilities: meta.capabilities ?? [],
+      capabilities:
+        // CAPABILITIES ARE IDENTITY-ADJACENT, same shape as the role rule
+        // below: god adds them by a DIRECT REGISTRY EDIT (e.g. Angela's
+        // 'tickets' — never via the edit dialog, which wipes role), and a
+        // respawn whose meta omits the field must not erase them.
+        meta.capabilities ?? prev?.capabilities ?? [],
       // ROLE IS IDENTITY, set at hire (AddAgentModal's description, god's
       // spawn-request 'intern'/'worker'), and a respawn is the SAME identity:
       // when the spawn meta carries no explicit role, PRESERVE the prior one

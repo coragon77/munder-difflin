@@ -214,6 +214,7 @@ import {
 } from '../shared/integrations';
 import { SYSTEM_SENDERS } from '../shared/hiveMail';
 import { UNKNOWN_ROLE } from '../shared/agentRole';
+import { parseTicketsState } from '../shared/tickets';
 import { RosterStore } from './roster';
 import { ControlRegistry } from './control';
 import { fetchHireManifest, readHireManifestFile } from './hire';
@@ -4621,6 +4622,19 @@ ipcMain.handle('roster:write', (_evt, snap: unknown) => roster.write(snap));
 // ─── IPC: hive (multi-agent coordination) ───────────────────────────────────
 ipcMain.handle('hive:registry', () => hive.registry());
 ipcMain.handle('hive:board', () => hive.board());
+// The /ticket-overview skill's contract file (card agent-implement-the-
+// tickets-vi-2026-08-20, spec §4): read-only mirror of the digest Angela
+// refreshes; the renderer polls (5s, BoardTab cadence) so no watcher/caching
+// here. null on missing/unparsable/wrong-version — the tab's empty state
+// names the run command, which is the visible signal, not an error toast.
+ipcMain.handle('app:tickets', () => {
+  try {
+    const raw = readFileSync(join(homedir(), '.cache', 'ticket-overview', 'tickets.json'), 'utf8');
+    return parseTicketsState(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+});
 ipcMain.handle('hive:tasks', () => hive.tasks());
 ipcMain.handle('hive:log', (_evt, n: unknown) => hive.logTail(typeof n === 'number' ? n : 200));
 ipcMain.handle('hive:memory', (_evt, id: unknown) =>
@@ -5215,6 +5229,7 @@ ipcMain.handle('hive:agentDirectory', () => {
       // placeholder like 'agent' that reads like a real role — that default is
       // how a wiped role looked staffed and caused the Ryan misroute).
       role: a.role ?? (a.isGod ? 'orchestrator' : UNKNOWN_ROLE),
+      capabilities: a.capabilities ?? [],
       provider: a.provider ?? 'claude',
       model: u?.model ?? null,
       status: a.status ?? 'idle',
@@ -5971,6 +5986,7 @@ registerRealtimeActionIpc({
           // for the sprite) is the durable identity every other surface
           // resolves from. Meta role = the fresh-hire fallback.
           role: savedId?.role ?? o.hive?.role,
+          capabilities: savedId?.capabilities ?? o.hive?.capabilities,
           worktreePath: res.worktreePath,
           spawnLabel: o.hive?.spawnLabel,
           character: savedId?.officeCharacter,
@@ -6035,6 +6051,7 @@ registerRealtimeActionIpc({
         // pattern as b4bb8d4/0b3ab0e. The archive direction reads only { id },
         // so the marker there is harmless.
         select: false,
+        capabilities: savedId?.capabilities,
       });
     } catch {
       /* window gone */
@@ -6534,6 +6551,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
         cwd: res.worktreePath ?? cwd,
         command,
         role: meta.role, // 'intern' for persistent hires — matches the registry (useHive shows it on the card)
+        capabilities: meta.capabilities,
         spawnLabel: meta.spawnLabel, // leads the renderer's typed nudge → session name
         character: savedId?.officeCharacter,
         accent: savedId?.officeAccent,

@@ -6,6 +6,7 @@ export type { HireManifest } from '../shared/hire';
 import type { IntegrationRecord, IntegrationTemplate } from '../shared/integrations';
 export type { IntegrationRecord, IntegrationTemplate } from '../shared/integrations';
 import type { UpdateStatus } from '../shared/updateState';
+import type { TicketsState } from '../shared/tickets';
 import type { LocalSkill } from '../main/skills';
 export type { UpdateStatus } from '../shared/updateState';
 import type { ToolStatus } from '../shared/toolCatalog';
@@ -131,6 +132,9 @@ export interface AgentDirectoryEntry {
   id: string;
   name: string;
   role: string;
+  /** Registry capabilities (AgentMeta.capabilities) — drives capability-gated
+   *  affordances (e.g. the tickets-view deep link on the detail panel). */
+  capabilities: string[];
   provider: string;
   /** Live model id (normalized), if any usage has been recorded — else null. */
   model: string | null;
@@ -885,6 +889,9 @@ const api = {
   // ─── Hive (multi-agent coordination) ─────────────────────────────────────
   hiveRegistry: (): Promise<HiveRegistry> => ipcRenderer.invoke('hive:registry'),
   hiveBoard: (): Promise<string> => ipcRenderer.invoke('hive:board'),
+  /** The /ticket-overview digest (app:tickets, spec §4) — null when the
+   *  contract file is missing/unparsable/wrong-version (empty state). */
+  tickets: (): Promise<TicketsState | null> => ipcRenderer.invoke('app:tickets'),
   hiveTasks: (): Promise<unknown> => ipcRenderer.invoke('hive:tasks'),
   /** Park a human-created agent (the same main path god's vacation-requests use). */
   hivePark: (id: string, reason?: string): Promise<{ ok: boolean; error?: string }> =>
@@ -1068,6 +1075,8 @@ const api = {
       cwd: string;
       command?: string;
       role?: string;
+      /** Registry capabilities for main-initiated spawns (deep-link gates). */
+      capabilities?: string[];
       worktreePath?: string;
       /** Engagement label (session naming) — leads the typed wake nudge. */
       spawnLabel?: string;
