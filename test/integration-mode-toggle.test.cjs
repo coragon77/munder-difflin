@@ -50,8 +50,12 @@ test('workers mode appends the integration section after the base doc; god mode 
   const on = hiveRootAgentsMd(true, 'workers');
   assert.ok(on.includes(SECTION), 'section present');
   assert.ok(on.includes(RENDERER_CONSTRAINT), 'renderer/preload constraint baked in');
-  assert.ok(on.includes(SKILL_OVERRIDE), 'never-push skill override named');
-  assert.ok(on.includes(DISPATCH_OVERRIDE), 'dispatch boundary override named');
+  assert.ok(on.includes(SKILL_OVERRIDE), 'never-push merge skills named');
+  assert.ok(
+    on.includes('YIELD to a dispatch FROM GOD relaying the operator'),
+    'never-push skills yield to a god-relayed operator authorization',
+  );
+  assert.ok(on.includes('dispatch contracts win'), 'dispatch boundary override named');
   assert.ok(on.indexOf('# AGENTS.md — hive floor') === 0, 'base doc still leads');
   assert.ok(on.indexOf('## Delegate first') < on.indexOf(SECTION), 'section appended after base');
 
@@ -82,6 +86,9 @@ test("workers mode: god's briefing DELEGATES integration and records pushed hash
   assert.ok(p.includes('you RECORD'), 'god records the pushed hash, no re-QA');
   // Constraint 1 survives the mode: the restart-window mechanism stays god's.
   assert.ok(p.includes('stays YOURS in every mode'), 'renderer mechanism stays god-owned');
+  // Relayed push authorization (card agent-harness-make-god-s-relay-2026-08-20):
+  // god composes relays in the form the worker-side surfaces parse.
+  assert.ok(p.includes('RELAYING PUSH AUTHORIZATION'), 'god gets the required relay form');
 });
 
 test('workers mode: the worker briefing carries the worker-side integration duty', () => {
@@ -99,7 +106,11 @@ test('workers mode: the worker briefing carries the worker-side integration duty
   assert.ok(p.includes('gates are green'), 'merge only after own gates');
   assert.ok(p.includes('pushed hash'), 'report the hash to god');
   assert.ok(p.includes(RENDERER_CONSTRAINT), 'renderer/preload constraint');
-  assert.ok(p.includes(SKILL_OVERRIDE), 'never-push skills still override');
+  assert.ok(p.includes(SKILL_OVERRIDE), 'never-push merge skills named');
+  assert.ok(
+    p.includes('YIELD to a dispatch FROM GOD relaying the operator'),
+    'never-push skills yield to a god-relayed operator authorization',
+  );
   assert.ok(p.includes(DISPATCH_OVERRIDE), 'dispatch boundary beats the mode default');
 });
 
