@@ -33,7 +33,7 @@ import {
   cpSync,
   unlinkSync,
 } from 'node:fs';
-import { join, dirname, isAbsolute, basename } from 'node:path';
+import { join, dirname, isAbsolute, basename, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
@@ -1278,6 +1278,22 @@ export class HiveManager {
       this.writeJson(settingsPath, this.hookSettings(shim, meta.cwd, opts.mcpDefaults, opts.theme));
       args.push('--settings', settingsPath);
     }
+
+    // W3 — bundled-skill discovery: Claude Code only discovers `.claude/skills`
+    // under a WORKING-DIRECTORY root — the cwd, `--add-dir` roots, and nested
+    // subdirectories of either (verified against claude 2.1.221). copyBundledSkills
+    // writes <home>/.claude/skills, so when home is neither the cwd nor under it
+    // (every off-home agent, e.g. the merlin checkouts) the bundled skills never
+    // load — 22 live off-home sessions showed zero of them while home-cwd
+    // sessions load them as directory-scoped skills. Register home as a working-
+    // directory root exactly in that gap; skip it when nested discovery already
+    // covers home so home-cwd spawns stay unchanged.
+    if (meta.cwd) {
+      const home = resolve(dir);
+      const spawnCwd = resolve(meta.cwd);
+      if (home !== spawnCwd && !home.startsWith(spawnCwd + sep)) args.push('--add-dir', home);
+    }
+
     return { args, env };
   }
 
