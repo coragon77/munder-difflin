@@ -161,3 +161,4 @@ test/hive-offhome-skills.test.cjs
 test/orient-inject.test.cjs
 test/orient-gate.test.cjs
 test/compact-clear-collision.test.cjs
+test/dispatch-premises.test.cjs
