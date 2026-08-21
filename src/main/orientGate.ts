@@ -25,6 +25,7 @@
  */
 
 import { orientationBlock } from './orientInject';
+import { segments, isPrimitiveInvocation, shCBody } from './hiveGate';
 
 /** Seen-state for one agent: keyed on the payload session_id, REPLACED on
  *  session change, never persisted — a restart refires once per root by
@@ -99,6 +100,32 @@ function insideCwd(path: string, cwd: string): boolean {
  *  (spec §3). Tripwired by acceptance case 16 against the REAL renderer. */
 export const BULLET_RE = /^- (\/.+?): read (?:CLAUDE|AGENTS)\.md first/;
 
+/** Bash narrowing (card agent-orient-gate-fires-on-cal-2026-08-21): the
+ *  command string is PROSE-CARRYING — a project path or name inside a
+ *  --body/--reason/--notes value is a mention, not an access (observed
+ *  2026-08-21: hive-park refused via the parked agent's registered cwd,
+ *  hive-dispatch refused via contract-body prose). Split the command with
+ *  the shared-state gate's quote-aware segments() and exempt every segment
+ *  that IS a hive-* primitive invocation — lifecycle primitives operate ON
+ *  agents and hive state, never IN a work directory, so nothing they name
+ *  is entered by this call. Non-primitive segments are scanned exactly as
+ *  before (joined with '\n'); sh -c bodies recurse. Returns '' when every
+ *  segment is exempt. */
+function scanNonPrimitiveBash(command: string): string {
+  const keep: string[] = [];
+  for (const segment of segments(command)) {
+    const body = shCBody(segment);
+    if (body !== null) {
+      const inner = scanNonPrimitiveBash(body);
+      if (inner) keep.push(inner);
+      continue;
+    }
+    if (isPrimitiveInvocation(segment)) continue;
+    keep.push(segment);
+  }
+  return keep.join('\n');
+}
+
 /**
  * The gate. Returns the denial (or null) plus the seen-state to store.
  * Flow (spec §7): extract → orientationBlock → parse → drop seen and
@@ -123,7 +150,7 @@ export function orientGate(
       .toLowerCase();
     if (tool !== 'read' && tool !== 'edit' && tool !== 'grep' && tool !== 'glob' && tool !== 'bash')
       return pass();
-    const searchText = extractSearchText(tool, input.toolInput);
+    let searchText = extractSearchText(tool, input.toolInput);
     if (!searchText) return pass();
 
     let cwd = norm(typeof input.sessionCwd === 'string' ? input.sessionCwd : '');
@@ -148,6 +175,11 @@ export function orientGate(
       // construction; engines' own nested-discovery covers roots under cwd.
       if (!searchText.startsWith('/')) return pass();
       if (insideCwd(norm(searchText), cwd)) return pass(); // fast path (spec §6)
+    } else {
+      // Bash: quoted prose is a mention, not an access — scan only the
+      // non-primitive segments (the fast path above never ran for bash).
+      searchText = scanNonPrimitiveBash(searchText);
+      if (!searchText) return pass();
     }
 
     // Detection actually runs — pull the lazy registry context.

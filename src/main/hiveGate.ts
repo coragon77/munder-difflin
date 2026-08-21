@@ -219,8 +219,10 @@ function maskQuoted(s: string): string {
  *  metacharacter inside quotes never splits (card agent-r3-gate-false-
  *  positive-q-2026-08-19 — `--notes "a|b … tasks.json"` used to fracture a
  *  legitimate primitive call and get it refused). Unclosed quotes swallow the
- *  rest as one segment; the exec-position check still runs on it. */
-function segments(command: string): string[] {
+ *  rest as one segment; the exec-position check still runs on it. Exported
+ *  for the orient gate's bash narrowing (agent-orient-gate-fires-on-cal-
+ *  2026-08-21) so both PreToolUse gates split commands identically. */
+export function segments(command: string): string[] {
   const mask = maskQuoted(command);
   const re = /&&|\|\||[;|\n]/g;
   const out: string[] = [];
@@ -297,6 +299,26 @@ function isPrimitiveSegment(words: string[]): boolean {
     if (PRIMITIVE_RE.test(basename(next))) return true;
   }
   return false;
+}
+
+/** Quote-aware exec-position primitive test for ONE segment. Exported for
+ *  the orient gate's bash exemption (card agent-orient-gate-fires-on-cal-
+ *  2026-08-21): lifecycle primitives operate ON agents and hive state —
+ *  their arguments are ids and prose, never entered directories. */
+export function isPrimitiveInvocation(segment: string): boolean {
+  return isPrimitiveSegment(shellWords(segment));
+}
+
+/** `sh -c '<body>'` — the raw body (wrapping quotes stripped), or null when
+ *  the segment is not a shell -c invocation. Exported for the orient gate's
+ *  bash recursion (same card) so both gates unwrap identically. */
+export function shCBody(segment: string): string | null {
+  const m = SH_C.exec(segment);
+  if (!m || m[1] === undefined) return null;
+  let body = m[1];
+  const q = body[0] as string;
+  if (body.length > 1 && (q === "'" || q === '"') && body.endsWith(q)) body = body.slice(1, -1);
+  return body;
 }
 
 /** Redirect (`>` / `>>`) targets in a segment, QUOTE-AWARE: a `>` inside
@@ -404,11 +426,8 @@ function gateBash(command: string, hiveRoot: string, cwd?: string): SharedStateD
     }
     const toks = tokens(segment, hiveRoot);
     if (toks.length === 0) continue;
-    const m = SH_C.exec(segment);
-    if (m && m[1] !== undefined) {
-      let body = m[1];
-      const q = body[0] as string;
-      if (body.length > 1 && (q === "'" || q === '"') && body.endsWith(q)) body = body.slice(1, -1);
+    const body = shCBody(segment);
+    if (body !== null) {
       const inner = gateBash(body, hiveRoot, cwd);
       if (inner) return inner;
       continue;

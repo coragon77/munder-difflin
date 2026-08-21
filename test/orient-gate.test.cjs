@@ -307,3 +307,108 @@ test('16 — tripwire: A render parses back through BULLET_RE', () => {
   }
   assert.deepEqual(roots, [MERLIN], 'parse extracts the rendered root back out');
 });
+
+// 17. FP1 (2026-08-21): hive-park --reason prose mentions the parked agent's
+// project by name — the gate keyed on the REGISTERED CWD via the S2 basename
+// idiom, though parking reads/writes nothing in that directory. A lifecycle
+// primitive operates ON an agent, never IN its directory: its segment is
+// exempt (card agent-orient-gate-fires-on-cal-2026-08-21).
+test('17 — hive-park with project-name prose in --reason passes', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-park kevin-msvz1zi6 --reason "done with merlin_hlog for now"',
+    },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
+
+// 18. FP2 (2026-08-21): hive-dispatch --body prose carries a full project
+// path — a MENTION, not an access; the worker is who enters the directory,
+// and the worker has its own gate (plus Card A's injected ORIENT FIRST).
+test('18 — hive-dispatch with a project path in --body prose passes', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-dispatch --card c1 --body "fix the exporter in ' + MERLIN + '/qbase today"',
+    },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
+
+// 18b. same shape via $HIVE_ROOT/bin path and inside a compound whose second
+// segment IS a real read — only the primitive segment is exempt.
+test('18b — $HIVE_ROOT/bin form passes; a sibling real read still denies', () => {
+  const primitive = gate({
+    toolName: 'Bash',
+    toolInput: { command: '"$HIVE_ROOT/bin/hive-dispatch" --card c1 --body "see ' + MERLIN + '"' },
+    sessionId: 's1',
+  });
+  assert.equal(primitive.deny, null);
+
+  const mixed = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-card list && cat ' + MERLIN + '/qbase/manage.py',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(mixed.deny, 'the non-primitive segment still denies');
+  assert.match(mixed.deny, new RegExp(MERLIN));
+});
+
+// 18c. quote-awareness is load-bearing: `;` inside the --reason prose must
+// not fracture the primitive segment into a "non-primitive" half (the
+// shared-state gate's segments() mask does the splitting).
+test('18c — shell metachars inside primitive prose do not fracture the exemption', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-park kevin-msvz1zi6 --reason "park; merlin_hlog idle | no cards"',
+    },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
+
+// 18d. sh -c wrapping recurses: a wrapped primitive is exempt, a wrapped
+// real read is not.
+test('18d — sh -c bodies recurse: primitive passes, real read denies', () => {
+  const wrapped = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'sh -c \'hive-park kevin --reason "merlin_hlog idle"\'' },
+    sessionId: 's1',
+  });
+  assert.equal(wrapped.deny, null);
+
+  const real = gate({
+    toolName: 'Bash',
+    toolInput: { command: "sh -c 'cat " + MERLIN + "/qbase/manage.py'" },
+    sessionId: 's1',
+  });
+  assert.ok(real.deny, 'a wrapped real read still denies');
+});
+
+// 19. THE BACKSTOP: a genuine outside-cwd read still denies once, and the
+// verbatim retry passes — the narrowing must not weaken the gate's real job
+// (it fired correctly on god's first read into /opt/munder-difflin).
+test('19 — a real directory read is still gated (deny once, retry passes)', () => {
+  const first = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'cat ' + MERLIN + '/qbase/manage.py' },
+    sessionId: 's1',
+  });
+  assert.ok(first.deny, 'real read denies');
+  assert.match(first.deny, new RegExp(MERLIN));
+  const retry = gate(
+    {
+      toolName: 'Bash',
+      toolInput: { command: 'cat ' + MERLIN + '/qbase/manage.py' },
+      sessionId: 's1',
+    },
+    first.state,
+  );
+  assert.equal(retry.deny, null);
+});
