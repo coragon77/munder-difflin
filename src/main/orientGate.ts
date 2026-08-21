@@ -100,370 +100,501 @@ function insideCwd(path: string, cwd: string): boolean {
  *  (spec §3). Tripwired by acceptance case 16 against the REAL renderer. */
 export const BULLET_RE = /^- (\/.+?): read (?:CLAUDE|AGENTS)\.md first/;
 
-/** One command-line segment, with the heredoc bodies attached to the
- *  segment whose `<<` introduced them (a heredoc-fed --body/stdin contract
- *  is PROSE for the primitive that reads it — it must stay inside the
- *  exempt segment, not become free-floating command lines). */
-interface Segment {
+/** A shell WORD: one fully-concatenated operand/argument (quotes stripped,
+ *  fragment-joining done, backslash escapes resolved) — `"/a/b"/c/d` is ONE
+ *  word, because bash opens one file. */
+interface Word {
   text: string;
-  /** Heredoc body spans (indices into text) with their delimiter quoting:
-   *  a QUOTED delimiter makes the body literal (prose — expansions in it
-   *  never run); an unquoted one leaves $( )/backticks live. */
-  heredocs: Array<{ start: number; end: number; quoted: boolean }>;
 }
 
-/** Bash narrowing, round 2 (card agent-orient-gate-fires-on-cal-2026-08-21,
- *  two cold-context review rounds): the command string is PROSE-CARRYING —
- *  a project path or name inside a --body/--reason/--notes value or a
- *  heredoc contract is a mention, not an access. Split the command
- *  QUOTE-AWARE and exempt every segment that IS a hive-* primitive
- *  invocation — lifecycle primitives operate ON agents and hive state,
- *  never IN a work directory. Splitting mirrors real shell syntax:
- *  quoted prose never splits; splits inside live $( )/backtick/subshell
- *  spans don't happen (they're one command); single & (background) splits,
- *  fd-dups (2>&1) and >& redirects don't; # comments are inert; heredoc
- *  bodies attach to their introducer segment (quoted delimiter = prose);
- *  <<< herestrings are operators, not heredocs. The exemption covers only
- *  the primitive's own words: real shell work hiding in the segment —
- *  redirect operands (quoted or not), herestring operands, live $( ) and
- *  backtick bodies, and <( )/>( ) process substitutions — is extracted
- *  from the quote mask and scanned. Known ceiling (marked, not chased): a
- *  `)` inside quotes nested WITHIN a $() body can unbalance the extractor;
- *  adversarial var-redefinition (HIVE_NODE=/bin/cat) is outside a
- *  fail-open orientation gate's threat model. */
-function splitCommand(command: string): Segment[] {
-  const out: Segment[] = [];
-  let cur = '';
-  const curHeredocs: Array<{ start: number; end: number; quoted: boolean }> = [];
-  let quote: "'" | '"' | null = null;
-  let sub = 0; // $( depth inside double quotes — live, kept with its segment
-  let bt = false; // backtick span inside double quotes — same
-  let depth = 0; // unquoted ( )/$( nesting — no splits inside (one command)
-  let pending: { term: string; tabs: boolean; quoted: boolean; segIdx: number } | null = null;
-  const n = command.length;
-  let i = 0;
-  const push = (): void => {
-    out.push({ text: cur, heredocs: curHeredocs.splice(0) });
-    cur = '';
-  };
-  const wordBoundary = (): boolean =>
-    cur.length === 0 || /[\s;&|()<)]$/.test(cur[cur.length - 1] ?? '');
-  while (i < n) {
-    const c = command[i] as string;
-    if (quote === null && depth === 0 && c === '#' && wordBoundary()) {
-      // Comment: inert — skip to end of line (a `<<` inside it is not a
-      // heredoc; a commented-out command is not an access).
-      while (i < n && command[i] !== '\n') i++;
+/** A command-substitution / process-substitution / subshell BODY: text the
+ *  shell executes — recursively scannable as a command of its own. */
+interface CmdBody {
+  text: string;
+}
+
+/** One pipeline/sequence segment. `subs` holds every live substitution body
+ *  anywhere in the segment (word-embedded or standing), `operands` every
+ *  redirect/herestring operand (a PATH the shell opens — never a command),
+ *  `heredocs` the bodies with their delimiter quoting. `raw` is the exact
+ *  original text (heredoc bodies attached to their introducer's segment) —
+ *  the exec-position primitive test runs on it unchanged. */
+interface Segment {
+  raw: string;
+  words: Word[];
+  subs: CmdBody[];
+  operands: Word[];
+  heredocs: Array<{ text: string; quoted: boolean }>;
+}
+
+/** Balanced ( … ) span in `s` starting at the '(' at index `open`:
+ *  quote- and escape-aware (a ')' inside quotes does not close), returns
+ *  the body's [start, end) indices — callers slice the raw text. Null when
+ *  unclosed (the shell would error; nothing to run). */
+function balancedSpan(s: string, open: number): { start: number; end: number } | null {
+  if (s[open] !== '(') return null;
+  let d = 0;
+  let q: "'" | '"' | null = null;
+  for (let k = open; k < s.length; k++) {
+    const c = s[k] as string;
+    if (q === "'") {
+      if (c === "'") q = null;
       continue;
     }
-    if (quote === null && c === "'") {
-      quote = "'";
-      cur += c;
-      i++;
+    if (c === '\\' && q === '"') {
+      k++;
       continue;
     }
-    if (quote === "'") {
-      if (c === "'") quote = null;
-      cur += c;
-      i++;
+    if (q === '"') {
+      if (c === '"') q = null;
       continue;
     }
-    if (c === '\\' && sub === 0 && !bt) {
-      cur += c + (command[i + 1] ?? '');
-      i += 2;
+    if (c === "'" || c === '"') {
+      q = c;
       continue;
     }
-    if (quote === '"') {
-      if (sub === 0 && !bt && c === '$' && command[i + 1] === '(') {
-        sub = 1;
-        cur += c + (command[i + 1] ?? '');
-        i += 2;
-        continue;
-      }
-      if (sub > 0) {
-        if (c === '(') sub++;
-        else if (c === ')') sub--;
-        cur += c;
-        i++;
-        continue;
-      }
-      if (bt) {
-        if (c === '`') bt = false;
-        cur += c;
-        i++;
-        continue;
-      }
-      if (c === '`') {
-        bt = true;
-        cur += c;
-        i++;
-        continue;
-      }
-      if (c === '"') quote = null;
-      cur += c;
-      i++;
-      continue;
+    if (c === '(') d++;
+    else if (c === ')') {
+      d--;
+      if (d === 0) return { start: open + 1, end: k };
     }
-    if (c === '"') {
-      quote = '"';
-      cur += c;
-      i++;
-      continue;
-    }
-    // Unquoted, live shell syntax.
-    if (depth > 0) {
-      if (c === '(') depth++;
-      else if (c === ')') depth--;
-      cur += c;
-      i++;
-      continue;
-    }
-    if (c === '$' && command[i + 1] === '(') {
-      depth = 1;
-      cur += c + (command[i + 1] ?? '');
-      i += 2;
-      continue;
-    }
-    if (c === '(') {
-      depth = 1;
-      cur += c;
-      i++;
-      continue;
-    }
-    if (c === '<' && command[i + 1] === '<') {
-      if (command[i + 2] === '<') {
-        cur += '<<<'; // herestring: an operator, not a heredoc
-        i += 3;
-        continue;
-      }
-      // Heredoc introducer: parse the delimiter (blanks, optional -, quotes),
-      // keep the op text in the segment, and arm pending — the body starts
-      // at the next NEWLINE (tails like `<<EOF | cat f` split normally first).
-      let j = i + 2;
-      let tabs = false;
-      if (command[j] === '-') {
-        tabs = true;
-        j++;
-      }
-      while (j < n && /[ \t]/.test(command[j] ?? '')) j++;
-      let q = '';
-      if (command[j] === "'" || command[j] === '"') {
-        q = command[j] as string;
-        j++;
-      }
-      let delim = '';
-      while (j < n && !/[\s'"]/.test(command[j] ?? '')) {
-        delim += command[j];
-        j++;
-      }
-      if (q && command[j] === q) j++;
-      cur += command.slice(i, j);
-      i = j;
-      pending = { term: delim || '\n', tabs, quoted: q !== '', segIdx: out.length };
-      continue;
-    }
-    if (c === ';' || c === '\n') {
-      const wasNewline = c === '\n';
-      push();
-      i++;
-      if (wasNewline && pending) {
-        // Consume the heredoc body: line-compare against the terminator
-        // (tab-stripped for <<-), attach everything to the introducer's
-        // segment. An unclosed heredoc swallows the rest, as in the shell.
-        const p = pending;
-        pending = null;
-        const seg = out[p.segIdx] as Segment;
-        const start = seg.text.length;
-        let end = start;
-        let closed = false;
-        while (i <= n) {
-          const nl = command.indexOf('\n', i);
-          const stop = nl === -1 ? n : nl;
-          let line = command.slice(i, stop).replace(/\r$/, '');
-          if (p.tabs) line = line.replace(/^\t+/, '');
-          seg.text += command.slice(i, stop === n ? n : stop + 1);
-          end = seg.text.length;
-          i = stop === n ? n : stop + 1;
-          if (line === p.term) {
-            closed = true;
-            break;
-          }
-          if (nl === -1) break;
-        }
-        seg.heredocs.push({ start, end, quoted: p.quoted });
-        if (!closed) break;
-      }
-      continue;
-    }
-    if (c === '&') {
-      const prev = cur[cur.length - 1] ?? '';
-      if (prev === '>' || prev === '<' || command[i + 1] === '>') {
-        cur += c; // fd-dup (2>&1, <&3) or the >& / &> redirect forms
-        i++;
-        continue;
-      }
-      i++;
-      push(); // single & : background — the right half is a real command
-      continue;
-    }
-    if (c === '|') {
-      i += command[i + 1] === '|' ? 2 : 1;
-      push();
-      continue;
-    }
-    cur += c;
-    i++;
   }
-  push();
-  return out;
+  return null;
 }
 
-/** Read one shell WORD from raw text at index i (blanks skipped): a quoted
- *  word runs through its closing quote (backslash escapes inside "), a bare
- *  word until whitespace or shell metacharacters. Wrapping quotes stripped. */
-function readRawWord(s: string, i: number): { word: string; j: number } {
+/** The ` … ` body starting at the backtick at index `open`: ends at the
+ *  next unescaped backtick (`` pairs aside — an empty substitution).
+ *  Quote-aware only for escaping; returns null when unclosed. */
+function backtickSpan(s: string, open: number): { start: number; end: number } | null {
+  for (let k = open + 1; k < s.length; k++) {
+    const c = s[k] as string;
+    if (c === '\\') {
+      k++;
+      continue;
+    }
+    if (c === '`') return { start: open + 1, end: k };
+  }
+  return null;
+}
+
+/** Lex one WORD starting at i (blanks skipped): concatenates quoted and
+ *  unquoted fragments until whitespace or a shell metacharacter; resolves
+ *  backslash escapes per context. `quoted` reports whether ANY quoting or
+ *  escaping was present (heredoc delimiters: quoting any part disables
+ *  body expansion). Substitutions inside DOUBLE quotes are LIVE — their
+ *  bodies are appended to `subs` when provided (single quotes never run).
+ *  Returns the word and the next index. */
+function lexWord(
+  s: string,
+  i: number,
+  subs?: Array<{ text: string }>,
+): { text: string; quoted: boolean; j: number } {
   const n = s.length;
   while (i < n && /[\s]/.test(s[i] ?? '')) i++;
   let out = '';
+  let quoted = false;
+  let any = false;
   while (i < n) {
     const c = s[i] as string;
     if (c === '\\') {
       out += s[i + 1] ?? '';
+      quoted = true;
+      any = true;
       i += 2;
       continue;
     }
     if (c === "'" || c === '"') {
       const q = c;
+      quoted = true;
+      any = true;
       i++;
       while (i < n && s[i] !== q) {
-        if (q === '"' && s[i] === '\\') {
-          out += s[i + 1] ?? '';
-          i += 2;
-          continue;
+        if (q === '"') {
+          if (s[i] === '\\' && /[\\"$`\n]/.test(s[i + 1] ?? '')) {
+            out += s[i + 1] ?? '';
+            i += 2;
+            continue;
+          }
+          if (s[i] === '$' && s[i + 1] === '(') {
+            const span = balancedSpan(s, i + 1);
+            if (span) {
+              subs?.push({ text: s.slice(span.start, span.end) });
+              out += s.slice(i, span.end + 1);
+              i = span.end + 1;
+              continue;
+            }
+          }
+          if (s[i] === '`') {
+            const span = backtickSpan(s, i);
+            if (span) {
+              subs?.push({ text: s.slice(span.start, span.end) });
+              out += s.slice(i, span.end + 1);
+              i = span.end + 1;
+              continue;
+            }
+          }
         }
         out += s[i] ?? '';
         i++;
       }
-      i++; // closing quote
-      return { word: out, j: i };
+      i++; // closing quote (or EOF)
+      continue;
     }
-    if (/[\s;&|<>()`]/.test(c)) return { word: out, j: i };
+    if (/[\s;&|<>()`]/.test(c)) break;
     out += c;
+    any = true;
     i++;
   }
-  return { word: out, j: i };
+  return { text: out, quoted, j: i };
 }
 
-/** Real shell work hiding inside an (exempt) primitive segment, extracted
- *  from the QUOTE MASK so only live syntax counts: redirect operands
- *  (`>`/`>>`/`<`/`<<<`/`>&` — quoted or not; fd-dups skipped), live $( )
- *  and backtick bodies (executed even inside double quotes), and <( )/>( )
- *  process substitution bodies. Heredoc bodies are data: never redirects;
- *  expansions only when the delimiter was UNQUOTED. Each part is fed back
- *  through the scan. */
-function primitiveExtras(seg: Segment): string[] {
-  const parts: string[] = [];
-  const text = seg.text;
-  const rawMask = maskQuoted(text);
-  // Two masked views: operators must ignore ALL heredoc bodies; expansions
-  // must ignore QUOTED-delimiter bodies only (unquoted ones are live).
-  const opMask = rawMask.split('');
-  const exMask = rawMask.split('');
-  for (const h of seg.heredocs) {
-    for (let k = h.start; k < h.end && k < opMask.length; k++) opMask[k] = '\0';
-    if (h.quoted) for (let k = h.start; k < h.end && k < exMask.length; k++) exMask[k] = '\0';
-  }
-  const op = opMask.join('');
-  const ex = exMask.join('');
-  // Redirect / herestring operators, raw-operand based (quoted operands
-  // still open the file). Heredoc introducers (<<) are skipped.
-  for (let k = 0; k < op.length; k++) {
-    const c = op[k] as string;
-    if (c !== '>' && c !== '<') continue;
-    if ((c === '<' || c === '>') && op[k + 1] === '(') {
-      // Process substitution <( … ) / >( … ): paren-balanced body.
-      const span = spanBalanced(ex, k + 1);
-      if (span) {
-        parts.push(text.slice(span.start, span.end));
-        k = span.end;
-      } else k++;
+/** Bash narrowing, round 3 (card agent-orient-gate-fires-on-cal-2026-08-21,
+ *  three cold-context review rounds — patches kept finding bypasses, so the
+ *  parse is now ONE tokenizer, correct by construction): the command string
+ *  is PROSE-CARRYING — a project path or name inside a --body/--reason/
+ *  --notes value or a heredoc contract is a mention, not an access. Split
+ *  the command into segments QUOTE-AWARE and exempt every segment that IS
+ *  a hive-* primitive invocation — lifecycle primitives operate ON agents
+ *  and hive state, never IN a work directory. The tokenizer mirrors shell
+ *  lexing: quoted prose never splits; live $( )/backtick/subshell bodies
+ *  are extracted whole (no splits inside); single & (background) splits
+ *  while fd-dups (2>&1, <&3, >&fd) and >&file don't; # comments are inert;
+ *  <<< herestrings and <( )/>( ) process substitutions are operators;
+ *  heredoc bodies attach to their introducer's segment, expansion per the
+ *  DELIMITER's quoting (quoted delimiter = literal prose), several heredocs
+ *  per line each keep their own rules. The exemption covers only the
+ *  primitive's own words: real shell work in the segment — substitution
+ *  bodies (recursively scanned), redirect/herestring operands (paths, never
+ *  exec-tested), live heredoc expansions — is extracted and scanned.
+ *  Known ceiling (marked, not chased): adversarial launcher redefinition
+ *  (HIVE_NODE=/bin/cat) — outside a fail-open orientation backstop's
+ *  threat model; same pre-existing shape in the shared-state gate. */
+function parseCommand(command: string): Segment[] {
+  const segs: Segment[] = [];
+  const newSeg = (): Segment => ({ raw: '', words: [], subs: [], operands: [], heredocs: [] });
+  let cur = newSeg();
+  const pushSeg = (): void => {
+    segs.push(cur);
+    cur = newSeg();
+  };
+  const n = command.length;
+  let i = 0;
+  let word = '';
+  let wordOpen = false; // mid-word (for # comment detection)
+  const pending: Array<{ term: string; tabs: boolean; quoted: boolean; segIdx: number }> = [];
+  const flush = (): void => {
+    if (wordOpen) {
+      cur.words.push({ text: word });
+      word = '';
+      wordOpen = false;
+    }
+  };
+
+  while (i < n) {
+    const c = command[i] as string;
+    if (c === '#' && !wordOpen) {
+      // Comment — inert to end of line (a << inside it is not a heredoc).
+      while (i < n && command[i] !== '\n') i++;
       continue;
     }
-    if (op[k + 1] === '<' || op[k - 1] === '<') continue; // << introducer
-    let opEnd = k + 1;
-    if (op[k + 1] === '>' || op[k + 1] === '<' || op[k + 1] === '|') opEnd = k + 2;
-    if (op[opEnd] === '&' && /[0-9-]/.test(op[opEnd + 1] ?? '')) {
-      k = opEnd + 1; // fd-dup (2>&1, <&3): no file
+    if (c === "'" || c === '"') {
+      // A quoted fragment of the current word: lexWord handles joining.
+      const w = lexWord(command, i, cur.subs);
+      word += w.text;
+      wordOpen = true;
+      cur.raw += command.slice(i, w.j);
+      i = w.j;
       continue;
     }
-    if (op[opEnd] === '&') opEnd++; // >&word: deprecated redirect form
-    const w = readRawWord(text, opEnd);
-    if (w.word) parts.push(w.word);
-    k = Math.max(k, w.j - 1);
-  }
-  // Live $( … ) bodies: paren balance over the expansion mask.
-  for (let k = 0; k < ex.length - 1; k++) {
-    if (ex[k] === '$' && ex[k + 1] === '(') {
-      const span = spanBalanced(ex, k + 1);
+    if (c === '\\') {
+      word += command[i + 1] ?? '';
+      wordOpen = true;
+      cur.raw += command.slice(i, Math.min(i + 2, n));
+      i += 2;
+      continue;
+    }
+    if (c === '$' && command[i + 1] === '(') {
+      const span = balancedSpan(command, i + 1);
       if (span) {
-        parts.push(text.slice(span.start, span.end));
-        k = span.end;
-      } else k++;
+        cur.subs.push({ text: command.slice(span.start, span.end) });
+        cur.raw += command.slice(i, span.end + 1);
+        i = span.end + 1;
+      } else {
+        // Unclosed: the shell errors; keep it with the segment.
+        cur.raw += c;
+        i++;
+      }
+      wordOpen = true; // a substitution inside a word keeps the word open
+      continue;
     }
-  }
-  // Live backtick bodies: pairs over the expansion mask.
-  let btAt = -1;
-  for (let k = 0; k < ex.length; k++) {
-    if (ex[k] !== '`') continue;
-    if (btAt === -1) btAt = k;
-    else {
-      parts.push(text.slice(btAt + 1, k));
-      btAt = -1;
+    if (c === '(') {
+      const span = balancedSpan(command, i);
+      if (span) {
+        cur.subs.push({ text: command.slice(span.start, span.end) });
+        cur.raw += command.slice(i, span.end + 1);
+        i = span.end + 1;
+      } else {
+        cur.raw += c;
+        i++;
+      }
+      continue;
     }
+    if (c === '`') {
+      const span = backtickSpan(command, i);
+      if (span) {
+        cur.subs.push({ text: command.slice(span.start, span.end) });
+        cur.raw += command.slice(i, span.end + 1);
+        i = span.end + 1;
+      } else {
+        cur.raw += c;
+        i++;
+      }
+      wordOpen = true;
+      continue;
+    }
+    if (c === '<' || c === '>') {
+      flush();
+      // Operator lexing — fd-dups, herestrings, process subs, heredocs.
+      let j = i + 1;
+      if (command[j] === c) j++; // >> or <<
+      const two = j - i === 2;
+      if (c === '<' && two && command[j] === '<') {
+        j++; // <<< herestring: operand is data
+        cur.raw += command.slice(i, j);
+        i = j;
+        const w = lexWord(command, i);
+        cur.raw += command.slice(i, w.j);
+        if (w.text || w.j > i) cur.operands.push({ text: w.text });
+        i = w.j;
+        continue;
+      }
+      if (command[j] === '(') {
+        // Process substitution <( ) / >>( ): a command body.
+        const span = balancedSpan(command, j);
+        if (span) {
+          cur.subs.push({ text: command.slice(span.start, span.end) });
+          cur.raw += command.slice(i, span.end + 1);
+          i = span.end + 1;
+        } else {
+          cur.raw += command.slice(i, j + 1);
+          i = j + 1;
+        }
+        continue;
+      }
+      if (two && c === '<') {
+        // Heredoc: optional '-', then the delimiter as a proper WORD.
+        let tabs = false;
+        if (command[j] === '-') {
+          tabs = true;
+          j++;
+        }
+        const dl = lexWord(command, j);
+        cur.raw += command.slice(i, dl.j);
+        // Empty QUOTED delimiter (<<"") terminates on a blank line; only a
+        // bare << (nothing lexed, unquoted) falls back to the '\n' term.
+        const term = dl.quoted ? dl.text : dl.text || '\n';
+        pending.push({ term, tabs, quoted: dl.quoted, segIdx: segs.length });
+        i = dl.j;
+        continue;
+      }
+      let opEnd = j;
+      if (command[opEnd] === '&' || command[opEnd] === '|') opEnd++; // >& >&| <& <|
+      cur.raw += command.slice(i, opEnd);
+      i = opEnd;
+      if (command[opEnd - 1] === '&' || command[opEnd - 1] === '|') {
+        // fd form: >& / <& — dup only when the word is all digits or '-'.
+        const save = i;
+        const w = lexWord(command, i);
+        if (/^\d+$|^-$/.test(w.text)) {
+          cur.raw += command.slice(save, w.j);
+          i = w.j; // fd number consumed, no file operand
+        } else if (save < w.j) {
+          cur.operands.push({ text: w.text }); // >&file: deprecated redirect
+          cur.raw += command.slice(save, w.j);
+          i = w.j;
+        }
+        continue;
+      }
+      const w = lexWord(command, i, cur.subs);
+      if (w.j > i) {
+        cur.operands.push({ text: w.text });
+        cur.raw += command.slice(i, w.j);
+        i = w.j;
+      }
+      continue;
+    }
+    if (c === '&' || c === '|' || c === ';' || c === '\n') {
+      flush();
+      const wasNewline = c === '\n';
+      if ((c === '&' || c === '|') && command[i + 1] === c) i += 2;
+      else i++;
+      cur.raw += c === '\n' ? '\n' : (command[i - 1] ?? c);
+      pushSeg();
+      if (wasNewline && pending.length > 0) {
+        // Heredoc bodies start at this newline: consume each pending body
+        // in order (terminator line exact, tab-stripped for <<-, \r-safe;
+        // unclosed bodies swallow the rest, as in the shell) and attach it
+        // to the introducer's segment.
+        for (const p of pending.splice(0)) {
+          const seg = segs[p.segIdx] as Segment;
+          let closed = false;
+          while (i <= n) {
+            const nl = command.indexOf('\n', i);
+            const stop = nl === -1 ? n : nl;
+            let line = command.slice(i, stop).replace(/\r$/, '');
+            if (p.tabs) line = line.replace(/^\t+/, '');
+            const consumed = stop === n ? n - i : stop - i + 1;
+            seg.raw += command.slice(i, i + consumed);
+            i += consumed;
+            if (line === p.term) {
+              closed = true;
+              break;
+            }
+            if (nl === -1) break;
+          }
+          seg.heredocs.push({ text: '', quoted: p.quoted });
+          // Body text sits between the introducer line's newline and the
+          // terminator: re-derive from raw (terminator included) — simpler:
+          // store by slicing command during consumption.
+          const h = seg.heredocs[seg.heredocs.length - 1] as { text: string; quoted: boolean };
+          h.text = heredocBodyText(seg, command, p);
+          if (!closed) break;
+        }
+      }
+      continue;
+    }
+    if (/[\s]/.test(c)) {
+      flush();
+      cur.raw += c;
+      i++;
+      continue;
+    }
+    word += c;
+    wordOpen = true;
+    cur.raw += c;
+    i++;
   }
-  return parts;
+  flush();
+  pushSeg();
+  return segs;
 }
 
-/** Indices of the balanced ( … ) span starting AT the '(' (mask view):
- *  [bodyStart, bodyEnd) — callers slice the RAW text, so quoted paths
- *  inside the body survive extraction. */
-function spanBalanced(mask: string, open: number): { start: number; end: number } | null {
-  if (mask[open] !== '(') return null;
-  let d = 0;
-  for (let k = open; k < mask.length; k++) {
-    if (mask[k] === '(') d++;
-    else if (mask[k] === ')') {
-      d--;
-      if (d === 0) return { start: open + 1, end: k };
+/** Extract a heredoc's body text from the segment raw (the body was just
+ *  appended there): walk back from the segment end over the consumed body,
+ *  dropping the terminator line. Cheap and exact for the shape we build:
+ *  re-split raw on newlines from the introducer line onward. */
+function heredocBodyText(
+  seg: Segment,
+  _command: string,
+  p: { term: string; tabs: boolean },
+): string {
+  const lines = seg.raw.split('\n');
+  // The introducer line is the first line containing '<<' after which this
+  // body was appended — the body is everything after it minus the final
+  // terminator line (when present).
+  let intro = -1;
+  for (let k = 0; k < lines.length; k++) {
+    if ((lines[k] ?? '').includes('<<')) {
+      intro = k;
+      break;
     }
   }
-  return null; // unclosed — the shell would error; nothing to extract
+  if (intro === -1) return '';
+  const body = lines.slice(intro + 1);
+  if (body.length > 0) {
+    let last = (body[body.length - 1] ?? '').replace(/\r$/, '');
+    if (p.tabs) last = last.replace(/^\t+/, '');
+    if (last === p.term) body.pop();
+  }
+  return body.join('\n');
+}
+
+/** Live expansions inside an UNQUOTED heredoc body: only $( ) and backticks
+ *  run there — redirects, pipes and semicolons are DATA, not operators. */
+function heredocSubs(text: string): string[] {
+  const out: string[] = [];
+  const n = text.length;
+  let i = 0;
+  let q: "'" | '"' | null = null; // quotes do not open inside heredoc bodies,
+  // but backslash still escapes in unquoted bodies for \newline joining —
+  // keep it simple: scan for $( and ` spans with escape awareness only.
+  while (i < n) {
+    const c = text[i] as string;
+    if (c === '\\') {
+      i += 2;
+      continue;
+    }
+    if (c === '$' && text[i + 1] === '(') {
+      const span = balancedSpan(text, i + 1);
+      if (span) {
+        out.push(text.slice(span.start, span.end));
+        i = span.end + 1;
+        continue;
+      }
+    }
+    if (c === '`') {
+      const span = backtickSpan(text, i);
+      if (span) {
+        out.push(text.slice(span.start, span.end));
+        i = span.end + 1;
+        continue;
+      }
+    }
+    q = null; // (state kept intentionally unused; clarity over cleverness)
+    i++;
+  }
+  return out;
+}
+
+/** Exec-position `sh -c` script: returns [body, nextIndex] when the
+ *  segment's words start (after env/wrapper prefixes) with a shell and a
+ *  -c flag — the ARGUMENT after -c is the script; words beyond it are $0/
+ *  data, not commands. Null when not an sh -c form. */
+function shCScript(seg: Segment): string | null {
+  const w = seg.words.map((x) => x.text);
+  let i = 0;
+  while (i < w.length && /^[A-Za-z_]\w*=/.test(w[i] ?? '')) i++;
+  while (i < w.length && ['sudo', 'nohup', 'time', 'exec', 'command'].includes(w[i] ?? '')) i++;
+  const exec = w[i] ?? '';
+  const base = exec.split('/').pop() ?? '';
+  if (!['sh', 'bash', 'dash', 'zsh'].includes(base)) return null;
+  i++;
+  while (i < w.length) {
+    const t = w[i] ?? '';
+    if (/^-[a-zA-Z]*c/.test(t)) return w[i + 1] ?? null;
+    if (t.startsWith('-')) {
+      i++;
+      continue;
+    }
+    return null;
+  }
+  return null;
 }
 
 function scanNonPrimitiveBash(command: string): string {
   const keep: string[] = [];
-  for (const seg of splitCommand(command)) {
-    const sc = shCParts(seg.text);
-    if (sc) {
-      if (sc.prefix.trim()) keep.push(sc.prefix);
-      const inner = scanNonPrimitiveBash(sc.body);
+  for (const seg of parseCommand(command)) {
+    const script = shCScript(seg);
+    if (script !== null) {
+      const inner = scanNonPrimitiveBash(script);
       if (inner) keep.push(inner);
-      // Heredocs attached to the sh -c segment itself: the shell -c body
-      // never sees them as heredocs, but their expansion rules still hold.
-      for (const extra of primitiveExtras({ text: seg.text, heredocs: seg.heredocs })) {
-        const inner2 = scanNonPrimitiveBash(extra);
-        if (inner2) keep.push(inner2);
-      }
-      continue;
+    } else if (isPrimitiveInvocation(seg.raw)) {
+      // exempt — but its real shell work is still scanned
+    } else {
+      keep.push(seg.raw);
     }
-    if (isPrimitiveInvocation(seg.text)) {
-      for (const extra of primitiveExtras(seg)) {
-        const inner = scanNonPrimitiveBash(extra);
+    for (const sub of seg.subs) {
+      const inner = scanNonPrimitiveBash(sub.text);
+      if (inner) keep.push(inner);
+    }
+    for (const op of seg.operands) keep.push(op.text);
+    for (const h of seg.heredocs) {
+      if (h.quoted) continue;
+      for (const sub of heredocSubs(h.text)) {
+        const inner = scanNonPrimitiveBash(sub);
         if (inner) keep.push(inner);
       }
-      continue;
     }
-    keep.push(seg.text);
   }
   return keep.join('\n');
 }

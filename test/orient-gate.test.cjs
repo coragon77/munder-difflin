@@ -622,3 +622,142 @@ test('32 — fd-dup 2>&1 mid-args does not fracture the primitive', () => {
   });
   assert.equal(res.deny, null);
 });
+
+// 33. round 3, finding 1: no-space metachar tail after a heredoc op — the
+// delimiter is a shell WORD, it must stop at | ; & ( ) < >.
+test('33 — no-space <<EOF|cat tail denies; escaped and mixed delimiters lex as words', () => {
+  const a = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list <<EOF|cat ' + MERLIN + '/qbase/manage.py\nbody\nEOF' },
+    sessionId: 's1',
+  });
+  assert.ok(a.deny, 'no-space pipe tail denies');
+
+  const b = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-card list <<\\EOF\nprose\nEOF\ncat ' + MERLIN + '/qbase/manage.py',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(b.deny, 'escaped delimiter: body is prose, the next line denies');
+
+  const c = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: "hive-card list <<E'OF'\nprose\nEOF\ncat " + MERLIN + '/qbase/manage.py',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(c.deny, 'mixed-quoted delimiter: same');
+});
+
+// 34. round 3, finding 2: MULTIPLE heredocs on one line — every body is
+// read, each with ITS OWN delimiter quoting.
+test('34 — two heredocs: each body keeps its own expansion rules', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command:
+        "hive-dispatch --card c <<A <<'B'\nsee $(cat " + MERLIN + '/qbase/manage.py)\nA\nprose\nB',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the UNQUOTED first body expands — its substitution denies');
+});
+
+// 35. round 3, finding 3: UNQUOTED backticks are live commands too — the
+// pipe inside must not fracture the segment.
+test('35 — unquoted backtick substitution with a pipe denies', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-park k --reason `cat ' + MERLIN + '/qbase/manage.py | true`' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the backtick body denies');
+});
+
+// 36. round 3, finding 4: an ESCAPED redirect char is a word, so a
+// following & is background — not an fd-dup continuation.
+test('36 — \\>& then a real read denies; canonical 2>&1 still passes', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list \\>& cat ' + MERLIN + '/qbase/manage.py' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'escaped > + background & + read denies');
+  const canon = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list 2>&1 --body "work in merlin_hlog"' },
+    sessionId: 's1',
+  });
+  assert.equal(canon.deny, null);
+});
+
+// 37. round 3, finding 5: a redirect operand is a FILE the shell opens —
+// never a command, so a file named hive-* must not hit the primitive test.
+test('37 — a redirect operand named hive-card denies (files are not commands)', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list < ' + MERLIN + '/bin/hive-card' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the operand path denies');
+});
+
+// 38. round 3, finding 6: quoted and unquoted fragments CONCATENATE into
+// one operand word.
+test('38 — fragmented quoted operands concatenate and deny', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-card list < "/opt/django/projects"/merlin_hlog/qbase/manage.py',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the concatenated operand denies');
+});
+
+// 39. round 3, finding 7: sh -c is exec-position — its -c ARGUMENT is the
+// script, words after it are data, and a trailing heredoc belongs to sh.
+test('39 — sh -c + heredoc: prose passes, a live body substitution denies', () => {
+  const prose = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: "sh -c 'hive-dispatch --card c --body x' <<'EOF'\nwork in " + MERLIN + ' today\nEOF',
+    },
+    sessionId: 's1',
+  });
+  assert.equal(prose.deny, null, 'quoted-delimiter heredoc prose passes');
+
+  const live = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'sh -c \'hive-park k --reason "$(cat ' + MERLIN + '/qbase/manage.py)\""',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(live.deny, 'the substitution inside the -c body denies');
+});
+
+// 40. round 3, finding 8: >&word is an fd-dup only when the word is ALL
+// digits (or exactly -); a digit-prefixed FILENAME is an operand.
+test('40 — >&1log is a file operand, not an fd-dup', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list >&' + MERLIN + '/1log' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'digit-prefixed operand path denies');
+});
+
+// 41. sweep find: an EMPTY quoted delimiter (<<"") terminates on the blank
+// line — a path after it is its own command, not heredoc prose.
+test('41 — empty quoted delimiter terminates on the blank line', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list <<""\n\n' + MERLIN + '/qbase/manage.py' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the path after the blank-line terminator denies');
+});
