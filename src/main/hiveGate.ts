@@ -53,9 +53,14 @@ const PROTECTED_FILES = ['tasks.json', 'registry.json', 'fleet.json'] as const;
 /** CLI-owned drop-dirs. Their names are hive-global; any reference counts. */
 const DROP_DIRS = ['vacation-requests', 'spawn-requests', 'fire-requests'] as const;
 
-/** bin/hive-* primitives (and the bundled-node launcher that runs them). */
+/** bin/hive-* primitives (and the bundled-node launcher that runs them).
+ *  `$HIVE_NODE` (literal, unexpanded) is the documented launcher form —
+ *  `"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" …` (hive.ts) — and
+ *  env expansion is never done on this box's commands, so the literal
+ *  matches what the shells actually send (review finding, card
+ *  agent-orient-gate-fires-on-cal-2026-08-21). */
 const PRIMITIVE_RE = /^hive-[a-z][a-z0-9-]*$/;
-const LAUNCHERS = new Set(['hive-node', 'node', 'electron']);
+const LAUNCHERS = new Set(['hive-node', 'node', 'electron', '$HIVE_NODE']);
 
 const basename = (p: string): string => p.split(/[\\/]/).filter(Boolean).pop() ?? '';
 
@@ -124,8 +129,11 @@ function pathResolve(p: string, base?: string): string {
  *  agent-r3-gate-false-positive-q-2026-08-19 + cold-context review round:
  *  a naive quote mask let `"$(cat x > $HIVE_ROOT/tasks.json)"` smuggle a
  *  hand-edit through the primitive exemption). Unclosed quotes/substitutions
- *  swallow the rest as prose; the exec-position check still runs on it. */
-function maskQuoted(s: string): string {
+ *  swallow the rest as prose; the exec-position check still runs on it.
+ *  Exported for the orient gate's bash narrowing (agent-orient-gate-fires-
+ *  on-cal-2026-08-21), which extracts the live $()/backtick bodies and
+ *  redirect sources hiding inside exempt primitive segments. */
+export function maskQuoted(s: string): string {
   const out = s.split('');
   const n = out.length;
   let quote: '"' | "'" | null = null;
@@ -222,7 +230,7 @@ function maskQuoted(s: string): string {
  *  rest as one segment; the exec-position check still runs on it. Exported
  *  for the orient gate's bash narrowing (agent-orient-gate-fires-on-cal-
  *  2026-08-21) so both PreToolUse gates split commands identically. */
-export function segments(command: string): string[] {
+function segments(command: string): string[] {
   const mask = maskQuoted(command);
   const re = /&&|\|\||[;|\n]/g;
   const out: string[] = [];
@@ -309,23 +317,28 @@ export function isPrimitiveInvocation(segment: string): boolean {
   return isPrimitiveSegment(shellWords(segment));
 }
 
-/** `sh -c '<body>'` — the raw body (wrapping quotes stripped), or null when
- *  the segment is not a shell -c invocation. Exported for the orient gate's
- *  bash recursion (same card) so both gates unwrap identically. */
-export function shCBody(segment: string): string | null {
+/** `sh -c '<body>'` — the raw body (wrapping quotes stripped) plus the text
+ *  BEFORE the match, or null when the segment is not a shell -c invocation.
+ *  SH_C is deliberately NOT anchored to exec position (historical), so the
+ *  prefix lets callers decide what to do with leading text — gateBash keeps
+ *  discarding it (pre-existing, pinned semantics); the orient gate scans it
+ *  (a real read before a trailing `sh -c 'primitive'` must not be
+ *  swallowed — review blocker 2, agent-orient-gate-fires-on-cal-2026-08-21). */
+export function shCParts(segment: string): { prefix: string; body: string } | null {
   const m = SH_C.exec(segment);
   if (!m || m[1] === undefined) return null;
   let body = m[1];
   const q = body[0] as string;
   if (body.length > 1 && (q === "'" || q === '"') && body.endsWith(q)) body = body.slice(1, -1);
-  return body;
+  return { prefix: segment.slice(0, m.index), body };
 }
 
 /** Redirect (`>` / `>>`) targets in a segment, QUOTE-AWARE: a `>` inside
  *  quotes is prose, not a redirect (same card as segments()). Scanned against
  *  the quote mask; NUL-masked chars end a capture, so a quoted target is not
- *  mistaken for a path (nor for a redirect). */
-function redirectTargets(segment: string): string[] {
+ *  mistaken for a path (nor for a redirect). Exported for the orient gate's
+ *  primitive-extras extraction (agent-orient-gate-fires-on-cal-2026-08-21). */
+export function redirectTargets(segment: string): string[] {
   const out: string[] = [];
   const re = />>?\s*([^\s;&|)\0]+)/g;
   let m: RegExpExecArray | null;
@@ -426,9 +439,9 @@ function gateBash(command: string, hiveRoot: string, cwd?: string): SharedStateD
     }
     const toks = tokens(segment, hiveRoot);
     if (toks.length === 0) continue;
-    const body = shCBody(segment);
-    if (body !== null) {
-      const inner = gateBash(body, hiveRoot, cwd);
+    const sc = shCParts(segment);
+    if (sc) {
+      const inner = gateBash(sc.body, hiveRoot, cwd);
       if (inner) return inner;
       continue;
     }

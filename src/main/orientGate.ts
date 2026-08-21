@@ -25,7 +25,7 @@
  */
 
 import { orientationBlock } from './orientInject';
-import { segments, isPrimitiveInvocation, shCBody } from './hiveGate';
+import { isPrimitiveInvocation, shCParts, maskQuoted, redirectTargets } from './hiveGate';
 
 /** Seen-state for one agent: keyed on the payload session_id, REPLACED on
  *  session change, never persisted — a restart refires once per root by
@@ -102,25 +102,216 @@ export const BULLET_RE = /^- (\/.+?): read (?:CLAUDE|AGENTS)\.md first/;
 
 /** Bash narrowing (card agent-orient-gate-fires-on-cal-2026-08-21): the
  *  command string is PROSE-CARRYING — a project path or name inside a
- *  --body/--reason/--notes value is a mention, not an access (observed
- *  2026-08-21: hive-park refused via the parked agent's registered cwd,
- *  hive-dispatch refused via contract-body prose). Split the command with
- *  the shared-state gate's quote-aware segments() and exempt every segment
- *  that IS a hive-* primitive invocation — lifecycle primitives operate ON
- *  agents and hive state, never IN a work directory, so nothing they name
- *  is entered by this call. Non-primitive segments are scanned exactly as
- *  before (joined with '\n'); sh -c bodies recurse. Returns '' when every
- *  segment is exempt. */
+ *  --body/--reason/--notes value (or a heredoc-fed stdin contract) is a
+ *  mention, not an access (observed 2026-08-21: hive-park refused via the
+ *  parked agent's registered cwd, hive-dispatch refused via contract-body
+ *  prose). Split the command QUOTE-AWARE and exempt every segment that IS
+ *  a hive-* primitive invocation — lifecycle primitives operate ON agents
+ *  and hive state, never IN a work directory. But the exemption covers only
+ *  the primitive's own words: real shell work hiding in the segment —
+ *  background `&` splits, `<`/`>` redirects, and live $( )/backtick bodies
+ *  (which the shell executes even inside double quotes) — is extracted and
+ *  scanned (cold-context review round: wholesale segment drops let
+ *  `hive-card list & cat <project>` through). Non-primitive segments are
+ *  scanned exactly as before (joined with '\n'); sh -c bodies recurse, and
+ *  the text BEFORE an unanchored sh -c match is scanned too. Returns '' when
+ *  nothing scannable remains. */
+function splitCommand(command: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let quote: "'" | '"' | null = null;
+  let sub = 0; // $( depth inside double quotes — live, but kept with its segment
+  let bt = false; // backtick span inside double quotes — same
+  const n = command.length;
+  let i = 0;
+  const push = (): void => {
+    out.push(cur);
+    cur = '';
+  };
+  while (i < n) {
+    const c = command[i] as string;
+    if (quote === null && c === "'") {
+      quote = "'";
+      cur += c;
+      i++;
+      continue;
+    }
+    if (quote === "'") {
+      if (c === "'") quote = null;
+      cur += c;
+      i++;
+      continue;
+    }
+    if (c === '\\' && sub === 0 && !bt) {
+      cur += c + (command[i + 1] ?? '');
+      i += 2;
+      continue;
+    }
+    if (quote === '"') {
+      if (sub === 0 && !bt && c === '$' && command[i + 1] === '(') {
+        sub = 1;
+        cur += c + (command[i + 1] ?? '');
+        i += 2;
+        continue;
+      }
+      if (sub > 0) {
+        if (c === '(') sub++;
+        else if (c === ')') sub--;
+        cur += c;
+        i++;
+        continue;
+      }
+      if (bt) {
+        if (c === '`') bt = false;
+        cur += c;
+        i++;
+        continue;
+      }
+      if (c === '`') {
+        bt = true;
+        cur += c;
+        i++;
+        continue;
+      }
+      if (c === '"') quote = null; // closing quote (after sub/bt: mirror maskQuoted)
+      cur += c;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      quote = '"';
+      cur += c;
+      i++;
+      continue;
+    }
+    // Unquoted live shell — heredocs first: the introducer AND every body
+    // line stay with this segment (a heredoc-fed --body/stdin contract is
+    // prose, not commands; maskQuoted keeps bodies live, segments() splits
+    // them — here they belong to the primitive that reads them).
+    if (c === '<' && command[i + 1] === '<') {
+      let j = i + 2;
+      let hdTabs = false;
+      if (command[j] === '-') {
+        hdTabs = true;
+        j++;
+      }
+      let q = '';
+      if (command[j] === "'" || command[j] === '"') {
+        q = command[j] as string;
+        j++;
+      }
+      let delim = '';
+      while (j < n && !/[\s'"]/.test(command[j] ?? '')) {
+        delim += command[j];
+        j++;
+      }
+      if (q && command[j] === q) j++;
+      cur += command.slice(i, j);
+      i = j;
+      const nl = command.indexOf('\n', i);
+      cur += command.slice(i, nl === -1 ? n : nl + 1);
+      i = nl === -1 ? n : nl + 1;
+      const term = delim || '\n';
+      while (i < n) {
+        const nl2 = command.indexOf('\n', i);
+        const end2 = nl2 === -1 ? n : nl2;
+        let line = command.slice(i, end2).replace(/\r$/, '');
+        if (hdTabs) line = line.replace(/^\t+/, '');
+        if (line === term) {
+          cur += command.slice(i, nl2 === -1 ? n : nl2 + 1);
+          i = nl2 === -1 ? n : nl2 + 1;
+          break;
+        }
+        if (nl2 === -1) {
+          cur += command.slice(i, n); // unclosed heredoc swallows the rest
+          i = n;
+          break;
+        }
+        cur += command.slice(i, nl2 + 1);
+        i = nl2 + 1;
+      }
+      continue;
+    }
+    if (c === ';' || c === '\n') {
+      push();
+      i++;
+      continue;
+    }
+    if (c === '&' || c === '|') {
+      const pair = c + (command[i + 1] ?? '');
+      i += pair === '&&' || pair === '||' ? 2 : 1;
+      push(); // single & (background) splits too — its right half is a real command
+      continue;
+    }
+    cur += c;
+    i++;
+  }
+  push();
+  return out;
+}
+
+/** Real shell work hiding inside an (exempt) primitive segment, extracted
+ *  from the QUOTE MASK so only live syntax counts: `>`/`>>` targets, `<`
+ *  sources, and live `$( … )` / backtick bodies (executed even inside double
+ *  quotes; single-quoted ones are NUL-masked and rightly ignored). Each part
+ *  is a command line or a bare path — fed back through the scan. */
+function primitiveExtras(segment: string): string[] {
+  const parts: string[] = [];
+  const mask = maskQuoted(segment);
+  for (const t of redirectTargets(segment)) parts.push(t);
+  const lt = /(?<!<)<(?!<)\s*([^\s;&|)\0]+)/g; // single '<': not <<, not <<<
+  let m: RegExpExecArray | null;
+  while ((m = lt.exec(mask))) parts.push(m[1] ?? '');
+  let depth = 0;
+  let start = -1;
+  for (let k = 0; k < mask.length; k++) {
+    const ch = mask[k] as string;
+    if (depth === 0 && ch === '$' && mask[k + 1] === '(') {
+      start = k;
+      depth = 1;
+      k++;
+      continue;
+    }
+    if (depth > 0) {
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          parts.push(segment.slice(start + 2, k));
+          start = -1;
+        }
+      }
+    }
+  }
+  let btStart = -1;
+  for (let k = 0; k < mask.length; k++) {
+    if ((mask[k] as string) !== '`') continue;
+    if (btStart === -1) btStart = k;
+    else {
+      parts.push(segment.slice(btStart + 1, k));
+      btStart = -1;
+    }
+  }
+  return parts;
+}
+
 function scanNonPrimitiveBash(command: string): string {
   const keep: string[] = [];
-  for (const segment of segments(command)) {
-    const body = shCBody(segment);
-    if (body !== null) {
-      const inner = scanNonPrimitiveBash(body);
+  for (const segment of splitCommand(command)) {
+    const sc = shCParts(segment);
+    if (sc) {
+      if (sc.prefix.trim()) keep.push(sc.prefix);
+      const inner = scanNonPrimitiveBash(sc.body);
       if (inner) keep.push(inner);
       continue;
     }
-    if (isPrimitiveInvocation(segment)) continue;
+    if (isPrimitiveInvocation(segment)) {
+      for (const extra of primitiveExtras(segment)) {
+        const inner = scanNonPrimitiveBash(extra);
+        if (inner) keep.push(inner);
+      }
+      continue;
+    }
     keep.push(segment);
   }
   return keep.join('\n');

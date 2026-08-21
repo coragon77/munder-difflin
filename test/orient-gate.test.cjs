@@ -412,3 +412,83 @@ test('19 — a real directory read is still gated (deny once, retry passes)', ()
   );
   assert.equal(retry.deny, null);
 });
+
+// 20. review blocker 1a: single `&` (background) is not a `segments()`
+// separator — a real read tacked on after a primitive must still deny.
+test('20 — background `&` after a primitive still gates the real read', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list & cat ' + MERLIN + '/qbase/manage.py' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the backgrounded real read denies');
+  assert.match(res.deny, new RegExp(MERLIN));
+  // fd-dup noise (`2>&1`) must not break the primitive itself.
+  const dup = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list 2>&1' },
+    sessionId: 's1',
+  });
+  assert.equal(dup.deny, null);
+});
+
+// 21. review blockers 1b/1c: redirects and live command substitutions inside
+// an exempt primitive segment are real access — the shell opens the file /
+// executes the substitution before the primitive runs.
+test('21 — input redirects and $(…) bodies in primitive segments deny', () => {
+  const rd = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list < ' + MERLIN + '/qbase/manage.py' },
+    sessionId: 's1',
+  });
+  assert.ok(rd.deny, 'input redirect denies');
+
+  const sub = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-park kevin --reason "$(cat ' + MERLIN + '/qbase/manage.py)"' },
+    sessionId: 's1',
+  });
+  assert.ok(sub.deny, 'live command substitution denies');
+});
+
+// 22. review blocker 2: SH_C is unanchored — a real read BEFORE a trailing
+// `sh -c 'primitive'` must not be swallowed by the recursion.
+test('22 — text before a trailing sh -c is still scanned', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'cat ' + MERLIN + "/qbase/manage.py sh -c 'hive-card list'" },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the leading real read denies');
+  assert.match(res.deny, new RegExp(MERLIN));
+});
+
+// 23. review finding 3: the documented launcher form
+// `"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" … --repo <project>`
+// is a primitive invocation — its --repo prose is a mention, not an access.
+test('23 — the $HIVE_NODE launcher form is recognized as primitive', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: '"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" arm deadbeef --repo ' + MERLIN,
+    },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
+
+// 24. the stdin form: hive-dispatch takes its contract by heredoc — the body
+// lines are PROSE fed to the primitive, not commands, and must not deny.
+test('24 — a heredoc-fed dispatch body is prose, not access', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command:
+        '"$HIVE_ROOT/bin/hive-dispatch" --card c1 <<\'EOF\'\nfix the exporter in ' +
+        MERLIN +
+        '/qbase today\nEOF',
+    },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
