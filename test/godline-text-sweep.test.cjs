@@ -91,6 +91,42 @@ test('godLine anti-pattern (3) names the SCOPE FOLD and the BUNDLE TEST (2026-08
   );
 });
 
+test('godLine contract spec: quoted findings with provenance, verify-then-act, done on the observable (2026-08-21)', () => {
+  // Adjudicated wording (Robert, card agent-god-s-dispatch-contracts-2026-08-21):
+  // the defect was grade-stripping re-narration — a worker's hedged flag came
+  // back to a confirmed diagnosis. The three clauses are woven INTO the
+  // 4-part-contract sentence: (1) appended to OBJECTIVE, (3) appended to
+  // BOUNDARIES, (2) a new sentence after the contract spec. Do not paraphrase:
+  // clause (1) quotes the incident as evidence, hedges and ellipsis intact.
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  const obj = p.indexOf('(1) OBJECTIVE — the concrete goal;');
+  const out = p.indexOf('(2) OUTPUT');
+  const bnd = p.indexOf('(4) BOUNDARIES — scope limits + the definition of done.');
+  const refs = p.indexOf('Pass references (file paths, message ids, board sections)');
+  assert.ok(
+    obj >= 0 && out > obj && bnd > out && refs > bnd,
+    'the 4-part contract landmarks are present and ordered',
+  );
+  // (1) OBJECTIVE clause, appended
+  const c1 =
+    "State the goal as the OBSERVABLE to change (ticket symptom, failing behavior). Every finding you pass through is QUOTED — its own words, its hedges intact — with its source message id, never re-narrated from memory: certainty grades and causal structure do not survive paraphrase (incident 2026-08-21: a worker's hedged pane flag 'probably a bug in its own right, probably its own ticket' came back to that same worker as 'the root cause … BY CONSTRUCTION', inverting his own mailed causal reading; the commissioned build would have broken storno on every Beleg carrying an Uebertrag and was stopped only by his reviewer). Any claim of your own is labeled 'unverified:' — dispatches owe workers the same evidence discipline their reports owe you.";
+  const i1 = p.indexOf(c1);
+  assert.ok(i1 > obj && i1 + c1.length < out, 'clause (1) sits inside the OBJECTIVE part');
+  // (3) BOUNDARIES clause, appended — before the VERIFY-FIRST sentence
+  const c3 =
+    "Done is defined on the observable — the symptom demonstrably gone on real data — never as 'the diagnosis is implemented'; a diagnosis-shaped done-criterion turns a wrong premise into faithful execution and makes questioning the premise read as scope creep.";
+  const i3 = p.indexOf(c3);
+  assert.ok(i3 > bnd, 'clause (3) sits inside the BOUNDARIES part');
+  // (2) VERIFY-FIRST sentence, new, after the contract spec
+  const c2 =
+    "A card whose premise is hedged, INFERRED, or your own unverified reading is a VERIFY-THEN-ACT contract: its first step is to confirm or refute the premise, and refuting it COMPLETES the card (report + re-scope). Never write 'fix X' when the truth of X rests on a claim nobody has labeled VERIFIED.";
+  const i2 = p.indexOf(c2);
+  assert.ok(
+    i2 > i3 && i2 + c2.length < refs,
+    'VERIFY-THEN-ACT is a new sentence after the contract spec, before Pass references',
+  );
+});
+
 test('every sole-scribe text names the standup-clerk exception (f415122)', () => {
   // god prompt, both lean and god integration modes + the godLine guardrails
   for (const args of [

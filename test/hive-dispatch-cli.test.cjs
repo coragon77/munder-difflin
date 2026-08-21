@@ -985,6 +985,130 @@ test('dispatch naming no directory: the delivered body is byte-identical (no mar
   assert.equal(s.outboxMails().at(-1).body, body, 'no block, no marker — silent');
 });
 
+// ——— WARN-ONLY COMPOSE LINT (card agent-hive-dispatch-warn-only--2026-08-21) —
+// Robert's dispatch-contracts adjudication (P3). Two incidents, both
+// 2026-08-21: a dispatch asserting "the root cause behind #3233" with no
+// source id and no unverified label — the premise was wrong and would have
+// broken the royalty storno path — and file:line cites at qimport/interfaces/
+// for a file that lives at qimport/schnittstellen/ and only on another
+// branch. The lint WARNS at the compose moment, NEVER refuses (classifying
+// diagnosis assertions in free prose is unreliable — same ruling as the
+// relay-auth and hoarding advisories), and a warned dispatch lands
+// byte-identical.
+
+const DIAG_WARN = 'WARN: this dispatch asserts a diagnosis without provenance';
+
+/** A tiny docs-carrying repo the cite checks can resolve roots against. */
+function lintRepo(t) {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'md-dispatch-lint-'));
+  t.after(() => fs.rmSync(repo, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(repo, 'AGENTS.md'), '# repo\n');
+  fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'src', 'app.py'), 'print(1)\n');
+  return repo;
+}
+
+test('compose lint: diagnosis language with NO provenance warns — the dispatch still lands', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const body = 'OBJECTIVE\nFix the root cause behind the failing royalty storno export.';
+  const r = s.run('--title', 'Storno fix', '--assignee', 'worker-1', '--body', body);
+  assert.equal(r.code, 0, `warn-only: exit 0, dispatch lands (${r.stderr})`);
+  assert.match(r.stdout, new RegExp('^' + DIAG_WARN, 'm'), 'the warn leads the output');
+  assert.match(r.stdout, /label it unverified/, 'the warn names the two cures');
+  assert.match(r.stdout, /^dispatched /m, 'the receipt still prints');
+  assert.equal((r.stdout.match(/^WARN:/gm) || []).length, 1, 'exactly one warn line');
+  assert.equal(
+    s.outboxMails().at(-1).body,
+    body,
+    'the mail body is the composed contract — the warn never leaks into it',
+  );
+  assert.equal(s.tasks().find((c) => c.title === 'Storno fix').status, 'doing');
+});
+
+test('compose lint: a mail message id IS provenance — no warn', { skip: !POSIX }, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const body = 'The root cause is the missing FK — source report: 2026-08-21T05-31-25-173Z-380294.';
+  const r = s.run('--title', 'Cited', '--assignee', 'worker-1', '--body', body);
+  assert.equal(r.code, 0, `dispatch lands: ${r.stderr}`);
+  assert.ok(!r.stdout.includes('WARN:'), 'a quoted report id silences the diagnosis warn');
+});
+
+test('compose lint: the word "unverified" labels the diagnosis — no warn', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry(WORKERS);
+  const body =
+    'The actual cause seems to be the missing FK (unverified — could not read the log yet).';
+  const r = s.run('--title', 'Unverified', '--assignee', 'worker-1', '--body', body);
+  assert.equal(r.code, 0, `dispatch lands: ${r.stderr}`);
+  assert.ok(!r.stdout.includes('WARN:'), 'an unverified label silences the diagnosis warn');
+});
+
+test('compose lint: dead file:line cites warn once each, live cites stay quiet', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  const repo = lintRepo(t);
+  s.writeRegistry({ ...WORKERS, 'worker-1': { ...WORKERS['worker-1'], cwd: repo } });
+  // qimport/interfaces/foo.py cited TWICE — one warn line (dedup); src/app.py
+  // exists under the assignee cwd root — never warns.
+  const body =
+    'Fix src/app.py:10 and the sibling qimport/interfaces/foo.py:12 (see also qimport/interfaces/foo.py:40, branch main).';
+  const r = s.run('--title', 'Cites', '--assignee', 'worker-1', '--body', body);
+  assert.equal(r.code, 0, `warn-only: exit 0, dispatch lands (${r.stderr})`);
+  assert.match(
+    r.stdout,
+    /WARN: dispatch cites qimport\/interfaces\/foo\.py:12 but no such file exists/,
+    'the dead cite warns',
+  );
+  assert.ok(!r.stdout.includes('src.app.py'), 'the live cite never warns');
+  assert.equal(
+    (r.stdout.match(/^WARN:/gm) || []).length,
+    1,
+    'the twice-cited dead file warns exactly once',
+  );
+  const mail = s.outboxMails().at(-1);
+  assert.ok(mail.body.startsWith(body), 'the composed contract is untouched above any injection');
+});
+
+test('compose lint: no derivable root → relative cites are NOT checked; absolute and URL edge cases', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  s.writeRegistry({
+    ...WORKERS,
+    'worker-2': { id: 'worker-2', name: 'Worker Two', archived: false, vacation: false },
+  }); // no cwd anywhere — no root derivable from this body
+  const body = 'see nope/relative.py:5 but the URL https://example.com/big.py:40 is fine.';
+  const r = s.run('--title', 'No root', '--assignee', 'worker-1', '--body', body);
+  assert.equal(r.code, 0, `dispatch lands: ${r.stderr}`);
+  assert.ok(
+    !r.stdout.includes('WARN:'),
+    'relative cite with no derivable root is skipped; a URL is not a cite',
+  );
+
+  // An absolute cite is self-locating — checked directly, no registry root needed.
+  const abs = s.run(
+    '--title',
+    'Abs',
+    '--assignee',
+    'worker-2',
+    '--body',
+    'patch /definitely/not/here/x.py:3',
+  );
+  assert.equal(abs.code, 0, `dispatch lands: ${abs.stderr}`);
+  assert.match(
+    abs.stdout,
+    /WARN: dispatch cites \/definitely\/not\/here\/x\.py:3 but no such file exists/,
+    'a dead absolute cite warns without any derivable root',
+  );
+});
+
 test('card title naming the directory triggers the block even when the body does not', {
   skip: !POSIX,
 }, (t) => {
