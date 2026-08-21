@@ -591,11 +591,12 @@ test('update --depends-on: repeatable REPLACE semantics, done deps satisfy immed
   ]);
 
   // Repeatable: two flags enter two ids.
-  s.run('update', 'chain', '--depends-on', 'dep-a', '--depends-on', 'dep-b');
+  // Both spellings, repeatable: one --depends-on=value, one --depends-on value.
+  s.run('update', 'chain', '--depends-on=dep-a', '--depends-on', 'dep-b');
   assert.deepEqual(
     s.tasks().find((c) => c.id === 'chain').dependsOn,
     ['dep-a', 'dep-b'],
-    'two --depends-on flags enter two ids',
+    'two --depends-on flags enter two ids, equals form included',
   );
 
   // REPLACE, never append: a later update wins wholesale.
@@ -681,10 +682,40 @@ test('update --depends-on: refuses unknown id, self-dep, cycle, mixed clear — 
   assert.notEqual(r.code, 0, 'missing value refused');
   assert.match(r.stderr, /missing value for --depends-on/);
 
+  // Repeated empty is still a mix — the clear spelling must be alone.
+  r = s.runFail('update', 'up-a', '--depends-on', '', '--depends-on', '');
+  assert.notEqual(r.code, 0, 'repeated clear refused');
+  assert.match(r.stderr, /alone/);
+
   assert.equal(
     fs.readFileSync(s.tasksPath, 'utf8'),
     before,
     'ledger untouched after every refusal',
+  );
+
+  // TRANSITIVE cycle: up-c -> up-b -> up-a, so up-a -> up-c closes the loop
+  // only through the walk — no single edge points back at the card.
+  // Also seeds a PRE-EXISTING rogue cycle elsewhere (seeded raw — no writer
+  // existed until now): it must not hang the DFS — the seen map ends the
+  // walk, and since that walk never reaches the updated card the update
+  // LANDS — refusal would make any retrofit touching a rotten subtree
+  // impossible. The test completing at all is the termination pin.
+  s.hive.writeTasks([
+    ...s.tasks(),
+    seed('up-c', 'third', 'todo', []),
+    seed('rogue-x', 'rot', 'todo', ['rogue-y']),
+    seed('rogue-y', 'rot', 'todo', ['rogue-x']),
+  ]);
+  s.run('update', 'up-c', '--depends-on', 'up-b');
+  r = s.runFail('update', 'up-a', '--depends-on', 'up-c');
+  assert.notEqual(r.code, 0, 'transitive cycle refused');
+  assert.match(r.stderr, /cycle/);
+
+  s.run('update', 'up-a', '--depends-on', 'rogue-x');
+  assert.deepEqual(
+    s.tasks().find((c) => c.id === 'up-a').dependsOn,
+    ['rogue-x'],
+    'a rogue cycle elsewhere does not block this write — and the walk terminated',
   );
 });
 
