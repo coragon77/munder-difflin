@@ -4464,7 +4464,9 @@ cards — the card is never duplicated):
 \`\`\`
 
 - \`update\` takes any of \`--title\`, \`--notes\` (the card's description),
-  \`--assignee\`; at least one is required, untouched fields stay as they are.
+  \`--assignee\`, \`--depends-on <id>\` (repeatable — REPLACES the dependency set;
+  \`--depends-on ''\` alone clears it; unknown ids, self-deps and cycles are
+  refused); at least one is required, untouched fields stay as they are.
   \`--assignee ''\` (empty string) CLEARS the assignee — un-assign a card without
   python-patching the ledger.
 - A 'Task from the human' mail that references a card (cardId field or
@@ -6223,7 +6225,7 @@ function usage() {
     'usage:',
     '  hive-card add --title <t> --status todo|doing [--notes <n>] [--assignee <id>]',
     '  hive-card status <id> <todo|doing|blocked|done> [--adopt|--fresh] [--why <text>]',
-    '  hive-card update <id> [--title <t>] [--notes <n>] [--assignee <id>] [--paused|--resume]',
+    '  hive-card update <id> [--title <t>] [--notes <n>] [--assignee <id>] [--depends-on <id>...] [--paused|--resume]',
     '  hive-card ask <id> --q <text> [--q <text> ...]  # append humanQA asks (one per --q), block the card',
     '  hive-card prune-done [--dry-run|--confirm]  # shift close: list (default) or remove done cards',
     '  hive-card actionable  # read-only: the ACTIONABLE roster line + full id list',
@@ -6657,17 +6659,42 @@ function cmdUpdate(argv) {
       ((process.env.AGENT_ID || '').trim() || 'no AGENT_ID') + '"). ' +
       'The operator pauses/unpauses in the tasks tab / office UI; ask the operator.');
   }
-  const flags = parseFlags(
-    argv.slice(1).filter(function (a) { return a !== '--paused' && a !== '--resume'; }),
-  );
+  // --depends-on <id> is REPEATABLE and REPLACES the set (card
+  // agent-hive-card-update-depends-2026-08-21): dep sets are 1-2 ids entered
+  // as order emerges, so parseFlags cannot carry it (its map is last-wins).
+  // Lift every occurrence out before parseFlags, like --why in cmdStatus.
+  // '' as the ONLY value CLEARS the set (mirrors --assignee '').
+  var dependsOn; // undefined = not given; [] = clear; else the new dep ids
+  var flagArgs = [];
+  var restArgs = argv.slice(1).filter(function (a) { return a !== '--paused' && a !== '--resume'; });
+  for (var di = 0; di < restArgs.length; di++) {
+    var da = restArgs[di];
+    var dv;
+    if (da === '--depends-on') { dv = restArgs[++di]; }
+    else if (da.indexOf('--depends-on=') === 0) { dv = da.slice(13); }
+    else { flagArgs.push(da); continue; }
+    if (dv === undefined) fail('missing value for --depends-on');
+    if (dependsOn === undefined) dependsOn = [];
+    dependsOn.push(dv.trim());
+  }
+  if (dependsOn !== undefined) {
+    if (dependsOn.indexOf('') >= 0) {
+      if (dependsOn.length > 1) fail("--depends-on '' clears the set only when given alone.");
+      dependsOn = [];
+    }
+    if (dependsOn.indexOf(cardId) >= 0) {
+      fail('refused: card "' + cardId + '" cannot depend on itself.');
+    }
+  }
+  const flags = parseFlags(flagArgs);
   for (const k of Object.keys(flags)) {
     if (['title', 'notes', 'assignee'].indexOf(k) < 0) fail('unknown flag --' + k);
   }
   if (
     flags.title === undefined && flags.notes === undefined && flags.assignee === undefined &&
-    !pausedFlag && !resumeFlag
+    dependsOn === undefined && !pausedFlag && !resumeFlag
   ) {
-    fail('nothing to update — give at least one of --title, --notes, --assignee, --paused, --resume.');
+    fail('nothing to update — give at least one of --title, --notes, --assignee, --depends-on, --paused, --resume.');
   }
   if (flags.title !== undefined && !flags.title.trim()) {
     fail('--title must be non-empty when given.');
@@ -6695,6 +6722,43 @@ function cmdUpdate(argv) {
     }
     if (pausedFlag) card.paused = true; // on hold: stays in todo, stops counting
     if (resumeFlag) delete card.paused; // absent = not paused (the migration default)
+    if (dependsOn !== undefined) {
+      // UNKNOWN IDS ARE THE GUARD THAT MATTERS: depWaiting reads an unknown
+      // id as forever-not-done, so a typo would silently freeze the card out
+      // of ACTIONABLE with no error anywhere, ever. Refuse at the source.
+      // Validated here, inside the lock, against the ledger being written.
+      var byId = {};
+      for (var li = 0; li < data.tasks.length; li++) {
+        var lt = data.tasks[li];
+        if (lt && lt.id) byId[lt.id] = lt;
+      }
+      for (var vi = 0; vi < dependsOn.length; vi++) {
+        if (!byId[dependsOn[vi]]) {
+          fail('refused: unknown dependency id "' + dependsOn[vi] + '" — a typo would freeze card "' +
+            cardId + '" out of ACTIONABLE forever (depWaiting reads unknown as never-done).');
+        }
+      }
+      // CYCLES never deadlock the gate but make every member permanently
+      // dep-waiting — the ACTIONABLE line would lie until someone
+      // hand-diagnoses it. DFS from the new deps through the ledger's edges;
+      // reaching THIS card is a cycle. Deps on done cards are FINE (they
+      // satisfy immediately — natural when retrofitting order after a dep
+      // already finished); the walk terminates on the seen map even against a
+      // ledger that already carries a rogue cycle.
+      var seen = {};
+      var stack = dependsOn.slice();
+      while (stack.length) {
+        var cur = stack.pop();
+        if (cur === cardId) {
+          fail('refused: --depends-on on card "' + cardId + '" would create a dependency cycle.');
+        }
+        if (seen[cur]) continue;
+        seen[cur] = true;
+        var dc = byId[cur];
+        if (dc && Array.isArray(dc.dependsOn)) stack = stack.concat(dc.dependsOn);
+      }
+      card.dependsOn = dependsOn;
+    }
     writeLedger(data);
   });
   // WARN-ONLY, printed BEFORE the receipt so the tripwire leads the output.

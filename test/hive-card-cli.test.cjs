@@ -564,6 +564,130 @@ test('update: the gate covers ONLY the hold — non-god enrichment still works',
   assert.ok(!('paused' in card), 'no hold set along the way');
 });
 
+// ——— update --depends-on: THE writer for dependsOn (card agent-hive-card-update-depends-2026-08-21) —
+// The field had four readers (actionableCards, standup's depWaiting,
+// actionable-watch, the renderer) and NO writer — the dep-waiting state was
+// unreachable by any sanctioned path. These tests pin the write side: the
+// replace/clear semantics and every refusal; the reader side is pinned in
+// actionable-cards.test.cjs.
+test('update --depends-on: repeatable REPLACE semantics, done deps satisfy immediately, "" clears', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const seed = (id, title, status, dependsOn) => ({
+    id,
+    title,
+    status,
+    dependsOn,
+    priority: 3,
+    createdAt: '2026-08-21T00:00:00.000Z',
+    origin: 'agent',
+  });
+  s.hive.writeTasks([
+    seed('dep-a', 'land the schema', 'done', []),
+    seed('dep-b', 'land the importer', 'done', []),
+    seed('dep-open', 'still cooking', 'todo', []),
+    seed('chain', 'runs after the deps', 'todo', []),
+  ]);
+
+  // Repeatable: two flags enter two ids.
+  s.run('update', 'chain', '--depends-on', 'dep-a', '--depends-on', 'dep-b');
+  assert.deepEqual(
+    s.tasks().find((c) => c.id === 'chain').dependsOn,
+    ['dep-a', 'dep-b'],
+    'two --depends-on flags enter two ids',
+  );
+
+  // REPLACE, never append: a later update wins wholesale.
+  s.run('update', 'chain', '--depends-on', 'dep-a');
+  assert.deepEqual(
+    s.tasks().find((c) => c.id === 'chain').dependsOn,
+    ['dep-a'],
+    'the set is REPLACED, not appended to',
+  );
+
+  // Deps on done cards satisfy immediately (shape rule d) — the card stays
+  // ACTIONABLE: depWaiting reads done as satisfied.
+  assert.match(
+    s.run('actionable'),
+    /ACTIONABLE: 2 - dep-open, chain/,
+    'done deps keep the card actionable',
+  );
+
+  // A todo dep makes it CORRECTLY WAITING — the dep-waiting state this writer
+  // exists to reach.
+  s.run('update', 'chain', '--depends-on', 'dep-open');
+  assert.match(
+    s.run('actionable'),
+    /ACTIONABLE: 1 - dep-open/,
+    'a not-yet-done dep removes the card from ACTIONABLE',
+  );
+
+  // '' alone CLEARS the set.
+  s.run('update', 'chain', '--depends-on', '');
+  assert.deepEqual(s.tasks().find((c) => c.id === 'chain').dependsOn, [], "--depends-on '' clears");
+  assert.match(
+    s.run('actionable'),
+    /ACTIONABLE: 2 - dep-open, chain/,
+    'a cleared dep set is no dep set — actionable again',
+  );
+});
+
+test('update --depends-on: refuses unknown id, self-dep, cycle, mixed clear — ledger untouched', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const seed = (id, title, status, dependsOn) => ({
+    id,
+    title,
+    status,
+    dependsOn,
+    priority: 3,
+    createdAt: '2026-08-21T00:00:00.000Z',
+    origin: 'agent',
+  });
+  s.hive.writeTasks([
+    seed('up-a', 'first in the chain', 'todo', []),
+    // up-b already waits on up-a (seeded raw — no writer existed until now).
+    seed('up-b', 'second in the chain', 'todo', ['up-a']),
+    seed('up-done', 'already shipped', 'done', []),
+  ]);
+  const before = fs.readFileSync(s.tasksPath, 'utf8');
+
+  // Unknown dep id: depWaiting reads unknown as forever-not-done, so a typo
+  // would freeze the card out of ACTIONABLE with no error anywhere, ever.
+  let r = s.runFail('update', 'up-a', '--depends-on', 'no-such-dep');
+  assert.notEqual(r.code, 0, 'unknown dep id refused');
+  assert.match(r.stderr, /unknown dependency id "no-such-dep"/);
+
+  // Self-dep: the shortest possible cycle.
+  r = s.runFail('update', 'up-a', '--depends-on', 'up-a');
+  assert.notEqual(r.code, 0, 'self-dep refused');
+  assert.match(r.stderr, /cannot depend on itself/);
+
+  // Cycle: up-a -> up-b while up-b -> up-a (the DFS must follow up-b's edge
+  // back to the updated card to catch it).
+  r = s.runFail('update', 'up-a', '--depends-on', 'up-b');
+  assert.notEqual(r.code, 0, 'cycle refused');
+  assert.match(r.stderr, /cycle/);
+
+  // Mixing the clear spelling with real ids is ambiguous — refuse.
+  r = s.runFail('update', 'up-a', '--depends-on', '', '--depends-on', 'up-done');
+  assert.notEqual(r.code, 0, 'mixed clear refused');
+  assert.match(r.stderr, /alone/);
+
+  // A bare --depends-on with no value fails like any other valued flag.
+  r = s.runFail('update', 'up-a', '--depends-on');
+  assert.notEqual(r.code, 0, 'missing value refused');
+  assert.match(r.stderr, /missing value for --depends-on/);
+
+  assert.equal(
+    fs.readFileSync(s.tasksPath, 'utf8'),
+    before,
+    'ledger untouched after every refusal',
+  );
+});
+
 // ——— WARN-ONLY scope-fold check (card agent-hive-card-update-warn-on-2026-08-21) —
 // Robert's Card 2: god nearly folded an independent finding into a busy
 // agent's in-flight card instead of carding it — every breadth-first
