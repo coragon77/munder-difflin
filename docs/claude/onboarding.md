@@ -55,7 +55,7 @@ Before exploring code, you **MUST** read the relevant documentation (blocking):
 | Model/code analysis | `docs/claude/code-analysis.md` |
 | Hive work — agents, registry, board, cards, inbox/outbox, nudges, god/orchestrator, standup | `docs/architecture/hive.md` |
 | Typing into an agent's terminal, parked/queued messages, delivery contract, auto-park | `docs/architecture/message-queue.md` |
-| Terminal/event planes — PTY, hook socket events, store event loop, avatar movement | `docs/architecture/spec.md` |
+| Terminal/event planes — PTY spawn/teardown/env, hook socket events, IPC surface, renderer stores; "avatar stuck", "terminal shows no output", spawn/PATH failures, hook events not arriving, roster blank after reload | `docs/architecture/spec.md` |
 | Any UI or visual change — components, tokens, pixel scene, panels | `docs/architecture/design.md` |
 | Memory graph panel, who-talks-to-whom visualization | `docs/architecture/memory-graph-spec.md` |
 | Telemetry, analytics events, usage stats | `docs/architecture/telemetry.md` |
@@ -138,7 +138,7 @@ reader stops looking and now believes something false about the codebase.
 ### Architecture (`docs/architecture/`)
 
 - `hive.md` (→ `HIVE.md`) — the autonomous multi-agent layer: registry, board, memory, god orchestrator
-- `spec.md` (→ `SPEC.md`) — product shape and the two data planes (terminal + event)
+- `spec.md` (→ `SPEC.md`) — the app spine: both data planes (terminal + event), IPC surface, renderer state, plus the inception decisions and their fates
 - `design.md` (→ `DESIGN.md`) — the visual design system; every component derives from its tokens
 - `memory-graph-spec.md` (→ `MEMORY_GRAPH_SPEC.md`) — hive message-graph visualization panel
 - `telemetry.md` (→ `TELEMETRY.md`) — the complete anonymous-events contract

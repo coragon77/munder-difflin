@@ -1,6 +1,6 @@
 # The Hive — autonomous multi-agent layer
 
-- **Coverage:** `src/main/hive.ts`, `src/main/hiveGate.ts`, `src/main/memory.ts`, `src/main/roster.ts`, `src/main/actionableCards.ts`, `src/main/actionableWatch.ts`, `src/main/cardSessions.ts`, `src/main/orientGate.ts`, `src/main/orientInject.ts`, `src/main/sessionRequests.ts`, `src/main/standup.ts`, `src/shared/hiveMail.ts`, `hive/`
+- **Coverage:** `src/main/hive.ts`, `src/main/hiveGate.ts`, `src/main/memory.ts`, `src/main/roster.ts`, `src/main/actionableCards.ts`, `src/main/actionableWatch.ts`, `src/main/cardSessions.ts`, `src/main/orientGate.ts`, `src/main/orientInject.ts`, `src/main/sessionRequests.ts`, `src/main/standup.ts`, `src/shared/hiveMail.ts`, `src/renderer/src/hooks/useHive.ts`, `hive/`
 - **Depends on:** [Munder Difflin Spec](docs/architecture/spec.md)
 - **Last Updated:** 2026-08-21
 
