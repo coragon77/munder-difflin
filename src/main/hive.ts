@@ -6234,6 +6234,31 @@ function cmdStatus(argv) {
 // --title/--notes/--assignee touch only what was given (--assignee '' CLEARS);
 // --notes maps to the card's description (same as add); a card is never
 // duplicated or re-minted.
+// The WARN-ONLY scope-fold line (card agent-hive-card-update-warn-on-2026-08-21):
+// --title/--notes text landing on a DOING card is the signature of an
+// independent finding folded into a busy agent's in-flight card — every
+// breadth-first safeguard keys on a card EXISTING, so a folded finding is
+// invisible to all of them. One line on stdout, NEVER a refusal: the CLI
+// cannot tell a same-diff clarification from an independent finding, and a
+// gate here would false-positive the sanctioned human-card enrichment flow
+// (update on an existing TODO card) and train callers to route around it.
+// No state, no persistence. The free-seat count is BEST-EFFORT from
+// fleet.json's floor mirror (the same read hive-hire pre-flights) — the
+// warn never depends on it; unreadable or absent → no count, still warns.
+function scopeFoldWarning() {
+  var seats = '';
+  try {
+    var fl = JSON.parse(fs.readFileSync(path.join(root, 'fleet.json'), 'utf8'));
+    if (fl && fl.floor && typeof fl.floor.freeSeats === 'number') {
+      seats = ' (free floor seats: ' + fl.floor.freeSeats + ')';
+    }
+  } catch (_) {}
+  return 'scope-fold check: you are widening an in-flight card. If this addition is an ' +
+    'independent finding - separable diff, different file or gate run - card it separately ' +
+    '(BEST-OWNER HOARDING). Same-diff amendments and clarifications are fine; proceed if so.' +
+    seats + '\\n';
+}
+
 function cmdUpdate(argv) {
   if (argv.length < 1) usage();
   const cardId = argv[0];
@@ -6274,10 +6299,16 @@ function cmdUpdate(argv) {
     fail('--notes must be non-empty when given.');
   }
   // NOTE: --assignee '' is the CLEAR spelling — no non-empty guard here.
+  var scopeFold = false;
   withLock(function () {
     const data = readLedger();
     const card = data.tasks.find((t) => t && t.id === cardId);
     if (!card) fail('no card with id "' + cardId + '" in tasks.json.');
+    // The scope-fold tripwire: adds title/notes TEXT to a card that is
+    // already in flight. Pure assignee/pause flips never trip it — the
+    // widened prose is the thing breadth-first safeguards cannot see.
+    scopeFold =
+      (flags.title !== undefined || flags.notes !== undefined) && card.status === 'doing';
     if (flags.title !== undefined) card.title = flags.title.trim();
     if (flags.notes !== undefined) card.description = flags.notes.trim();
     if (flags.assignee !== undefined) {
@@ -6289,6 +6320,8 @@ function cmdUpdate(argv) {
     if (resumeFlag) delete card.paused; // absent = not paused (the migration default)
     writeLedger(data);
   });
+  // WARN-ONLY, printed BEFORE the receipt so the tripwire leads the output.
+  if (scopeFold) process.stdout.write(scopeFoldWarning());
   process.stdout.write(cardId + ' updated\\n');
 }
 

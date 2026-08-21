@@ -564,6 +564,108 @@ test('update: the gate covers ONLY the hold — non-god enrichment still works',
   assert.ok(!('paused' in card), 'no hold set along the way');
 });
 
+// ——— WARN-ONLY scope-fold check (card agent-hive-card-update-warn-on-2026-08-21) —
+// Robert's Card 2: god nearly folded an independent finding into a busy
+// agent's in-flight card instead of carding it — every breadth-first
+// safeguard keys on a card EXISTING, so a folded finding is invisible to
+// them all. hive-card update that ADDS title/notes text to a DOING card now
+// prints the warn line. It can NEVER refuse: the CLI cannot tell a same-diff
+// clarification from an independent finding, and a refusing gate would
+// false-positive the sanctioned human-card enrichment flow (update on an
+// existing TODO card) and train god to route around it.
+
+const WARN_PREFIX = 'scope-fold check:';
+
+function seedFloorSeats(s, freeSeats) {
+  fs.writeFileSync(
+    path.join(path.dirname(s.tasksPath), 'fleet.json'),
+    JSON.stringify({ floor: { freeSeats, maxAgents: 16 } }),
+  );
+}
+
+test('update: --notes/--title on a DOING card WARNS (scope-fold), exits 0, update still lands', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  seedFloorSeats(s, 3);
+  const id = s
+    .run('add', '--title', 'In flight', '--status', 'todo', '--assignee', 'kevin-1')
+    .trim();
+  s.run('status', id, 'doing');
+
+  const out = s.run('update', id, '--notes', 'found a second bug in the same pane');
+  // exit 0 — run() throws on non-zero; the update landed anyway.
+  assert.match(out, new RegExp('^' + WARN_PREFIX, 'm'), 'the warn line prints');
+  assert.match(out, /BEST-OWNER HOARDING/, 'the warn names the anti-pattern');
+  assert.match(out, /free floor seats: 3/, 'best-effort seat count from fleet.json included');
+  assert.match(out, new RegExp('^' + id + ' updated$', 'm'), 'the normal receipt still prints');
+  assert.equal(
+    out.split('\n').filter((l) => l.startsWith(WARN_PREFIX)).length,
+    1,
+    'exactly one warn line per invocation',
+  );
+  assert.equal(
+    s.tasks().find((c) => c.id === id).description,
+    'found a second bug in the same pane',
+    'warn-only: the write itself was never refused',
+  );
+
+  const titleOut = s.run('update', id, '--title', 'Wider scope now');
+  assert.match(titleOut, new RegExp('^' + WARN_PREFIX, 'm'), '--title widening warns too');
+});
+
+test('update: pure flips NEVER warn — assignee/pause on doing, and the TODO enrichment flow', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const doing = s
+    .run('add', '--title', 'Busy card', '--status', 'todo', '--assignee', 'kevin-1')
+    .trim();
+  s.run('status', doing, 'doing');
+
+  // A pure assignee change on a doing card: no title/notes text, no warn.
+  const reassign = s.run('update', doing, '--assignee', 'stanley-1');
+  assert.ok(!reassign.includes(WARN_PREFIX), 'assignee flip stays clean');
+
+  // Pure pause toggle on a doing card (god-only): no warn.
+  const godEnv = crownGod(s);
+  const pause = runAs(s, godEnv)('update', doing, '--paused');
+  assert.ok(!pause.includes(WARN_PREFIX), 'pause toggle stays clean');
+
+  // The sanctioned human-card enrichment flow: title+notes on a TODO card.
+  const human = s.hive.addHumanTask('Task from the human');
+  const enrich = s.run(
+    'update',
+    human.id,
+    '--title',
+    'Enriched title',
+    '--notes',
+    'context from the mail',
+    '--assignee',
+    'jessica-1',
+  );
+  assert.ok(
+    !enrich.includes(WARN_PREFIX),
+    'TODO enrichment is exactly the flow the warn must not touch',
+  );
+  assert.equal(s.tasks().find((c) => c.id === human.id).title, 'Enriched title');
+});
+
+test('update: the warn fails OPEN — missing or corrupt fleet.json never suppresses it', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t); // no fleet.json in the fixture at all
+  const id = s.run('add', '--title', 'In flight', '--status', 'doing').trim();
+  const out = s.run('update', id, '--notes', 'still widening');
+  assert.match(out, new RegExp('^' + WARN_PREFIX, 'm'), 'warn fires without fleet.json');
+  assert.ok(!out.includes('free floor seats'), 'no seat count when fleet.json is absent');
+
+  fs.writeFileSync(path.join(path.dirname(s.tasksPath), 'fleet.json'), 'not json');
+  const corrupt = s.run('update', id, '--notes', 'and again');
+  assert.match(corrupt, new RegExp('^' + WARN_PREFIX, 'm'), 'warn fires on a corrupt fleet.json');
+  assert.ok(!corrupt.includes('free floor seats'), 'no seat count on a corrupt read');
+});
+
 // ——— list (card agent-hive-card-list-a-read-on-2026-08-19): the READ-ONLY
 // board reader — one line per card, fixed columns, paused rendered
 // UNCONDITIONALLY. God's ad-hoc python heredocs read whatever fields their
