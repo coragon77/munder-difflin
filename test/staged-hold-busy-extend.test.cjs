@@ -140,3 +140,52 @@ test('no probe wired (legacy construction): stale mail times out as before', () 
   assert.equal(fs.readdirSync(stagedDir(root)).length, 0, 'timeout released (old behavior)');
   assert.equal(hive.inbox('toby').length, 1, 'contract visible');
 });
+
+test('tick fold never drains staged mail around the busy hold (reviewer blocker)', () => {
+  const { hive, root } = busyHive();
+  let busy = false; // the first epoch releases by ordinary timeout
+  hive.setStageBusyProbe(() => busy);
+  hive.send(CONTRACT, 'god');
+  // Epoch 1: not busy → timeout release (backdate), contract lands UNREAD.
+  const staged = stagedDir(root);
+  const old = new Date(Date.now() - MAIL_STAGE_TIMEOUT_MS - 60_000);
+  for (const f of fs.readdirSync(staged)) fs.utimesSync(path.join(staged, f), old, old);
+  hive.routeOnce();
+  assert.equal(hive.inbox('toby').length, 1, 'epoch-1 contract released, unread in inbox');
+  // Epoch 2: god amends the SAME card conversation while the pane is busy.
+  // The hold is still active (card unstamped + doing) — the amendment must
+  // STAGE, and the tick fold must not pull it into the unread anchor.
+  busy = true;
+  hive.send({ ...CONTRACT, id: 'amend-1', subject: 'amendment', body: 'do more' }, 'god');
+  hive.routeOnce();
+  hive.routeOnce();
+  assert.equal(
+    fs.readdirSync(staged).length,
+    1,
+    'amendment stays staged — no fold-out around the busy hold',
+  );
+  const anchor = hive.inbox('toby').find((m) => m.conversation === 'card-card-1');
+  assert.doesNotMatch(anchor.body ?? '', /do more/, 'anchor body untouched');
+});
+
+test('a fresh staging epoch after a release gets its own hold-extended notice', () => {
+  const { hive, root } = busyHive();
+  let busy = false;
+  hive.setStageBusyProbe(() => busy);
+  // Epoch 1: busy extension notifies once, then the pane quiets → release.
+  stageStale(hive, root);
+  busy = true;
+  hive.routeOnce(); // hold-extended notice #1
+  busy = false;
+  hive.routeOnce(); // release (epoch ends)
+  assert.equal(fs.readdirSync(stagedDir(root)).length, 0, 'epoch 1 drained');
+  // Epoch 2: new mail stages immediately, pane busy again, goes stale.
+  hive.send({ ...CONTRACT, id: 'second-1', subject: 'second dispatch', body: 'again' }, 'god');
+  busy = true;
+  const stale2 = new Date(Date.now() - MAIL_STAGE_TIMEOUT_MS - 60_000);
+  for (const f of fs.readdirSync(stagedDir(root)))
+    fs.utimesSync(path.join(stagedDir(root), f), stale2, stale2);
+  hive.routeOnce();
+  const notices = hive.inbox('god').filter((m) => /hold extended/.test(m.subject || ''));
+  assert.equal(notices.length, 2, 'epoch 2 notified again — not suppressed by epoch 1');
+});

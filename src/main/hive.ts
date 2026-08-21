@@ -2431,17 +2431,21 @@ export class HiveManager {
           now,
           holdCards.filter((c) => c.assignee === id).map((c) => c.id),
         );
-      // MAIL FOLD, tick half (reviewer blocker: the direct fold is
-      // delivery-order dependent — mail routed after the contract lands
-      // BESIDE it): every router tick, if the agent's doing card has its
-      // dispatch contract UNREAD in the inbox, fold pending siblings and any
-      // staged leftovers INTO it. Runs even with no .staged dir (adopt
-      // dispatches never stage). Once the contract is read (archived to
-      // .done) this is a no-op — later mail then delivers beside nothing and
-      // drains normally. The monitor's 3s burst debounce means the fold lands
-      // before the wake; only a hand-read of the raw file inside one 1.5s
-      // tick can still see the un-consolidated state.
-      this.foldIntoUnreadContract(id, inbox, staged);
+      /** MAIL FOLD, tick half (card agent-mail-queued-alongside-a--2026-08-19):
+       *  every router tick, if the agent's doing card has its dispatch contract
+       *  UNREAD in the inbox, fold pending INBOX siblings into it — mail routed
+       *  after the contract landed consolidates beside it. Runs even with no
+       *  .staged dir (adopt dispatches never stage). Once the contract is read
+       *  (archived to .done) this is a no-op — later mail then delivers beside
+       *  nothing and drains normally. STAGED FILES ARE DELIBERATELY NOT
+       *  TOUCHED (reviewer blocker, card agent-dispatch-mail-still-land-
+       *  2026-08-21): held mail moves ONLY through releaseStagedAgent's gates —
+       *  the old staged-leftovers half pulled fresh amendments out of .staged
+       *  into any unread anchor (e.g. an earlier epoch's timeout-released
+       *  contract) around the busy hold, with no R4 disarm. For unheld agents
+       *  the release sweep in this very tick already drained .staged, so there
+       *  is nothing legitimate left for a staged half to do. */
+      this.foldIntoUnreadContract(id, inbox);
     }
   }
 
@@ -2475,8 +2479,7 @@ export class HiveManager {
     } catch {
       return;
     }
-    if (files.length === 0) this.stageExtendNotified.delete(id); // epoch over
-    // Staleness snapshot BEFORE any fold rewrite — mtime is the timeout
+    if (files.length === 0) this.stageExtendNotified.delete(id); // epoch over    // Staleness snapshot BEFORE any fold rewrite — mtime is the timeout
     // clock, and foldStagedContract rewrites the contract file it folds into.
     const stale = new Map<string, boolean>();
     for (const f of files) {
@@ -2488,6 +2491,15 @@ export class HiveManager {
     }
     // BUSY EXTENSION: the chain is alive-but-slow while the house rule says
     // the assignee is busy — the timeout must not break the hold (see header).
+    // NO SECOND HORIZON, deliberately (reviewer should-fix, resolved by
+    // decision): telemetry-hot means REAL activity (subagent spans flow
+    // under the agent's id; census legs TTL out at 75min in pendingWork.ts),
+    // and a pane idle at its prompt goes telemetry-cold → busy clears → the
+    // queued clear fires → the mail releases SCOPED. The only "unbounded"
+    // hold is an agent genuinely working for hours — releasing mid-work
+    // into the pre-clear conversation is the original incident, so the
+    // horizon IS "the pane quiets"; operator visibility is the one-time
+    // notice below, not a timer.
     const busy = this.stageBusyProbe?.(id) === true;
     if (held && busy && files.some((f) => stale.get(f) === true)) {
       if (!this.stageExtendNotified.has(id)) {
@@ -2530,6 +2542,7 @@ export class HiveManager {
     // over ALL staged entries, and this release-all makes them all visible).
     const hasCard = this.doingCardOf(id) !== null;
     let tieBroken = false;
+    let releasedAny = false;
     for (const f of files) {
       const full = join(staged, f);
       const timedOut = held && stale.get(f) === true && !busy;
@@ -2539,6 +2552,7 @@ export class HiveManager {
       } catch {
         continue;
       }
+      releasedAny = true;
       this.appendLog({ kind: 'mail-released', to: id, id: f.replace(/\.json$/, '') });
       // Break the tie IMMEDIATELY (before the god notice below): the notice
       // routes + commits synchronously — fresh siblings must not stay hidden
@@ -2582,6 +2596,11 @@ export class HiveManager {
         // timeout horizon (their drain pointer claims they are pending).
       }
     }
+    // A real release ends the notified epoch — mail that stages NEXT starts
+    // a fresh epoch whose own hold-extended notice must not be suppressed
+    // (reviewer should-fix: the empty-dir clear alone missed release→restage
+    // within one window).
+    if (releasedAny) this.stageExtendNotified.delete(id);
   }
 
   /** MAIL FOLD (card agent-mail-queued-alongside-a--2026-08-19), staged
@@ -2654,7 +2673,7 @@ export class HiveManager {
    *  Guards: no anchor (contract unread-drained or still staged) → no-op;
    *  anchor consumed by a concurrent drain between listing and the rewrite →
    *  no-op (never resurrect a read contract). */
-  private foldIntoUnreadContract(id: string, inbox: string, staged: string): void {
+  private foldIntoUnreadContract(id: string, inbox: string): void {
     const card = this.doingCardOf(id);
     if (!card) return;
     const conv = `card-${card.id}`;
@@ -2666,20 +2685,15 @@ export class HiveManager {
       archive: join(inbox, '.done', basename(e.source)),
     });
     const siblings = inboxRead.entries.filter((e) => e !== anchor).map(remap);
-    const stagedRead = existsSync(staged)
-      ? this.pendingEntries(staged)
-      : { entries: [], invalid: 0 };
-    const leftovers = stagedRead.entries.map(remap);
     // IDEMPOTENCE (structural — see foldStagedContract): foldedIds names what
     // is already fully folded; those entries are consume-only retries.
     const foldedAlready = new Set(anchor.msg.foldedIds ?? []);
     const noted = new Set([...foldedAlready, ...(anchor.msg.pointedIds ?? [])]);
-    const pool = [...siblings, ...leftovers];
-    const consumeOnly = pool.filter((e) => foldedAlready.has(e.msg.id));
-    const entries = pool.filter((e) => !noted.has(e.msg.id));
+    const entries = siblings.filter((e) => !noted.has(e.msg.id));
+    const consumeOnly = siblings.filter((e) => foldedAlready.has(e.msg.id));
     const budget = Math.max(0, MAIL_FOLD_BODY_BUDGET - anchor.msg.body.length);
     const { text, folded, pointed } = this.buildFold(entries, budget);
-    const invalid = inboxRead.invalid + stagedRead.invalid;
+    const invalid = inboxRead.invalid;
     if (!text && consumeOnly.length === 0 && invalid === 0) return;
     const body = [
       anchor.msg.body,
