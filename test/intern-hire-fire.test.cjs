@@ -110,11 +110,18 @@ function templateOf(name) {
 const GUARD_TOKEN = '${' + 'ASSERT_LIVE_HIVE}';
 // hive-hire interpolates the orient-first injector (card agent-harness-
 // orient-first-mus-2026-08-20): splice the evaluated function source in,
-// mirroring template evaluation.
+// mirroring template evaluation. Since card agent-hive-dispatch-warn-
+// only--2026-08-21 the injector serializes as a PAIR — orientationBlock
+// calls orientationRoots by name — so both tokens get spliced.
 const ORIENT_TOKEN = '${' + 'orientationBlock}';
+const ROOTS_TOKEN = '${' + 'orientationRoots}';
 function cliSource(name) {
   let raw = templateOf(name);
   if (raw.includes(GUARD_TOKEN)) raw = raw.split(GUARD_TOKEN).join(templateOf('ASSERT_LIVE_HIVE'));
+  if (raw.includes(ROOTS_TOKEN)) {
+    const { orientationRoots } = loadTs('src/main/orientInject.ts');
+    raw = raw.split(ROOTS_TOKEN).join(orientationRoots.toString());
+  }
   if (raw.includes(ORIENT_TOKEN)) {
     const { orientationBlock } = loadTs('src/main/orientInject.ts');
     raw = raw.split(ORIENT_TOKEN).join(orientationBlock.toString());

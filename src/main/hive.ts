@@ -42,7 +42,7 @@ import type { AgentUsageSample } from './usage';
 // 18) — serialized verbatim (toString) into the generated bin/ CLIs below so
 // the gate, the lister and the roster injection run identical code.
 import { actionableCards, assigneeById, cardHeld, renderActionableLine } from './actionableCards';
-import { orientationBlock } from './orientInject';
+import { orientationBlock, orientationRoots } from './orientInject';
 import { COMMAND_GROUPS } from '../shared/claudeCommands';
 import {
   isClaudeProvider,
@@ -6719,6 +6719,18 @@ process.stdout.write('queued ' + file + '\\n');
 // override flag: god asks the operator to release the card, full stop. This
 // CLI is the only todo->doing path; hive-card enforces the same hold on its
 // doing flip.
+//
+// Serialization tripwire (card agent-hive-dispatch-warn-only--2026-08-21):
+// orientationBlock calls orientationRoots BY NAME, and both serialize
+// verbatim into the generated bin/ CLIs below. If a bundler ever renamed
+// that inner reference, every generated CLI would run an orient injection
+// that silently fails open — broken with no signal. Fail LOUDLY at load
+// instead of shipping a dead injector.
+if (!String(orientationBlock).includes('orientationRoots')) {
+  throw new Error(
+    'orientationBlock no longer references orientationRoots — a bundler rename would ship CLIs with a broken orient injection',
+  );
+}
 const HIVE_DISPATCH_CLI = `#!/usr/bin/env node
 'use strict';
 const fs = require('fs');
@@ -6913,8 +6925,61 @@ const cardHeldFn = ${cardHeld};
 // ONE pure detect-probe-render function for the ORIENT FIRST injection,
 // serialized verbatim from src/main/orientInject.ts the same way cardHeld
 // is (card agent-harness-orient-first-mus-2026-08-20) — the code these CLIs
-// run is the code the main-process tests exercise.
+// run is the code the main-process tests exercise. orientationRoots is the
+// detection half; orientationBlock CALLS IT BY NAME, so the pair serializes
+// together, roots first, under these exact names (see the tripwire above).
+const orientationRoots = ${orientationRoots};
 const orientationBlockFn = ${orientationBlock};
+
+// WARN-ONLY COMPOSE LINT (card agent-hive-dispatch-warn-only--2026-08-21,
+// Robert's dispatch-contracts adjudication P3): god twice shipped dispatch
+// premises that were wrong AT COMPOSE TIME — a "root cause behind #3233"
+// assertion with no source id, and file:line cites at qimport/interfaces/
+// for a file living at qimport/schnittstellen/ on another branch. Two
+// checks, ONE pure function; the caller prints and proceeds — NEVER a
+// refusal (classifying diagnosis assertions in free prose is unreliable;
+// same ruling as the relay-auth and hoarding advisories). (a) The diagnosis
+// regexes are Robert's verbatim: the provenance token is a mail message id
+// (the id every inbox report carries), 'unverified' is the honest label for
+// an unproven premise. (b) Every <path>:<line> cite whose repo root is
+// derivable by orientationRoots — the SAME root parsing the orient
+// injection runs, not a second parser — must name an existing file; missing
+// catches wrong-path and wrong-branch cites alike. Relative cites are
+// checked against EVERY derived root (warn only when none has the file —
+// the CLI cannot know which root god meant); a cite with NO derivable root
+// is skipped (Robert's condition is 'derivable'); an absolute cite is
+// self-locating and checked directly. A preceding ':' (URL scheme) means
+// the token is not a citation.
+function composeLintWarnings(contract, rootText, assigneeCwd, cwds, probe) {
+  var lines = [];
+  var body = String(contract || '');
+  if (/root cause|by construction|the (real|actual) (cause|bug)/i.test(body) &&
+      !/\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}-\\d{3}Z-[0-9a-f]{6}/.test(body) &&
+      !/\\bunverified\\b/i.test(body)) {
+    lines.push('WARN: this dispatch asserts a diagnosis without provenance — quote the source report id or label it unverified:');
+  }
+  var roots = orientationRoots(rootText, assigneeCwd, cwds, probe);
+  var citeRe = /(^|[^\\w.\\/-])((?:\\/|[A-Za-z0-9._-]+\\/)*[A-Za-z0-9._-]+\\.[A-Za-z][A-Za-z0-9]{0,7}):(\\d{1,6})(?!\\d)/g;
+  var m;
+  var seen = {};
+  while ((m = citeRe.exec(body)) !== null) {
+    if (m[1] === ':') continue; // URL scheme / preceding field — not a citation
+    var tok = m[2];
+    if (seen[tok]) continue; // one warn per cited file, however often cited
+    seen[tok] = true;
+    var found;
+    if (tok.charAt(0) === '/') {
+      found = probe(tok); // absolute cite — self-locating, checked directly
+    } else if (roots.length > 0) {
+      found = roots.some(function (r) { return probe(r + '/' + tok); });
+    } else {
+      continue; // no derivable root — Robert's condition is not met
+    }
+    if (!found) lines.push('WARN: dispatch cites ' + tok + ':' + m[3] + ' but no such file exists — wrong path, or wrong branch?');
+  }
+  return lines;
+}
+
 
 function main() {
 const parsed = parseArgs(process.argv.slice(2));
@@ -7108,16 +7173,30 @@ withLock(function () {
 // FAIL OPEN is non-negotiable: the whole detect-probe-render path sits in
 // try/catch and a broken injector never blocks a dispatch; probes are
 // existsSync only (orientationBlockFn).
+// Root candidates + the combined text the lint and the orient injection
+// BOTH parse — ONE root parsing (orientationRoots), two consumers.
+var orientCwds = [];
 try {
-  var orientCwds = [];
   if (reg && reg.agents) {
     for (var orientId in reg.agents) {
       var orientEntry = reg.agents[orientId];
       if (orientEntry && orientEntry.archived !== true && typeof orientEntry.cwd === 'string' && orientEntry.cwd.trim()) orientCwds.push(orientEntry.cwd);
     }
   }
+} catch (_) { /* no cwds — both consumers fail open on empty */ }
+var orientText = body + '\\n' + cardTitle + (cardDescription ? '\\n' + cardDescription : '');
+
+// The compose lint runs BEFORE the injection appends its block: it reads the
+// contract exactly as god composed it. Warns print to stdout just before the
+// receipt — indexed at the compose moment god reads.
+try {
+  var composeWarns = composeLintWarnings(body, orientText, entry.cwd || '', orientCwds, fs.existsSync);
+  for (var cwi = 0; cwi < composeWarns.length; cwi++) process.stdout.write(composeWarns[cwi] + '\\n');
+} catch (_) { /* fail open — no warn, the dispatch is unchanged */ }
+
+try {
   var orientBlock = orientationBlockFn(
-    body + '\\n' + cardTitle + (cardDescription ? '\\n' + cardDescription : ''),
+    orientText,
     entry.cwd || '', entry.provider || '', orientCwds, fs.existsSync);
   if (orientBlock) body = body + '\\n\\n' + orientBlock;
 } catch (_) { /* fail open — the dispatch proceeds with the body unmodified */ }
@@ -7256,6 +7335,9 @@ function sleepMs(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0,
 
 // ORIENT-FIRST INJECTION — the same pure detect-probe-render function,
 // serialized verbatim from src/main/orientInject.ts (cardHeld pattern).
+// orientationRoots first, under its exact name — orientationBlock calls it
+// by name (see the tripwire at the top of hive.ts).
+const orientationRoots = ${orientationRoots};
 const orientationBlockFn = ${orientationBlock};
 
 const ledgerPath = path.join(root, 'tasks.json');
