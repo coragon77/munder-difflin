@@ -34,6 +34,9 @@ live in `biome.json`.
 
 ## Process pointers
 
+- **Docs routing:** `docs/claude/onboarding.md` maps task types to blocking-read
+  architecture docs in `docs/architecture/` (root docs like `HIVE.md` are
+  symlinked there). Maintained by `/asol-docs`.
 - If the **superpowers** skills are installed in the running engine (a user-level
   plugin — a fresh install may not have them), use them: **brainstorming** before
   building anything new, **systematic-debugging** for any bug,

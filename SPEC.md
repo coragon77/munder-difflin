@@ -1,5 +1,8 @@
 # Munder Difflin — Spec
 
+- **Coverage:** `src/main/pty.ts`, `src/main/hooks.ts`, `src/main/index.ts`, `src/preload/`, `src/renderer/src/store/`, `src/renderer/src/hooks/`
+- **Last Updated:** 2026-05-31
+
 A desktop control room for the Claude Code agents you already run in terminals. Each agent is a Sims-style avatar in a shared 2D workspace; you can watch them work, send them commands, and configure their goals/skills/MCP from one place.
 
 ---

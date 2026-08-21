@@ -2,7 +2,7 @@
  * KnowledgeManager — the Electron-main façade over the file-backed enterprise
  * Knowledge Graph store. Owns ingestion (in-app, over IPC) and exposes the same
  * keyword search the agent CLI uses; agents themselves query out-of-process via
- * `resources/kg.cjs` (see docs/design/knowledge-graph.md).
+ * `resources/kg.cjs` (see docs/architecture/knowledge-graph.md).
  *
  * All heavy lifting lives in the pure-JS `kg-core.cjs` sidecar (no native deps),
  * required the same way `slack.ts` requires `slack-trigger.cjs`. Mirrors the

@@ -1,5 +1,9 @@
 # Memory Graph Visualization — Spec (Phase 1)
 
+- **Coverage:** `src/renderer/src/components/memoryGraph/`, `src/renderer/src/components/MemoryGraphPanel.tsx`
+- **Depends on:** [The Hive](docs/architecture/hive.md)
+- **Last Updated:** 2026-06-04
+
 **Feature #8** of the Munder Difflin harness roadmap · author: Jim · branch `feature/memory-graph`
 **Status:** awaiting god sign-off. No component code is written yet — this document is the contract for Phase 2.
 

@@ -1,0 +1,1 @@
+../../MEMORY_GRAPH_SPEC.md

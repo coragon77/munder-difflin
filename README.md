@@ -266,10 +266,10 @@ src/
     assets/                  tilesets, maps, character sheets (see ATTRIBUTION.md)
 archived_docs/               archived landing site (`logo.png`, `banner.png`, was GitHub Pages → munderdiffl.in)
 archived_docs/media/         `og.png` (social previews) + rendered Remotion clips
-docs/                        implementation docs — `message-queue.md`, `design/`, `research/`, `superpowers/`
+docs/                        implementation docs — `architecture/`, `research/`, `superpowers/`, `claude/`
 landing-remotion/            Remotion project that renders the landing page's "how it works" clips
 HIVE.md · SPEC.md · DESIGN.md   multi-agent · terminal/event · visual design
-docs/message-queue.md        who may type into an agent's terminal, and when
+docs/architecture/message-queue.md   who may type into an agent's terminal, and when
 ```
 
 <div align="right">(<a href="#munder-difflin">↑ back to top</a>)</div>

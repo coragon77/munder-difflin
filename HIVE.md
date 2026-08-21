@@ -1,5 +1,9 @@
 # The Hive — autonomous multi-agent layer
 
+- **Coverage:** `src/main/hive.ts`, `src/main/hiveGate.ts`, `src/main/memory.ts`, `src/main/roster.ts`, `src/shared/hiveMail.ts`, `hive/`
+- **Depends on:** [Munder Difflin Spec](docs/architecture/spec.md)
+- **Last Updated:** 2026-08-16
+
 > How Munder Difflin turns a room full of independent `claude`
 > processes into a collaborating, self-coordinating team with persistent memory,
 > a shared blackboard, and a "god" orchestrator that runs the floor.

@@ -1,5 +1,8 @@
 # The message queue — how anything gets typed into an agent's terminal
 
+- **Coverage:** `src/main/autoPark.ts`, `src/main/pty.ts`, `src/renderer/src/components/MessageQueueComposer.tsx`
+- **Last Updated:** 2026-08-06
+
 Every agent runs a real CLI in a real PTY. That CLI has exactly one input line, and
 you are not the only one who wants it: you type into the terminal directly, and the
 harness also has messages of its own to deliver. This document is the contract for

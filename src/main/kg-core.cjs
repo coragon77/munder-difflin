@@ -5,7 +5,7 @@
  * crypto) so it loads under BOTH the Electron main process AND a plain `node`
  * invocation from a spawned agent's shell — the same robustness reason
  * `slack-trigger.cjs` / `md-slack-reply.cjs` avoid the native better-sqlite3
- * module. See docs/design/knowledge-graph.md.
+ * module. See docs/architecture/knowledge-graph.md.
  *
  * Store layout (rooted at KG_ROOT, default <userData>/knowledge):
  *   index.jsonl          one JSON line per CHUNK (the search index)

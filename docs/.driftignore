@@ -1,2 +1,11 @@
 # Archived munderdiffl.in landing site — frozen snapshot, not part of the agent doc set.
 *archived_docs/*
+# Not subsystem source: build output, packaging, test suites, one-off tooling, prototypes.
+node_modules/*
+out/*
+build/*
+test/*
+tools/*
+prototypes/*
+obsidian/*
+electron.vite.config.ts

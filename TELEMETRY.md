@@ -1,5 +1,8 @@
 # Telemetry
 
+- **Coverage:** `src/main/analytics.ts`, `src/main/telemetry.ts`
+- **Last Updated:** 2026-08-15
+
 Munder Difflin collects a small set of **anonymous** usage events so we can
 understand adoption (how many people launch the app, which features get used)
 and make the product better. This document is the complete, authoritative
