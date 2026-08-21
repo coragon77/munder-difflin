@@ -5296,7 +5296,20 @@ const HIVE_RESTART_WINDOW_CLI = `#!/usr/bin/env node
  * failure aborts through the same failed/ABORT channel as the other refusals.
  * HIVE_RESTART_WINDOW_SKIP_WAIT, HIVE_RESTART_WINDOW_BUILD_CMD and
  * HIVE_RESTART_PROCESS_PATTERN are test seams; HIVE_RESTART_WINDOW_START_GATE
- * is the internal lifecycle handoff.
+ * is the internal lifecycle handoff. HIVE_RESTART_WINDOW_NO_SCOPE pins the
+ * plain detached spawn (skips the systemd-scope launcher).
+ *
+ * Incident 2026-08-20/21 (card agent-restart-window-watcher-d): two watchers
+ * were killed externally in the post-sync leg and read as "syncing" forever.
+ * detached:true escapes the session and process group but NOT the systemd
+ * scope cgroup the armer lives in — an app-scope stop (KillMode=control-group,
+ * FinalKillSignal=9) sweeps everything still inside, watcher included, and the
+ * watcher's argv (--repo <live-checkout>) shared the app's broad pattern-kill
+ * surface. Fixes: the watcher launches in its OWN transient systemd scope when
+ * a user session is available; target/repo/note travel in env, not argv;
+ * SIGTERM/SIGINT/SIGHUP land a post-mortem instead of dying silently; status
+ * and disarm REAP a dead watcher (a dead watcher never reads as in-progress);
+ * the push->merge->build leg logs every step, so a death is bracketed.
  */
 const fs = require('fs');
 const path = require('path');
@@ -5325,7 +5338,8 @@ function usage(msg) {
 }
 
 function parse(argv) {
-  const out = { target: argv.shift(), repo: '', note: '', instance: '' };
+  const out = { target: '', repo: '', note: '', instance: '' };
+  if (argv.length && !argv[0].startsWith('--')) out.target = argv.shift();
   while (argv.length) {
     const flag = argv.shift();
     if (!['--repo', '--note', '--instance'].includes(flag)) usage('unknown flag: ' + flag);
@@ -5333,6 +5347,13 @@ function parse(argv) {
     if (!value) usage(flag + ' needs a value');
     out[flag.slice(2)] = value;
   }
+  // The spawned watcher carries target/repo/note in ENV instead of argv: its
+  // command line must not share the app's broad pattern-kill surface
+  // (a pkill -f <repo-path> took a watcher down with the app, 2026-08-20).
+  // argv stays the fallback for operator-facing arm/retarget and direct runs.
+  if (!out.target) out.target = process.env.HIVE_RESTART_WINDOW_TARGET || '';
+  if (!out.repo) out.repo = process.env.HIVE_RESTART_WINDOW_REPO || '';
+  if (!out.note) out.note = process.env.HIVE_RESTART_WINDOW_NOTE || '';
   if (!out.target || !/^[0-9a-f]{7,40}$/i.test(out.target)) usage('target must be a commit SHA');
   if (!out.repo) usage('--repo is required');
   out.repo = path.resolve(out.repo);
@@ -5386,7 +5407,11 @@ function writeState(value) {
 }
 
 function withStateLock(fn) {
-  const deadline = Date.now() + 5000;
+  // Deadline covers the worst-case legitimate hold: a retarget serializes
+  // stopPid grace (≤4s) + the watcher ack wait (≤4s) inside the lock. The
+  // stale break must sit above that so a slow-but-legit holder is never
+  // busted mid-handoff.
+  const deadline = Date.now() + 15000;
   let fd;
   while (fd === undefined) {
     try {
@@ -5395,7 +5420,7 @@ function withStateLock(fn) {
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
       try {
-        if (Date.now() - fs.statSync(lockPath).mtimeMs > 10000) {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > 30000) {
           fs.unlinkSync(lockPath);
           continue;
         }
@@ -5462,9 +5487,17 @@ function pidAlive(pid) {
 function pidBelongsTo(pid, instance) {
   if (!pidAlive(pid)) return false;
   if (!instance) throw new Error('watcher state has no process instance — refusing to signal pid ' + pid);
-  const result = spawnSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], {
+  // ps is the ownership oracle for every safety seam — one retry absorbs a
+  // transient spawn failure so a loaded host can't fake "not owned".
+  let result = spawnSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], {
     encoding: 'utf8',
   });
+  if (result.status !== 0 && result.status !== 1) {
+    sleepSync(100);
+    result = spawnSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], {
+      encoding: 'utf8',
+    });
+  }
   if (result.status !== 0) return false;
   return String(result.stdout || '').includes(instance);
 }
@@ -5504,7 +5537,10 @@ async function waitForStartGate() {
   const gate = process.env.HIVE_RESTART_WINDOW_START_GATE;
   if (!gate) return;
   for (let i = 0; i < 200 && !fs.existsSync(gate); i++) await sleep(25);
-  if (!fs.existsSync(gate)) throw new Error('retarget handoff timed out before activation');
+  if (!fs.existsSync(gate)) {
+    try { fs.unlinkSync(gate); } catch { /* best-effort cleanup */ }
+    throw new Error('activation gate never opened — the armer gave up; exiting');
+  }
   try {
     fs.unlinkSync(gate);
   } catch {
@@ -5561,9 +5597,13 @@ function buildCommand() {
 // Build-then-verify: completion means the BUILD contains the change, not just
 // the checkout sha. Any failure throws and lands in the shared failed/ABORT
 // channel — never a silent or false "completed".
-function verifyLiveBuild(repo) {
+function verifyLiveBuild(repo, cmd) {
   const startedAt = Date.now();
-  const built = spawnSync(buildCommand(), {
+  log('building live checkout: ' + cmd);
+  // ponytail: a SIGTERM arriving mid-spawnSync runs its handler only after the
+  // sync call returns — scope-stop escalation can SIGKILL first during a long
+  // build; the pre-build log line above brackets that death anyway.
+  const built = spawnSync(cmd, {
     cwd: repo,
     shell: true,
     encoding: 'utf8',
@@ -5592,10 +5632,32 @@ function verifyLiveBuild(repo) {
 
 async function runWatcher(opts) {
   const armedAt = new Date().toISOString();
+  let phase = 'starting';
   const publish = (status, extra) =>
     withStateLock(() => {
       const current = readState();
-      if (!current || current.pid !== process.pid || current.instance !== opts.instance) return false;
+      // publish only ever transitions an ACTIVE state: a terminal state
+      // (disarmed/completed/failed/…) already recorded by the controller or a
+      // successor is final — a late signal-handler post-mortem must not
+      // clobber e.g. a disarm that won the race. Null state is the bootstrap
+      // case (an instance-carrying run with no controller pre-write).
+      if (current && !active.has(current.status)) return false;
+      if (current) {
+        // A retargeted-away watcher loses its voice once the handoff is
+        // recorded — its post-mortem must not clobber the replacement.
+        if (current.status === 'retargeting' && current.instance === opts.instance) return false;
+        if (current.instance !== opts.instance) {
+          // Superseded: refuse only while a DIFFERENT instance is live —
+          // a dead holder is a takeover, not an owner (incident 2026-08-20:
+          // dead watchers froze the state at "syncing" forever).
+          const holders = [[current.pid, current.instance]];
+          if (current.status === 'retargeting') holders.push([current.nextPid, current.nextInstance]);
+          for (const [pid, instance] of holders) {
+            if (instance === opts.instance) continue;
+            if (Number.isInteger(pid) && pidAlive(pid) && pidBelongsTo(pid, instance)) return false;
+          }
+        }
+      }
       writeState({
         status,
         target: opts.target,
@@ -5610,14 +5672,32 @@ async function runWatcher(opts) {
       return true;
     });
 
+  // No silent deaths (incident 2026-08-20/21): a polite signal — disarm, an
+  // app/scope teardown's SIGTERM, an operator kill — lands a post-mortem in
+  // the log and a failed state instead of freezing "syncing" forever. SIGKILL
+  // is unwritable by definition; the status/disarm reap covers that case.
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+    process.on(signal, () => {
+      const reason =
+        'watcher received ' + signal + ' during ' + phase +
+        ' — stopped by signal (disarm, app/scope teardown, or operator kill)';
+      try { log('ABORT: ' + reason); } catch { /* last breath */ }
+      try { publish('failed', { reason, phase }); } catch { /* last breath */ }
+      process.exit(1);
+    });
+  }
+
   let target;
   try {
     target = sha(opts.repo, opts.target);
     opts.target = target;
-    if (!publish('armed')) return;
+    phase = 'armed (waiting for the restart window)';
+    if (!publish('armed', { phase })) return;
     log('armed: target ' + target + '; waiting for ' + processPattern + ' to stop');
     await waitForWindow();
-    if (!publish('syncing')) {
+    log('restart window open: ' + processPattern + ' is gone — syncing the live checkout');
+    phase = 'syncing';
+    if (!publish('syncing', { phase })) {
       log('superseded watcher instance ' + opts.instance + ' exited before syncing');
       return;
     }
@@ -5644,6 +5724,7 @@ async function runWatcher(opts) {
     }
 
     const refspec = target + ':refs/heads/main';
+    phase = 'pushing target to origin';
     const pushed = git(opts.repo, ['push', 'origin', refspec]);
     if (pushed.status !== 0) {
       originMain = resyncLiveOriginMain(opts.repo, 'refetch after push refusal failed');
@@ -5656,36 +5737,60 @@ async function runWatcher(opts) {
       }
       throw new Error('push failed: ' + detail(pushed));
     }
+    log('pushed target ' + target + ' to origin/main');
 
+    phase = 'fast-forwarding the live checkout to the target';
     requireGit(opts.repo, ['merge', '--ff-only', target], 'batch fast-forward failed');
+    log('live checkout fast-forwarded to target ' + target);
     originMain = resyncLiveOriginMain(opts.repo, 'final origin/main fetch failed');
     const head = sha(opts.repo, 'HEAD');
-    verifyLiveBuild(opts.repo);
+    phase = 'building the live checkout';
+    verifyLiveBuild(opts.repo, buildCommand());
     log('completed: live checkout and origin/main at ' + head);
     publish('completed', { originMain, completedAt: new Date().toISOString() });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     log('ABORT: ' + reason);
-    publish(reason.startsWith('watcher expired') ? 'expired' : 'failed', { reason });
+    publish(reason.startsWith('watcher expired') ? 'expired' : 'failed', { reason, phase });
     process.stderr.write('hive-restart-window: ' + reason + '\\n');
     process.exitCode = 1;
   }
 }
 
+function scopeLauncherAvailable() {
+  if (process.env.HIVE_RESTART_WINDOW_NO_SCOPE === '1') return false;
+  if (!process.env.DBUS_SESSION_BUS_ADDRESS) return false;
+  const probe = spawnSync('systemd-run', ['--version'], { encoding: 'utf8' });
+  return probe.status === 0;
+}
+
 function spawnWatcher(opts, gate) {
-  const args = [
-    __filename,
-    'run',
-    opts.target,
-    '--repo',
-    opts.repo,
-    '--instance',
-    opts.instance,
-  ];
-  if (opts.note) args.push('--note', opts.note);
-  const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' };
+  // target/repo/note travel in ENV, not argv: the watcher's command line must
+  // not share the app's broad pattern-kill surface (a pkill -f <repo-path>
+  // took a watcher down with the app, 2026-08-20). argv keeps only the unique
+  // instance UUID the ownership checks need.
+  const args = [__filename, 'run', '--instance', opts.instance];
+  const env = {
+    ...process.env,
+    ELECTRON_RUN_AS_NODE: '1',
+    HIVE_RESTART_WINDOW_TARGET: opts.target,
+    HIVE_RESTART_WINDOW_REPO: opts.repo,
+    HIVE_RESTART_WINDOW_NOTE: opts.note || '',
+  };
   if (gate) env.HIVE_RESTART_WINDOW_START_GATE = gate;
-  const child = spawn(process.execPath, args, { detached: true, stdio: 'ignore', env });
+  // detached:true escapes the session and process group but NOT the systemd
+  // scope cgroup the armer lives in — an app-scope stop (KillMode=control-
+  // group, FinalKillSignal=9) sweeps the watcher with it, at exactly the
+  // restart moment the watcher exists to survive (incident 2026-08-20/21).
+  // A transient scope of its own puts the watcher outside; without a user
+  // session the plain detached spawn keeps the legacy behavior.
+  const child = scopeLauncherAvailable()
+    ? spawn(
+        'systemd-run',
+        ['--user', '--quiet', '--scope', '--collect', process.execPath, ...args],
+        { detached: true, stdio: 'ignore', env },
+      )
+    : spawn(process.execPath, args, { detached: true, stdio: 'ignore', env });
   child.unref();
   return child.pid;
 }
@@ -5717,40 +5822,83 @@ function startLocked(opts) {
 
   opts.instance = randomUUID();
   const gate = statePath + '.handoff.' + opts.instance;
-  const pid = spawnWatcher(opts, gate);
+  const ackPath = statePath + '.ack.' + opts.instance;
+  const wrapperPid = spawnWatcher(opts, gate);
+  if (!Number.isInteger(wrapperPid) || wrapperPid <= 0) {
+    throw new Error('watcher spawn returned no pid — refusing to arm');
+  }
+  let realPid;
   try {
-    writeState(armedState(opts, pid));
+    // With the scope launcher the spawn pid is the systemd-run wrapper, not
+    // the watcher — the watcher reports its REAL pid through the instance-
+    // scoped ack file (lock-free side channel: the controller holds the
+    // lifecycle lock across this wait, so the child cannot publish yet).
+    realPid = awaitWatcherAck(ackPath, wrapperPid, opts.instance);
+    writeState(armedState(opts, realPid));
     fs.writeFileSync(gate, 'go\\n', 'utf8');
   } catch (error) {
     try {
-      stopPid(pid, opts.instance);
+      stopPid(wrapperPid, opts.instance);
     } catch (cleanupError) {
-      log('arm cleanup FAILED for pid ' + pid + ': ' + cleanupError.message);
+      log('arm cleanup FAILED for pid ' + wrapperPid + ': ' + cleanupError.message);
     }
+    try { fs.unlinkSync(ackPath); } catch { /* best-effort */ }
+    try { fs.unlinkSync(gate); } catch { /* best-effort */ }
     throw error;
   }
-  log('armed detached watcher pid ' + pid + ' for target ' + opts.target);
-  process.stdout.write('armed pid ' + pid + ' -> ' + opts.target + '\\n');
+  log('armed detached watcher pid ' + realPid + ' for target ' + opts.target);
+  process.stdout.write('armed pid ' + realPid + ' -> ' + opts.target + '\\n');
+}
+
+// Bounded, sync (runs inside the lifecycle lock): the watcher writes its pid
+// here right after spawn, before its start gate opens.
+function awaitWatcherAck(ackPath, wrapperPid, instance) {
+  const deadline = Date.now() + 4000;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(ackPath)) {
+      try {
+        const pid = Number(String(fs.readFileSync(ackPath, 'utf8')).trim());
+        if (Number.isInteger(pid) && pid > 0 && pidAlive(pid) && pidBelongsTo(pid, instance)) {
+          try { fs.unlinkSync(ackPath); } catch { /* best-effort */ }
+          return pid;
+        }
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+    sleepSync(25);
+  }
+  throw new Error('watcher never reported its pid (spawn pid ' + wrapperPid + ') — cleaned up the spawn');
 }
 
 function arm(opts) {
   opts.target = sha(opts.repo, opts.target);
   return withStateLock(() => startLocked(opts));
 }
-
 function retarget(opts) {
   opts.target = sha(opts.repo, opts.target);
   return withStateLock(() => {
     const current = readState();
-    if (!current || !active.has(current.status) || !pidAlive(current.pid)) return startLocked(opts);
+    if (!current || !active.has(current.status)) return startLocked(opts);
     if (current.status === 'syncing') {
       throw new Error('cannot retarget while the restart-window merge is syncing');
     }
-    requireOwnedPid(current.pid, current.instance);
+    // Mid-handoff the live owner is the pending replacement, not the recorded
+    // (already stopped) pid — a racing retarget replaces the replacement.
+    const ownerPid = current.status === 'retargeting' ? current.nextPid : current.pid;
+    const ownerInstance = current.status === 'retargeting' ? current.nextInstance : current.instance;
+    if (!pidAlive(ownerPid)) return startLocked(opts);
+    requireOwnedPid(ownerPid, ownerInstance);
 
     opts.instance = randomUUID();
     const gate = statePath + '.handoff.' + opts.instance;
+    const ackPath = statePath + '.ack.' + opts.instance;
     const nextPid = spawnWatcher(opts, gate);
+    // Validate BEFORE persisting: a retargeting state without a valid nextPid
+    // would make readState refuse every lifecycle command until hand-repair.
+    if (!Number.isInteger(nextPid) || nextPid <= 0) {
+      throw new Error('watcher spawn returned no pid — refusing to retarget');
+    }
     writeState({
       ...current,
       status: 'retargeting',
@@ -5759,9 +5907,11 @@ function retarget(opts) {
       nextTarget: opts.target,
       updatedAt: new Date().toISOString(),
     });
+    let realPid;
     try {
-      stopPid(current.pid, current.instance);
-      writeState(armedState(opts, nextPid));
+      stopPid(ownerPid, ownerInstance);
+      realPid = awaitWatcherAck(ackPath, nextPid, opts.instance);
+      writeState(armedState(opts, realPid));
       fs.writeFileSync(gate, 'go\\n', 'utf8');
     } catch (error) {
       try {
@@ -5774,14 +5924,67 @@ function retarget(opts) {
       } catch {
         // best-effort: this UUID gate can never release a future watcher.
       }
+      try { fs.unlinkSync(ackPath); } catch { /* best-effort */ }
       throw error;
     }
-    log('retargeted watcher pid ' + current.pid + ' -> ' + nextPid + '; target ' + opts.target);
-    process.stdout.write('retargeted pid ' + current.pid + ' -> ' + nextPid + '\\n');
+    log('retargeted watcher pid ' + ownerPid + ' -> ' + realPid + '; target ' + opts.target);
+    process.stdout.write('retargeted pid ' + ownerPid + ' -> ' + realPid + '\\n');
+  });
+}
+
+// A dead watcher must never read as in-progress (incident 2026-08-20/21:
+// state froze at "syncing" behind a dead pid). If the recorded owner is gone
+// — killed externally, SIGKILL'd by a scope/cgroup teardown, lost to a reboot
+// — rewrite the active state to failed with the reason, under the lock.
+function reapDeadWatcher(current) {
+  if (!current || !active.has(current.status)) return current;
+  const [pid, instance] =
+    current.status === 'retargeting'
+      ? [current.nextPid, current.nextInstance]
+      : [current.pid, current.instance];
+  let live = false;
+  try {
+    live = Number.isInteger(pid) && pidAlive(pid) && pidBelongsTo(pid, instance);
+  } catch {
+    live = false;
+  }
+  if (live) return current;
+  return withStateLock(() => {
+    const fresh = readState();
+    if (!fresh || !active.has(fresh.status)) return fresh; // raced to a terminal state
+    // Re-verify liveness on the IN-LOCK state: between the outer read and
+    // this lock a recovery arm/retarget can have replaced the dead owner with
+    // a LIVE watcher — reaping that one would reproduce the exact
+    // false-verdict class this reap exists to kill.
+    const [freshPid, freshInstance] =
+      fresh.status === 'retargeting'
+        ? [fresh.nextPid, fresh.nextInstance]
+        : [fresh.pid, fresh.instance];
+    let freshLive = false;
+    try {
+      freshLive = Number.isInteger(freshPid) && pidAlive(freshPid) && pidBelongsTo(freshPid, freshInstance);
+    } catch {
+      freshLive = false;
+    }
+    if (freshLive) return fresh;
+    const reason =
+      'watcher pid ' + pid + ' died during ' + fresh.status +
+      ' — killed externally, no post-mortem (SIGKILL, cgroup/scope teardown, reboot, or pattern kill); arm again to retry the window';
+    const reaped = {
+      ...fresh,
+      status: 'failed',
+      reason,
+      diedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    writeState(reaped);
+    log('reaped dead watcher: pid ' + pid + ' died during ' + fresh.status + ' — state read as in-progress; recorded failed');
+    return reaped;
   });
 }
 
 function disarm() {
+  reapDeadWatcher(readState());
   return withStateLock(() => {
     const current = readState();
     if (!current || !active.has(current.status)) {
@@ -5815,7 +6018,7 @@ function disarm() {
 async function main() {
   const command = process.argv[2];
   if (command === 'status') {
-    const state = readState();
+    const state = reapDeadWatcher(readState());
     process.stdout.write(state ? JSON.stringify(state, null, 2) + '\\n' : 'not armed\\n');
     return;
   }
@@ -5840,6 +6043,18 @@ async function main() {
         }
         writeState(armedState(opts, process.pid));
       });
+    } else {
+      // Lock-free side channel: report the REAL pid to the controller before
+      // the start gate opens (with the scope launcher the spawn pid it holds
+      // is only the systemd-run wrapper).
+      try {
+        const ackPath = statePath + '.ack.' + opts.instance;
+        const tmp = ackPath + '.' + process.pid + '.tmp';
+        fs.writeFileSync(tmp, String(process.pid) + '\\n', 'utf8');
+        fs.renameSync(tmp, ackPath);
+      } catch {
+        // best-effort: a missing ack degrades to the armer's timeout cleanup.
+      }
     }
     await waitForStartGate();
     await runWatcher(opts);

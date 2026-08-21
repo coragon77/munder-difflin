@@ -12,6 +12,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 const loadTs = require('./load-ts.cjs');
 
@@ -62,9 +63,17 @@ function setup(t) {
   configure(live);
   configure(worker);
 
-  const command = (args, env = {}) =>
+  // NO_SCOPE pins the plain detached-spawn path: the systemd-scope launcher is
+  // exercised by its own opt-in test below; every other test stays
+  // deterministic and free of transient user scopes.
+  const command = (args, env = {}, opts = {}) =>
     spawnSync(process.execPath, [cli, ...args], {
-      env: { ...process.env, HIVE_ROOT: root, ...env },
+      env: {
+        ...process.env,
+        HIVE_ROOT: root,
+        ...(opts.allowScope ? {} : { HIVE_RESTART_WINDOW_NO_SCOPE: '1' }),
+        ...env,
+      },
       encoding: 'utf8',
     });
   const run = (target, env = {}) =>
@@ -134,6 +143,13 @@ test('current target advances both origin/main and the live checkout', { skip: !
   assert.equal(git(s.live, 'rev-parse', 'HEAD'), target);
   assert.equal(git(s.remote, 'rev-parse', 'refs/heads/main'), target);
   assert.equal(s.state().status, 'completed');
+  // The post-sync leg is observable end to end — a death anywhere in it is
+  // bracketed to the second (incident 2026-08-20: two watchers died in a
+  // fully silent push->merge->build leg).
+  assert.match(s.log(), /restart window open/);
+  assert.match(s.log(), /pushed target .* to origin\/main/);
+  assert.match(s.log(), /live checkout fast-forwarded to target/);
+  assert.match(s.log(), /building live checkout: /);
   assert.match(s.log(), /completed: live checkout and origin\/main at/);
   assert.ok(
     fs.existsSync(path.join(s.live, 'out', 'main', 'index.js')),
@@ -213,7 +229,9 @@ test('retarget serializes its pid handoff; disarm verifies process ownership', {
       process.kill(hold.pid, 'SIGKILL');
     } catch {}
   });
-  const env = { HIVE_RESTART_PROCESS_PATTERN: token };
+  // NO_SCOPE: the raw spawn() invocations below bypass command()'s pin; the
+  // scope launcher has its own dedicated test.
+  const env = { HIVE_RESTART_PROCESS_PATTERN: token, HIVE_RESTART_WINDOW_NO_SCOPE: '1' };
   const alive = (pid) => {
     try {
       process.kill(pid, 0);
@@ -356,4 +374,173 @@ test('the internal run verb refuses direct callers without the explicit test sea
   });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /internal run verb/);
+});
+
+// ── Incident 2026-08-20/21: two watchers were killed externally in the
+// post-sync leg and left restart-window.json reading "syncing" forever. A
+// dead watcher must never read as in-progress, and a signal death must leave
+// a post-mortem instead of silence.
+
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const waitFor = async (predicate, what) => {
+  for (let i = 0; i < 100; i++) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.fail('timed out waiting for ' + what);
+};
+
+test('a dead watcher never reads as in-progress — status reaps it to failed', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const target = git(s.live, 'rev-parse', 'HEAD');
+  const token = `md-restart-window-dead-${process.pid}-${Date.now()}`;
+  const env = { HIVE_RESTART_PROCESS_PATTERN: token };
+
+  const armed = s.command(['arm', target, '--repo', s.live], env);
+  assert.equal(armed.status, 0, armed.stderr);
+  const pid = s.state().pid;
+  assert.ok(alive(pid));
+
+  // The incident shape: the watcher is killed externally (SIGKILL leaves no
+  // chance for cleanup) while armed/syncing.
+  process.kill(pid, 'SIGKILL');
+  await waitFor(() => !alive(pid), 'watcher death');
+
+  const r = s.command(['status']);
+  assert.equal(r.status, 0, r.stderr);
+  const reaped = JSON.parse(r.stdout);
+  assert.equal(reaped.status, 'failed', 'a dead watcher is failed, never in-progress');
+  assert.match(reaped.reason, new RegExp(`pid ${pid} died during armed`));
+  assert.match(s.log(), /reaped dead watcher/);
+
+  // The reaped state is terminal: disarm reports not armed, arm can re-arm.
+  const d = s.command(['disarm'], env);
+  assert.equal(d.status, 0, d.stderr);
+  assert.match(d.stdout, /not armed/);
+});
+
+test('a signal death lands a post-mortem — SIGTERM never kills silently', {
+  skip: !POSIX,
+}, async (t) => {
+  const s = setup(t);
+  const target = git(s.live, 'rev-parse', 'HEAD');
+  const token = `md-restart-window-term-${process.pid}-${Date.now()}`;
+
+  const child = spawn(process.execPath, [s.cli, 'run', target, '--repo', s.live], {
+    env: {
+      ...process.env,
+      HIVE_ROOT: s.root,
+      HIVE_RESTART_WINDOW_DIRECT_RUN: '1',
+      HIVE_RESTART_WINDOW_NO_SCOPE: '1',
+      HIVE_RESTART_PROCESS_PATTERN: token, // window never opens: stays armed
+    },
+    stdio: 'ignore',
+    detached: true,
+  });
+  child.unref();
+  t.after(() => {
+    try {
+      process.kill(child.pid, 'SIGKILL');
+    } catch {}
+  });
+
+  await waitFor(() => {
+    try {
+      return s.state().status === 'armed' && s.state().pid === child.pid;
+    } catch {
+      return false;
+    }
+  }, 'watcher armed publish');
+
+  process.kill(child.pid, 'SIGTERM');
+  await waitFor(() => !alive(child.pid), 'watcher SIGTERM exit');
+
+  const st = s.state();
+  assert.equal(st.status, 'failed', 'the signal handler records the death');
+  assert.match(st.reason, /SIGTERM/);
+  assert.match(s.log(), /ABORT: watcher received SIGTERM during armed/);
+});
+
+test('the run verb reads target/repo from env — argv keeps only the instance', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  const target = landableTarget(s);
+
+  // The spawned watcher carries target/repo/note in ENV, not argv: its
+  // command line must not share the app's broad pattern-kill surface
+  // (a pkill -f <repo-path> took a watcher down with the app, 2026-08-20).
+  const r = s.command(['run', '--instance', randomUUID()], {
+    HIVE_RESTART_WINDOW_DIRECT_RUN: '1',
+    HIVE_RESTART_WINDOW_SKIP_WAIT: '1',
+    HIVE_RESTART_WINDOW_BUILD_CMD: BUILD_OK,
+    HIVE_RESTART_WINDOW_TARGET: target,
+    HIVE_RESTART_WINDOW_REPO: s.live,
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(s.state().status, 'completed');
+  assert.equal(s.state().target, target);
+  assert.equal(git(s.live, 'rev-parse', 'HEAD'), target);
+});
+
+// The root-cause fix: detached:true escapes the session and process group
+// but NOT the systemd scope cgroup the armer lives in — an app-scope stop
+// (KillMode=control-group, FinalKillSignal=9) sweeps everything still
+// inside, watcher included. With a user session available the watcher is
+// launched in its OWN transient scope, outside the app's cgroup.
+function scopeLaunchAvailable() {
+  if (!process.env.DBUS_SESSION_BUS_ADDRESS) return false;
+  const probe = spawnSync('systemd-run', ['--version'], { encoding: 'utf8' });
+  return probe.status === 0;
+}
+
+function ownCgroupScope() {
+  try {
+    const raw = fs.readFileSync('/proc/self/cgroup', 'utf8').trim();
+    const segment = raw.split('\n')[0]?.split(':').pop() ?? '';
+    return path.basename(segment);
+  } catch {
+    return '';
+  }
+}
+
+test('the watcher escapes the armer systemd scope cgroup', {
+  skip: !POSIX || !scopeLaunchAvailable() || !ownCgroupScope(),
+}, async (t) => {
+  const s = setup(t);
+  const target = git(s.live, 'rev-parse', 'HEAD');
+  const token = `md-restart-window-scope-${process.pid}-${Date.now()}`;
+  const env = { HIVE_RESTART_PROCESS_PATTERN: token };
+
+  const armed = s.command(['arm', target, '--repo', s.live], env, { allowScope: true });
+  assert.equal(armed.status, 0, armed.stderr);
+  const st = s.state();
+  assert.ok(alive(st.pid), 'arm returns with a live watcher pid');
+
+  const watcherCgroup = fs
+    .readFileSync(`/proc/${st.pid}/cgroup`, 'utf8')
+    .trim()
+    .split('\n')[0]
+    ?.split(':')
+    .pop();
+  assert.ok(watcherCgroup, 'watcher cgroup readable');
+  assert.ok(
+    !watcherCgroup.includes(ownCgroupScope()),
+    `watcher must not sit in the armer's scope (armer: ${ownCgroupScope()}, watcher: ${watcherCgroup})`,
+  );
+
+  const disarmed = s.command(['disarm'], env);
+  assert.equal(disarmed.status, 0, disarmed.stderr);
+  await waitFor(() => !alive(st.pid), 'scoped watcher stop');
+  assert.equal(s.state().status, 'disarmed');
 });
