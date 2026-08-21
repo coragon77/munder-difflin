@@ -68,6 +68,11 @@ test('stale subagents block on an existing copy is healed from the user file', (
       assert.deepEqual(after.subagents, USER_BLOCK, 'operator block arrived');
       assert.equal(after.theme, 'dracula', 'per-agent keys untouched');
       assert.deepEqual(after.packages, ['npm:pi-subagents'], 'per-agent packages untouched');
+      assert.equal(
+        fs.readdirSync(path.dirname(dest)).filter((f) => f.includes('.tmp-')).length,
+        0,
+        'atomic write leaves no tmp leftovers',
+      );
     },
   );
 });
@@ -109,6 +114,60 @@ test('first copy still filters pi-telegram from packages (one poller per bot)', 
       assert.deepEqual(read(dest).subagents, USER_BLOCK);
     },
   );
+});
+
+test('non-object user settings ([] / 42) cannot mutate a healthy agent copy', () => {
+  // JSON.parse succeeds on [] and 42 — the syntax-invalid guards never fire, and
+  // s.subagents reads undefined, so the reconcile used to DELETE subagents from
+  // a healthy agent copy (malformed source must leave the dest alone).
+  for (const bad of ['[]', '42']) {
+    withFixture(bad, { subagents: STALE_BLOCK, theme: 'dracula' }, (dest) => {
+      installPiHooks.call(null, path.dirname(path.dirname(dest)));
+      assert.deepEqual(read(dest).subagents, STALE_BLOCK, `${bad} user file: copy untouched`);
+      assert.equal(read(dest).theme, 'dracula');
+    });
+  }
+});
+
+test('non-object agent copy with a user block is left alone, never half-written', () => {
+  // JSON.stringify drops named props on arrays: cur.subagents = <block> on an
+  // array copy "succeeds" but the block silently does not arrive. Non-empty
+  // array so the spurious rewrite is observable (formatting churn); a literal
+  // [] rewrites byte-identically and hides it.
+  withFixture({ subagents: USER_BLOCK }, '["legacy"]', (dest) => {
+    installPiHooks.call(null, path.dirname(path.dirname(dest)));
+    assert.equal(fs.readFileSync(dest, 'utf8'), '["legacy"]', 'non-object copy untouched');
+  });
+});
+
+test('settings writes are atomic: tmp file then rename, never a direct write', () => {
+  withFixture({ subagents: USER_BLOCK }, { subagents: STALE_BLOCK }, (dest) => {
+    const writes = [];
+    const renames = [];
+    const origWrite = fs.writeFileSync;
+    const origRename = fs.renameSync;
+    fs.writeFileSync = (p, ...a) => {
+      writes.push(String(p));
+      return origWrite.call(fs, p, ...a);
+    };
+    fs.renameSync = (from, to) => {
+      renames.push([String(from), String(to)]);
+      return origRename.call(fs, from, to);
+    };
+    try {
+      installPiHooks.call(null, path.dirname(path.dirname(dest)));
+    } finally {
+      fs.writeFileSync = origWrite;
+      fs.renameSync = origRename;
+    }
+    assert.equal(writes.includes(dest), false, 'no direct write to settings.json');
+    const tmp = writes.find((p) => p !== dest && p.includes('.tmp-'));
+    assert.ok(tmp, 'write staged through a tmp file');
+    assert.ok(
+      renames.some(([f, t]) => f === tmp && t === dest),
+      'tmp renamed onto settings.json',
+    );
+  });
 });
 
 test('malformed copies are left alone, never crashed on', () => {

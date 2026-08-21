@@ -3628,12 +3628,25 @@ export class HiveManager {
       // keeps burning the retired model (card agent-installpihooks-freezes-e).
       const settingsSrc = join(userPi, 'settings.json');
       const settingsDest = join(home, 'settings.json');
+      // Atomic (tmp+rename): settings.json is read-modify-write shared with
+      // external writers (agents hand-edit their own copy) — a reader must
+      // never parse a half-written file.
+      const writeSettings = (data: unknown) => {
+        const tmp = `${settingsDest}.tmp-${shortRand()}`;
+        writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+        renameSync(tmp, settingsDest);
+      };
       if (existsSync(settingsSrc)) {
         try {
           const s = JSON.parse(readFileSync(settingsSrc, 'utf8')) as {
             packages?: unknown[];
             subagents?: unknown;
           };
+          // Valid-but-non-object JSON ([] / 42 / "str") is malformed here too:
+          // s.subagents would read undefined and the reconcile below would
+          // DELETE subagents from a healthy agent copy.
+          if (typeof s !== 'object' || s === null || Array.isArray(s))
+            throw new TypeError('user settings.json is not an object');
           if (Array.isArray(s.packages)) {
             s.packages = s.packages.filter((p: unknown) =>
               typeof p === 'string'
@@ -3642,21 +3655,26 @@ export class HiveManager {
             );
           }
           if (!existsSync(settingsDest)) {
-            writeFileSync(settingsDest, JSON.stringify(s, null, 2));
+            writeSettings(s);
           } else {
             try {
               const cur = JSON.parse(readFileSync(settingsDest, 'utf8')) as Record<string, unknown>;
+              // Same shape guard: assigning subagents onto an array "succeeds"
+              // but JSON.stringify drops named array props — the block would
+              // be silently written away. Non-object → leave the copy alone.
+              if (typeof cur !== 'object' || cur === null || Array.isArray(cur))
+                throw new TypeError('agent settings copy is not an object');
               if (!isDeepStrictEqual(cur.subagents, s.subagents)) {
                 if (s.subagents === undefined) delete cur.subagents;
                 else cur.subagents = s.subagents;
-                writeFileSync(settingsDest, JSON.stringify(cur, null, 2));
+                writeSettings(cur);
               }
             } catch {
-              /* malformed agent copy → leave it alone */
+              /* malformed (or non-object) agent copy → leave it alone */
             }
           }
         } catch {
-          /* malformed user settings → pi defaults */
+          /* malformed (or non-object) user settings → pi defaults */
         }
       }
     } catch (e) {
