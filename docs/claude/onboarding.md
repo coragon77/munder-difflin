@@ -155,7 +155,7 @@ reader stops looking and now believes something false about the codebase.
 
 - `specs/` — design specs (`YYYY-MM-DD-<topic>-design.md`)
 - `plans/` — implementation plans (`YYYY-MM-DD-<topic>.md`)
-- No `goals/` directory yet — add one via the goals-doc skill when work outgrows single sessions.
+- `../goals/` — long-horizon run/goal docs via the goals-doc skill (e.g. `2026-08-21-asol-docs-update-burndown.md`, the doc-update tracker).
 
 ------------------------------------------------------------------------
 
