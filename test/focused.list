@@ -162,3 +162,4 @@ test/orient-inject.test.cjs
 test/orient-gate.test.cjs
 test/compact-clear-collision.test.cjs
 test/dispatch-premises.test.cjs
+test/pi-settings-reconcile.test.cjs

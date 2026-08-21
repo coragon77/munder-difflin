@@ -37,6 +37,7 @@ import { join, dirname, isAbsolute, basename, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync, spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { AgentUsageSample } from './usage';
 // ONE definition of actionable (card agent-actionablecards-one-shar-2026-08-
 // 18) — serialized verbatim (toString) into the generated bin/ CLIs below so
@@ -3620,11 +3621,18 @@ export class HiveManager {
       }
       // SETTINGS: filtered copy of the user's — same defaults (theme, …) minus the
       // pi-telegram package (one poller per bot: the hive's trigger owns it).
+      // The copy is the agent's own file afterwards — EXCEPT the `subagents`
+      // block (subagent model routing), which is an operator-level budget
+      // decision and is reconciled from the user file on every spawn. Without
+      // this, a copy made before an operator model switch stays frozen and
+      // keeps burning the retired model (card agent-installpihooks-freezes-e).
+      const settingsSrc = join(userPi, 'settings.json');
       const settingsDest = join(home, 'settings.json');
-      if (existsSync(join(userPi, 'settings.json')) && !existsSync(settingsDest)) {
+      if (existsSync(settingsSrc)) {
         try {
-          const s = JSON.parse(readFileSync(join(userPi, 'settings.json'), 'utf8')) as {
+          const s = JSON.parse(readFileSync(settingsSrc, 'utf8')) as {
             packages?: unknown[];
+            subagents?: unknown;
           };
           if (Array.isArray(s.packages)) {
             s.packages = s.packages.filter((p: unknown) =>
@@ -3633,7 +3641,20 @@ export class HiveManager {
                 : !(p && typeof p === 'object' && JSON.stringify(p).includes('pi-telegram')),
             );
           }
-          writeFileSync(settingsDest, JSON.stringify(s, null, 2));
+          if (!existsSync(settingsDest)) {
+            writeFileSync(settingsDest, JSON.stringify(s, null, 2));
+          } else {
+            try {
+              const cur = JSON.parse(readFileSync(settingsDest, 'utf8')) as Record<string, unknown>;
+              if (!isDeepStrictEqual(cur.subagents, s.subagents)) {
+                if (s.subagents === undefined) delete cur.subagents;
+                else cur.subagents = s.subagents;
+                writeFileSync(settingsDest, JSON.stringify(cur, null, 2));
+              }
+            } catch {
+              /* malformed agent copy → leave it alone */
+            }
+          }
         } catch {
           /* malformed user settings → pi defaults */
         }
