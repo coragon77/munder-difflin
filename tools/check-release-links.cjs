@@ -56,24 +56,24 @@ for (const m of releaseMd.matchAll(/archive\/refs\/tags\/v(\d+\.\d+\.\d+)/g)) {
 }
 
 // — 3. the website's fallback version (used when the GitHub API call fails) —
-const indexHtml = path.join(root, 'docs/index.html');
+const indexHtml = path.join(root, 'archived_docs/index.html');
 if (fs.existsSync(indexHtml)) {
   const m = /var REL = '(\d+\.\d+\.\d+)'/.exec(fs.readFileSync(indexHtml, 'utf8'));
   if (m && m[1] !== version) {
-    problems.push(`docs/index.html download fallback is ${m[1]}, package.json says ${version}`);
+    problems.push(`archived_docs/index.html download fallback is ${m[1]}, package.json says ${version}`);
   }
 }
 
 // — 4. llms.txt, which advertises the current version to crawlers and LLMs —
 //   Added in 0.4.3: this file sat at 0.4.1 for two releases while the checker
 //   stayed green, because nothing was watching it.
-const llms = path.join(root, 'docs/llms.txt');
+const llms = path.join(root, 'archived_docs/llms.txt');
 if (fs.existsSync(llms)) {
   const m = /Current version:\s*(\d+\.\d+\.\d+)/.exec(fs.readFileSync(llms, 'utf8'));
   if (!m)
-    problems.push('docs/llms.txt no longer states "Current version: x.y.z" — did the line move?');
+    problems.push('archived_docs/llms.txt no longer states "Current version: x.y.z" — did the line move?');
   else if (m[1] !== version) {
-    problems.push(`docs/llms.txt says current version ${m[1]}, package.json says ${version}`);
+    problems.push(`archived_docs/llms.txt says current version ${m[1]}, package.json says ${version}`);
   }
 }
 
@@ -102,7 +102,7 @@ async function checkLive() {
     console.error(`\n✗ release links are wrong (${problems.length}):`);
     for (const p of problems) console.error(`  - ${p}`);
     console.error(
-      '\nFix RELEASE.md / docs/index.html / docs/llms.txt to match package.json before releasing.',
+      '\nFix RELEASE.md / archived_docs/index.html / archived_docs/llms.txt to match package.json before releasing.',
     );
     process.exit(1);
   }

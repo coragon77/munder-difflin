@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./docs/logo.png" alt="Munder Difflin Inc — Multi-Agent Harness" width="340">
+<img src="./archived_docs/logo.png" alt="Munder Difflin Inc — Multi-Agent Harness" width="340">
 
 # Munder Difflin
 
@@ -30,7 +30,7 @@ visualized as avatars at work on a shared office floor.
 
 <br>
 
-<img src="./docs/media/og.png" alt="Munder Difflin — A hive of agents that message, route, and remember" width="1240">
+<img src="./archived_docs/media/og.png" alt="Munder Difflin — A hive of agents that message, route, and remember" width="1240">
 
 <br>
 
@@ -264,8 +264,9 @@ src/
     scene/office/            Pixi office floor: OfficeFloor, Character, Camera, cast, pathfinding, …
     store/ · hooks/          zustand store, event loop, PTY parser, typewriter
     assets/                  tilesets, maps, character sheets (see ATTRIBUTION.md)
-docs/                        `logo.png`, `banner.png`, landing page (GitHub Pages → munderdiffl.in)
-docs/media/                  `og.png` (social previews) + rendered Remotion clips
+archived_docs/               archived landing site (`logo.png`, `banner.png`, was GitHub Pages → munderdiffl.in)
+archived_docs/media/         `og.png` (social previews) + rendered Remotion clips
+docs/                        implementation docs — `message-queue.md`, `design/`, `research/`, `superpowers/`
 landing-remotion/            Remotion project that renders the landing page's "how it works" clips
 HIVE.md · SPEC.md · DESIGN.md   multi-agent · terminal/event · visual design
 docs/message-queue.md        who may type into an agent's terminal, and when
