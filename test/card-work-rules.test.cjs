@@ -153,6 +153,18 @@ test('HIVE_CARD_MD tells the mid-card architectural discovery to stop and mail g
   );
 });
 
+// ——— HIVE_CARD_MD: bin/ CLIs track the running app (silent-revert card) —————
+
+test('HIVE_CARD_MD warns that hand-regenerated bin/ CLIs revert silently', () => {
+  const md = renderCommandsMd('god'); // HIVE_CARD_MD renders in every mode
+  assert.ok(
+    /bin\/ CLIs track the RUNNING app, not origin\/main/.test(md),
+    'the invariant is stated where the CLI is documented',
+  );
+  assert.ok(/Never report a hand-regenerated CLI as live/.test(md), 'the report conduct is pinned');
+  assert.ok(/the restart window lands it/.test(md), 'the sanctioned delivery path is named');
+});
+
 // ——— fixtures-only testing: every-agent spawn sentence + PROTOCOL bullet ————
 
 test('FIXTURES-ONLY TESTING is an every-agent spawn-prompt rule (worker AND god, every mode)', () => {
