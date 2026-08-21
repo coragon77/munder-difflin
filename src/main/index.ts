@@ -7393,32 +7393,37 @@ function bootstrapHiveServices(): void {
   // returning one, card-title lead names the conversation). First tick is
   // snapshot-only — a restart never re-clears a working pane. sessionId stamps are
   // maintained by HiveManager.recordSession (stampActiveCards).
+  //
+  // THE house busy rule (vacationBusy), wired exactly like parkAgent's gate —
+  // telemetry-primary (hook/OTLP lastActive), PTY output only as the no-plane
+  // fallback. No second definition of busy: a deferred clear re-decides every
+  // tick until the pane is quiet by this same rule, and the renderer's
+  // queue-drain keeps its own idle gate as the delivery-time backstop. The
+  // staged-mail hold's busy extension (card agent-dispatch-mail-still-land-
+  // 2026-08-21) consumes the SAME rule — the hold must not break while the
+  // very pane it is waiting for is legitimately non-idle.
+  const houseBusy = (agentId: string): boolean => {
+    const row = telemetry.snapshot().usage.find((u) => u.agentId === agentId);
+    const telemetryAgeMs = row && row.ts > 0 ? Date.now() - row.ts : undefined;
+    const ptyId = ptyForAgent(agentId);
+    const ptyIdleMs = ptyId ? ptyManager.idleFor(ptyId) : undefined;
+    const provider = hive.registry().agents[agentId]?.provider;
+    const providerReportsTelemetry = isClaudeProvider(provider) || bridgeOf(provider) !== undefined;
+    // Same tracker as parkAgent's gate — one busy definition, no second one.
+    return vacationBusy(
+      telemetryAgeMs,
+      ptyIdleMs,
+      providerReportsTelemetry,
+      pendingWork.countFor(agentId),
+    );
+  };
+  hive.setStageBusyProbe(houseBusy);
   startCardSessionWatcher({
     root: () => hive.root(),
     registry: () => hive.registry(),
     // The idle gate for pane-restarting card commands (clear/resume —
-    // engagement-aware flips 2026-08-17): THE house busy rule (vacationBusy),
-    // wired exactly like parkAgent's gate — telemetry-primary (hook/OTLP
-    // lastActive), PTY output only as the no-plane fallback. No second
-    // definition of busy: a deferred clear re-decides every tick until the
-    // pane is quiet by this same rule, and the renderer's queue-drain keeps
-    // its own idle gate as the delivery-time backstop.
-    busy: (agentId) => {
-      const row = telemetry.snapshot().usage.find((u) => u.agentId === agentId);
-      const telemetryAgeMs = row && row.ts > 0 ? Date.now() - row.ts : undefined;
-      const ptyId = ptyForAgent(agentId);
-      const ptyIdleMs = ptyId ? ptyManager.idleFor(ptyId) : undefined;
-      const provider = hive.registry().agents[agentId]?.provider;
-      const providerReportsTelemetry =
-        isClaudeProvider(provider) || bridgeOf(provider) !== undefined;
-      // Same tracker as parkAgent's gate — one busy definition, no second one.
-      return vacationBusy(
-        telemetryAgeMs,
-        ptyIdleMs,
-        providerReportsTelemetry,
-        pendingWork.countFor(agentId),
-      );
-    },
+    // engagement-aware flips 2026-08-17): see houseBusy above.
+    busy: houseBusy,
     emit: paneCommandEmit,
     // Pane-liveness gate (agent-recalled-pane-resumes-it-2026-08-18): a doing-flip
     // for a PARKED assignee holds pending until the recall spawn is up — the

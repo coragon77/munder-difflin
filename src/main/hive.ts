@@ -582,6 +582,18 @@ export class HiveManager {
     return this._otelEndpoint;
   }
 
+  /** HOUSE busy probe for the staged-mail hold (card agent-dispatch-mail-
+   *  still-land-2026-08-21): the SAME vacationBusy rule the card-session
+   *  watcher's idle gate uses (telemetry-hot OR pendingWork census > 0 — an
+   *  active turn or in-flight background subagents/shells). Wired by index.ts
+   *  next to the watcher's own busy dep — one definition, no second one.
+   *  Undefined (tests, legacy construction) = never busy = the staging
+   *  timeout behaves exactly as before. */
+  private stageBusyProbe?: (agentId: string) => boolean;
+  setStageBusyProbe(fn: (agentId: string) => boolean): void {
+    this.stageBusyProbe = fn;
+  }
+
   // — paths —
   root(): string | null {
     const home = this.getHome();
@@ -2437,7 +2449,18 @@ export class HiveManager {
    *  staleness snapshot, contract fold, then the timed/ungated releases.
    *  `heldCardIds` are the cards currently holding THIS agent's mail — when
    *  the TIMEOUT gate releases under an active hold, their pending watcher
-   *  transitions are consumed (R4: the late-wipe trap disarm). */
+   *  transitions are consumed (R4: the late-wipe trap disarm).
+   *  BUSY EXTENSION (card agent-dispatch-mail-still-land-2026-08-21): age
+   *  alone cannot tell a BROKEN establishment chain (dead spawn, window
+   *  down, restart mid-transition) from an ALIVE-BUT-SLOW one — the clear is
+   *  queued and the drain holds it because the pane is legitimately busy
+   *  (deep turn, in-flight background subagents — exactly the census the
+   *  renderer's `waiting` status pins). While the house busy rule says the
+   *  assignee is busy, the timed-out leg does NOT fire: the pane will quiet,
+   *  the clear will establish, and the mail releases SCOPED instead of
+   *  dumping into the pre-clear conversation. God is told once per staging
+   *  epoch (visibility without per-tick spam). */
+  private stageExtendNotified = new Set<string>();
   private releaseStagedAgent(
     id: string,
     inbox: string,
@@ -2452,6 +2475,7 @@ export class HiveManager {
     } catch {
       return;
     }
+    if (files.length === 0) this.stageExtendNotified.delete(id); // epoch over
     // Staleness snapshot BEFORE any fold rewrite — mtime is the timeout
     // clock, and foldStagedContract rewrites the contract file it folds into.
     const stale = new Map<string, boolean>();
@@ -2462,12 +2486,31 @@ export class HiveManager {
         stale.set(f, false);
       }
     }
+    // BUSY EXTENSION: the chain is alive-but-slow while the house rule says
+    // the assignee is busy — the timeout must not break the hold (see header).
+    const busy = this.stageBusyProbe?.(id) === true;
+    if (held && busy && files.some((f) => stale.get(f) === true)) {
+      if (!this.stageExtendNotified.has(id)) {
+        this.stageExtendNotified.add(id);
+        this.send(
+          {
+            to: this.registry().godId ?? 'god',
+            act: 'inform',
+            subject: `[mail-staged] hold extended for ${id}`,
+            body: `Mail for ${id} passed the ${Math.round(MAIL_STAGE_TIMEOUT_MS / 60_000)}-minute staging horizon while ${id} is legitimately busy (active turn or in-flight background work — the house busy rule). The card-scoped clear is queued and will establish when the pane quiets; the mail then releases into the card's conversation. No action needed unless the agent looks stuck — this is the slow-chain hold, not the broken-chain timeout.`,
+          },
+          'system',
+        );
+      }
+    }
     // MAIL FOLD (card agent-mail-queued-alongside-a--2026-08-19): at
     // release, the doing card's dispatch contract ABSORBS its staged
     // siblings (any staleness — see foldStagedContract) and any mail that
     // reached the inbox in the stamp→sweep window, then releases as the
     // only new inbox file — the agent cannot start beside unread mail.
-    const releasing = files.filter((f) => !held || stale.get(f) === true);
+    // (Busy extension: a busy agent releases nothing — the fold must not
+    // run against a set that is not releasing.)
+    const releasing = files.filter((f) => !held || (stale.get(f) === true && !busy));
     if (releasing.length > 0) this.foldStagedContract(id, inbox, staged);
     try {
       files = readdirSync(staged).filter((f) => f.endsWith('.json'));
@@ -2489,7 +2532,7 @@ export class HiveManager {
     let tieBroken = false;
     for (const f of files) {
       const full = join(staged, f);
-      const timedOut = held && stale.get(f) === true;
+      const timedOut = held && stale.get(f) === true && !busy;
       if (held && !timedOut) continue;
       try {
         renameSync(full, join(inbox, f));
