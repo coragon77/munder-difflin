@@ -25,7 +25,7 @@
  */
 
 import { orientationBlock } from './orientInject';
-import { isPrimitiveInvocation, shCParts, maskQuoted, redirectTargets } from './hiveGate';
+import { isPrimitiveInvocation } from './hiveGate';
 
 /** Seen-state for one agent: keyed on the payload session_id, REPLACED on
  *  session change, never persisted — a restart refires once per root by
@@ -205,27 +205,25 @@ function lexWord(
   while (i < n && /[\s]/.test(s[i] ?? '')) i++;
   let out = '';
   let quoted = false;
-  let any = false;
   while (i < n) {
     const c = s[i] as string;
     if (c === '\\') {
       if (s[i + 1] === '\n') {
         // Line continuation: the pair is REMOVED before lexing continues
         // (round-4 finding — `<<EO\<newline>F` must lex as delimiter EOF).
-        quoted = true;
+        // Joining does NOT quote the word (round-5 note 6: a joined
+        // delimiter still expands its body — only real quoting disables).
         i += 2;
         continue;
       }
       out += s[i + 1] ?? '';
       quoted = true;
-      any = true;
       i += 2;
       continue;
     }
     if (c === "'" || c === '"') {
       const q = c;
       quoted = true;
-      any = true;
       i++;
       while (i < n && s[i] !== q) {
         if (q === '"') {
@@ -265,7 +263,6 @@ function lexWord(
     }
     if (/[\s;&|<>()`]/.test(c)) break;
     out += c;
-    any = true;
     i++;
   }
   return { text: out, quoted, j: i };
@@ -376,19 +373,23 @@ function parseCommand(command: string): Segment[] {
       continue;
     }
     if (c === '<' || c === '>') {
-      flush();
+      // An IO-NUMBER word (the `2` of `2>/dev/null`) is part of the
+      // operator, never a command word (round-5 finding 4).
+      if (wordOpen && /^\d+$/.test(word)) {
+        word = '';
+        wordOpen = false;
+      } else flush();
       // Operator lexing — fd-dups, herestrings, process subs, heredocs.
       let j = i + 1;
       if (command[j] === c) j++; // >> or <<
       const two = j - i === 2;
       if (c === '<' && two && command[j] === '<') {
-        j++; // <<< herestring: operand is data
+        j++; // <<< herestring: operand is stdin DATA, not a file
         cur.raw += command.slice(i, j);
         i = j;
-        const w = lexWord(command, i);
+        const w = lexWord(command, i, cur.subs);
         cur.raw += command.slice(i, w.j);
-        if (w.text || w.j > i) cur.operands.push({ text: w.text });
-        i = w.j;
+        i = w.j; // word text is prose (not an operand); subs were collected
         continue;
       }
       if (command[j] === '(') {
@@ -446,6 +447,21 @@ function parseCommand(command: string): Segment[] {
       }
       continue;
     }
+    if (c === '&' && command[i + 1] === '>') {
+      // &> / &>> — ONE redirect operator (round-5 finding 5: splitting at
+      // the & fractured the primitive from its arguments).
+      flush();
+      const opEnd = command[i + 2] === '>' ? i + 3 : i + 2;
+      cur.raw += command.slice(i, opEnd);
+      i = opEnd;
+      const w = lexWord(command, i, cur.subs);
+      if (w.j > i) {
+        cur.operands.push({ text: w.text });
+        cur.raw += command.slice(i, w.j);
+        i = w.j;
+      }
+      continue;
+    }
     if (c === '&' || c === '|' || c === ';' || c === '\n') {
       flush();
       const wasNewline = c === '\n';
@@ -453,7 +469,16 @@ function parseCommand(command: string): Segment[] {
       else i++;
       cur.raw += c === '\n' ? '\n' : (command[i - 1] ?? c);
       pushSeg();
-      if (wasNewline && pending.length > 0) {
+      // A newline ends the heredoc's COMMAND only when the just-ended
+      // segment is complete: a trailing | / || / && CONTINUES the pipeline
+      // onto the next line, so the body starts one newline later (round-5
+      // finding 1). Whitespace-only tail segments don't count — the
+      // continuation operator sits in the last non-empty segment.
+      let lastIdx = segs.length - 1;
+      while (lastIdx >= 0 && (segs[lastIdx] as Segment).raw.trim() === '') lastIdx--;
+      const lastSeg = lastIdx >= 0 ? (segs[lastIdx] as Segment) : cur;
+      const continues = /(?:\|\||&&|\|)$/.test(lastSeg.raw.trimEnd());
+      if (wasNewline && pending.length > 0 && !continues) {
         // Heredoc bodies start at this newline: consume each pending body
         // in order (terminator line exact, tab-stripped for <<-, \r-safe;
         // unclosed bodies swallow the rest, as in the shell) and attach it
@@ -512,9 +537,6 @@ function heredocSubs(text: string): string[] {
   const out: string[] = [];
   const n = text.length;
   let i = 0;
-  let q: "'" | '"' | null = null; // quotes do not open inside heredoc bodies,
-  // but backslash still escapes in unquoted bodies for \newline joining —
-  // keep it simple: scan for $( and ` spans with escape awareness only.
   while (i < n) {
     const c = text[i] as string;
     if (c === '\\') {
@@ -537,7 +559,6 @@ function heredocSubs(text: string): string[] {
         continue;
       }
     }
-    q = null; // (state kept intentionally unused; clarity over cleverness)
     i++;
   }
   return out;

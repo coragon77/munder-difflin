@@ -825,3 +825,87 @@ test('46 — sh -c positional path arguments are scanned', () => {
   });
   assert.ok(res.deny, 'the positional path denies');
 });
+
+// 47. round 5, finding 1: a trailing | (or ||/&&) before the newline
+// CONTINUES the command — the heredoc body starts only after the pipeline
+// completes, so the cat on the next line is a real command.
+test('47 — newline after a pipe tail: the next line is a command, not body', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: "hive-dispatch --card c <<'EOF' |\ncat " + MERLIN + '/qbase/manage.py\nbody\nEOF',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the continuation-line cat denies');
+});
+
+// 48. round 5, finding 2 (orient side): a whitespace-separated redirect
+// operand must not break the primitive exemption.
+test('48 — separated redirect operand keeps the primitive exempt', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: '2> /tmp/err hive-dispatch --card c --body "fix ' + MERLIN + '"' },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
+
+// 48b. round 5, finding 2 (bypass side): `> /tmp/hive-card cat <project>` —
+// separated operand form of the redirect masquerade.
+test('48b — separated redirect operand cannot masquerade as the primitive', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: '> /tmp/hive-card cat ' + MERLIN + '/qbase/manage.py' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the trailing real read denies');
+});
+
+// 49. round 5, finding 3: a herestring operand is stdin DATA, not a path —
+// project prose in it must not deny.
+test('49 — herestring prose does not deny', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-dispatch --card c <<<"fix ' + MERLIN + ' today"' },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
+
+// 50. round 5, finding 4: an io-number before a redirect is not a word —
+// `2>/dev/null sh -c '<primitive with prose>'` must stay exempt.
+test('50 — io-number redirect prefix does not break sh -c recognition', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: '2>/dev/null sh -c \'hive-dispatch --card c --body "see ' + MERLIN + '"\'',
+    },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
+
+// 51. round 5, finding 5: `&>` and `&>>` are single redirect operators —
+// the primitive and its arguments must not fracture.
+test('51 — &> does not fracture the primitive segment', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-dispatch &>/tmp/log --card c --body "fix ' + MERLIN + '"' },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
+
+// 52. round 5, note 6 (cheap fix): a backslash-newline in a delimiter joins
+// the word but does NOT quote it — the body still expands.
+test('52 — delimiter continuation does not disable body expansion', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-card list <<EO\\\nF\nsee $(cat ' + MERLIN + '/qbase/manage.py)\nEOF',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'unquoted joined delimiter: body substitution is live');
+});

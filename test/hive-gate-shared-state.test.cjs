@@ -668,3 +668,18 @@ test('god Write to tasks.json through HookServer is denied', async (t) => {
   const res = fire('god-1', 'Write', { file_path: path.join(hive.root(), 'tasks.json') });
   assert.equal(res.hookSpecificOutput.permissionDecision, 'deny');
 });
+
+// Round-5 finding (card agent-orient-gate-fires-on-cal-2026-08-21): a
+// whitespace-separated redirect operand — `> /tmp/hive-card cat …` must not
+// ride the primitive exemption, and `2> /tmp/err hive-park …` must keep it.
+test('separated redirect operands: no masquerade, no exemption loss', () => {
+  const { root } = floor();
+  const bypass = gate(root, root, 'Bash', {
+    command: '> /tmp/hive-card cat "$HIVE_ROOT/tasks.json"',
+  });
+  assert.ok(bypass, 'separated operand form still refuses');
+  const keep = gate(root, root, 'Bash', {
+    command: '2> /tmp/err hive-park pam --reason idle',
+  });
+  assert.equal(keep, null, 'separated redirect keeps the primitive exempt');
+});

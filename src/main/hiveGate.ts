@@ -302,11 +302,19 @@ function shellWords(segment: string): string[] {
 function isPrimitiveSegment(words: string[]): boolean {
   let i = 0;
   const redirectToken = /^\d*[<>]/;
+  // A pure redirect operator (`>`, `2>`, `>>`, `>&`…) is followed by a
+  // SEPARATE operand word — skip the pair (round-5 finding: `> /tmp/hive-card
+  // cat …` masqueraded via the operand, `2> /tmp/err hive-park …` lost the
+  // exemption — card agent-orient-gate-fires-on-cal-2026-08-21).
+  const pureOperator = /^\d*(?:>{1,2}|<{1,2}|<>|>&|>&\||<&)[&|]?$/;
   while (
     i < words.length &&
     (redirectToken.test(words[i] ?? '') || /^[A-Za-z_]\w*=/.test(words[i] ?? ''))
-  )
-    i++;
+  ) {
+    if (pureOperator.test(words[i] ?? ''))
+      i += 2; // operator + its operand word
+    else i++;
+  }
   while (i < words.length && ['sudo', 'nohup', 'time', 'exec', 'command'].includes(words[i] ?? ''))
     i++;
   const exec = words[i] ?? null;
