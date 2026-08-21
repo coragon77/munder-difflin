@@ -162,6 +162,37 @@ test('a nudge already in the queue blocks a duplicate enqueue', () => {
   assert.equal(d.reason, 'in-flight');
 });
 
+// — reviewer round: two pins the first pass missed —
+
+test('a NEWER id inside the delivered-TTL still gets the fresh-id monitor grace', () => {
+  const newer = '2026-08-21T12-00-00-000Z-def456';
+  const d = decideInboxWake({
+    newest: newer,
+    nudgeInQueue: false,
+    graceMs: 45_000,
+    now: T0 + 10_000, // well inside the TTL of the older delivery
+    lastDelivery: { id: MAIL, at: T0 },
+    wakeSeen: { id: MAIL, since: T0 - 45_000 },
+  });
+  assert.equal(d.enqueue, false, 'new id is fresh, monitor gets its head start');
+  assert.equal(d.reason, 'grace');
+  assert.deepEqual(d.wakeSeen, { id: newer, since: T0 + 10_000 });
+});
+
+test('in-flight hold preserves the first-seen wakeSeen object', () => {
+  const seen = { id: MAIL, since: T0 };
+  const d = decideInboxWake({
+    newest: MAIL,
+    nudgeInQueue: true,
+    graceMs: 0,
+    now: T0 + 60_000,
+    wakeSeen: seen,
+  });
+  assert.equal(d.enqueue, false);
+  assert.equal(d.reason, 'in-flight');
+  assert.equal(d.wakeSeen, seen, 'first-seen clock must not restart while queued');
+});
+
 // — wiring pin: the hook actually runs the reconciler —
 
 const fs = require('node:fs');

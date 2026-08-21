@@ -4628,10 +4628,18 @@ ipcMain.handle('hive:registry', () => hive.registry());
 ipcMain.handle('hive:board', () => hive.board());
 ipcMain.handle('hive:tasks', () => hive.tasks());
 ipcMain.handle('hive:log', (_evt, n: unknown) => hive.logTail(typeof n === 'number' ? n : 200));
-// Renderer-side writer for the hive event feed (nudge lifecycle: enqueued /
-// delivered / dropped). appendLog stamps ts and is append-only + best-effort.
+// Renderer-side writer for the hive event feed, scoped to the nudge lifecycle
+// (enqueued / delivered / dropped). appendLog stamps ts and is append-only +
+// best-effort; unknown kinds are refused so this channel cannot grow an
+// implicit arbitrary-event surface (review round, agent-nudge card).
+const NUDGE_LOG_KINDS = new Set(['nudge_enqueued', 'nudge_delivered', 'nudge_dropped']);
 ipcMain.handle('hive:appendLog', (_evt, event: unknown) => {
-  if (event && typeof event === 'object' && !Array.isArray(event))
+  if (
+    event &&
+    typeof event === 'object' &&
+    !Array.isArray(event) &&
+    NUDGE_LOG_KINDS.has((event as { kind?: string }).kind ?? '')
+  )
     hive.appendLog(event as Record<string, unknown>);
 });
 ipcMain.handle('hive:memory', (_evt, id: unknown) =>

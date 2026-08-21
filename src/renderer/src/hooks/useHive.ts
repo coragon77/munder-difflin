@@ -827,8 +827,11 @@ export function useHive(config: HarnessConfig | null): void {
           // instead of the generic "check your inbox…". The instructions are
           // unchanged (read inbox, act, .done/, autonomy); only the lead
           // changes. Unlabeled agents (god, human hires, pre-label spawns)
-          // keep today's exact text.
-          const label = a.spawnLabel?.trim();
+          // keep today's exact text. The label leads ONLY until the first
+          // delivery is recorded: a TTL re-nudge arrives after a typed turn
+          // already happened (session named, or swallowed mid-transition), so
+          // it uses the generic text (review round, this card).
+          const label = nudged.current[a.id] ? undefined : a.spawnLabel?.trim();
           useStore
             .getState()
             .enqueueMessage(
@@ -1058,6 +1061,11 @@ export function useHive(config: HarnessConfig | null): void {
         if (attempts >= MAX_SEND_ATTEMPTS) {
           delete sendFailures[next.id];
           removeQueuedMessage(srcId, next.id);
+          // ponytail: no backoff before the reconciler re-enqueues a
+          // pty-write-failed nudge — a wedged agent row logs one dropped + one
+          // enqueued per ~4s tick until reconcileWithLivePtys reaps the dead
+          // pty row. Add a per-agent retryAfter here if that log churn ever
+          // matters; today the reap bounds it.
           if (next.inboxFor)
             void window.cth.hiveAppendLog({
               kind: 'nudge_dropped',
