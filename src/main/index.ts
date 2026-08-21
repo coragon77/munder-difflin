@@ -6668,12 +6668,18 @@ function parkAgent(agentId: string, reason?: string, origin: ParkOrigin = 'reque
           isClaudeProvider(provider) || bridgeOf(provider) !== undefined;
         // Waiting ≠ idle: pending finite background work (background shell,
         // in-flight subagent) keeps the agent busy even at a silent prompt.
-        return vacationBusy(
-          telemetryAgeMs,
-          ptyIdleMs,
-          providerReportsTelemetry,
-          pendingWork.countFor(agentId),
-        );
+        // When the census is what makes it busy, SAY so (card
+        // agent-hive-park-reports-succes-2026-08-21): the census is a snapshot
+        // frozen at the agent's last Stop, so a task that ended after that
+        // settle keeps the gate closed while the agent sits idle at its prompt
+        // — "actively working" was a wrong verdict that hid the real state.
+        const pending = pendingWork.countFor(agentId);
+        if (vacationBusy(telemetryAgeMs, ptyIdleMs, providerReportsTelemetry, pending)) {
+          return pending > 0
+            ? `waiting on ${pending} pending background task${pending === 1 ? '' : 's'} (census snapshot from its last turn — a task that ended after that still blocks the park until the census goes stale, at most 75 min later)`
+            : true;
+        }
+        return false;
       },
       dropWorktree: (ptyId) => {
         worktreePaths.delete(ptyId);

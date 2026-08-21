@@ -51,8 +51,13 @@ export interface ParkDeps {
   hiveEnabled(): boolean;
   registry(): Registry;
   ptyForAgent(agentId: string): string | undefined;
-  /** vacationBusy(telemetryAgeMs, ptyIdleMs) — consulted only when a PTY exists. */
-  busy(ptyId: string, agentId: string): boolean;
+  /** The busy gate, consulted only when a PTY exists. `false` = not busy;
+   *  `true` = busy, cause unknown to the caller (generic "actively working");
+   *  a STRING = busy with the specific cause, embedded verbatim in the refusal
+   *  (card agent-hive-park-reports-succes-2026-08-21 — "actively working" was
+   *  a wrong verdict for an idle agent whose frozen task census still counted
+   *  a task that had already ended). */
+  busy(ptyId: string, agentId: string): boolean | string;
   /** Drop the worktree tracking entries BEFORE teardown — teardown's
    *  force-remove must never see a parked agent's worktree. */
   dropWorktree(ptyId: string): void;
@@ -148,14 +153,22 @@ export function parkAgentCore(
     // repaints its chrome continuously, so lastOutputAt alone read every idle
     // pane as "actively working" (card vacation-busy-check-tui-repaint).
     // Operator origin skips ONLY this rung — their button, their judgment.
-    if (origin !== 'operator' && deps.busy(ptyId, agentId)) {
-      return {
-        ok: false,
-        error: `"${agentId}" is actively working — park it when it goes quiet`,
-        // TEMPORARY refusal — a whenQuiet request is held on this and retried
-        // until the gate clears, instead of bouncing back to god (shouldHoldPark).
-        busy: true,
-      };
+    // A STRING verdict is the specific cause and lands in the refusal verbatim
+    // (see ParkDeps.busy) — "actively working" is only the boolean fallback.
+    if (origin !== 'operator') {
+      const why = deps.busy(ptyId, agentId);
+      if (why) {
+        return {
+          ok: false,
+          error:
+            typeof why === 'string'
+              ? `"${agentId}" is ${why} — park it when it goes quiet, or hold one with hive-park --when-quiet`
+              : `"${agentId}" is actively working — park it when it goes quiet`,
+          // TEMPORARY refusal — a whenQuiet request is held on this and retried
+          // until the gate clears, instead of bouncing back to god (shouldHoldPark).
+          busy: true,
+        };
+      }
     }
     // A park is not a firing: the worktree IS the agent's state, and the recall
     // re-enters it (the registry cwd is that path for an isolated agent). Drop the

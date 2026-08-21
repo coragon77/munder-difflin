@@ -296,6 +296,25 @@ test('park: a busy agent is refused on the request path — "park it when it goe
   });
 });
 
+test('park: deps.busy may return a REASON — the refusal names it instead of guessing "actively working"', () => {
+  // card agent-hive-park-reports-succes-2026-08-21: the pending-work census is
+  // a snapshot frozen at the agent's last Stop, so a task that ended after that
+  // settle keeps the gate closed while the agent sits idle at its prompt —
+  // telling god "actively working" was a wrong machine verdict that buried the
+  // real state (Stanley, twice). A string from deps.busy is the specific truth;
+  // boolean true stays the generic verdict (pinned above).
+  const { deps } = parkDeps({
+    ptyId: 'pty1',
+    busy: 'waiting on 1 pending background task (census snapshot from its last turn)',
+  });
+  const res = parkAgentCore(deps, 'bob');
+  assert.equal(res.ok, false);
+  assert.equal(res.busy, true, 'a reason is still a TEMPORARY refusal — whenQuiet holds on it');
+  assert.match(res.error, /waiting on 1 pending background task/);
+  assert.match(res.error, /--when-quiet/, 'points god at the hold instead of a retry loop');
+  assert.ok(!/actively working/.test(res.error), 'no generic guess when the truth is known');
+});
+
 test('park: operator origin skips ONLY the busy rung — the button parks unconditionally', () => {
   // Operator decision (card vacation-busy-fresh-boot-20260817 scope change):
   // the human pressed the button and can see the agent's PTY — the busy gate

@@ -4640,7 +4640,13 @@ floor, listed in fleet.json's \`vacation\` pool) but it is NOT deletable while
 parked. Parking is rejected (with a notice) for god, interns, the retired,
 or anyone already on vacation. A PINNED worker (the registry 'pinned' flag,
 set by the office UI's pin toggle) is never parked either — unpin it there
-first. Recall respawns it in place, resuming its own
+first. hive-park also runs a BUSY PRE-FLIGHT (reads fleet.json): when the
+target shows pending background work, or telemetry activity inside the last
+60s on a fresh snapshot, it refuses up front instead of queueing a request
+the watcher would reject — re-run with --when-quiet and the park holds itself
+until the gate clears. (The watcher re-checks everything; the pre-flight just
+keeps a doomed request — and its easy-to-miss rejection mail — out of the
+queue.) Recall respawns it in place, resuming its own
 session, exactly like any other respawn. Hand-dropping a JSON file into
 \`vacation-requests/\` is REFUSED by the shared-state gate for god (operator
 decision 2026-08-19 — \`hive-park\` / \`hive-recall\` are the only interface
@@ -7557,6 +7563,38 @@ const open = (tasks && Array.isArray(tasks.tasks) ? tasks.tasks : []).filter(fun
 });
 if (open.length)
   fail(open[0].id + ' is still doing — close or reassign the card before parking ' + agentId + '.');
+
+// BUSY PRE-FLIGHT (card agent-hive-park-reports-succes-2026-08-21): the
+// receipt below promises "parks it on the next tick", but the watcher's busy
+// gate can still refuse the request ~2s later — and the rejection mail drowns
+// in god's inbox, so god saw "success" while nothing happened (twice, on an
+// agent whose frozen task census still counted a task that had already
+// ended). Mirror the gate's two fleet-visible inputs and refuse UP FRONT; the
+// watcher stays the authority and re-checks. SKIPPED for --when-quiet — the
+// hold IS the busy mechanism. A missing/old fleet.json degrades to the old
+// queue-and-bounce behavior (never a false refusal): the 60s activity window
+// is only trusted on a FRESH fleet (worker tick keeps it seconds old), while
+// the pending census (75-min TTL) far outlives fleet staleness.
+if (!whenQuiet) {
+  const fleet = readJson(path.join(root, 'fleet.json'), null);
+  const row = fleet && Array.isArray(fleet.agents)
+    ? fleet.agents.find(function (a) { return a && a.id === agentId; })
+    : null;
+  if (row) {
+    const pend = row.pendingBackgroundWork || 0;
+    const fleetFresh =
+      typeof fleet.ts === 'number' && Math.abs(Date.now() - fleet.ts) < 60000;
+    const activeAgo = typeof row.lastActiveSecAgo === 'number' ? row.lastActiveSecAgo : null;
+    const why =
+      pend > 0
+        ? pend + ' pending background task(s) in its work census (a snapshot from its last turn — a task that ended after that still blocks a park until the census goes stale, at most 75 min later)'
+        : fleetFresh && activeAgo !== null && activeAgo < 60
+          ? 'telemetry-active ' + activeAgo + 's ago (<60s)'
+          : null;
+    if (why)
+      fail('"' + agentId + '" reads busy right now — ' + why + '. The watcher would REJECT this request within ~2s and the rejection mail is easy to miss. Re-run with --when-quiet to HOLD the park until the gate clears (it parks itself, no retry needed), or retry once the agent is quiet.');
+  }
+}
 
 const req = { agentId: agentId, reason: reason };
 // Strict boolean true, field ABSENT without the flag — the watcher's

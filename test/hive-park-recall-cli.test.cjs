@@ -122,6 +122,86 @@ function requestFiles(root) {
     .sort();
 }
 
+/** Write a fleet.json the busy pre-flight can read (card
+ *  agent-hive-park-reports-succes-2026-08-21). ts defaults to now — a FRESH
+ *  fleet, as the worker tick (seconds) keeps it on a live floor. */
+function withFleet(root, agents, ts = Date.now()) {
+  fs.writeFileSync(path.join(root, 'fleet.json'), JSON.stringify({ ts, agents }));
+}
+
+// ─── hive-park: the busy pre-flight (card agent-hive-park-reports-succes-2026-08-21) ──
+// The receipt promises "parks it on the next tick", but the watcher's busy
+// gate can still refuse the request ~2s later — and the rejection mail drowns
+// in god's inbox (the card's "reports success and silently does nothing").
+// The pre-flight mirrors the gate's two fleet-visible inputs and refuses UP
+// FRONT instead of queueing a request the watcher will bounce.
+
+test('hive-park REFUSES a busy-by-census agent up front and writes nothing', () => {
+  withFakeHive((root) => {
+    withFleet(root, [{ id: 'pam-1', pendingBackgroundWork: 1, lastActiveSecAgo: 600 }]);
+    const r = runCli('HIVE_PARK_CLI', ['pam-1', '--reason', 'done, no open card'], root);
+    assert.notEqual(r.code, 0);
+    assert.match(r.err, /busy/);
+    assert.match(r.err, /1 pending background task/);
+    assert.match(r.err, /--when-quiet/, 'points at the hold instead of a silent bounce');
+    assert.equal(requestFiles(root).length, 0, 'refusal writes no request');
+  });
+});
+
+test('hive-park REFUSES a telemetry-active agent (fresh lastActiveSecAgo) up front', () => {
+  withFakeHive((root) => {
+    withFleet(root, [{ id: 'pam-1', pendingBackgroundWork: 0, lastActiveSecAgo: 5 }]);
+    const r = runCli('HIVE_PARK_CLI', ['pam-1', '--reason', 'done'], root);
+    assert.notEqual(r.code, 0);
+    assert.match(r.err, /busy/);
+    assert.equal(requestFiles(root).length, 0, 'refusal writes no request');
+  });
+});
+
+test('hive-park --when-quiet QUEUES despite the busy pre-flight — the hold IS the busy mechanism', () => {
+  withFakeHive((root) => {
+    withFleet(root, [{ id: 'pam-1', pendingBackgroundWork: 2, lastActiveSecAgo: 3 }]);
+    const r = runCli('HIVE_PARK_CLI', ['pam-1', '--reason', 'end of turn', '--when-quiet'], root);
+    assert.equal(r.code, 0, r.err);
+    const req = JSON.parse(
+      fs.readFileSync(path.join(root, 'vacation-requests', requestFiles(root)[0]), 'utf8'),
+    );
+    assert.equal(req.whenQuiet, true);
+  });
+});
+
+test('hive-park happy path with a QUIET fleet row still queues normally', () => {
+  withFakeHive((root) => {
+    withFleet(root, [{ id: 'pam-1', pendingBackgroundWork: 0, lastActiveSecAgo: 600 }]);
+    const r = runCli('HIVE_PARK_CLI', ['pam-1', '--reason', 'done'], root);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(requestFiles(root).length, 1);
+  });
+});
+
+test('hive-park busy pre-flight trusts a STALE fleet only for the census, not the 60s activity window', () => {
+  withFakeHive((root) => {
+    // 10-min-old fleet: a lastActiveSecAgo of 5s is ancient news — the agent
+    // may be quiet now, so the activity rung must NOT refuse; the census
+    // (TTL 75min) far outlives fleet staleness, so pending still refuses.
+    withFleet(
+      root,
+      [{ id: 'pam-1', pendingBackgroundWork: 0, lastActiveSecAgo: 5 }],
+      Date.now() - 600_000,
+    );
+    const okActive = runCli('HIVE_PARK_CLI', ['pam-1', '--reason', 'done'], root);
+    assert.equal(okActive.code, 0, okActive.err);
+    withFleet(
+      root,
+      [{ id: 'pam-1', pendingBackgroundWork: 1, lastActiveSecAgo: 5 }],
+      Date.now() - 600_000,
+    );
+    const pendActive = runCli('HIVE_PARK_CLI', ['pam-1', '--reason', 'done'], root);
+    assert.notEqual(pendActive.code, 0);
+    assert.match(pendActive.err, /pending background task/);
+  });
+});
+
 test('syntax: both emitted CLIs parse as standalone node scripts', () => {
   for (const name of ['HIVE_PARK_CLI', 'HIVE_RECALL_CLI']) {
     const file = path.join(os.tmpdir(), `syn-${name}.cjs`);
