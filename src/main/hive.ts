@@ -3846,6 +3846,7 @@ export class HiveManager {
           id: string;
           name?: string;
           role?: string;
+          provider?: string;
           isGod?: boolean;
           breaker?: string;
           tokens?: number;
@@ -3869,7 +3870,11 @@ export class HiveManager {
 
       const pool = (
         Array.isArray((snap as { vacation?: unknown[] }).vacation)
-          ? (snap as { vacation: Array<{ id: string; name?: string; role?: string }> }).vacation
+          ? (
+              snap as {
+                vacation: Array<{ id: string; name?: string; role?: string; provider?: string }>;
+              }
+            ).vacation
           : []
       )
         .slice()
@@ -3878,7 +3883,16 @@ export class HiveManager {
         ? ` ON VACATION (parked, zero cost, FETCHABLE — prefer fetching a fitting one back over spawning anyone new): ` +
           // A missing role must LOOK missing (registry-role-overwrite incident
           // 2026-08-19) — never a placeholder that reads like a description.
-          `${pool.map((v) => `${v.id}${v.name ? ` "${v.name}"` : ''} (${v.role ?? 'role: unknown'})`).join('; ')}.`
+          `${pool
+            .map(
+              (v) =>
+                `${v.id}${v.name ? ` "${v.name}"` : ''} (engine=${v.provider ?? 'claude'}, ${
+                  // A missing role must LOOK missing (registry-role-overwrite incident
+                  // 2026-08-19) — never a placeholder that reads like a description.
+                  v.role ?? 'role: unknown'
+                })`,
+            )
+            .join('; ')}.`
         : '';
 
       // FLOOR SEATS (card agent-harness-floormaxagents-s-2026-08-17): the
@@ -3958,7 +3972,11 @@ export class HiveManager {
                 ? `${Math.round(s / 60)}m`
                 : `${Math.round(s / 3600)}h`;
         const slimRows = agents.map((a) => {
-          const bits = [short(a.lastActiveSecAgo)];
+          // Engine first (card agent-roster-line-carries-no-e-2026-08-21): the
+          // slim line rides most turns, and an engine-blind orchestrator
+          // mis-routes engine-specific work. 'claude' is the historical default
+          // for rows written before the field existed (same call hive-roster makes).
+          const bits = [`engine=${a.provider ?? 'claude'}`, short(a.lastActiveSecAgo)];
           if (a.pendingBackgroundWork) bits.push(`waiting(${a.pendingBackgroundWork})`);
           if (a.inboxBacklog) bits.push(`inbox ${a.inboxBacklog}`);
           if (a.breaker && a.breaker !== 'ok' && a.breaker !== 'none')
@@ -3988,6 +4006,9 @@ export class HiveManager {
       const shown = agents.slice(0, MAX);
       const rows = shown.map((a) => {
         const bits = [
+          // Engine as a short token per agent (card agent-roster-line-carries-
+          // no-e-2026-08-21) — god's only sanctioned view of who runs on what.
+          `engine=${a.provider ?? 'claude'}`,
           // fleet.json usually carries the 'role: unknown' marker itself (the
           // snapshot builder in index.ts adds it); this fallback covers a stale file.
           a.role ?? 'role: unknown',

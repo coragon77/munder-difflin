@@ -1774,6 +1774,10 @@ function writeFleetSnapshot(): void {
           // and god routed a customer card onto the wrong agent. 'role: unknown'
           // can never be mistaken for a role.
           role: a.role ?? (a.isGod ? 'orchestrator' : 'role: unknown'),
+          // Engine visibility (card agent-roster-line-carries-no-e-2026-08-21):
+          // the roster line is god's only sanctioned engine view — 'claude' is
+          // the historical default for agents spawned before the field existed.
+          provider: a.provider ?? 'claude',
           cwd: a.cwd,
           isGod: !!a.isGod,
           breaker: breaker.levelFor(id),
@@ -1801,6 +1805,7 @@ function writeFleetSnapshot(): void {
         name: a.name,
         // Same rule as the active pool above: absence must look like absence.
         role: a.role ?? 'role: unknown',
+        provider: a.provider ?? 'claude',
         cwd: a.cwd,
         parkedAt: a.vacationSince ?? null,
       }));

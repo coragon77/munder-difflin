@@ -117,6 +117,80 @@ function snapshot(hive, over = {}) {
 
 const context = (res) => res?.hookSpecificOutput?.additionalContext ?? '';
 
+// ── engine visibility (card agent-roster-line-carries-no-e-2026-08-21) ───────
+// registry.json carries each agent's provider, fleet.json + the roster line
+// dropped it — god's ONLY sanctioned view of the floor (the shared-state gate
+// refuses registry.json/fleet.json reads) was engine-blind, so he could neither
+// route engine-specific work nor check an engine hypothesis. The engine rides
+// every surface the line already has: full block, slim line, vacation pool.
+
+test("every roster surface carries each agent's engine as a short token", async (t) => {
+  const { hive } = await floor(t);
+  snapshot(hive, {
+    agents: [
+      {
+        id: 'god-1',
+        name: 'Michael',
+        role: 'orchestrator',
+        isGod: true,
+        provider: 'claude',
+        breaker: 'ok',
+        tokens: 1,
+        usd: 0,
+        lastActiveSecAgo: 6,
+        inboxBacklog: 0,
+      },
+      {
+        id: 'ada-1',
+        name: 'Ada',
+        role: 'agent',
+        provider: 'pi',
+        breaker: 'ok',
+        tokens: 1,
+        usd: 0,
+        lastActiveSecAgo: 4,
+        inboxBacklog: 0,
+      },
+    ],
+    vacation: [
+      {
+        id: 'creed-1',
+        name: 'Creed',
+        role: 'agent',
+        provider: 'claude',
+        cwd: '/tmp',
+        parkedAt: null,
+      },
+    ],
+  });
+
+  const full = hive.rosterContext();
+  assert.match(full, /god-1[^;]*engine=claude/, 'god row');
+  assert.match(full, /ada-1[^;]*engine=pi/, 'a non-claude row — the whole point');
+  assert.match(
+    full,
+    /creed-1[^;]*engine=claude/,
+    'the fetchable vacation pool too: recall routing needs the fit',
+  );
+
+  // Steady state must not go engine-blind again: the slim line rides most turns.
+  hive.rosterContext('god-1'); // settle
+  const slim = hive.rosterContext('god-1');
+  assert.match(slim, /ada-1[^;]*engine=pi/, 'slim line carries it too');
+});
+
+test('a stale fleet.json row without provider defaults to claude, not garbage', async (t) => {
+  const { hive } = await floor(t);
+  // Rows written before the field existed must read as the historical default
+  // (same call hive-roster makes: the app was claude-only when they spawned).
+  snapshot(hive, {
+    agents: [{ id: 'jim-1', name: 'Jim', role: 'agent', breaker: 'ok', lastActiveSecAgo: 4 }],
+  });
+  const line = hive.rosterContext();
+  assert.match(line, /jim-1[^;]*engine=claude/);
+  assert.ok(!/undefined/.test(line), 'a missing field must not render as text');
+});
+
 test('the roster line carries the whole floor and its state', async (t) => {
   const { hive } = await floor(t);
   assert.equal(hive.rosterContext(), null, 'no snapshot yet — inject nothing rather than noise');
