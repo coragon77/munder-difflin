@@ -36,6 +36,9 @@ Out:
 | Orientation tooling exists (graphify = code structure, MemPalace = session memory) but the authored intent layer was missing until the asol-docs adoption | Stefan, 2026-08-21; commits `216d602`, `31e71a6` |
 | The documentation approach is Stefan's 15+ years of ERP-service practice, codified in the asol-docs skill and applied to the ERP a year earlier | Stefan, 2026-08-21 |
 | The docs burn-down already pays: C2 surfaced a confirmed code bug (kitty-detach typing bypasses the delivery gates; dead read-only veil), recorded in the burn-down tracker | C2 transaction, commit `19142b6` |
+| Token-reduction strategy: recurring model actions codified into harness primitives; direct access to hive JSON files disallowed after the model was seen echoing Python to read them, replaced by an efficient tool-call primitive; "severe gaps" remain | Stefan, 2026-08-21 |
+| The primitive work cut token churn "A LOT", but quality was lost "somewhere along the way" — the loss appeared in the same period as the primitive narrowing and the god-model downgrade | Stefan, 2026-08-21 |
+| Router model today: Opus 5 on high reasoning "works ok" (effort layers: minimal / medium / high / xhigh / max) | Stefan, 2026-08-21 |
 
 ## Decided
 
@@ -43,9 +46,11 @@ Out:
 |---|---|
 | Sequencing: document what exists first — thoroughly, inferring intent where citable — then create the vision document and discuss approaches. "It won't work any other way." | Stefan, 2026-08-21 |
 | "Docs are correct" gate: drift report clean on staleness, integrity, and canon; zero open INTENT markers, each answered by Stefan; every `src/` cluster documented or deliberately driftignored ("Its as you say") | Stefan, 2026-08-21 |
-| Target orchestration: Opus with medium thinking as the god/router, the harness giving it tools "so that it only needs to route and not think so much"; specialised Fable agents as on-demand advisors | Stefan, 2026-08-21 |
+| Target orchestration: Opus as the god/router, the harness giving it tools "so that it only needs to route and not think so much"; specialised Fable agents as on-demand advisors (effort level: still open, see Open questions) | Stefan, 2026-08-21 |
 | Agents are authorized to merge and push — "authorized and encoded in the harness days ago" (where it is encoded: see Open questions) | Stefan, 2026-08-21 |
 | The vision document gets created and the approach discussion happens with a fresh Fable session once the docs gate is met | Stefan, 2026-08-21 |
+| Continue codifying model actions into primitives and close the gaps: "This is something I will work on as well." | Stefan, 2026-08-21 |
+| Structure over judgment as the design principle for the god seat ("structure \> judgement for weaker models" — noting Opus is still a frontier model, not a minor local one) | Stefan, 2026-08-21 |
 
 ## Open questions
 
@@ -56,6 +61,22 @@ Out:
 | How does Michael know when to consult an advisor without Stefan prompting each time? | Stefan | V2 approach discussion |
 | What exact tool/context surface must the harness give the router-god so routing needs no deep thinking? | Stefan | V2 approach discussion |
 | What does an advisor like Robert receive as input — raw access to docs/cards/repo, or Michael's digest? | Stefan | V2 approach discussion |
+| Router effort level — Stefan leans but has not decided: "Medium would be better for the costs but I am not opposed to let it run on high." | Stefan | Re-measuring cost after the docs gate; V2 |
+| Which of the proposed primitive design rules (next section) get adopted? | Stefan | V2 approach discussion |
+
+## Captured discussion — primitives and the token economy (2026-08-21)
+
+> ⚠ **Review needed before V2 relies on this.** This section was written from one conversation, on Stefan's instruction to capture it now. Claude did not have the full harness structure in context — it worked only from what Stefan described. Check every claim here against the real harness (the primitive layer and shared-state gate documented in `HIVE.md` §2–§3) before treating it as accurate; the built gate may already contradict parts of the analysis.
+
+**The quality-loss hypothesis (unverified).** When the god read hive JSON by hand, the wasteful full-file reads had a side effect: the model saw fields and state it was not asking about — peripheral vision, which is where "the picture" lives. A primitive returns only the requested slice. Narrowing reads therefore removes the accidental picture-maintenance mechanism, which matches the observed symptom (sharp on the slice, blind to the floor). The primitive narrowing and the god-model downgrade happened in the same period; the quality cliff is plausibly both, stacked.
+
+**Proposed design rules — input to V2, not decisions** (captured on Stefan's instruction; proposed by Claude in discussion):
+
+- **Narrow writes, wide reads.** Writes are always primitives (validated, atomic, safe). Reads need two tiers: the targeted query primitives, plus one cheap panoramic digest of the whole floor (agents, states, queue depths, open cards, anomalies) that restores the picture the raw reads used to provide by accident. The standup mechanism is the embryo of this.
+- **Every primitive gets a documented contract in the doc layer** — what it does, what it deliberately does not, when to reach for it. An undocumented primitive gets re-derived or misused.
+- **Gaps need a sanctioned fallback.** The Python-echoing was the model improvising around a missing primitive. Where a gap exists and raw access is refused, the model stalls or hacks around it. The merge/push argument may partly be this shape: capability encoded, policy not legible.
+- **Let usage write the API.** Log every fallback to shell or manual access; that log is the backlog for the next primitives.
+- **Effort economics.** Structure reduces the number of decisions; effort level multiplies the cost per decision. High effort on a router that mostly dispatches may cost less than medium on one that thinks constantly — re-measure after the docs gate instead of pre-deciding.
 
 ## Living rules
 
