@@ -4628,6 +4628,12 @@ ipcMain.handle('hive:registry', () => hive.registry());
 ipcMain.handle('hive:board', () => hive.board());
 ipcMain.handle('hive:tasks', () => hive.tasks());
 ipcMain.handle('hive:log', (_evt, n: unknown) => hive.logTail(typeof n === 'number' ? n : 200));
+// Renderer-side writer for the hive event feed (nudge lifecycle: enqueued /
+// delivered / dropped). appendLog stamps ts and is append-only + best-effort.
+ipcMain.handle('hive:appendLog', (_evt, event: unknown) => {
+  if (event && typeof event === 'object' && !Array.isArray(event))
+    hive.appendLog(event as Record<string, unknown>);
+});
 ipcMain.handle('hive:memory', (_evt, id: unknown) =>
   typeof id === 'string' ? hive.memory(id) : '',
 );

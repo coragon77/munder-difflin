@@ -21,6 +21,7 @@ import {
   terminalReadyToReceive,
 } from '../../../shared/providerAutomation';
 import { isFyiMail } from '../../../shared/hiveMail';
+import { decideInboxWake, type NudgeDelivery } from '../../../shared/inboxWake';
 import { DEFAULT_CONTEXT_TRIGGER, type ContextRule } from '../../../shared/triggers';
 import type { AgentProvider } from '../../../shared/agentProvider';
 import {
@@ -268,10 +269,14 @@ function passesContextPressure(a: Agent, rule: ContextRule): boolean {
  *      doesn't stall while an agent sits at its prompt.
  */
 export function useHive(config: HarnessConfig | null): void {
-  // Per-agent dedup key for the inbox-wake nudge: the newest inbox message id we
-  // last nudged about. Keyed by id (not count) so an oscillating count after a
-  // drain doesn't re-nudge for the same message set.
-  const nudged = useRef<Record<string, string>>({});
+  // Per-agent inbox-wake reconciler state: the last nudge whose DELIVERY ACK
+  // fired (mail id it vouched for + wall-clock). Written ONLY by effect #4's
+  // ack callback — never at enqueue — so a nudge that leaves the queue without
+  // reaching the pane (3 failed pty writes, clear-queue, delivered-but-
+  // swallowed) stays "unread" to the reconciler and gets re-nudged. Ack is NOT
+  // receipt: once the TTL elapses with the mail still in inbox/ the same id
+  // re-nudges (Cause A). See shared/inboxWake.ts.
+  const nudged = useRef<Record<string, NudgeDelivery>>({});
   // Per-agent first-sighting of the newest actionable inbox message — starts the
   // per-provider nudge grace clock (monitor-capable agents wake themselves;
   // the typed nudge is only the fallback once the grace elapses).
@@ -795,49 +800,52 @@ export function useHive(config: HarnessConfig | null): void {
                 .sort()
                 .slice(-1)[0]
             : '';
-          if (newest && nudged.current[a.id] !== newest) {
-            // Per-provider grace: a monitor-capable agent armed its own inbox
-            // monitor at boot (~1s poll), so give it the head start before the
-            // typed fallback fires. 0 for providers without a monitor — their
-            // nudge latency is unchanged. A NEWER message restarts the clock:
-            // the monitor gets a fresh wake chance for it too.
-            const seen = inboxWakeSeen.current[a.id];
-            if (!seen || seen.id !== newest)
-              inboxWakeSeen.current[a.id] = { id: newest, since: Date.now() };
-            const grace = nudgeGraceMsForProvider(inferAgentProvider(a.command, a.provider));
-            if (Date.now() - inboxWakeSeen.current[a.id].since < grace) continue;
-            // ONE nudge in flight at a time. The nudge text is generic ("read
-            // your inbox") — it covers every unread message, so a second one
-            // queued while the first is still undelivered would only produce a
-            // duplicate wake the moment the agent goes idle. Advance `nudged`
-            // ONLY on a real enqueue: if this nudge is suppressed (or a later
-            // one dropped as stale at delivery), the next poll re-nudges for
-            // whatever is still unread.
-            const queued = useStore.getState().messageQueues[a.id] ?? [];
-            if (!queued.some((m) => m.inboxFor)) {
-              // Session naming (card session-naming-seed-20260816): this nudge is
-              // a fresh hire's FIRST typed user turn, and CLIs name the session
-              // after it — so a labeled spawn leads with its engagement label
-              // instead of the generic "check your inbox…". The instructions are
-              // unchanged (read inbox, act, .done/, autonomy); only the lead
-              // changes. Unlabeled agents (god, human hires, pre-label spawns)
-              // keep today's exact text.
-              const label = a.spawnLabel?.trim();
-              useStore
-                .getState()
-                .enqueueMessage(
-                  a.id,
-                  label
-                    ? `${label} — read your hive inbox for the full dispatch, act on it now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.`
-                    : 'You have new hive inbox message(s) — read your inbox, act on them now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.',
-                  { inboxFor: newest },
-                );
-              nudged.current[a.id] = newest;
-            }
-          } else if (!newest) {
-            nudged.current[a.id] = '';
-            delete inboxWakeSeen.current[a.id];
+          // RECONCILER, not edge-trigger: decide from observable state every
+          // tick — mail still in inbox/, a nudge in the queue, or a DELIVERED
+          // nudge inside the TTL. Nothing is remembered at enqueue, so every
+          // unsafe queue exit (failed writes, clear-queue, swallowed delivery)
+          // self-heals on the next tick instead of silencing the agent forever
+          // (card agent-nudge-is-edge-triggered--2026-08-21).
+          const decision = decideInboxWake({
+            newest,
+            nudgeInQueue: (useStore.getState().messageQueues[a.id] ?? []).some((m) => m.inboxFor),
+            graceMs: nudgeGraceMsForProvider(inferAgentProvider(a.command, a.provider)),
+            now: Date.now(),
+            lastDelivery: nudged.current[a.id],
+            wakeSeen: inboxWakeSeen.current[a.id],
+          });
+          if (decision.wakeSeen) inboxWakeSeen.current[a.id] = decision.wakeSeen;
+          else delete inboxWakeSeen.current[a.id];
+          if (!newest) {
+            delete nudged.current[a.id];
+            continue;
           }
+          if (!decision.enqueue) continue;
+          // Session naming (card session-naming-seed-20260816): this nudge is
+          // a fresh hire's FIRST typed user turn, and CLIs name the session
+          // after it — so a labeled spawn leads with its engagement label
+          // instead of the generic "check your inbox…". The instructions are
+          // unchanged (read inbox, act, .done/, autonomy); only the lead
+          // changes. Unlabeled agents (god, human hires, pre-label spawns)
+          // keep today's exact text.
+          const label = a.spawnLabel?.trim();
+          useStore
+            .getState()
+            .enqueueMessage(
+              a.id,
+              label
+                ? `${label} — read your hive inbox for the full dispatch, act on it now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.`
+                : 'You have new hive inbox message(s) — read your inbox, act on them now, and move handled ones to inbox/.done/. Act autonomously; only message god if you genuinely need a decision.',
+              { inboxFor: newest },
+            );
+          // NO `nudged` advance here — that was the edge-trigger bug. Effect #4
+          // records the delivery in its ack callback; the reconciler re-decides
+          // from observable state on the next tick.
+          void window.cth.hiveAppendLog({
+            kind: 'nudge_enqueued',
+            agentId: a.id,
+            mailId: newest,
+          });
         } catch {
           /* ignore */
         }
@@ -950,6 +958,12 @@ export function useHive(config: HarnessConfig | null): void {
         const inbox = await window.cth.hiveInbox(target.id).catch(() => null);
         if (inbox && !inbox.some((m) => m.id === next.inboxFor)) {
           removeQueuedMessage(srcId, next.id);
+          void window.cth.hiveAppendLog({
+            kind: 'nudge_dropped',
+            agentId: target.id,
+            mailId: next.inboxFor,
+            reason: 'stale',
+          });
           return { sent: false };
         }
       }
@@ -1002,6 +1016,17 @@ export function useHive(config: HarnessConfig | null): void {
             ),
           () => {
             removeQueuedMessage(srcId, next.id);
+            // Record the DELIVERY of an inbox nudge — the only thing that
+            // suppresses re-nudging (effect #3's reconciler). Never recorded at
+            // enqueue: a nudge can still be dropped or swallowed after that.
+            if (next.inboxFor) {
+              nudged.current[target.id] = { id: next.inboxFor, at: Date.now() };
+              void window.cth.hiveAppendLog({
+                kind: 'nudge_delivered',
+                agentId: target.id,
+                mailId: next.inboxFor,
+              });
+            }
             // Zero the gauge on a DELIVERED /clear — the new session's context
             // isn't known until statusLine fires after the first post-clear
             // response, so leaving it at the old value shows a stale-full bar.
@@ -1033,6 +1058,13 @@ export function useHive(config: HarnessConfig | null): void {
         if (attempts >= MAX_SEND_ATTEMPTS) {
           delete sendFailures[next.id];
           removeQueuedMessage(srcId, next.id);
+          if (next.inboxFor)
+            void window.cth.hiveAppendLog({
+              kind: 'nudge_dropped',
+              agentId: target.id,
+              mailId: next.inboxFor,
+              reason: 'pty-write-failed',
+            });
           console.warn(
             `[queue-drain] dropping message ${next.id} for ${target.id} after ${attempts} failed pty writes ` +
               `("${next.text.slice(0, 80)}${next.text.length > 80 ? '…' : ''}")`,

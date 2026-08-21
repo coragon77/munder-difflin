@@ -1086,13 +1086,27 @@ export const useStore = create<State>((set) => ({
       persistQueues(messageQueues);
       return { messageQueues };
     }),
-  clearQueue: (agentId) =>
+  clearQueue: (agentId) => {
+    const cleared = useStore.getState().messageQueues[agentId] ?? [];
     set((s) => {
       if (!s.messageQueues[agentId]?.length) return s;
       const messageQueues = { ...s.messageQueues, [agentId]: [] };
       persistQueues(messageQueues);
       return { messageQueues };
-    }),
+    });
+    // Nudge lifecycle: a user-cleared inbox nudge is one of the queue exits
+    // that never reaches the pane — log it so the silence is diagnosable, and
+    // the reconciler re-enqueues on its next tick if the mail is still unread.
+    for (const m of cleared) {
+      if (m.inboxFor)
+        void window.cth?.hiveAppendLog?.({
+          kind: 'nudge_dropped',
+          agentId,
+          mailId: m.inboxFor,
+          reason: 'queue-cleared',
+        });
+    }
+  },
   reconcileWithLivePtys: (livePtyIds) =>
     set((s) => {
       const live = new Set(livePtyIds);

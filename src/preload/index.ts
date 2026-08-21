@@ -903,6 +903,10 @@ const api = {
     meta: { name?: string; role?: string; officeCharacter?: string; officeAccent?: string },
   ): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('hive:setAgentMeta', id, meta),
   hiveLog: (n?: number): Promise<unknown[]> => ipcRenderer.invoke('hive:log', n ?? 200),
+  /** Append one lifecycle event to the hive's append-only log.jsonl — the
+   * renderer half of the nudge lifecycle log (enqueued/delivered/dropped). */
+  hiveAppendLog: (event: Record<string, unknown>): Promise<void> =>
+    ipcRenderer.invoke('hive:appendLog', event),
   hiveMemory: (id: string): Promise<string> => ipcRenderer.invoke('hive:memory', id),
   hiveInbox: (id: string): Promise<HiveMessage[]> => ipcRenderer.invoke('hive:inbox', id),
   /** Voice read-layer: recent message CONTENT (inbox/outbox bodies), REDACTED in

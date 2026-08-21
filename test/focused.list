@@ -165,3 +165,4 @@ test/dispatch-premises.test.cjs
 test/pi-settings-reconcile.test.cjs
 test/staged-hold-busy-extend.test.cjs
 test/hive-retarget-cli.test.cjs
+test/inbox-wake-reconcile.test.cjs
