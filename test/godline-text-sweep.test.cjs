@@ -59,6 +59,38 @@ test('godLine VACATION paragraph documents whenQuiet holding', () => {
   );
 });
 
+test('godLine anti-pattern (3) names the SCOPE FOLD and the BUNDLE TEST (2026-08-21)', () => {
+  // Adjudicated wording (Robert, card agent-godline-name-the-scope-f-2026-08-21):
+  // card-lifecycle rules never catch the fold because no card is ever held —
+  // the text must name the maneuver itself. Do not paraphrase: both adjudicated
+  // cases hang on it (Alfred's R1+F2/F3/F4 bundle stays legitimate; folding an
+  // orient-gate nit into Jessica's watcher card stays hoarding).
+  const p = injectedPrompt.call(null, GOD, '/agents/god', '/hive', false, false);
+  assert.ok(/SCOPE FOLD/.test(p), 'anti-pattern 3 names the SCOPE FOLD disguise');
+  assert.ok(
+    /run the BUNDLE TEST/.test(p),
+    'the BUNDLE TEST fires the moment you write "add it to <agent>\'s card"',
+  );
+  assert.ok(
+    /ONE diff — same file\(s\), same branch, one gate run, inseparable at merge/.test(p),
+    'bundling is legitimate only for ONE diff (Alfred R1+F2/F3/F4 stays legitimate)',
+  );
+  assert.ok(
+    /names the PERSON \(author, expert, "already in that area"\) or the SUBSYSTEM rather than the DIFF/.test(
+      p,
+    ),
+    'person/subsystem justification is hoarding (the watcher-card fold stays hoarding)',
+  );
+  assert.ok(
+    /FINDINGS BECOME CARDS BEFORE OWNERS ARE CHOSEN/.test(p),
+    'findings become cards before owners are chosen',
+  );
+  assert.ok(
+    /fits != authored/.test(p),
+    'roster-first rider: authorship is never by itself a routing reason while the author is busy and seats are free',
+  );
+});
+
 test('every sole-scribe text names the standup-clerk exception (f415122)', () => {
   // god prompt, both lean and god integration modes + the godLine guardrails
   for (const args of [
