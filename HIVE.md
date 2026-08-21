@@ -1,8 +1,8 @@
 # The Hive — autonomous multi-agent layer
 
-- **Coverage:** `src/main/hive.ts`, `src/main/hiveGate.ts`, `src/main/memory.ts`, `src/main/roster.ts`, `src/shared/hiveMail.ts`, `hive/`
+- **Coverage:** `src/main/hive.ts`, `src/main/hiveGate.ts`, `src/main/memory.ts`, `src/main/roster.ts`, `src/main/actionableCards.ts`, `src/main/actionableWatch.ts`, `src/main/cardSessions.ts`, `src/main/orientGate.ts`, `src/main/orientInject.ts`, `src/main/sessionRequests.ts`, `src/main/standup.ts`, `src/shared/hiveMail.ts`, `hive/`
 - **Depends on:** [Munder Difflin Spec](docs/architecture/spec.md)
-- **Last Updated:** 2026-08-16
+- **Last Updated:** 2026-08-21
 
 > How Munder Difflin turns a room full of independent `claude`
 > processes into a collaborating, self-coordinating team with persistent memory,
@@ -42,10 +42,21 @@ stream, retrieval, reflection, and planning.
    corruption with many concurrent agents, **only the Electron main process
    commits**. Agents never call git — they write plain files. (Research:
    GitHub Desktop's commit-queue pattern; lazygit/git-retry backoff.)
+   *Built refinements:* `bin/hive-card restore` reads past ledger versions out
+   of the hive's own git history — read-only `git log`/`show`, the main process
+   stays the only committer (f7f62cc) — and churny append-only live files are
+   deliberately untracked (`cost-ledger.jsonl`, 1603014).
 2. **Single-writer-per-file.** Each agent writes only inside its own
    `agents/<id>/` directory. Cross-agent delivery happens by the **router**
    (main process) moving messages from a sender's `outbox/` into a recipient's
    `inbox/`. No file is ever written by two processes.
+   *Built differently:* shared state (`tasks.json`, `registry.json`) is
+   multi-writer by design — the main process **and** the generated
+   `bin/hive-*` primitives — serialized by O_EXCL lock files
+   (`tasks.json.lock`: 5174788, 32c5eaa; one shared `registry.json.lock`
+   across CLI and main-process setters: 7cb3969). Every *non-primitive*
+   access is refused by the god-scoped PreToolUse shared-state gate
+   (`src/main/hiveGate.ts`, a7076bb; reads included since 26d7de2).
 3. **God-mode autonomy, native HITL.** A privileged **god agent** (lives in
    Michael's room) adjudicates cross-agent traffic. Routine requests
    (clarifications, data asks, plan tweaks) it resolves itself and the system
@@ -77,14 +88,19 @@ hive/
   registry.json          # roster: every agent, role, capabilities, status, seat
   board.md               # shared blackboard / co-authored plans
   tasks.json             # task ledger (id, assignee, spec, status, result ref)
+  tasks.json.lock        # O_EXCL lock shared by main process + CLIs (5174788, 32c5eaa)
+  fleet.json             # near-live floor snapshot; rebuilt on roster flips, not just the beat (15d18e6)
   log.jsonl              # append-only event feed (drives the UI activity stream)
-  spawn-requests/         # drop a JSON here to hire: ephemeral workers, standing interns
-  fire-requests/          # god fires an intern (intern-scoped; human hires stay human surfaces)
+  bin/                   # generated lifecycle primitives — the sanctioned door to shared state (see below)
+  spawn-requests/         # hire queue — written by hive-hire; hand-drops gate-refused (26d7de2)
+  fire-requests/          # god fires an intern via hive-fire (intern-scoped; human hires stay human surfaces)
+  vacation-requests/      # park/recall queue — written by hive-park/hive-recall (788e344)
   agents/<agentId>/
     identity.md          # who am I, my role, my capabilities  (read at start)
     memory.md            # my long-term memory  (I read at start, append as I learn)
     inbox/               # messages delivered TO me — <ts>-<msgid>.json
     inbox/.done/         # processed messages (kept for audit, not deleted)
+    inbox/.staged/       # mail held invisible until the card's conversation exists (09ddde2)
     outbox/              # messages I want to SEND — router drains these
     cursor.json          # { lastProcessed: <msgid> }  — avoids reprocessing
 ```
@@ -94,7 +110,20 @@ Design rules that make this robust:
   a co-edited shared mailbox file (those conflict under git).
 - **Append-only** `log.jsonl`; consumers track their own cursor.
 - `board.md` is the one genuinely co-edited file — it goes through the god agent
-  (single scribe) to avoid conflicts.
+  (single scribe) to avoid conflicts. One built exception: the standup clerk
+  appends a single escalation line per anomalous standup (f415122; sole-scribe
+  texts swept in 23bd03b).
+
+**Built on top of this layout (the 2026-08-17→21 "primitive wave"):** shared
+state is no longer touched by hand. `ensureHive` regenerates `bin/` at every
+boot — `hive-card` add/status/update/list/show/ask/prune-done/restore (5174788,
+40d86ac, 7cb1733, bf8a8fe, 3ab7355, f7f62cc), `hive-mail` (d66e1d7; bodies with
+`$`/backticks go via stdin, 533375e), `hive-dispatch` + `hive-inbox` (a20f75a),
+`hive-hire`/`hive-fire` (0875b5a), `hive-park`/`hive-recall` (788e344),
+`hive-roster` show/list (357610e), `hive-new` (0a94b09), `hive-retarget`
+(6e69f80), `hive-restart-window` (1f976fc). `hive-dispatch` is the **only**
+todo→doing path (de2b141), and every writer CLI refuses a dead `HIVE_ROOT`
+before touching disk (1c27440, the phantom-hive mail-loss fix).
 
 ---
 
@@ -125,6 +154,13 @@ Anti-livelock rules: only `request`/`query`/`propose` obligate a reply (pure
 god agent escalates instead of letting two agents loop forever; re-seeing a
 processed `id` is a no-op (idempotent via cursor).
 
+Built envelope extensions: `cardId` ties a human-task mail to its card so god
+adopts instead of minting a twin (40d86ac); `foldedIds`/`pointedIds` make
+dispatch-contract mail-folding idempotent (a006908, 40bd9cb). The router has
+stamped `from` since inception (`normalize`, dc7f1ce), so `from:god` is
+unforgeable by peers — 2476ac5 shipped the *rule text* relying on that fact
+(god-relayed operator authorization), no envelope change.
+
 ---
 
 ## 5. Control flow
@@ -151,6 +187,16 @@ agent C keeps working: reads the messages, acts, replies via its own outbox
 The same hook socket drives the avatars: `PreToolUse`/`PostToolUse` payloads move
 an agent to the right station (replacing today's `mockEvents.ts` / PTY-scraping).
 
+Built refinements to delivery: while an assignee holds a doing card whose
+card-scoped conversation is not yet established, `deliver()` stages mail in
+`inbox/.staged` — invisible to every wake rail until the session stamp lands
+(09ddde2) — and a dispatch contract absorbs the assignee's other pending mail
+into its own body (budgeted, idempotently folded), so an agent can never read
+the dispatch and miss the mail beside it (4924149). A stalled outbox is
+detected once per episode and self-healed by a backstop `routeOnce()` on the
+fleet tick (7fcb8bd). Registered worker-to-worker mail drops a no-wake audit
+CC into god's inbox (a3cf1e6).
+
 ---
 
 ## 6. The god agent (orchestrator)
@@ -159,19 +205,33 @@ A fixed, always-on agent seated at `desk-ceo` (Michael's room), `character:
 michael`, flagged `isGod`. It is an ordinary `claude` process — the *intelligence*
 — while the main process is the *mechanism* (git, sockets, routing). It owns:
 
-- **Roster & routing** (`registry.json`): who exists, their capabilities, status.
+- **Roster & routing** (`registry.json`): who exists, their capabilities,
+  status — consumed via the auto-injected LIVE ROSTER line (slim per prompt,
+  full block only on roster change, 16a6def) and the read-only
+  `hive-roster show/list` (357610e); raw `registry.json`/`fleet.json` reads
+  are gate-refused (26d7de2).
 - **Adjudication**: read each outbound request; resolve routine ones itself
   (answer clarifications, route to the right specialist with a self-contained
   task spec), escalate only critical ones. This is "god mode."
 - **Blackboard scribe**: the single writer of `board.md`, so shared plans never
-  conflict.
-- **Task ledger** (`tasks.json`): assign, track, retry, checkpoint.
-- **Hiring & firing**: mints ephemeral workers and standing interns via
-  `spawn-requests/` (honoring the worker-bypass setting) and fires interns via `fire-requests/`;
-  human-made hires stay human surfaces.
+  conflict (built exception: the standup clerk's escalation line, f415122).
+- **Task ledger** (`tasks.json`): assign, track, retry, checkpoint — through
+  `hive-card`/`hive-dispatch` only; hand-edits are gate-refused (a7076bb) and
+  `hive-dispatch` owns the todo→doing flip (de2b141).
+- **Hiring & firing**: mints standing interns with `hive-hire` and fires them
+  with `hive-fire` — the CLIs own the spawn-/fire-request JSON (0875b5a,
+  honoring the worker-bypass setting); ephemeral workers are gated OFF by
+  default (`workersEnabled`, da8f0c3); parks/recalls ride
+  `hive-park`/`hive-recall` (788e344) with an evidence-gated auto-park sweep
+  for idle agents (1f8d75c); human-made hires stay human surfaces.
 
 Its escalation policy (what counts as "critical") lives in its system prompt and
-is the primary control surface — tune the prompt, not the code.
+is the primary control surface — tune the prompt, not the code. Since the
+primitive wave that split has hardened: rules that must *hold* are mechanism,
+not prose — the paused hold is god-only in the CLI (2ecb500), the operator's
+holds are enforced at the doing flip itself (de2b141), and the shared-state
+gate has no override flag (a7076bb) — while judgment (escalation, parking
+evidence, dispatch contracts) stays in the prompt.
 
 ---
 
