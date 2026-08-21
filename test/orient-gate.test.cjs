@@ -492,3 +492,133 @@ test('24 — a heredoc-fed dispatch body is prose, not access', () => {
   });
   assert.equal(res.deny, null);
 });
+
+// 25. review round 2, finding 1a: a command AFTER a completed heredoc must
+// not be absorbed into the primitive segment.
+test('25 — a read after a heredoc terminator still denies', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: "hive-dispatch --card c <<'EOF'\nbody\nEOF\ncat " + MERLIN + '/qbase/manage.py',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the post-heredoc read denies');
+  assert.match(res.deny, new RegExp(MERLIN));
+});
+
+// 26. round 2, finding 1b: the introducer-line TAIL after <<EOF (a pipe)
+// is a real command — the heredoc body belongs to the primitive, the tail
+// does not.
+test('26 — a pipe tail on the heredoc introducer line still denies', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-dispatch --card c <<EOF | cat ' + MERLIN + '/qbase/manage.py\nbody\nEOF',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the pipe tail denies');
+  assert.match(res.deny, new RegExp(MERLIN));
+});
+
+// 27. round 2, finding 2: herestrings, comments, and spaced delimiters are
+// not heredocs that swallow the next command.
+test('27 — herestring / comment / spaced-delimiter lines do not swallow the next command', () => {
+  const a = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list <<<x\ncat ' + MERLIN + '/qbase/manage.py' },
+    sessionId: 's1',
+  });
+  assert.ok(a.deny, 'herestring: the next line denies');
+
+  const b = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list # <<EOF\ncat ' + MERLIN + '/qbase/manage.py' },
+    sessionId: 's1',
+  });
+  assert.ok(b.deny, 'comment: the next line denies');
+
+  const c = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command:
+        'hive-dispatch --card c << EOF\nprose merlin_hlog here\nEOF\ncat ' +
+        MERLIN +
+        '/qbase/manage.py',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(c.deny, 'spaced delimiter: body prose does not deny, the next line does');
+});
+
+// 28. round 2, finding 3: UNQUOTED command substitution with split chars
+// must not fracture the segment — the substitution body is real access.
+test('28 — unquoted $(…) with pipes denies, not fractures', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-park k --reason $(cat ' + MERLIN + '/qbase/manage.py | true)' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the unquoted substitution body denies');
+});
+
+// 29. round 2, finding 4: process substitution bodies are real access.
+test('29 — process substitution <(…) bodies deny', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-park k --reason <(cat ' + MERLIN + '/qbase/manage.py)' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the process substitution body denies');
+});
+
+// 30. round 2, finding 5: quoted redirect operands still open the file.
+test('30 — quoted redirect operands deny', () => {
+  const in_ = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list < "' + MERLIN + '/qbase/manage.py"' },
+    sessionId: 's1',
+  });
+  assert.ok(in_.deny, 'quoted input redirect denies');
+  const out_ = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-card list > "' + MERLIN + '/qbase/manage.py"' },
+    sessionId: 's1',
+  });
+  assert.ok(out_.deny, 'quoted output redirect denies');
+});
+
+// 31. round 2, finding 7: heredoc-body expansions follow the DELIMITER's
+// quoting — quoted delimiter: prose (pass); unquoted: live (deny).
+test('31 — heredoc bodies expand per delimiter quoting', () => {
+  const quoted = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command:
+        "hive-dispatch --card c <<'EOF'\nsee $(cat " + MERLIN + '/qbase/manage.py) in prose\nEOF',
+    },
+    sessionId: 's1',
+  });
+  assert.equal(quoted.deny, null, 'quoted delimiter: body is literal prose');
+
+  const live = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-dispatch --card c <<EOF\nsee $(cat ' + MERLIN + '/qbase/manage.py)\nEOF',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(live.deny, 'unquoted delimiter: body substitution is live access');
+});
+
+// 32. round 2, finding 8: fd-dup `2>&1` mid-arguments is not a background
+// split — the primitive and its prose stay one segment.
+test('32 — fd-dup 2>&1 mid-args does not fracture the primitive', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'hive-dispatch --card c 2>&1 --body "work in merlin_hlog today"' },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null);
+});
