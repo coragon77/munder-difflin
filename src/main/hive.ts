@@ -5495,6 +5495,16 @@ function withStateLock(fn) {
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
       try {
+        // A SIGKILLed holder never unlinks: the lock carries its pid, and a
+        // dead holder IS stale right now. Without this the mtime break below
+        // (30s) can never fire before the 15s deadline, so every kill that
+        // lands mid-lock freezes the lifecycle for the whole wait
+        // (flake 2026-08-21: status timed out on a watcher killed mid-publish).
+        const holder = Number.parseInt(fs.readFileSync(lockPath, 'utf8'), 10);
+        if (Number.isInteger(holder) && holder > 0 && !pidAlive(holder)) {
+          fs.unlinkSync(lockPath);
+          continue;
+        }
         if (Date.now() - fs.statSync(lockPath).mtimeMs > 30000) {
           fs.unlinkSync(lockPath);
           continue;
@@ -5673,7 +5683,13 @@ function buildCommand() {
 // the checkout sha. Any failure throws and lands in the shared failed/ABORT
 // channel — never a silent or false "completed".
 function verifyLiveBuild(repo, cmd) {
-  const startedAt = Date.now();
+  // Watermark FILE, not Date.now(): inode mtimes come from the kernel's coarse
+  // clock and can trail wall time by up to a tick (~4ms), so a fast build can
+  // read as pre-merge when compared against Date.now() (flake 2026-08-21).
+  // Two file mtimes share that clock, so their order is trustworthy.
+  const watermark = path.join(repo, '.git', 'md-restart-build-watermark');
+  fs.writeFileSync(watermark, String(process.pid), 'utf8');
+  const watermarkMtimeMs = fs.statSync(watermark).mtimeMs;
   log('building live checkout: ' + cmd);
   // ponytail: a SIGTERM arriving mid-spawnSync runs its handler only after the
   // sync call returns — scope-stop escalation can SIGKILL first during a long
@@ -5696,10 +5712,15 @@ function verifyLiveBuild(repo, cmd) {
   } catch (error) {
     throw new Error('live build produced no out/main/index.js — refusing to call the batch complete');
   }
+  try {
+    fs.unlinkSync(watermark);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   // ponytail: mtime+size prove the artifact came from THIS post-merge build; a
   // dev server relaunched mid-merge overwriting it afterwards still writes
   // merged code, so byte-level comparison (a second build) buys nothing.
-  if (stat.size === 0 || stat.mtimeMs < startedAt) {
+  if (stat.size === 0 || stat.mtimeMs < watermarkMtimeMs) {
     throw new Error('out/main/index.js was not rebuilt after the merge — refusing to call the batch complete');
   }
   log('live build verified: out/main/index.js rebuilt from the merged tree');
