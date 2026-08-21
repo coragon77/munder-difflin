@@ -293,18 +293,34 @@ function shellWords(segment: string): string[] {
  *  calls (`…/bin/hive-card …`) and the bundled-node launcher
  *  (`"$HIVE_NODE" "$HIVE_ROOT/bin/hive-restart-window" …`). Works on
  *  quote-aware WORDS: env assignments and wrappers are skipped at word
- *  level, and the exec basename must match the primitive regex EXACTLY. */
+ *  level, and the exec basename must match the primitive regex EXACTLY
+ *  (quotes stripped — a fragment-quoted `"hive-dispatch"` basename still
+ *  matches). A word that STARTS with a redirect operator (fd digits + < or
+ *  >, e.g. `>/tmp/hive-card`, `2>tasks.json`) is a REDIRECT TOKEN, never
+ *  the executable — skipping it closed a both-gates bypass (round-4
+ *  finding, card agent-orient-gate-fires-on-cal-2026-08-21). */
 function isPrimitiveSegment(words: string[]): boolean {
   let i = 0;
-  while (i < words.length && /^[A-Za-z_]\w*=/.test(words[i] ?? '')) i++;
+  const redirectToken = /^\d*[<>]/;
+  while (
+    i < words.length &&
+    (redirectToken.test(words[i] ?? '') || /^[A-Za-z_]\w*=/.test(words[i] ?? ''))
+  )
+    i++;
   while (i < words.length && ['sudo', 'nohup', 'time', 'exec', 'command'].includes(words[i] ?? ''))
     i++;
   const exec = words[i] ?? null;
   if (!exec) return false;
-  if (PRIMITIVE_RE.test(basename(exec))) return true;
-  if (LAUNCHERS.has(basename(exec))) {
+  const execName = basename(exec)
+    .replace(/^[`'"]+/, '')
+    .replace(/[`'"]+$/, '');
+  if (PRIMITIVE_RE.test(execName)) return true;
+  if (LAUNCHERS.has(execName)) {
     const next = expandRoot(words[i + 1] ?? '', '');
-    if (PRIMITIVE_RE.test(basename(next))) return true;
+    const nextName = basename(next)
+      .replace(/^[`'"]+/, '')
+      .replace(/[`'"]+$/, '');
+    if (PRIMITIVE_RE.test(nextName)) return true;
   }
   return false;
 }

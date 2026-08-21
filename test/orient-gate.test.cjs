@@ -761,3 +761,67 @@ test('41 — empty quoted delimiter terminates on the blank line', () => {
   });
   assert.ok(res.deny, 'the path after the blank-line terminator denies');
 });
+
+// 42. round 4, finding 1: a redirect-prefixed token is never the exec —
+// `>/tmp/hive-card cat <project>` must not ride the primitive exemption.
+test('42 — a redirect token cannot masquerade as the primitive', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: '>/tmp/hive-card cat ' + MERLIN + '/qbase/manage.py',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the trailing real read denies');
+});
+
+// 43. round 4, finding 2: an ESCAPED paren never closes a substitution —
+// the body runs to the real close, and the embedded read denies.
+test('43 — escaped \\) does not close a substitution span', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-park k --reason "$(printf \\); cat ' + MERLIN + '/qbase/manage.py)"',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the substitution body denies');
+});
+
+// 44. round 4, finding 3: two heredocs — the QUOTED first body must stay
+// literal even when an unquoted second heredoc follows on the same line.
+test('44 — quoted body A stays literal beside unquoted body B', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command:
+        "hive-dispatch --card c <<'A' <<B\nsee $(cat " + MERLIN + '/qbase/manage.py)\nA\nx\nB',
+    },
+    sessionId: 's1',
+  });
+  assert.equal(res.deny, null, 'body A is quoted — its substitution text is prose');
+});
+
+// 45. round 4, finding 4: a backslash-newline in the delimiter is a line
+// continuation — the delimiter is EOF, the body ends at its terminator.
+test('45 — delimiter line-continuation lexes as one delimiter', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: {
+      command: 'hive-card list <<EO\\\nF\nbody\nEOF\ncat ' + MERLIN + '/qbase/manage.py',
+    },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the read after the terminated body denies');
+});
+
+// 46. round 4, finding 5: sh -c positional arguments can be read by the
+// script ($1) — they are scanned, not discarded.
+test('46 — sh -c positional path arguments are scanned', () => {
+  const res = gate({
+    toolName: 'Bash',
+    toolInput: { command: 'sh -c \'cat "$1"\' _ ' + MERLIN + '/qbase/manage.py' },
+    sessionId: 's1',
+  });
+  assert.ok(res.deny, 'the positional path denies');
+});

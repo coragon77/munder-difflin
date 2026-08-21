@@ -241,6 +241,18 @@ test('every bin/hive-* primitive invocation passes untouched', () => {
   }
 });
 
+// A redirect token is never the executable: `>/tmp/hive-card cat …` rides
+// no primitive exemption (round-4 finding, card agent-orient-gate-fires-on-
+// cal-2026-08-21 — the exec-position test must skip redirect-prefixed words).
+test('redirect-prefixed hive-* token is NOT a primitive invocation', () => {
+  const { root } = floor();
+  const d = gate(root, root, 'Bash', {
+    command: '>/tmp/hive-card cat "$HIVE_ROOT/tasks.json"',
+  });
+  assert.ok(d, 'refuses: the redirect token is not the exec');
+  assert.match(d.reason, /REFUSED/);
+});
+
 test('compound command: primitive segment passes but hand-edit segment still refuses', () => {
   const { root } = floor();
   const d = gate(root, root, 'Bash', {
