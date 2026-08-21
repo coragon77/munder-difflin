@@ -65,6 +65,7 @@ Expected, not verified: most of `design.md`'s 130 commits apply its rules withou
 
 (appended per chunk as transactions complete)
 
+- **2026-08-21 — C2 committed.** `message-queue.md`: pass — 8 of 19 briefed commits produced edits (new §6 auto-park evidence gate via `1f8d75c`/`926d3b9`/`71b1b90`/`f7a4bd8`/`e9fff4b`; §3 detach-does-not-pause-the-queue via `888f9e4`; §5 QUEUE-box collapse via `37d506d`; `autoPark.ts` key-files row), 11 confirmed no-edit-owed (incl. `dca2267` "send now" — already documented, same-day seed boundary). One VERIFY raised (kitty-detach drafts vs the draft gate) and closed by investigation, **suspicion confirmed real**: the drain can deliver onto a kitty-side draft (`term.onData` never fires for bridge input, `automationStateOf` short-circuits before the buffer read, no gate is detach-aware) *and* the pane's read-only gate is dead (main's detach notify sends both `pty:detached` and `pty:reattached` per state change; handlers ignore the payload, so `entry.detached` settles false). Recorded as a §3 gotcha (Stefan: resolve→gotcha). **Open code bug, out of run scope** — needs a detach-aware delivery gate plus the double-notify fix in `index.ts`; Stefan cards the fix himself (Stefan: tracker note only). Updater coverage notes, accepted as-is: `src/main/index.ts` deliberately not added to Coverage (app-wide entry would flood the drift check; the mechanism is in `autoPark.ts`, and `autoParkSweep()` is named in the doc); auto-park §6 + its glob migrate as one unit if a hive/vacation doc ever exists.
 - **2026-08-21 — C1 committed.** All three transactions reviewer-green. `telemetry.md`: pass — no claim changed; the "nothing not listed here is sent" contract proven intact against `fe49af8a` (the collector has no outbound call); one INTENT marker raised and owner-answered (separate `TelemetryCollector` doc later — see Open questions; marker stays open). `knowledge-graph.md`: pass — zero edits owed, both briefed commits proven cosmetic (reviewer regenerated `117ab988` byte-for-byte with Biome); accretion on top: §6 export/method lists completed (incl. `KG_CORE` in `env()`; `corePath()`/`cliPath()` are private and stay undocumented), stale `index.ts (~1251)` line citation dropped. `memory-graph-spec.md`: pass-with-findings — revised per the accepted recommendation; a dozen cited hunks (status line, Fruchterman–Reingold §6, SVG resolution §7, act-filter "Not built" §8, stroke tokens §9, §10/§12 shipped-reality notes via `7ea347b8`/`737b904f`); its VERIFY closed by investigation citing `21e5156` (icon `'web'` deliberate); Coverage extended with `CommandCenterPanel.tsx` (Stefan). Residual: `knowledge-graph.md` will show 1 stale commit (the adoption commit, same-day `--since` boundary, assessed no-edit-owed) until its date next advances.
 
 ## Living rules
@@ -81,7 +82,7 @@ Ordered smallest-first to shake down the update mechanics before the high-value,
 
 - [x] **C1. telemetry.md + knowledge-graph.md + memory-graph-spec.md**
   - done = all three transactions reviewer-green, markers interviewed, committed; memory-graph-spec update-vs-rebuild answered.
-- [ ] **C2. message-queue.md**
+- [x] **C2. message-queue.md**
   - done = transaction reviewer-green, markers interviewed, committed.
 - [ ] **C3. hive.md**
   - done = transaction reviewer-green, markers interviewed, committed.

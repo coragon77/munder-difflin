@@ -1,7 +1,7 @@
 # The message queue — how anything gets typed into an agent's terminal
 
 - **Coverage:** `src/main/autoPark.ts`, `src/main/pty.ts`, `src/renderer/src/components/MessageQueueComposer.tsx`
-- **Last Updated:** 2026-08-06
+- **Last Updated:** 2026-08-21
 
 Every agent runs a real CLI in a real PTY. That CLI has exactly one input line, and
 you are not the only one who wants it: you type into the terminal directly, and the
@@ -101,6 +101,34 @@ Two rules about what happens when a block expires:
 Both windows are long on purpose. Treating a live draft as abandoned is the
 expensive mistake; leaving a queued message parked a while longer is the cheap one.
 
+**Detach does not pause the queue.** An agent's chat can be detached to a kitty
+window: the PTY is owned by main and the pane is only a view, so detach bridges
+the *existing* PTY over a unix socket — replaying a bounded per-session
+`outputTail` ring (`OUTPUT_TAIL_MAX`, ~48 KB, `src/main/pty.ts`) so the window
+opens with context — while the pane greys out read-only. The pane's keystrokes
+are *meant* to be refused at the pool's single chokepoint (`term.onData`, gated
+on `entry.detached` — but see below), and `pty:write` is deliberately **not**
+gated: queue delivery and nudges keep flowing while detached, because the agent
+must stay fully live.
+
+**A kitty-side draft does not hold the queue — confirmed gap.** Keystrokes typed
+in the detached window go client → unix socket → `detachBridge.ts` →
+`PtyManager.write`, so the pane's `term.onData` never fires and `inputDirty`
+never sets; a `/model` picker opened in kitty never latches either.
+`automationStateOf` (`terminalPool.ts`) short-circuits on `inputDirty` before
+consulting the buffer — the echoed kitty text *is* visible there, but the
+one-directional read only ever clears a draft. No gate is detach-aware
+(`detachedPtyIds` is UI-only), so the drain can fuse a queued message onto a
+half-written kitty-side line: exactly the failure §3 exists to prevent, arriving
+by a path the draft model cannot see. The pane's own refusal is dead too: main's
+detach `notify` sends **both** `pty:detached` and `pty:reattached` on every
+state change, the pool handlers ignore the payload and reattach lands last, so
+`entry.detached` settles `false` and the greyed pane (veil is
+`pointerEvents: 'none'`) still accepts focus and keys. Unfixed as of 2026-08-21;
+fix is tracked outside this doc. (VERIFY raised and closed by investigation,
+2026-08-21: traced `detachBridge.ts`, `terminalPool.ts` `automationStateOf` /
+detach handlers, `index.ts` detach notify, drain in `useHive.ts`.)
+
 ## 4. Reading the prompt instead of modelling it
 
 `inputDirty` is inferred by counting keystrokes in `term.onData`. That model drifts:
@@ -145,7 +173,76 @@ gate starts delivering while the badge still reads "your draft" — which is hon
 your text really is still sitting on the prompt. The badge answers "is my text
 there", not "is the queue blocked".
 
-## 6. Where the code lives
+The QUEUE box itself collapses to a slim bar (per-agent flag in the store, shared
+by all three hosts — agent panel, command center, fullscreen). The bar keeps the
+queue count and the held/delivery status hint visible: queued messages never
+become invisible just because the box is folded up.
+
+## 6. Auto-park — when the harness gives the seat up instead
+
+The queue delivers *into* an idle terminal; auto-park is the opposite ruling on
+much of the same evidence: an agent idle for an hour with all its work verifiably
+finished is parked (vacation) rather than left holding a floor seat. The rule
+used to be prose in god's instructions — it ran when god remembered, and the
+standup could not backstop it because a standup skips itself on a quiet floor,
+which is exactly the state idle agents accumulate in. It is now a pure evidence
+gate in `src/main/autoPark.ts`, swept by `autoParkSweep()` (`src/main/index.ts`)
+inside the always-on ephemeral-worker tick — no quiet predicate — throttled to
+once per `AUTO_PARK_SWEEP_MS` (60 s). Kill-switch: config `autoParkIdle`,
+default **on**, no Settings UI.
+
+God, interns (fired, never parked), pinned, archived, already-vacationing and
+retired agents are never candidates; every proposed park still goes through the
+shared `parkAgent` ladder with origin `'auto'`, whose refusals (busy included —
+a busy refusal is a strict no-op) stand behind the sweep.
+
+`autoParkDecisions()` parks only when **every** row here is provable:
+
+| Evidence | Source | Unknown means |
+|---|---|---|
+| idle ≥ `AUTO_PARK_IDLE_MS` (1 h) | telemetry age (hook/OTLP `lastActive`) — an idle TUI repaints its chrome, so PTY output would read idle as busy forever | no telemetry row = cannot prove idle = no park |
+| inbox drained | `inboxBacklogStrict()` — returns `null` on read failure and counts staged dispatch contracts as pending | unknown ≠ drained; blocks |
+| no pending background work | finite background-work count | malformed count blocks |
+| **every** assigned card `done`, at least one | `cardsByAssignee()` over tasks.json | non-array = no evidence |
+| freshest `doneAt` within idle age + `AUTO_PARK_DONE_RECENT_MS` (1 h slack) of the sweep | all three card writers stamp `doneAt` on →done and clear it on any flip off done | unstamped legacy done card = unknown flip time; blocks |
+
+Everything ambiguous fails toward *not* parking: NaN/Infinity/negative ages and
+malformed counts are unknown, never zero. The done card is the machine-readable
+done-report of the parking gate; an assigned **todo blocks too** — deliberately
+stricter than the prose rule, because parking an agent god just assigned work
+to, only to auto-recall it on dispatch, is churn. The recency row exists because
+the plain done check was weaker than it read: a done flip at 10:00 satisfied it
+all evening beside uncarded work. The third `doneAt` writer (the voice writer)
+was found by tracing every status-flip call site — a hole in one writer is a
+hole in the rule.
+
+Races get the drain's treatment — assume the world moved while you were parking:
+
+- The sweep takes **one short ledger-lock acquisition per park**, evidence read
+  fresh inside it, and re-reads the ledger after the park: a `doing`/`blocked`
+  card that appeared mid-park triggers an immediate recall
+  (`kind:'auto_park_undone'` + god notice). The invariant is restored, not
+  hoped for.
+- When that backstop recall races hive-dispatch's own queued recall, the
+  loser's "not on vacation" answer counts as success — the goal was already
+  achieved, so no rejection mail lands beside a restored seat.
+- After a shift-close `hive-card prune` no agent has a done card, so the gate
+  can never fire again — silently, the deleted-heartbeat failure shape.
+  `evidencePruned()` detects that signature (an otherwise-parkable agent plus
+  zero done cards floor-wide), logs `auto_park_evidence_pruned` and mails god
+  once per episode (in-memory arm, disarmed the moment a done card exists
+  again).
+
+Every park mails god why and when (`autoParkReason()` names every gate input)
+and logs `kind:'auto_park'`. One scar is load-bearing for anyone touching the
+ledger reads: `cardsByAssignee()` accepts **both** tasks.json shapes — the
+wrapper object and the bare array `withLedgerLock` hands its callback — because
+the first version read `.tasks` off the bare array, every candidate saw zero
+cards, and no agent could ever qualify. A shape mismatch degrades silently to
+"no evidence", which is why the contract is pinned by behavioral test
+(`test/auto-park.test.cjs`), not a source regex.
+
+## 7. Where the code lives
 
 | File | Role |
 |---|---|
@@ -153,3 +250,4 @@ there", not "is the queue blocked".
 | `src/renderer/src/components/terminalPool.ts` | the pooled xterm per PTY; buffer reads, latches, `isTerminalAutomationSafe`, `hasTerminalDraft` |
 | `src/renderer/src/hooks/useHive.ts` | effect #3 inbox nudge (enqueues), effect #4 drain (the one writer), effect #6 scheduled `/compact` |
 | `src/renderer/src/store/store.ts` | the MD queues themselves + agent persistence |
+| `src/main/autoPark.ts` | the auto-park evidence gate + prune sentinel — pure, unit-tested (`test/auto-park.test.cjs`); sweep wiring is `autoParkSweep()` in `src/main/index.ts` |
