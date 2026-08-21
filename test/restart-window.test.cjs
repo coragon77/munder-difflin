@@ -429,6 +429,47 @@ test('a dead watcher never reads as in-progress — status reaps it to failed', 
   assert.match(d.stdout, /not armed/);
 });
 
+// A SIGKILLed holder leaves the O_EXCL lock file behind. The stale-mtime
+// break (30s) can never fire inside the 15s wait deadline, so a dead-holder
+// lock must be broken by the pid it carries — otherwise every kill that lands
+// mid-lock freezes the lifecycle for the full 15s (flake 2026-08-21).
+test('a lock held by a dead pid breaks promptly — no 15s wait', { skip: !POSIX }, async (t) => {
+  const s = setup(t);
+  const target = git(s.live, 'rev-parse', 'HEAD');
+  const token = `md-restart-window-lock-${process.pid}-${Date.now()}`;
+  const env = { HIVE_RESTART_PROCESS_PATTERN: token };
+
+  // A pid that is definitely dead AND reaped: a child that exits on its own
+  // is reaped by libuv before 'exit' fires, so kill(pid, 0) hits ESRCH. (A
+  // SIGKILLed child of a live parent lingers as a zombie until the event loop
+  // reaps it, and kill(pid, 0) succeeds on a zombie — that would mask the
+  // break by reading "alive".)
+  const victim = spawn(process.execPath, ['-e', 'process.exit(0)'], { stdio: 'ignore' });
+  await new Promise((resolve) => victim.once('exit', resolve));
+  const deadPid = victim.pid;
+  await waitFor(() => !alive(deadPid), 'victim death');
+
+  // Forge the leaked lock exactly as a SIGKILLed holder would leave it.
+  const lockPath = path.join(s.root, 'restart-window.json.lock');
+  fs.writeFileSync(lockPath, String(deadPid), 'utf8');
+  t.after(() => {
+    try {
+      fs.unlinkSync(lockPath);
+    } catch {}
+  });
+
+  const started = Date.now();
+  const armed = s.command(['arm', target, '--repo', s.live], env);
+  const waited = Date.now() - started;
+  assert.equal(armed.status, 0, armed.stderr);
+  // The dead-holder break must land in milliseconds, never the 15s deadline.
+  assert.ok(waited < 2000, `arm took ${waited}ms — the dead lock was not broken promptly`);
+
+  // Clean up the live watcher this test armed.
+  const d = s.command(['disarm'], env);
+  assert.equal(d.status, 0, d.stderr);
+});
+
 test('a signal death lands a post-mortem — SIGTERM never kills silently', {
   skip: !POSIX,
 }, async (t) => {

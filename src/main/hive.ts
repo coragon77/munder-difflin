@@ -5500,9 +5500,13 @@ function withStateLock(fn) {
         // (30s) can never fire before the 15s deadline, so every kill that
         // lands mid-lock freezes the lifecycle for the whole wait
         // (flake 2026-08-21: status timed out on a watcher killed mid-publish).
-        const holder = Number.parseInt(fs.readFileSync(lockPath, 'utf8'), 10);
+        const rawLock = fs.readFileSync(lockPath, 'utf8');
+        const holder = Number.parseInt(rawLock, 10);
         if (Number.isInteger(holder) && holder > 0 && !pidAlive(holder)) {
-          fs.unlinkSync(lockPath);
+          // Re-read before the unlink: another waiter may have broken the lock
+          // and a new holder wx-created it in the gap — never remove a live
+          // holder's lock.
+          if (fs.readFileSync(lockPath, 'utf8') === rawLock) fs.unlinkSync(lockPath);
           continue;
         }
         if (Date.now() - fs.statSync(lockPath).mtimeMs > 30000) {
@@ -5690,6 +5694,11 @@ function verifyLiveBuild(repo, cmd) {
   const watermark = path.join(repo, '.git', 'md-restart-build-watermark');
   fs.writeFileSync(watermark, String(process.pid), 'utf8');
   const watermarkMtimeMs = fs.statSync(watermark).mtimeMs;
+  try {
+    fs.unlinkSync(watermark);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   log('building live checkout: ' + cmd);
   // ponytail: a SIGTERM arriving mid-spawnSync runs its handler only after the
   // sync call returns — scope-stop escalation can SIGKILL first during a long
@@ -5711,11 +5720,6 @@ function verifyLiveBuild(repo, cmd) {
     stat = fs.statSync(artifact);
   } catch (error) {
     throw new Error('live build produced no out/main/index.js — refusing to call the batch complete');
-  }
-  try {
-    fs.unlinkSync(watermark);
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
   }
   // ponytail: mtime+size prove the artifact came from THIS post-merge build; a
   // dev server relaunched mid-merge overwriting it afterwards still writes
