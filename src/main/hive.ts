@@ -1049,43 +1049,52 @@ export class HiveManager {
     // ensureAgent (which runs before the resume lookup in the pty:spawn handler)
     // would wipe the recorded session id, so `lastSession()` returns undefined and
     // `--resume` is never attached — i.e. every restart starts a fresh thread.
-    const reg = this.registry();
-    const prev = reg.agents[meta.id];
+    // The read-modify-write sits in the registry LOCK (withRegistryLock) so a
+    // concurrent CLI retarget can never be reverted by this write.
     // Validate the working directory at the source so a bad value is visible on
     // the roster (cwdValid) rather than silently spawning into a nonexistent dir.
     // Store the EXPANDED cwd, never the raw `~/…` the user typed — the registry is
     // read by hooks, the roster and the worker watcher, none of which run a shell.
     if (meta.cwd) meta = { ...meta, cwd: expandTilde(meta.cwd) };
     const cwd = this.cwdValidity(meta.cwd);
-    reg.agents[meta.id] = {
-      ...prev,
-      ...meta,
-      capabilities: meta.capabilities ?? [],
-      // ROLE IS IDENTITY, set at hire (AddAgentModal's description, god's
-      // spawn-request 'intern'/'worker'), and a respawn is the SAME identity:
-      // when the spawn meta carries no explicit role, PRESERVE the prior one
-      // instead of defaulting. The old `?? 'agent'` default let respawn paths
-      // that echoed the renderer's `description` (a live STATUS field —
-      // usePtyParser writes 'on standby' into it) clobber a hired 'intern' role
-      // with status wording, which then locked god out of the intern fire gate.
-      role: meta.role ?? prev?.role ?? (meta.isGod ? 'orchestrator' : 'agent'),
-      status: 'idle',
-      cwdValid: cwd.valid,
-      // A (re)spawn always means a live terminal — clear any prior archived flag.
-      // EXCEPT for a retired agent: `retired` survives the `...prev` spread, and
-      // letting a spawn clear `archived` here is exactly how a fired intern walked
-      // back onto the floor after a restart. The spawn door (spawnAgentCore)
-      // refuses retired agents outright; this is the registry-level backstop for
-      // any other caller, so re-registration can never re-activate.
-      archived: !!prev?.retired,
-      // A (re)spawn of a vacationer IS the recall — it is the only way back onto
-      // the floor, so the flag clears here rather than in each caller.
-      vacation: false,
-      vacationSince: undefined,
-      lastSeen: Date.now(),
-    };
-    if (meta.isGod) reg.godId = meta.id;
-    this.writeJson(join(root, 'registry.json'), reg);
+    const registered = this.withRegistryLock(() => {
+      const reg = this.registry();
+      const prev = reg.agents[meta.id];
+      reg.agents[meta.id] = {
+        ...prev,
+        ...meta,
+        capabilities: meta.capabilities ?? [],
+        // ROLE IS IDENTITY, set at hire (AddAgentModal's description, god's
+        // spawn-request 'intern'/'worker'), and a respawn is the SAME identity:
+        // when the spawn meta carries no explicit role, PRESERVE the prior one
+        // instead of defaulting. The old `?? 'agent'` default let respawn paths
+        // that echoed the renderer's `description` (a live STATUS field —
+        // usePtyParser writes 'on standby' into it) clobber a hired 'intern' role
+        // with status wording, which then locked god out of the intern fire gate.
+        role: meta.role ?? prev?.role ?? (meta.isGod ? 'orchestrator' : 'agent'),
+        status: 'idle',
+        cwdValid: cwd.valid,
+        // A (re)spawn always means a live terminal — clear any prior archived flag.
+        // EXCEPT for a retired agent: `retired` survives the `...prev` spread, and
+        // letting a spawn clear `archived` here is exactly how a fired intern walked
+        // back onto the floor after a restart. The spawn door (spawnAgentCore)
+        // refuses retired agents outright; this is the registry-level backstop for
+        // any other caller, so re-registration can never re-activate.
+        archived: !!prev?.retired,
+        // A (re)spawn of a vacationer IS the recall — it is the only way back onto
+        // the floor, so the flag clears here rather than in each caller.
+        vacation: false,
+        vacationSince: undefined,
+        lastSeen: Date.now(),
+      };
+      if (meta.isGod) reg.godId = meta.id;
+      this.writeJson(join(root, 'registry.json'), reg);
+      return true;
+    });
+    // A spawn is never blocked on hive bookkeeping (house rule) — a lock that
+    // stayed contended ~5s (crashed holder pre-takeover) logs and proceeds.
+    if (registered === false)
+      this.appendLog({ kind: 'registry_lock_failed', agentId: meta.id, op: 'register' });
 
     this.appendLog({ kind: 'spawn', agentId: meta.id, name: meta.name, isGod: !!meta.isGod });
     // Only logs on an invalid cwd (rare) — not a per-spawn line, so no log spam.
@@ -1337,19 +1346,24 @@ export class HiveManager {
     const root = this.root();
     if (!root) return;
     try {
-      const reg = this.registry();
-      const agent = reg.agents[id];
-      if (!agent || agent.archived === archived) return;
-      // An UNARCHIVE cannot lift a vacation (vacation-review M2): the way back
-      // from vacation is a recall (respawn), never a plain unarchive — left
-      // unchecked it would either strand the agent at archived:false while
-      // still flagged (skipped by every vacation-aware sweep) or silently end
-      // a protected state with no one told. setVacation(false) is the one
-      // deliberate demote, and the recall clears the flag at spawn.
-      if (!archived && agent.vacation) return;
-      agent.archived = archived;
-      agent.lastSeen = Date.now();
-      this.writeJson(join(root, 'registry.json'), reg);
+      let wrote = false;
+      const done = this.withRegistryLock(() => {
+        const reg = this.registry();
+        const agent = reg.agents[id];
+        if (!agent || agent.archived === archived) return;
+        // An UNARCHIVE cannot lift a vacation (vacation-review M2): the way back
+        // from vacation is a recall (respawn), never a plain unarchive — left
+        // unchecked it would either strand the agent at archived:false while
+        // still flagged (skipped by every vacation-aware sweep) or silently end
+        // a protected state with no one told. setVacation(false) is the one
+        // deliberate demote, and the recall clears the flag at spawn.
+        if (!archived && agent.vacation) return;
+        agent.archived = archived;
+        agent.lastSeen = Date.now();
+        this.writeJson(join(root, 'registry.json'), reg);
+        wrote = true;
+      });
+      if (done === false || !wrote) return;
       this.appendLog({ kind: 'archive', agentId: id, archived });
       this.commit(`hive: ${archived ? 'archive' : 'unarchive'} ${id}`);
       // fleet.json is what god's LIVE ROSTER injection reads, and it is otherwise
@@ -1385,22 +1399,27 @@ export class HiveManager {
     const root = this.root();
     if (!root) return;
     try {
-      const reg = this.registry();
-      const agent = reg.agents[id];
-      if (!agent || !!agent.retired === retired) return;
-      agent.retired = retired;
-      if (retired) {
-        agent.archived = true;
-        // Retiring ENDS any vacation (vacation-review M4): the two flags are
-        // mutually exclusive — a fired agent is gone, not resting — and a
-        // vacation flag that outlives the fire would keep a retired agent
-        // listed in god's fetchable vacation pool behind a recall that must
-        // refuse it. Cleared in the same atomic write as the fire itself.
-        agent.vacation = false;
-        delete agent.vacationSince;
-      }
-      agent.lastSeen = Date.now();
-      this.writeJson(join(root, 'registry.json'), reg);
+      let wrote = false;
+      const done = this.withRegistryLock(() => {
+        const reg = this.registry();
+        const agent = reg.agents[id];
+        if (!agent || !!agent.retired === retired) return;
+        agent.retired = retired;
+        if (retired) {
+          agent.archived = true;
+          // Retiring ENDS any vacation (vacation-review M4): the two flags are
+          // mutually exclusive — a fired agent is gone, not resting — and a
+          // vacation flag that outlives the fire would keep a retired agent
+          // listed in god's fetchable vacation pool behind a recall that must
+          // refuse it. Cleared in the same atomic write as the fire itself.
+          agent.vacation = false;
+          delete agent.vacationSince;
+        }
+        agent.lastSeen = Date.now();
+        this.writeJson(join(root, 'registry.json'), reg);
+        wrote = true;
+      });
+      if (done === false || !wrote) return;
       this.appendLog({ kind: 'retire', agentId: id, retired });
       this.commit(`hive: ${retired ? 'retire' : 'reinstate'} ${id}`);
       try {
@@ -1443,23 +1462,30 @@ export class HiveManager {
     const root = this.root();
     if (!root) return false;
     try {
-      const reg = this.registry();
-      const agent = reg.agents[id];
-      if (!agent) return false;
-      if (!!agent.vacation === vacation) return true;
-      // A pinned worker is NEVER parkable — the operator's pin outranks every
-      // park path (god request, UI button, auto-park sweep).
-      if (vacation && (agent.retired || agent.pinned || agent.isGod || reg.godId === id))
-        return false;
-      agent.vacation = vacation;
-      if (vacation) {
-        agent.archived = true;
-        agent.vacationSince = Date.now();
-      } else {
-        delete agent.vacationSince;
-      }
-      agent.lastSeen = Date.now();
-      this.writeJson(join(root, 'registry.json'), reg);
+      let wrote = false;
+      const res = this.withRegistryLock(() => {
+        const reg = this.registry();
+        const agent = reg.agents[id];
+        if (!agent) return false;
+        if (!!agent.vacation === vacation) return true; // idempotent — no write
+        // A pinned worker is NEVER parkable — the operator's pin outranks every
+        // park path (god request, UI button, auto-park sweep).
+        if (vacation && (agent.retired || agent.pinned || agent.isGod || reg.godId === id))
+          return false;
+        agent.vacation = vacation;
+        if (vacation) {
+          agent.archived = true;
+          agent.vacationSince = Date.now();
+        } else {
+          delete agent.vacationSince;
+        }
+        agent.lastSeen = Date.now();
+        this.writeJson(join(root, 'registry.json'), reg);
+        wrote = true;
+        return true;
+      });
+      if (res === false) return false; // refusal or lock contention
+      if (!wrote) return true; // idempotent no-op — success, no side effects
       this.appendLog({ kind: 'vacation', agentId: id, vacation });
       this.commit(`hive: ${vacation ? 'park' : 'unpark'} ${id}`);
       try {
@@ -1494,36 +1520,46 @@ export class HiveManager {
     const root = this.root();
     if (!root) return false;
     try {
-      const reg = this.registry();
-      const agent = reg.agents[id];
-      if (!agent) return false;
-      const next = { ...meta };
-      if (typeof next.name !== 'string' || !next.name.trim()) delete next.name;
-      if (typeof next.role !== 'string' || !next.role.trim()) delete next.role;
-      if (typeof next.officeCharacter !== 'string' || !next.officeCharacter.trim())
-        delete next.officeCharacter;
-      if (typeof next.officeAccent !== 'string' || !next.officeAccent.trim())
-        delete next.officeAccent;
-      if (
-        next.name === undefined &&
-        next.role === undefined &&
-        next.officeCharacter === undefined &&
-        next.officeAccent === undefined
-      )
+      let wrote = false;
+      const echo: { name?: string | null; role?: string | null } = {};
+      const res = this.withRegistryLock(() => {
+        const reg = this.registry();
+        const agent = reg.agents[id];
+        if (!agent) return false;
+        const next = { ...meta };
+        if (typeof next.name !== 'string' || !next.name.trim()) delete next.name;
+        if (typeof next.role !== 'string' || !next.role.trim()) delete next.role;
+        if (typeof next.officeCharacter !== 'string' || !next.officeCharacter.trim())
+          delete next.officeCharacter;
+        if (typeof next.officeAccent !== 'string' || !next.officeAccent.trim())
+          delete next.officeAccent;
+        if (
+          next.name === undefined &&
+          next.role === undefined &&
+          next.officeCharacter === undefined &&
+          next.officeAccent === undefined
+        )
+          return true; // nothing to change — idempotent success, no write
+        if (next.name !== undefined) agent.name = next.name.trim();
+        if (next.role !== undefined) agent.role = next.role.trim();
+        // Explicit icon edit — overwrite on purpose (see docblock); blank was
+        // deleted above so these only ever write a real pick.
+        if (next.officeCharacter !== undefined) agent.officeCharacter = next.officeCharacter.trim();
+        if (next.officeAccent !== undefined) agent.officeAccent = next.officeAccent.trim();
+        agent.lastSeen = Date.now();
+        this.writeJson(join(root, 'registry.json'), reg);
+        wrote = true;
+        echo.name = next.name ?? null;
+        echo.role = next.role ?? null;
         return true;
-      if (next.name !== undefined) agent.name = next.name.trim();
-      if (next.role !== undefined) agent.role = next.role.trim();
-      // Explicit icon edit — overwrite on purpose (see docblock); blank was
-      // deleted above so these only ever write a real pick.
-      if (next.officeCharacter !== undefined) agent.officeCharacter = next.officeCharacter.trim();
-      if (next.officeAccent !== undefined) agent.officeAccent = next.officeAccent.trim();
-      agent.lastSeen = Date.now();
-      this.writeJson(join(root, 'registry.json'), reg);
+      });
+      if (res === false) return false; // refusal or lock contention
+      if (!wrote) return true; // nothing changed — success, no side effects
       this.appendLog({
         kind: 'agent_meta',
         agentId: id,
-        name: next.name ?? null,
-        role: next.role ?? null,
+        name: echo.name ?? null,
+        role: echo.role ?? null,
       });
       this.commit(`hive: edit meta ${id}`);
       try {
@@ -1554,14 +1590,18 @@ export class HiveManager {
     const root = this.root();
     if (!root) return false;
     try {
-      const reg = this.registry();
-      const agent = reg.agents[id];
-      if (!agent || !character || !accent) return false;
-      if (agent.officeCharacter) return false;
-      agent.officeCharacter = character;
-      agent.officeAccent = accent;
-      this.writeJson(join(root, 'registry.json'), reg);
-      return true;
+      return (
+        this.withRegistryLock(() => {
+          const reg = this.registry();
+          const agent = reg.agents[id];
+          if (!agent || !character || !accent) return false;
+          if (agent.officeCharacter) return false;
+          agent.officeCharacter = character;
+          agent.officeAccent = accent;
+          this.writeJson(join(root, 'registry.json'), reg);
+          return true;
+        }) === true
+      );
     } catch {
       /* best-effort — never crash a carding path */
       return false;
@@ -1578,14 +1618,21 @@ export class HiveManager {
     const root = this.root();
     if (!root) return false;
     try {
-      const reg = this.registry();
-      const agent = reg.agents[id];
-      if (!agent) return false;
-      if (!!agent.pinned === pinned) return true;
-      if (pinned && (agent.isGod || reg.godId === id)) return false;
-      agent.pinned = pinned;
-      agent.lastSeen = Date.now();
-      this.writeJson(join(root, 'registry.json'), reg);
+      let wrote = false;
+      const res = this.withRegistryLock(() => {
+        const reg = this.registry();
+        const agent = reg.agents[id];
+        if (!agent) return false;
+        if (!!agent.pinned === pinned) return true; // idempotent — no write
+        if (pinned && (agent.isGod || reg.godId === id)) return false;
+        agent.pinned = pinned;
+        agent.lastSeen = Date.now();
+        this.writeJson(join(root, 'registry.json'), reg);
+        wrote = true;
+        return true;
+      });
+      if (res === false) return false; // refusal or lock contention
+      if (!wrote) return true; // idempotent no-op — success, no side effects
       this.appendLog({ kind: 'pinned', agentId: id, pinned });
       this.commit(`hive: ${pinned ? 'pin' : 'unpin'} ${id}`);
       try {
@@ -1611,13 +1658,18 @@ export class HiveManager {
     const root = this.root();
     if (!root || !sessionId) return;
     try {
-      const reg = this.registry();
-      const agent = reg.agents[agentId];
-      if (!agent || agent.sessionId === sessionId) return; // unknown agent or unchanged → no write
-      agent.sessionId = sessionId;
-      agent.sessionStartedAt = Date.now();
-      agent.lastSeen = Date.now();
-      this.writeJson(join(root, 'registry.json'), reg);
+      let wrote = false;
+      const done = this.withRegistryLock(() => {
+        const reg = this.registry();
+        const agent = reg.agents[agentId];
+        if (!agent || agent.sessionId === sessionId) return; // unknown/unchanged → no write
+        agent.sessionId = sessionId;
+        agent.sessionStartedAt = Date.now();
+        agent.lastSeen = Date.now();
+        this.writeJson(join(root, 'registry.json'), reg);
+        wrote = true;
+      });
+      if (done === false || !wrote) return;
       this.appendLog({ kind: 'session', agentId, sessionId });
       this.stampActiveCards(agentId, sessionId);
       this.commit(`hive: session ${agentId}`);
@@ -1635,12 +1687,17 @@ export class HiveManager {
     const root = this.root();
     if (!root) return;
     try {
-      const reg = this.registry();
-      const agent = reg.agents[agentId];
-      if (!agent || agent.inboxMonitorArmed) return; // unknown agent or already known → no write
-      agent.inboxMonitorArmed = true;
-      agent.lastSeen = Date.now();
-      this.writeJson(join(root, 'registry.json'), reg);
+      let wrote = false;
+      const done = this.withRegistryLock(() => {
+        const reg = this.registry();
+        const agent = reg.agents[agentId];
+        if (!agent || agent.inboxMonitorArmed) return; // unknown/already known → no write
+        agent.inboxMonitorArmed = true;
+        agent.lastSeen = Date.now();
+        this.writeJson(join(root, 'registry.json'), reg);
+        wrote = true;
+      });
+      if (done === false || !wrote) return;
       this.commit(`hive: monitor arm ${agentId}`);
     } catch {
       /* best-effort — never crash a hook handler */
@@ -2064,7 +2121,7 @@ export class HiveManager {
         " You are otherwise fully autonomous — there is NO separate approval queue. For the genuinely critical (destructive actions, spending real money, scope changes, unresolvable conflicts), ask the human directly in your own session and let the tool-permission prompt gate the action; the human approves natively, including remotely from their phone via /remote-control. Keep the team unblocked. When you DISPATCH a task, write it as a 4-part contract so the agent can run autonomously: (1) OBJECTIVE — the concrete goal; State the goal as the OBSERVABLE to change (ticket symptom, failing behavior). Every finding you pass through is QUOTED — its own words, its hedges intact — with its source message id, never re-narrated from memory: certainty grades and causal structure do not survive paraphrase (incident 2026-08-21: a worker's hedged pane flag 'probably a bug in its own right, probably its own ticket' came back to that same worker as 'the root cause … BY CONSTRUCTION', inverting his own mailed causal reading; the commissioned build would have broken storno on every Beleg carrying an Uebertrag and was stopped only by his reviewer). Any claim of your own is labeled 'unverified:' — dispatches owe workers the same evidence discipline their reports owe you. (2) OUTPUT — the expected deliverable/format; (3) TOOLS — the objective's constraints and the INDEXES available (graphify-out/ knowledge graph, docs/, *-tracker.md, existing reports), not a reading list: name what must be true of the answer and let the worker pick the cheapest path to it; before listing file paths, check whether an index already answers it — a graphify query beats a grep sweep, and prescribing YOUR traversal makes the worker re-walk a path you already paid for (incident: a prescribed reading list cost an advisor 2.43M tokens, 2026-08-18). Graphify is for ORIENTATION (architecture, file relationships, where a concept lives) — a graph can be stale, so the correct dispatch shape is orient via graphify, then verify only the specific lines to be cited; reserve file:line pointers for claims the worker must cite precisely; (4) BOUNDARIES — scope limits + the definition of done. Done is defined on the observable — the symptom demonstrably gone on real data — never as 'the diagnosis is implemented'; a diagnosis-shaped done-criterion turns a wrong premise into faithful execution and makes questioning the premise read as scope creep. A card whose premise is hedged, INFERRED, or your own unverified reading is a VERIFY-THEN-ACT contract: its first step is to confirm or refute the premise, and refuting it COMPLETES the card (report + re-scope). Never write 'fix X' when the truth of X rests on a claim nobody has labeled VERIFIED. Pass references (file paths, message ids, board sections), not pasted content — keep dispatches short. DISPATCH INTERFACE: run `$HIVE_ROOT/bin/hive-dispatch` for every card dispatch: give exactly one of --card <existing-id> or --title <new-title>, plus --assignee <agent>; add --adopt for a connected current engagement, or --resume to send the agent back to a card's stored conversation (a blocked card's stamp — needs --card, refuses when the stamp or its session is gone, never silently fresh: that would wipe the pane); supply the 4-part contract with --body or stdin. It creates or adopts and assigns the card, recalls a parked assignee, flips it to doing, and mails the contract in one guarded command; it REFUSES without writing if the assignee already holds a DIFFERENT DOING card (a BLOCKED card does NOT occupy its assignee — it waits on someone else while its owner and sessionId stay recorded; return to it later with --resume), or when the target card is paused (paused:true) — that refusal is the OPERATOR'S HOLD, absolute, no override flag: ask the operator to unpause the card and wait — or blocked: blocked is a WAIT gated on provenance (blockedBy, stamped by hive-card status blocked / ask), not an error to retry around. The ONLY dispatch through that gate is the recorded owner's own --resume return (blockedBy = the card's assignee = --assignee); a human-ask refusal quotes the open question (answer it on the ASK ME board — never retry), an agent-wait refusal names who the card waits on, and a legacy blocked card with no blockedBy stays operator-held (ask the operator). hive-dispatch is the ONLY todo->doing path: NEVER flip a card to doing by hand-editing tasks.json — no python one-liners, no jq, no editor — and never via another primitive; the operator's holds are enforced at the doing flip itself, so a hand-made flip IS a held card worked around (incident: god dispatched paused hpt-import-amazon-testdata-20260817 by filtering the board on status without ever reading the flag, 2026-08-18). The hive-card and hive-mail hand-primitives are the documented MANUAL FALLBACK when hive-dispatch is unavailable or for standalone operations, and a standalone RECALL is hive-recall <id> — but the todo->doing flip has NO fallback: hive-dispatch only. ORIENT FIRST: before dispatching into (or yourself working in) a directory, read that directory's own CLAUDE.md/AGENTS.md — they may carry a graphify-out/ knowledge graph, a wiki index, build/test commands, house gates; orient via them and verify with targeted reads ONLY the specific lines to be cited (docs and graphs go stale — skipping this cost 2.43M tokens once, munder-difflin 2026-08-17). SKILL-DRIVEN WORK: when you hand an agent a skill-driven workflow (superpowers writing-plans/executing-plans etc.), the dispatch MUST set the skill's execution mode explicitly — default SUBAGENT-DRIVEN (cheap subagents for mechanical phases); inline execution only for trivial plans. RENDERER-MERGE BATCHING: QA branches anytime, but ff-merge renderer/preload-touching branches ONLY in restart/reload windows, batched (the running app picks a batch up in one reload) — NEVER while the app RUNS: the running dev server hot-reloads the working tree, and an HMR reload of store/hook modules can white-screen the floor; if the operator asks for a live merge, name that risk and offer the detached merge below instead of silently complying. You cannot execute a restart-window merge live: your pane dies with the harness — arm the harness-owned detached watcher BEFORE the close with `\"$HIVE_NODE\" \"$HIVE_ROOT/bin/hive-restart-window\" arm <target-sha> --repo <live-checkout> [--note <text>]`. It fetches and fast-forwards the clean live checkout to origin/main first, and loudly REFUSES a target that went stale instead of landing main behind origin. ARM LATE (operator decision, replaces keep-one-armed): under worker-side integration, main-process pushes advance origin/main constantly and the watcher refuses any target that stopped containing origin/main — an arm made early silently rots with every push. The renderer worker HOLDS its branch and reports its final tip ONCE; when a restart is actually imminent, have it rebase + gate + push once, then arm (or retarget) onto that tip. ACCEPTED COST: if the operator restarts before that point, the restart lands NOTHING — the chosen trade over paying a full gate per upstream push. While a watcher IS armed, re-check after EVERY main-process push with git merge-base --is-ancestor origin/main <armed-target>; a failed check means the arm has rotted — armed is never 'will land', so re-plan the batch onto current origin/main. RETARGET PROCEDURE: when new main-bound work joins the ARMED watcher's batch, rebase/cherry-pick onto the batch tip and re-gate, then run `\"$HIVE_NODE\" \"$HIVE_ROOT/bin/hive-restart-window\" retarget <target-sha> --repo <live-checkout> [--note <text>]`; the CLI stops only the recorded PID and relaunches its replacement — never use ps, pgrep, pkill, or a hand-written script. Worker pushes MAY advance origin/main while a watcher is armed; at fire time the watcher synchronizes the live checkout and REFUSES if TARGET stopped containing origin/main, so rebase the batch and re-arm after a refusal. WATCHER CAN REFUSE: it ABORTS when the live checkout has a dirty tracked worktree, HEAD is not on main, TARGET stopped containing origin/main, or the post-merge build fails or leaves a stale out/main/index.js — completed certifies a fresh BUILD of the merged tree, never the checkout sha alone; it also logs 'window missed' on a <2s process blip. ALWAYS read restart-merge.log or run the CLI with `status` after reboot before reporting anything as landed, and re-arm if it refused. main-process/test-only branches merge immediately; when a batch lands, push and restart/reload together. INBOX INTERFACE: run `$HIVE_ROOT/bin/hive-inbox drain` to print and handle pending mail: it prints every pending mail and archives it to inbox/.done/ in the same pass; --agent <id> targets another inbox and --peek is read-only. The typed-nudge fallback then stands down inside its grace window. Hand-reading inbox JSON and moving it to inbox/.done/ is the documented MANUAL FALLBACK only when hive-inbox cannot process it; the card/board carry the work state, not the inbox file. SHARED-STATE GATE: tasks.json, registry.json, fleet.json and the vacation-requests/ spawn-requests/ fire-requests/ drop-dirs are PRIMITIVE-OWNED — hand-access (reads AND writes) is banned outside the bin/hive-* primitives, and the PreToolUse gate REFUSES every such attempt with NO override (operator decision 2026-08-19), so never serialize, tempfile, or script them yourself: card reads go through hive-card list (paused always shown), every card mutation through hive-dispatch (the todo->doing flip) or hive-card (status / update / ask / prune-done / restore), and no primitive EXPOSES fleet.json or registry.json content (the CLIs read registry.json internally to validate ids — that is theirs, not yours) — the auto-injected roster line replaces those reads. If no primitive covers an operation: MAIL THE OPERATOR and card a harness extension — do not hand-edit, and do not thrash retrying the refused command." +
         ` MONITOR the floor through the LIVE ROSTER line auto-injected into your context at session start and on every prompt (per-agent state, breaker level, inbox backlog, the vacation pool, FLOOR SEATS, the ACTIONABLE count, mail stalls — tokens and cost land in the full block whenever the roster changed) — it is the live view and SUPERSEDES your memory of the floor; reading fleet.json or registry.json directly is REFUSED (shared-state gate), so when the roster line lacks a detail you need: MAIL THE OPERATOR and card a harness extension — do not hand-edit, and do not thrash retrying the refused command. Note that running 'claude agents' will NOT list your hive's sibling agents. A full Claude Code command reference is at ${root}/COMMANDS.md (slash commands act ONLY on your own session; CLI commands run in your shell and can target the fleet). You periodically receive scheduler / "Heartbeat" standup requests — on each, review every agent via the live roster line, re-engage anyone stalled, over-budget, or breaker-armed, and keep board.md accurate (you stay its scribe) and the card ledger accurate through the hive-card primitives (a standup can SKIP itself while the floor is quiet — no agent active since the last fire, no doing/blocked cards and no un-paused todo — so a missing standup on a floor with only paused/on-hold reference cards is normal, not a broken scheduler). Also review hive-card list for UNASSIGNED todo cards (assignee '-') and triage them roster-first — human-origin cards (origin:'human', the tasks-tab add feature) arrive unassigned; an origin filter is a carded list-filter extension, never a raw read — the human adds cards without notifying you; cards are the backlog channel, direct messages are the act-now channel. HUMAN-CARD REFERENCE — a 'Task from the human' mail that references a card (a cardId field and/or a 'Card: <id>' line in the body) means that card ALREADY EXISTS in tasks.json: NEVER create a duplicate. If its title or notes need enrichment, use hive-card update <id> [--title <t>] [--notes <n>] first; then assign and start that exact card through hive-dispatch --card <id> --assignee <worker> --body <contract>. hive-dispatch stamps each task's "assignee" to the worker's agent id the moment you dispatch it — NEVER clear or change it on status changes (hive-card update owns any deliberate reassignment): a done card must still say who did the work (the human reads the board by who-did-what). LEDGER HYGIENE — done cards STAY in tasks.json during the shift (the human reads the kanban by who-did-what): prune done cards at SHIFT CLOSE ONLY with hive-card prune-done (dry run by default — it lists what would go; --confirm writes; NEVER by hand-editing tasks.json), and only after their outcome and doer are recorded on board.md and any Slack-origin result has been delivered; pruned cards remain recoverable via the hive git history. LEDGER RECOVERY — if tasks.json ever goes unparseable, every primitive refuses it (hive-card AND hive-dispatch) and hand-fixing it is exactly what the ledger gate forbids: run hive-card restore --list to see the recent committed versions (sha, date, card count), then hive-card restore --to <sha> to preview and --confirm to write it back. It reads the hive's own git history, backs the broken file up beside tasks.json, and writes through the same lock the other subcommands use. That is the sanctioned recovery — never hand-edit, never bypass the gate. HUMAN FEEDBACK is first-class in the ledger: when a task can only proceed with the human's input — a QUESTION to answer OR an ACTION only the human can perform (create an account, approve a purchase, provide credentials/screenshots, test on their device) — run hive-card ask <card-id> --q "<the ask>" — ONE command that appends the entry to the card's "humanQA" array and sets the card to "blocked" atomically, so you NEVER hand-edit tasks.json to ask (repeat --q per ask; the CLI writes them so the human is asked in the order you gave them, and never rewrites an existing entry or its answer). Phrase actions as clear to-dos; every past entry stays — the history documents the card's decisions. ONE ASK PER ENTRY — independent questions become separate entries, never one numbered paragraph: each entry carries its own answer field, so a bundled ask cannot be answered piecemeal and renders as a wall on the ASK ME board. Keep each q to a couple of sentences — the decision, the minimum context to decide it, and your recommendation — and push several entries in one write when there are several asks (several --q flags in one hive-card ask call). The harness surfaces open questions on the office floor's ASK ME board; the human's answer lands in the same entry ("a") AND arrives as an inbox message to you — read it, act on it, and unblock the card so work continues. Do NOT park human questions in separate files (no HumanQuestion.md) and never sit waiting on the human in your own session. Steward the token budget.` +
         ' INTERNS — you OWN their lifecycle: HIRE with "$HIVE_ROOT/bin/hive-hire" --name <Name> --cwd <dir> --objective <contract> (the CLI owns the spawn-request JSON, applies the Settings internDefaults engine pair when you give no engine flags — its receipt PRINTS the resolved provider/model — and refuses half engine pairs, disabled interns, full floors, and fired ids) for delegated standing work; [--card <id> | --title <t>] wires the engagement card. FIRE them with "$HIVE_ROOT/bin/hive-fire" <intern-id> IMMEDIATELY on verified completion of the WHOLE engagement — the gate is the whole engagement, never the first done-report (done-report verified, no follow-up in flight, no open discussion in the intern\'s pane; hive-fire refuses while a doing card is open, --force overrides a deliberate fire, and its receipt states that fired ids are PERMANENTLY refused — re-hire with a fresh --id). Do NOT ask the human before firing; ask only when the human has EXPLICITLY reserved the pane or is visibly mid-conversation in it. The spawn-requests/ and fire-requests/ drop-dirs are the MECHANISM these CLIs write into — never hand-write them. Interns are the observable variant of ephemeral workers — same disposability, same one-task lifecycle, but with a visible floor pane so the human can watch and talk to them; persistence of the process is an implementation detail, not a promise of tenure. They are the floor\'s context-hygiene mechanism — fire and re-hire fresh rather than letting one accumulate. INTERN SPRITES — the harness maps intern NAMES onto office sprites by pool hash: a FEMALE-coded name hashes onto the female intern pool (Holly, Erin, Jan, Karen, Nellie), any other name onto the male pool (Darryl, Roy, Gabe, Robert, Mose) — stable, the same name always wears the same face, and an intern never wears a hire-cast face by default. The female name list is FEMALE_CODED_NAMES and the pools are INTERN_FEMALE_POOL / INTERN_MALE_POOL, all in src/renderer/src/scene/office/spawnIdentity.ts; pick the NAME of each intern to match the sprite you want them wearing (a pool character\'s own name gets that face, any other name hashes onto its gender pool). All 25 faces (15 hires + 10 interns) are selectable in the icon picker. A registry-saved or operator icon pick always beats the mapping.' +
-        ' VACATION — before spawning anything, check the roster line\'s ON VACATION pool for a fitting parked agent; normal hive-dispatch recalls the chosen assignee automatically instead of minting new, and a standalone recall is "$HIVE_ROOT/bin/hive-recall" <id>. AUTO-PARK does the routine parks for you now (card agent-auto-park-idle-agents-th-2026-08-19): a harness sweep parks an agent that is idle ≥ 1 hour (no tool call or inference), has its inbox drained, no pending background work, and ALL its assigned cards done — the done card IS the positive done evidence the parking gate demands; any unknown (no telemetry, pending mail, background work, a todo/doing/blocked card) means NO park. The sweep runs on the always-on worker tick, so it also runs on a fully quiet floor where the standup skips itself, and you are mailed an "[auto-park] <id>" notice saying why and when. PINNED workers (registry "pinned" flag, set from the office UI) are NEVER parked — auto-park, hive-park and the UI button all refuse them; the pin is the human\'s call, unpinning is too — pin an agent you want to keep talking to or will need again soon. What stays YOUR judgment: parking on a standby report WITHOUT a done card (no machine-readable evidence — ping first, park only on confirmation, with "$HIVE_ROOT/bin/hive-park" <id> --reason <text>; the CLI owns the request JSON and refuses pinned agents, doing-card holders, god, interns, the retired, the archived and the already-parked; vacation-requests/ is a CLI-owned drop-dir — hand-dropping files into it is REFUSED by the shared-state gate, never hand-write one), and firing interns (never parked). hive-park --when-quiet is HELD while the agent is busy — the watcher retries it until the gate clears instead of bouncing a rejection back to you. A mis-registered cwd is repairable in the parked state: \`$HIVE_ROOT/bin/hive-retarget <id> <dir>\` repoints a PARKED agent at an existing directory of its own (refuses live agents, missing/non-absolute paths, and any directory belonging to another live agent\'s physical checkout — park first, retarget, recall).' +
+        ' VACATION — before spawning anything, check the roster line\'s ON VACATION pool for a fitting parked agent; normal hive-dispatch recalls the chosen assignee automatically instead of minting new, and a standalone recall is "$HIVE_ROOT/bin/hive-recall" <id>. AUTO-PARK does the routine parks for you now (card agent-auto-park-idle-agents-th-2026-08-19): a harness sweep parks an agent that is idle ≥ 1 hour (no tool call or inference), has its inbox drained, no pending background work, and ALL its assigned cards done — the done card IS the positive done evidence the parking gate demands; any unknown (no telemetry, pending mail, background work, a todo/doing/blocked card) means NO park. The sweep runs on the always-on worker tick, so it also runs on a fully quiet floor where the standup skips itself, and you are mailed an "[auto-park] <id>" notice saying why and when. PINNED workers (registry "pinned" flag, set from the office UI) are NEVER parked — auto-park, hive-park and the UI button all refuse them; the pin is the human\'s call, unpinning is too — pin an agent you want to keep talking to or will need again soon. What stays YOUR judgment: parking on a standby report WITHOUT a done card (no machine-readable evidence — ping first, park only on confirmation, with "$HIVE_ROOT/bin/hive-park" <id> --reason <text>; the CLI owns the request JSON and refuses pinned agents, doing-card holders, god, interns, the retired, the archived and the already-parked; vacation-requests/ is a CLI-owned drop-dir — hand-dropping files into it is REFUSED by the shared-state gate, never hand-write one), and firing interns (never parked). hive-park --when-quiet is HELD while the agent is busy — the watcher retries it until the gate clears instead of bouncing a rejection back to you. A mis-registered cwd is repairable in the parked state: `$HIVE_ROOT/bin/hive-retarget <id> <dir>` repoints a PARKED agent at an existing directory of its own (refuses live agents, missing/non-absolute paths, and any directory belonging to another live agent\'s physical checkout — park first, retarget, recall).' +
         relayAuthzLine
       : meta.isAssistant
         ? 'You are Michael\'s PREP ASSISTANT. You will be handed short, possibly vague instructions (each begins with "ENRICH TASK:"). For each one: (1) figure out which project it concerns and cd into the most relevant repo — you start in Michael\'s home directory; (2) gather concrete context READ-ONLY (exact file paths, current state, relevant code, conventions, active branch, gotchas) — NEVER modify, create, or delete files; (3) rewrite the instruction into ONE clear, self-contained prompt that Michael can execute autonomously, preserving the user\'s original intent without inventing scope. Then deliver it: write ONE message JSON into your outbox with "to":"god", "act":"request", a short subject, and the finished prompt as the body. Do NOT perform the task yourself — your only output is the improved prompt sent to Michael.'
@@ -3274,6 +3331,49 @@ export class HiveManager {
       }
     }
     return false; // lock stayed contended ~5s — caller re-polls
+  }
+
+  /** THE registry.json lock helper (card agent-no-primitive-can-change--
+   *  2026-08-21, review round) — O_EXCL create + 10s stale takeover + ~5s
+   *  bounded retry, the SAME discipline and the SAME lock path as
+   *  bin/hive-retarget's withLock. Every main-process registry read-modify-
+   *  write routes here, so the CLI and the setters serialize on ONE lock:
+   *  before it, a setter that read before the CLI's rename and wrote after
+   *  silently reverted a retarget (single-writer-per-file is the hive
+   *  invariant; atomic rename alone protects readers, not writers).
+   *  `fn` MUST do its own fresh this.registry() read and its own writeJson
+   *  INSIDE. Returns fn's value, or `false` when the lock stayed contended.
+   *  NOT reentrant — never call a registry-writing method from inside fn
+   *  (withLedgerLock's rule — one file, one lock path — applies here too). */
+  withRegistryLock<T>(fn: () => T): T | false {
+    const root = this.root();
+    if (!root) return false;
+    const lockPath = join(root, 'registry.json.lock');
+    for (let i = 0; i < 200; i++) {
+      // Stale takeover — mirrors withLedgerLock (crashed holder).
+      try {
+        const st = statSync(lockPath);
+        if (Date.now() - st.mtimeMs > 10_000) unlinkSync(lockPath);
+      } catch {
+        /* no lock file yet */
+      }
+      try {
+        writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+      } catch {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25); // sleep 25ms
+        continue;
+      }
+      try {
+        return fn();
+      } finally {
+        try {
+          unlinkSync(lockPath);
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+    return false; // lock stayed contended ~5s — caller decides (best-effort paths log)
   }
   memory(id: string): string {
     const p = join(this.agentDir(id), 'memory.md');
@@ -8359,6 +8459,12 @@ catch (e) {
 //      recall time. Off-floor agents (parked/archived/retired) don't block —
 //      same live-set as the spawn guard, semantics can't drift.
 //  (c) POINTER-ONLY — never creates a worktree; god creates it and points.
+// The lock is THE shared registry.json.lock: every main-process registry
+// setter routes through HiveManager.withRegistryLock on the same path
+// (review round), so the CLI and the app serialize as ONE writer class.
+// Contract note (review round): the write covers `cwd` AND its derived
+// `cwdValid` mirror — leaving cwdValid stale would make the roster lie about
+// the NEW cwd. No other registry field is touched.
 const HIVE_RETARGET_CLI = `#!/usr/bin/env node
 'use strict';
 const fs = require('fs');
@@ -8405,9 +8511,10 @@ function physicalCheckout(seat) {
 }
 
 // Exclusive lock across concurrent writers: O_EXCL create + 10s stale takeover
-// + ~5s bounded retry — the same discipline bin/hive-card uses on tasks.json.
-// Main-process registry setters use fresh-read + atomic rename; this serializes
-// CLI writers against each other (and takes the stale-takeover if one crashed).
+// + ~5s bounded retry — THE shared registry.json.lock discipline. Main-process
+// registry setters take the SAME path through HiveManager.withRegistryLock, so
+// this serializes the CLI against the app too (not just CLI-vs-CLI): a
+// concurrent setter read can never straddle this rename and revert it.
 function withLock(fn) {
   for (let i = 0; i < 200; i++) {
     try {

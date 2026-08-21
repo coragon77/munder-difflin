@@ -183,6 +183,62 @@ test('refusal: a live agent occupies the target physical checkout (subdir seat)'
   assert.equal(s.registry().agents['mose-1'].cwd, oldDir, 'refusal wrote nothing');
 });
 
+test("refusal: a symlink ALIAS of a live agent's checkout is the same conflict", {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  const oldDir = fs.mkdtempSync(path.join(os.tmpdir(), 'md-rt-old-'));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'md-rt-repo-'));
+  execFileSync('git', ['-C', repo, 'init', '-q']);
+  execFileSync('git', ['-C', repo, 'commit', '--allow-empty', '-q', '-m', 'init'], {
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 't',
+      GIT_AUTHOR_EMAIL: 't@t',
+      GIT_COMMITTER_NAME: 't',
+      GIT_COMMITTER_EMAIL: 't@t',
+    },
+  });
+  const alias = path.join(os.tmpdir(), `md-rt-alias-${Date.now()}-${process.pid}`);
+  fs.symlinkSync(repo, alias);
+  t.after(() => fs.rmSync(alias, { force: true }));
+  s.seed('holder-1', { cwd: repo }); // LIVE agent seated at the real path
+  s.seed('mose-1', { cwd: oldDir, vacation: true, archived: true });
+
+  const r = s.runFail('mose-1', alias);
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /one agent per directory/, 'realpath collapsed the alias');
+  assert.match(r.stderr, /holder-1/, 'names the occupying agent');
+});
+
+test('the shared registry lock: withRegistryLock propagates fn and takes over a stale holder', {
+  skip: !POSIX,
+}, (t) => {
+  const s = setup(t);
+  // fn value propagates through the lock.
+  assert.equal(
+    s.hive.withRegistryLock(() => 42),
+    42,
+  );
+  // A stale lock file (older than the 10s takeover) is taken over, not obeyed.
+  const lockPath = path.join(s.home, 'hive', 'registry.json.lock');
+  fs.writeFileSync(lockPath, '99999', 'utf8');
+  const ts = Date.now() / 1000 - 60; // a minute old
+  fs.utimesSync(lockPath, ts, ts);
+  assert.equal(
+    s.hive.withRegistryLock(() => 'ok'),
+    'ok',
+    'stale holder taken over',
+  );
+  assert.ok(!fs.existsSync(lockPath), 'lock released after fn');
+  // A CLI retarget stays clean when no main-process lock is held — the shared
+  // path is what makes CLI and setters ONE writer class (review-round fix).
+  const dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'md-rt-b-'));
+  s.seed('robert-1', { cwd: s.home, vacation: true, archived: true });
+  s.run('robert-1', dirB);
+  assert.equal(s.registry().agents['robert-1'].cwd, dirB);
+});
+
 test("occupied-check uses LIVE agents only: a parked agent's seat does not block", {
   skip: !POSIX,
 }, (t) => {

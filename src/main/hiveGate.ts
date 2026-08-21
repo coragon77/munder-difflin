@@ -409,7 +409,7 @@ function refusalReason(target: string, context: string): string {
   if (target.includes('registry.json')) {
     return [
       head,
-      "registry.json is owned by the harness (spawn/retire/vacation flows) and the hire CLIs (`hive-hire`, `hive-new`). Reads: `$HIVE_ROOT/bin/hive-roster show <id>` / `list` (cwd, role, pinned, state — Pam, 357610e). Retargeting an agent's cwd (parked agents only): `$HIVE_ROOT/bin/hive-retarget <id> <dir>` — every other registry field is harness-owned with no god-side writer.",
+      "registry.json is owned by the harness (spawn/retire/vacation flows) and the hire CLIs (`hive-hire`, `hive-new`). Reads: `$HIVE_ROOT/bin/hive-roster show <id>` / `list` (cwd, role, pinned, state — Pam, 357610e). Retargeting an agent's cwd (parked agents only; writes cwd + its cwdValid mirror): `$HIVE_ROOT/bin/hive-retarget <id> <dir>` — every other registry field is harness-owned with no god-side writer.",
       tail,
     ].join('\n');
   }

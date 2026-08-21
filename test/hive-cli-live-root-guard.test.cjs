@@ -167,8 +167,12 @@ test('every generated CLI that takes HIVE_ROOT refuses a dead root loudly', {
     'hive-hire',
     'hive-fire',
     'hive-new',
+    'hive-retarget',
   ];
   for (const cli of clis) {
+    // hive-retarget is a pure positional CLI (agentId + cwd); 'drain' is an
+    // irrelevant arg — the root guard fires at script top, before any arg
+    // handling, which is exactly what this test asserts.
     const r = s.run(cli, dead, 'drain');
     assert.notEqual(r.code, 0, `${cli} refuses a dead root`);
     assert.match(r.stderr, /HIVE_ROOT/, `${cli} error names HIVE_ROOT`);
