@@ -1,7 +1,7 @@
 # Telemetry
 
 - **Coverage:** `src/main/analytics.ts`, `src/main/telemetry.ts`
-- **Last Updated:** 2026-08-15
+- **Last Updated:** 2026-08-21
 
 Munder Difflin collects a small set of **anonymous** usage events so we can
 understand adoption (how many people launch the app, which features get used)
@@ -10,6 +10,18 @@ contract: **if an event or property is not listed here, the app does not send
 it.** The implementation lives in [`src/main/analytics.ts`](src/main/analytics.ts)
 and enforces this list as a hard allowlist — the code and this file are kept in
 lockstep, and because the repo is open source you can verify that yourself.
+
+> ⚠ **INTENT UNVERIFIED:** Should this contract also cover `src/main/telemetry.ts`?
+> It is named in Coverage, but nothing here describes it, and no other doc in the
+> set claims it either. It is the loopback-only OTLP collector — checked: no
+> outbound call, so nothing it holds is "sent" in the sense used below — and
+> `fe49af8a` added a second ingest plane to it (hook-plane rows for non-Claude
+> providers, feeding `fleet.json` and the renderer). Either this doc grows a
+> mechanism section for it, or the file belongs to a doc of its own.
+> (raised 2026-08-21)
+> (owner 2026-08-21: a doc of its own — `TelemetryCollector` gets a separate
+> architecture doc (OTLP seam, hook plane, breaker/ledger boundary), and this
+> doc's Coverage narrows to `analytics.ts` when it lands. Open until then.)
 
 ## What is sent
 

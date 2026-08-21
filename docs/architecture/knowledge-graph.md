@@ -1,7 +1,7 @@
 # Knowledge Graph — Enterprise Multimodal Context for Agents (Design, v1)
 
 - **Coverage:** `src/main/knowledge.ts`, `src/main/kg-core.cjs`, `resources/kg.cjs`
-- **Last Updated:** 2026-06-11
+- **Last Updated:** 2026-08-21
 
 **Feature:** Knowledge Graph (enterprise context store + agent access)
 **Branch:** `feat/knowledge-graph` · **Author:** Stanley · **Status:** design + v1 vertical slice in this pass
@@ -163,12 +163,12 @@ Mirrors the MemPalace / Slack wiring 1:1 so it composes with existing code and o
 
 | Layer | File | Change |
 |---|---|---|
-| **Core logic** | `src/main/kg-core.cjs` (NEW) | Pure-JS: `ingest`, `search`, `list`, `getDoc`, `removeDoc`, `detectModality`, `extractText`, `chunkText`, `tokenize`, `scoreChunk`. Shared by main, the CLI, and the test (same pattern as `slack-trigger.cjs`). |
+| **Core logic** | `src/main/kg-core.cjs` (NEW) | Pure-JS: `ingest`, `search`, `list`, `getDoc`, `removeDoc`, `stats`, `detectModality`, `extractText`, `chunkText`, `tokenize`, `scoreChunk`, `makeSnippet`, `deriveTitle`, plus the `DEFAULT_CHUNK_SIZE`/`DEFAULT_CHUNK_OVERLAP` constants. Shared by main, the CLI, and the test (same pattern as `slack-trigger.cjs`). |
 | **Agent CLI** | `resources/kg.cjs` (NEW) | Thin `node:fs` wrapper over `kg-core.cjs` exposing `search`/`list`/`get`. Added to `electron-builder.yml` `extraResources` + `tools/copy-main-assets.cjs` + `electron.vite.config.ts` sidecar copy. |
-| **Manager** | `src/main/knowledge.ts` (NEW) | `KnowledgeManager`: `active()`, `env()` (→`KG_CLI`,`KG_ROOT`), `ingestFile()`, `search()`, `list()`, `get()`, `remove()`, `status()`. `require()`s `kg-core.cjs` like `slack.ts` does its sidecar. |
+| **Manager** | `src/main/knowledge.ts` (NEW) | `KnowledgeManager`: `active()`, `env()` (→`KG_CLI`,`KG_ROOT`,`KG_CORE`), `ingestFile()`, `ingestText()`, `search()`, `list()`, `get()`, `remove()`, `status()`, `root()`. `require()`s `kg-core.cjs` like `slack.ts` does its sidecar. |
 | **Config** | `src/main/config.ts` | Add `KnowledgeGraphConfig { enabled?; rootPath? }` + `knowledgeGraph?` on `HarnessConfig`; default `{ enabled: false }`. |
 | **Config mirror** | `src/renderer/src/store/config.ts`, `src/preload/index.d.ts` | Mirror the type (hand-mirrored, per repo convention). |
-| **Spawn** | `src/main/index.ts` (~1251), `src/main/hive.ts` (`ensureAgent`, `injectedPrompt`) | Pass `knowledgeGraph: knowledge.active()` into `ensureAgent`; merge `knowledge.env()` into spawn env; add the flag-gated `knowledgeLine`. |
+| **Spawn** | `src/main/index.ts`, `src/main/hive.ts` (`ensureAgent`, `injectedPrompt`) | Pass `knowledgeGraph: knowledge.active()` into `ensureAgent`; merge `knowledge.env()` into spawn env; add the flag-gated `knowledgeLine`. |
 | **IPC** | `src/main/index.ts` | `kg:status`, `kg:list`, `kg:search`, `kg:ingestFiles`, `kg:get`, `kg:remove`. |
 | **Preload** | `src/preload/index.ts` (+`.d.ts`) | `window.cth.kgStatus/kgList/kgSearch/kgIngestFiles/kgGet/kgRemove`. |
 | **Settings UI** | `src/renderer/src/components/SettingsModal.tsx` | A "Knowledge Graph" section: enable toggle + doc count + "Add files…" (OS dialog) — minimal, mirrors the Slack/webhook blocks. |

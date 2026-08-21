@@ -1,11 +1,11 @@
 # Memory Graph Visualization — Spec (Phase 1)
 
-- **Coverage:** `src/renderer/src/components/memoryGraph/`, `src/renderer/src/components/MemoryGraphPanel.tsx`
+- **Coverage:** `src/renderer/src/components/memoryGraph/`, `src/renderer/src/components/MemoryGraphPanel.tsx`, `src/renderer/src/components/CommandCenterPanel.tsx`
 - **Depends on:** [The Hive](docs/architecture/hive.md)
-- **Last Updated:** 2026-06-04
+- **Last Updated:** 2026-08-21
 
 **Feature #8** of the Munder Difflin harness roadmap · author: Jim · branch `feature/memory-graph`
-**Status:** awaiting god sign-off. No component code is written yet — this document is the contract for Phase 2.
+**Status:** implemented — Phase 2 shipped in `7ea347b8` (2026-06-04), which created all four files of §10. This document is no longer a pending contract but the design record for code that runs; the places where the shipped code diverges from the spec are called out inline below. (The commits do not record whether god formally signed off first, so §12 keeps the questions as they were asked, annotated with what the code actually shipped.)
 
 ---
 
@@ -118,7 +118,7 @@ A spring/charge simulation: edges pull connected nodes together, all nodes repel
 | Timeline | Rejected. We have timestamps, but the question this tab answers is *structural* (who↔who, who-knows-what), not *temporal*. The Activity tab already serves the chronological view. A timeline also can't express the bipartite topic layer. |
 | Radial | Tempting (god is a natural centre) — but it hard-codes a single hub and flattens agent-agent edges that don't pass through god. Force-directed gives the same "god in the middle" read *emergently* (via god-gravity + god's high degree) without losing peer-to-peer structure. |
 
-**Implementation:** a tiny hand-rolled simulation (~50 lines: Coulomb repulsion + Hooke spring + centre gravity + velocity damping), run for a fixed number of ticks on data change, then frozen. **No new dependency** — `d3-force` is *not* in `node_modules` (only `commit-graph`, which is git-specific), and the project keeps its dependency list deliberately lean. For < 100 nodes a fixed-iteration integrator is more than adequate and avoids a dep that would need god's approval. Nodes are also **draggable** (drag pins a node; the sim relaxes the rest around it). Layout seeding is deterministic (seeded by node index, not `Math.random`) so the graph doesn't jump between refreshes.
+**Implementation:** a tiny hand-rolled simulation, run for a fixed number of ticks on data change, then frozen. As shipped in `7ea347b8`, `forceLayout()` is Fruchterman–Reingold — attraction and repulsion against a cooling temperature, not the Coulomb/Hooke-plus-velocity-damping pair sketched here — with the mild centre gravity kept as a per-node `gravityBias`, defaulting to 320 iterations. **No new dependency** — `d3-force` is *not* in `node_modules` (only `commit-graph`, which is git-specific), and the project keeps its dependency list deliberately lean. For < 100 nodes a fixed-iteration integrator is more than adequate and avoids a dep that would need god's approval. Nodes are also **draggable** (drag pins a node; the sim relaxes the rest around it). Layout seeding is deterministic (seeded by node index, not `Math.random`) so the graph doesn't jump between refreshes.
 
 ---
 
@@ -142,6 +142,8 @@ The office floor uses Pixi because it is a continuously-animating tilemap game w
 
 > **This is the one decision I'd most like god to confirm.** If hive-wide consistency ("everything visual is Pixi") outweighs the engineering simplicity, I'll switch to Pixi — the data model, layout, and interactions in this spec are renderer-agnostic and unchanged either way. My recommendation is SVG.
 
+**Resolved by the implementation (`7ea347b8`):** shipped as SVG. `MemoryGraphPanel.tsx` renders an inline `<svg>` — `<rect>` nodes, `<line>` edges, `<marker>` arrowheads — and imports nothing from Pixi.
+
 ---
 
 ## 8. Interactions
@@ -153,7 +155,7 @@ The office floor uses Pixi because it is a continuously-animating tilemap game w
 | **Hover edge** | Tooltip: `from → to`, message count, last act + last subject. |
 | **Drag node** | Repositions & pins it; sim relaxes others around it. |
 | **Toggle: Topics** | Show/hide the topic layer (default off). |
-| **Toggle: Filter by act** | Optional chips to show only e.g. `query`/`refuse` edges (helps spot blockers). v1: nice-to-have, behind the same toggle row. |
+| **Toggle: Filter by act** | Optional chips to show only e.g. `query`/`refuse` edges (helps spot blockers). v1: nice-to-have, behind the same toggle row. **Not built** — `7ea347b8` shipped the toggle row with the topics toggle only; act reads through edge colour and the legend. Still a v2 candidate. |
 | **Refresh** | Auto-poll every 5s (same cadence as Activity tab) + a manual refresh button. Re-runs extraction + a few sim ticks; pinned/dragged nodes stay put. |
 | **Empty state** | "No messages yet — the hive is quiet." when the log has no `message` entries. |
 
@@ -165,8 +167,8 @@ Tooltips and the navigate-to-memory hook are the two requirements called out in 
 
 - Container: `PixelPanel` (`variant="inset"`), same `Section`/`Scroll` primitives already used by the other tabs.
 - Canvas background: `--cth-paper-100`; a faint 32px dotted grid (echoes the tile grid) in `--cth-ink-100`.
-- Agent node fill: `--cth-<accent>`; border `--cth-ink-900` 2px; offset shadow `2px 2px 0 --cth-ink-900`. God: 1.4× size + double border.
-- Status: a 1px ring in the `status-<kind>` colour (idle/thinking/working/blocked/success) so liveness reads at a glance.
+- Agent node fill: `--cth-<accent>`; border `--cth-ink-900`, shipped at 1.5px and 2px for god rather than a flat 2px (`7ea347b8`); offset shadow `2px 2px 0 --cth-ink-900`. God: 1.4× size + double border.
+- Status: a ring in the `status-<kind>` colour (idle/thinking/working/blocked/success) so liveness reads at a glance — 1.5px as shipped (`7ea347b8`), not the 1px specced here.
 - Topic node: `--cth-cream-200` fill, `--cth-ink-700` hairline, VT323 label `--cth-ink-700`.
 - Edges: message palette per act (mirror `MessageEnvelope.tsx`); topic edges = ink-300 dashed.
 - Labels: Pixelify Sans 12–13px for agent names; VT323 for topics/paths. Never bold (DESIGN.md rule — emphasise with colour).
@@ -176,7 +178,7 @@ Tooltips and the navigate-to-memory hook are the two requirements called out in 
 
 ## 10. Component architecture (Phase 2 plan)
 
-New files (Phase 2 only — not now):
+The files, all four created in `7ea347b8` exactly at these paths:
 
 ```
 src/renderer/src/components/MemoryGraphPanel.tsx     // the tab body: data load, toggles, tooltip, SVG
@@ -191,6 +193,10 @@ Wiring into `CommandCenterPanel.tsx` (per shared-file discipline — additive on
 2. Add one `TABS` entry: `{ key: 'graph', label: 'graph', icon: 'mcp' }` (reuse an existing `IconName` — `mcp` reads as a network/node glyph; no new icon needed).
 3. Add `{tab === 'graph' && <MemoryGraphPanel godId={agent.id} onJumpToMemory={...} />}` as a **self-contained block** alongside the other `tab === …` lines. No reordering of existing tabs or unrelated reformatting.
 
+`MemoryGraphPanel`'s shipped signature is the `{ godId, onJumpToMemory }` pair planned in step 3 (`7ea347b8`).
+
+**As wired (`21e5156`, a separate commit from the four files):** all three steps landed additively, plus the `MemoryTab` controlled `who`/`onWho` props of §12.4. One deliberate change to step 2 — the tab ships `icon: 'web'`, not the planned `icon: 'mcp'`, to stay **distinct from the office floor's `mcp`**.
+
 The data-loading logic mirrors `ActivityTab` (poll `hiveLog` on a 5s interval) and `MemoryTab` (`hiveMemory(id)` per agent), so it reuses proven patterns.
 
 ---
@@ -200,7 +206,7 @@ The data-loading logic mirrors `ActivityTab` (poll `hiveLog` on a 5s interval) a
 - **Scale:** caps — top 24 topics, 200-entry log window — keep nodes < ~100 and edges < ~200; SVG handles this with no perceptible cost. Any cap that drops data is surfaced in the UI, never silent.
 - **Self-loops** (agent messaging itself, or god→god) are dropped.
 - **Memory fetch cost:** topic extraction needs every agent's memory text. Fetch lazily and cache by id; only refetch when the topics layer is enabled, so the default (agents-only) view does N=0 memory reads beyond what hover needs.
-- **Stability:** deterministic seeding + pinned dragged nodes → the graph doesn't reshuffle on every poll.
+- **Stability:** deterministic seeding + pinned dragged nodes → the graph doesn't reshuffle on every poll. The `layout` `useMemo` depends on `structKey`/`pinnedKey` — deliberate identity proxies for the graph and the pin set — rather than on the polled objects themselves, so a 5s poll that returns the same structure re-runs no simulation. Pinned by the `useExhaustiveDependencies` suppression added in `737b904f`, which exists precisely to stop that dependency list being "corrected".
 - **Worktree caveat:** this runs in the Electron renderer; it cannot be exercised by a full GUI run from the worktree. The Phase 2 bar is a clean `npm run typecheck` + `npm run build` (per dispatch).
 - **Non-goals (v1):** time-scrubbing/playback; editing memory from the graph; semantic (MemPalace-derived) topic clustering; persisting layout across app restarts. All candidate v2 follow-ups.
 
@@ -212,5 +218,12 @@ The data-loading logic mirrors `ActivityTab` (poll `hiveLog` on a 5s interval) a
 2. **Topic layer default** — I propose default **OFF** (agents+messages is the cleaner first impression). OK?
 3. **`broadcast`/`human` pseudo-nodes** (§2.2) — acceptable, or prefer fan-out / hide entirely?
 4. **`MemoryTab` controlled-prop refactor** (§8) needed for click-to-navigate — confirm a tiny additive change to `MemoryTab`'s signature is fine (it's a shared file).
+
+**Answered by what shipped in `7ea347b8`, not by a recorded reply:**
+
+1. **SVG** (§7) — the panel is inline SVG; Pixi is not imported.
+2. **Topic layer default OFF** — `showTopics` initialises to `false`, revealed by the topics toggle.
+3. **Pseudo-nodes kept** — `buildGraph()` emits the collapsed `broadcast` and `human` nodes as specced in §2.2, rather than fanning out or hiding them.
+4. **`MemoryTab` controlled-prop refactor** — done as the "tiny additive change" asked for: `MemoryTab` gained optional controlled `who`/`onWho` props, backward-compatible with its render untouched, and `CommandCenterPanel` lifts `selectedMemoryAgent` so a graph node click jumps to that agent's memory tab (`21e5156`).
 
 On sign-off I'll proceed to Phase 2 exactly as scoped in §10.
