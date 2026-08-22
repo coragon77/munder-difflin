@@ -115,10 +115,12 @@ capped at 4000 characters by the hire-manifest validator
 was never built. Nothing in `src/main/`, `src/preload/` or `src/renderer/`
 reads the value back out to prepend it or hand it to a hook.
 
-> ⚠ **INTENT UNVERIFIED:** `Agent.goal` is authored, validated, persisted and
-> shown, but no code path delivers it to the agent. Is the field waiting on the
-> injection half, or superseded by the CLI's own `/goal` and the registry role?
-> (raised 2026-08-22)
+Owner's answer (Stefan, 2026-08-22): neither — the injection half is an
+unfinished implementation by the original author, and the concept itself is
+judged wrong ("the concept sucks as well"). TODO: the feature needs a design
+discussion and a proper implementation; the discussion is queued as an open
+question in `docs/goals/harness-vision.md` (V2). Until then the field stays
+authored-but-undelivered.
 
 **One risk from §10 was called correctly and is still the design rule.** The
 proposal listed *"The Sims metaphor lands as gimmicky"* as a real risk, with the

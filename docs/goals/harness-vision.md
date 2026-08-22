@@ -63,6 +63,7 @@ Out:
 | What does an advisor like Robert receive as input — raw access to docs/cards/repo, or Michael's digest? | Stefan | V2 approach discussion |
 | Router effort level — Stefan leans but has not decided: "Medium would be better for the costs but I am not opposed to let it run on high." | Stefan | Re-measuring cost after the docs gate; V2 |
 | Which of the proposed primitive design rules (next section) get adopted? | Stefan | V2 approach discussion |
+| `Agent.goal` (spec.md): the injection half was never built and Stefan judges the concept wrong — "this needs a discussion and proper implementation" (2026-08-22). What should goal-driven agents look like? | Stefan | V2 vision discussion |
 
 ## Captured discussion — primitives and the token economy (2026-08-21)
 
