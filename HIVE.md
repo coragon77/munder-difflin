@@ -2,7 +2,7 @@
 
 - **Coverage:** `src/main/hive.ts`, `src/main/hiveGate.ts`, `src/main/memory.ts`, `src/main/roster.ts`, `src/main/actionableCards.ts`, `src/main/actionableWatch.ts`, `src/main/cardSessions.ts`, `src/main/orientGate.ts`, `src/main/orientInject.ts`, `src/main/sessionRequests.ts`, `src/main/standup.ts`, `src/shared/hiveMail.ts`, `src/renderer/src/hooks/useHive.ts`, `hive/`, `src/shared/cardSessions.ts`, `src/shared/inboxWake.ts`, `src/main/reflect.ts`, `src/shared/agentRole.ts`
 - **Depends on:** [Munder Difflin Spec](docs/architecture/spec.md)
-- **Last Updated:** 2026-08-21
+- **Last Updated:** 2026-08-22
 
 > How Munder Difflin turns a room full of independent `claude`
 > processes into a collaborating, self-coordinating team with persistent memory,
@@ -56,7 +56,13 @@ stream, retrieval, reflection, and planning.
    (`tasks.json.lock`: 5174788, 32c5eaa; one shared `registry.json.lock`
    across CLI and main-process setters: 7cb3969). Every *non-primitive*
    access is refused by the god-scoped PreToolUse shared-state gate
-   (`src/main/hiveGate.ts`, a7076bb; reads included since 26d7de2).
+   (`src/main/hiveGate.ts`, a7076bb; reads included since 26d7de2). The gate's
+   primitive-invocation classifier is exported to the orientation backstop
+   (`src/main/orientGate.ts`), so the two PreToolUse gates can never disagree
+   about what a primitive invocation is — for both, prose inside a primitive
+   call is mention, not access (0b36cf1) — and since 13b432a the orient
+   gate's single shell tokenizer (`parseCommand`) knows what is live by
+   construction.
 3. **God-mode autonomy, native HITL.** A privileged **god agent** (lives in
    Michael's room) adjudicates cross-agent traffic. Routine requests
    (clarifications, data asks, plan tweaks) it resolves itself and the system
@@ -121,17 +127,26 @@ boot — `hive-card` add/status/update/list/show/ask/prune-done/restore (5174788
 `$`/backticks go via stdin, 533375e), `hive-dispatch` + `hive-inbox` (a20f75a),
 `hive-hire`/`hive-fire` (0875b5a), `hive-park`/`hive-recall` (788e344),
 `hive-roster` show/list (357610e), `hive-new` (0a94b09), `hive-retarget`
-(6e69f80), `hive-restart-window` (1f976fc). `hive-dispatch` is the **only**
+(6e69f80, the only primitive that changes an agent's registry cwd),
+`hive-restart-window` (1f976fc; its watcher survives the restart it serves by
+launching in its own transient systemd scope — `detached:true` does not escape
+the app's scope cgroup, 9e25944). `hive-dispatch` is the **only**
 todo→doing path (de2b141), and every writer CLI refuses a dead `HIVE_ROOT`
-before touching disk (1c27440, the phantom-hive mail-loss fix).
+before touching disk (1c27440, the phantom-hive mail-loss fix). Card
+dependencies got their sanctioned writer late: `hive-card update --depends-on`
+(087060f) — until then `dependsOn` had four readers and no writer, so the
+dep-waiting state was unreachable by any sanctioned path.
 
 Four hive-side helpers claimed in the coverage-gap round (2026-08-22), each
 with its rationale in its own header docstring: `src/shared/cardSessions.ts`
 (the card-session delivery-staleness schema shared between the main-process
 watcher that mints the marker and the renderer queue-drain that revalidates it
-at delivery — the shared half of the covered `src/main/cardSessions.ts`);
+at delivery, fail-open (54e3737) — the shared half of the covered
+`src/main/cardSessions.ts`);
 `src/shared/inboxWake.ts` (the reconciler behind `useHive` effect #3, the
-inbox-wake nudge); `src/main/reflect.ts` (`MemoryReflector` — the CONDENSE
+inbox-wake nudge — reconciliation over observable state replaced the
+enqueue-time edge-trigger after a lost nudge silenced an agent for 57 minutes;
+b593e99, 1fbfdf0); `src/main/reflect.ts` (`MemoryReflector` — the CONDENSE
 half of the janitor: acts on the janitor's "Needs condensing." flag for
 oversized `agents/<id>/memory.md`); `src/shared/agentRole.ts` ("role is
 identity" — the registry field god routes work on; absent must render as
@@ -204,7 +219,12 @@ card-scoped conversation is not yet established, `deliver()` stages mail in
 `inbox/.staged` — invisible to every wake rail until the session stamp lands
 (09ddde2) — and a dispatch contract absorbs the assignee's other pending mail
 into its own body (budgeted, idempotently folded), so an agent can never read
-the dispatch and miss the mail beside it (4924149). A stalled outbox is
+the dispatch and miss the mail beside it (4924149). The staging hold is
+time-bounded: past `MAIL_STAGE_TIMEOUT_MS` the mail releases rather than
+wedging — monitors never count in the pending-work census, and the timeout
+release disarms the late-wipe trap (1c76ab0) — unless a house busy probe shows
+the assignee legitimately busy, which extends the hold and notifies god once
+per release epoch (9f3cd0d, 8b0241b). A stalled outbox is
 detected once per episode and self-healed by a backstop `routeOnce()` on the
 fleet tick (7fcb8bd). Registered worker-to-worker mail drops a no-wake audit
 CC into god's inbox (a3cf1e6).
@@ -221,7 +241,10 @@ michael`, flagged `isGod`. It is an ordinary `claude` process — the *intellige
   status — consumed via the auto-injected LIVE ROSTER line (slim per prompt,
   full block only on roster change, 16a6def) and the read-only
   `hive-roster show/list` (357610e); raw `registry.json`/`fleet.json` reads
-  are gate-refused (26d7de2).
+  are gate-refused (26d7de2). Every roster surface — fleet snapshot rows and
+  the roster lines — carries the agent's engine token (`engine=claude` /
+  `engine=pi`), so god's only sanctioned view of the floor is not
+  engine-blind (15f9303).
 - **Adjudication**: read each outbound request; resolve routine ones itself
   (answer clarifications, route to the right specialist with a self-contained
   task spec), escalate only critical ones. This is "god mode."
@@ -235,7 +258,10 @@ michael`, flagged `isGod`. It is an ordinary `claude` process — the *intellige
   honoring the worker-bypass setting); ephemeral workers are gated OFF by
   default (`workersEnabled`, da8f0c3); parks/recalls ride
   `hive-park`/`hive-recall` (788e344) with an evidence-gated auto-park sweep
-  for idle agents (1f8d75c); human-made hires stay human surfaces.
+  for idle agents (1f8d75c) and a busy pre-flight on `hive-park` — refusals
+  are truthful and name the census reason instead of printing a success
+  receipt over a silent bounce (6b04996); human-made hires stay human
+  surfaces.
 
 Its escalation policy (what counts as "critical") lives in its system prompt and
 is the primary control surface — tune the prompt, not the code. Since the
@@ -243,7 +269,11 @@ primitive wave that split has hardened: rules that must *hold* are mechanism,
 not prose — the paused hold is god-only in the CLI (2ecb500), the operator's
 holds are enforced at the doing flip itself (de2b141), and the shared-state
 gate has no override flag (a7076bb) — while judgment (escalation, parking
-evidence, dispatch contracts) stays in the prompt.
+evidence, dispatch contracts) stays in the prompt. Checks that classify free
+prose sit in between and are warn-only by standing ruling: the compose lint on
+dispatch bodies (unsourced diagnoses, dead `file:line` cites, b7b159d) and the
+scope-fold check on updating a doing card (fc06196) print advisories, never
+block.
 
 ---
 
