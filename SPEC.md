@@ -1,6 +1,6 @@
 # The App Spine — Terminal Plane, Event Plane, IPC and Renderer State
 
-- **Coverage:** `src/main/pty.ts`, `src/main/hooks.ts`, `src/main/index.ts`, `src/preload/`, `src/renderer/src/store/`, `src/renderer/src/hooks/`, `src/renderer/src/App.tsx`
+- **Coverage:** `src/main/pty.ts`, `src/main/hooks.ts`, `src/main/index.ts`, `src/preload/`, `src/renderer/src/store/`, `src/renderer/src/hooks/`, `src/renderer/src/App.tsx`, `src/main/db.ts`, `src/main/detachBridge.ts`, `src/main/procKill.ts`, `src/main/shellEnv.ts`, `src/main/transcript.ts`, `src/main/kittySatellite.ts`, `src/main/hiddenClaude.ts`, `src/main/hiddenHelpers.ts`, `src/main/control.ts`, `src/main/fs.ts`, `src/main/git.ts`, `src/main/github.ts`
 - **Depends on:** [Hive](hive.md), [Message queue](message-queue.md), [Telemetry](telemetry.md)
 - **Last Updated:** 2026-08-22
 
@@ -760,3 +760,20 @@ any failure so the caller falls back to `localStorage`.
 | `src/renderer/src/hooks/useTypewriter.ts` | Character-by-character reveal for the assistant text, `seed`-restartable. |
 | `src/renderer/src/hooks/useHive.ts` | Renderer-side hive orchestration — see [hive.md](hive.md). Its `hive:hookEvent` effect is the event plane's terminus. |
 | `src/renderer/src/hooks/useTelemetry.ts` | Fleet grid and span waterfall — see [telemetry.md](telemetry.md). |
+
+Spine helpers extracted from `index.ts`/`pty.ts` (coverage-gap round, 2026-08-22 — each carries its rationale in its own header docstring):
+
+| File | What lives in it |
+|---|---|
+| `src/main/db.ts` | `PersistStore` — durable harness state in SQLite (better-sqlite3, synchronous). Creates the `kv` and `command_history` tables discussed under Inception. |
+| `src/main/detachBridge.ts` | The detach-to-kitty bridge. Owns `isDetached` (`detachBridge.ts:177`), which `pty:resize` consults. |
+| `src/main/procKill.ts` | Process-tree termination helpers (PID-release hardening) — every explicit kill path routes here instead of a bare node-pty `proc.kill()`. |
+| `src/main/shellEnv.ts` | Mirrors `pty.ts` command resolution for headless child processes, so they see the user's login-shell PATH (Electron on macOS starts without it). |
+| `src/main/transcript.ts` | Session-transcript path helpers: `projectDir`, `seedSessionTranscript`, `resolveSessionCwd`. |
+| `src/main/kittySatellite.ts` | The satellite kitty window — exports `KITTY_LISTEN_ON`/`KITTY_WINDOW_ID` into agent PTY envs so skills get the same kitty handoff environment as a user working in kitty directly. |
+| `src/main/hiddenClaude.ts` | Runs a HIDDEN interactive claude session (ephemeral PTY) and returns the assistant's final text. |
+| `src/main/hiddenHelpers.ts` | Engine-neutral hidden one-shot helpers on top of it (standup clerk, memory condenser). |
+| `src/main/control.ts` | `ControlRegistry` — per-agent operator control state the `HookServer` reads when deciding what to gate. |
+| `src/main/fs.ts` | Path confinement: resolves a path inside a root and returns null on traversal escape. |
+| `src/main/git.ts` | The git runner (`cwd` + args + supplemental env — the `GIT_INDEX_FILE` temp-index trick for branch retirement runs through it). |
+| `src/main/github.ts` | GitHub issues normalized for the renderer (labels/assignees flattened), served over IPC from `index.ts`. |

@@ -1,6 +1,6 @@
 # Munder Difflin — Design System
 
-- **Coverage:** `src/renderer/src/design/`, `src/renderer/src/components/`, `src/renderer/src/scene/`, `src/renderer/src/statusLabel.ts`, `src/shared/waitingLabel.ts`, `src/renderer/index.html`
+- **Coverage:** `src/renderer/src/design/`, `src/renderer/src/components/`, `src/renderer/src/scene/`, `src/renderer/src/statusLabel.ts`, `src/shared/waitingLabel.ts`, `src/renderer/index.html`, `src/renderer/src/statusText.ts`, `src/shared/agentOrder.ts`, `src/shared/settingsHero.ts`
 - **Last Updated:** 2026-08-21
 
 > The aesthetic is **Animal Crossing × Earthbound × SNES menu UI**. Pixel-snapped, chunky, friendly. Every UI element should feel like it could appear in a Nintendo game from 1995–2005. This document is canonical: any new component must derive from these tokens.
@@ -979,6 +979,14 @@ All tokens live in `src/renderer/src/design/`:
 
 There is still no build-time `tokens.json`; the files are hand-kept in sync, and
 both carry a header comment saying so.
+
+Three display-logic helpers claimed in the coverage-gap round (2026-08-22),
+each with its rationale in its own header docstring: `src/renderer/src/statusText.ts`
+(the status-text sanitiser feeding the labels this doc's copy rules govern —
+sibling of the covered `statusLabel.ts`); `src/shared/agentOrder.ts` (the ONE
+display order for grouped agent lists — god pinned first, by the operator's
+call); `src/shared/settingsHero.ts` (the Settings hero card's field logic; the
+card shape is ported from upstream `1b821b3` by intent).
 
 **`tokens.ts` has no dark ramp.** `5510818` added the dark block to `tokens.css`
 and `theme.ts` only, so every Pixi consumer of `tokens.ts` — the office floor,

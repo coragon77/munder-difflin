@@ -1,6 +1,6 @@
 # The Hive — autonomous multi-agent layer
 
-- **Coverage:** `src/main/hive.ts`, `src/main/hiveGate.ts`, `src/main/memory.ts`, `src/main/roster.ts`, `src/main/actionableCards.ts`, `src/main/actionableWatch.ts`, `src/main/cardSessions.ts`, `src/main/orientGate.ts`, `src/main/orientInject.ts`, `src/main/sessionRequests.ts`, `src/main/standup.ts`, `src/shared/hiveMail.ts`, `src/renderer/src/hooks/useHive.ts`, `hive/`
+- **Coverage:** `src/main/hive.ts`, `src/main/hiveGate.ts`, `src/main/memory.ts`, `src/main/roster.ts`, `src/main/actionableCards.ts`, `src/main/actionableWatch.ts`, `src/main/cardSessions.ts`, `src/main/orientGate.ts`, `src/main/orientInject.ts`, `src/main/sessionRequests.ts`, `src/main/standup.ts`, `src/shared/hiveMail.ts`, `src/renderer/src/hooks/useHive.ts`, `hive/`, `src/shared/cardSessions.ts`, `src/shared/inboxWake.ts`, `src/main/reflect.ts`, `src/shared/agentRole.ts`
 - **Depends on:** [Munder Difflin Spec](docs/architecture/spec.md)
 - **Last Updated:** 2026-08-21
 
@@ -124,6 +124,18 @@ boot — `hive-card` add/status/update/list/show/ask/prune-done/restore (5174788
 (6e69f80), `hive-restart-window` (1f976fc). `hive-dispatch` is the **only**
 todo→doing path (de2b141), and every writer CLI refuses a dead `HIVE_ROOT`
 before touching disk (1c27440, the phantom-hive mail-loss fix).
+
+Four hive-side helpers claimed in the coverage-gap round (2026-08-22), each
+with its rationale in its own header docstring: `src/shared/cardSessions.ts`
+(the card-session delivery-staleness schema shared between the main-process
+watcher that mints the marker and the renderer queue-drain that revalidates it
+at delivery — the shared half of the covered `src/main/cardSessions.ts`);
+`src/shared/inboxWake.ts` (the reconciler behind `useHive` effect #3, the
+inbox-wake nudge); `src/main/reflect.ts` (`MemoryReflector` — the CONDENSE
+half of the janitor: acts on the janitor's "Needs condensing." flag for
+oversized `agents/<id>/memory.md`); `src/shared/agentRole.ts` ("role is
+identity" — the registry field god routes work on; absent must render as
+unmistakably unknown, never as a placeholder).
 
 ---
 

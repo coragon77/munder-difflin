@@ -9,3 +9,9 @@ tools/*
 prototypes/*
 obsidian/*
 electron.vite.config.ts
+# App plumbing / shims with no agent-task routing (coverage-gap round, 2026-08-22):
+# type shim for tunnelmole, renderer bootstrap, GitHub-release auto-update.
+src/main/tunnelmole.d.ts
+src/renderer/src/main.tsx
+src/main/updater.ts
+src/shared/updateState.ts
