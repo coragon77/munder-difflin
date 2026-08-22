@@ -324,6 +324,10 @@ behind the tunnel; only the webhook and Slack event ports are forwarded.
 
 ## Gotchas
 
+- **`IntegrationBroker` has no committed test.** Commit `af22ac2` cites a
+  "30/30 broker harness", but nothing under `test/` exercises the broker —
+  the harness never landed in the repo. The doc's description of its eight
+  ordered checks is source-verified, not test-pinned.
 - **`TelegramTrigger.stop()` cannot actually abort the in-flight poll.** The
   docstring says *"`stop()` aborts the in-flight poll"* and `stop()` calls
   `this.abort?.abort()`, but `abort` is declared `= null` at `telegram.ts:133`
