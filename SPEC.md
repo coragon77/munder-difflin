@@ -62,18 +62,20 @@ The app spawns and owns every agent process, which is why PTY lifecycle,
 teardown, worktree cleanup and process-group killing are the spine's largest
 responsibility rather than tmux's.
 
-> ⚠ **INTENT UNVERIFIED:** Why was the tmux-attach model abandoned between the
-> proposal and the first commit, on the same day? No commit message, test or
-> comment records the reversal. (raised 2026-08-22)
+Owner's answer (Stefan, 2026-08-22): the tmux-attach model was superseded by
+the kitty-pane approach and the proposal's §12 text is a leftover from the
+initial discussion. The app owns its agent processes; the
+reach-an-outside-terminal role the proposal gave tmux is covered today by the
+kitty integration (`src/main/kittySatellite.ts`). Tmux support may still come
+in the future.
 
 The only surviving trace is `Agent.tmuxTarget` (`store.ts:56`), a required
 `string` field. Every one of its three writers sets it to `''`
 (`useHive.ts:397`, `useHive.ts:1238`, `AddAgentModal.tsx:532`) and nothing reads
 it.
 
-> ⚠ **INTENT UNVERIFIED:** Why does `tmuxTarget` remain a required field on
-> `Agent` when it is written as `''` by all three call sites and read by none?
-> (raised 2026-08-22)
+Owner's answer (Stefan, 2026-08-22): the field stays deliberately — it is a
+placeholder for possible future tmux support, not dead code to remove.
 
 **The other §12 decisions held.** The avatar metaphor is still active-Sims
 (agents walk to stations). The tech stack is still Electron + React + Pixi.js +
