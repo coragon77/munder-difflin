@@ -194,10 +194,11 @@ is synchronous and a poll loop would pin the only tool the agent can act with.
 monitor and `0` for everything else, so the typed nudge stays a fallback for
 when the monitor did not take rather than a competing delivery path.
 
-> ⚠ **INTENT UNVERIFIED:** Why is `NUDGE_GRACE_MS` 45 s? The monitor is
-> documented to see mail within about a second, which leaves the specific
-> 45-second wait before the fallback nudge unexplained. Nothing in the code, the
-> commits or the tests records it. (raised 2026-08-22)
+> ✔ **Resolved (2026-08-22, Stefan):** "is eyeballed I think" — a tuned
+> constant. The grace itself exists because the typed nudge *raced* the monitor:
+> per `70a262e`, "the poller enqueued within 4s and the queue delivered on idle,
+> so a monitor-capable agent got the fake-user text in the pane before its own
+> 1s inbox poll could wake it." Only the specific value 45 is unrecorded.
 
 ## Resuming a session
 
@@ -260,11 +261,10 @@ handles the one engine difference — OpenCode names its local provider `local/`
 Crush and Pi use `ollama/`. Frontier slugs are excluded from code defaults by the
 catalog's own "verify-live" rule.
 
-> ⚠ **INTENT UNVERIFIED:** Why does `hasOssQuickPicks` cover only `opencode`,
-> `crush` and `pi`, and not `qwen`? Qwen drives any OpenAI-compatible endpoint,
-> and its preset already existed (3ad2089, 2026-06-16) when the quick-picks
-> landed (f062dab, 2026-06-22). Nothing in the code, the commits or the tests
-> records the exclusion. (raised 2026-08-22)
+> ✔ **Resolved (2026-08-22, Stefan):** oversight — `qwen` belongs in the
+> quick-picks (`hasOssQuickPicks`, `ossModels.ts:92`); its preset predates them
+> (3ad2089, 2026-06-16 vs f062dab, 2026-06-22). Fix owed: D8 in
+> `docs/goals/2026-08-22-intent-interview-decisions.md`.
 
 ## Which engine an intern gets
 
@@ -380,11 +380,10 @@ and `fetch()`'s own resolution is accepted for v1, because there is no connectio
 pinning. `readHireManifestFile(path)` is the file-picker half — a `statSync` size
 check against the same cap, then parse and validate.
 
-> ⚠ **INTENT UNVERIFIED:** Why does `HireProvider` still list only `claude`,
-> `antigravity` and `codex` when eleven providers exist? It could be that spec v1
-> is frozen and widening the enum needs a spec bump, or it could be drift.
-> Nothing in the code, the commits or the tests records which. (raised
-> 2026-08-22)
+> ✔ **Resolved (2026-08-22, Stefan):** frozen v1 spec, not drift — "I think it
+> was the beginning of a store for skills/agents. I don't need it but I liked
+> the capability listing logic." Widening the enum past `claude`, `antigravity`,
+> `codex` needs a spec bump; none is planned.
 
 ---
 

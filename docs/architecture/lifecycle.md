@@ -81,7 +81,7 @@ Renderer batches land by **cherry-pick**, so commits reach main under new shas a
 
 **Unsure = leave and say:** `git cherry`/patch-id lied in both directions during the manual sweep, so no heuristic may delete; a branch failing both proofs lands in `unproven` with its reason. Four conditions abort the whole run before any branch is judged: a failed `fetch`, a missing `refs/remotes/origin/main`, a failed worktree listing (holders unverifiable → delete nothing) and a failed `for-each-ref` branch listing. Never touched: worktree-held tips, tips already ancestors of main, unsafe ref names, empty claims. Ordering is **archive-first** — the `archive/<branch>` tag must be created *and pushed* before any delete is attempted, so no delete happens without its recovery ref on the remote.
 
-> ⚠ **INTENT UNVERIFIED:** Why does branch retirement — the only step here that performs a destructive *remote* operation, unprompted, on every app start — ship with no config kill-switch, when the reversible local auto-park sweep has `autoParkIdle`? Nothing in the code, the commits or the tests records the decision. (raised 2026-08-22)
+> ⚠ **INTENT UNVERIFIED:** Why does branch retirement — the only step here that performs a destructive *remote* operation, unprompted, on every app start — ship with no config kill-switch, when the reversible local auto-park sweep has `autoParkIdle`? Nothing in the code, the commits or the tests records the decision. (raised 2026-08-22; interview 2026-08-22: under discussion — switch default-on vs default-off vs leave-as-is presented, Stefan's decision pending)
 
 ### When the project-root graph is rebuilt
 

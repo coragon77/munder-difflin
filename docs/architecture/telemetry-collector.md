@@ -217,15 +217,15 @@ covers every provider, and survives restarts.
   enter the locked getAgentUsage seam"*. In `snapshot()` the overlay order is
   hook rows first, OTLP on top, so an agent with both reports real OTLP totals.
 
-  > ⚠ **INTENT UNVERIFIED:** `burn.ts` `parseRow()` sums `input + output + cache_read +
+  > ✔ **Resolved (2026-08-22, Stefan):** bug — the mixed units were never
+  > intended. `burn.ts` `parseRow()` sums `input + output + cache_read +
   > cache_creation` for **every** row in the window, but the two ledger writers
   > disagree on units: `runBreakerBeat` appends **cumulative** snapshots every
   > ~30 s (`index.ts:1674`), while the `CostSample` path appends per-response
-  > **deltas** (`hooks.ts:323`). Summing cumulative snapshots would inflate
-  > `burn5h` for OTLP agents by roughly the beat count. Checked both writers,
-  > `burn.ts`, and `test/burn-window.test.cjs` (whose fixture rows are all
-  > deltas); found no dedup or diff step. Is the OTLP path's `burn5h` intended?
-  > (raised 2026-08-22)
+  > **deltas** (`hooks.ts:323`), so `burn5h` inflates for OTLP agents by roughly
+  > the beat count (`test/burn-window.test.cjs` fixtures are all deltas; no dedup
+  > or diff step exists). Fix owed: D3 in
+  > `docs/goals/2026-08-22-intent-interview-decisions.md`.
 
 - **The cost and token caps are ratchets, not thresholds.** Cumulative `usd` and
   token totals never decrease, so once the floor total crosses `costCapTokens`
@@ -257,10 +257,10 @@ covers every provider, and survives restarts.
   `ingestLogs` matches `name === 'api_error' || name.includes('error')`, so an
   unrelated `*_error` event counts toward `errorStormLimit`.
 
-  > ⚠ **INTENT UNVERIFIED:** Why is the api-error match a substring test rather
-  > than the `api_error` event name alone? It shipped with the original collector
-  > in `fd05989`, and nothing in the tests or commits pins the intended breadth.
-  > (raised 2026-08-22)
+  > ✔ **Resolved (2026-08-22, Stefan):** the substring breadth was never
+  > intended (shipped that way in `fd05989`; nothing pinned it). Narrow the
+  > match to `name === 'api_error'` exactly. Fix owed: D4 in
+  > `docs/goals/2026-08-22-intent-interview-decisions.md`.
 
 - **`tool_decision` attaches to the last span in the ring, not to its own tool
   call.** `ingestLogs` writes `ring[ring.length - 1].decision`, so out-of-order
@@ -273,10 +273,10 @@ covers every provider, and survives restarts.
   Only the *types* from `usage.ts` are still imported — by `breaker.ts:26` and
   `hive.ts:41`.
 
-  > ⚠ **INTENT UNVERIFIED:** Is `StubUsageProvider` retained on purpose (a
-  > fallback backend somebody intends to re-arm) or is it leftover after the
-  > integration swap? Nothing in the code, commits or tests records the decision.
-  > (raised 2026-08-22)
+  > ✔ **Resolved (2026-08-22, Stefan, delegated — pre-2026-08 code he did not
+  > write):** leftover after the integration swap — delete `StubUsageProvider`
+  > (`usage.ts:83`); the interface types stay. Fix owed: D5 in
+  > `docs/goals/2026-08-22-intent-interview-decisions.md`.
 
 - **`pricing.ts`'s own header is narrower than reality.** It says the table
   exists "solely for the OFFLINE transcript reconciler", but the hook plane

@@ -343,9 +343,8 @@ must not get the mic opened.
   in that file and nowhere else in `src/`. Free Flow uses `src/main/freeflow.ts`,
   a different module against a different endpoint.
 
-> ⚠ **INTENT UNVERIFIED:** Is "VDE AI assist" (the feature `src/main/groq.ts` was
-> committed for in 11bdf12, 2026-06-19) still planned? The module has had no
-> caller for two months. (raised 2026-08-22)
+> ✔ **Resolved (2026-08-22, Stefan):** still planned — `groq.ts` stays and waits
+> for its caller. (Committed for "VDE AI assist" in 11bdf12, 2026-06-19.)
 
 - **The persona promises activity the snapshot no longer carries.**
   `MICHAEL_PERSONA` tells Michael to "glance at recent activity (your
@@ -371,10 +370,9 @@ must not get the mic opened.
   in Settings. With no cap, `overCap` is permanently false and the idle timeout is
   the only guard — and `realtimeIdleDisconnectMs: 0` turns that off too.
 
-> ⚠ **INTENT UNVERIFIED:** Should the voice spend cap have a non-null default?
-> `session.ts:139-141` calls the cost guard the thing that "curbs runaway audio
-> spend", but nothing sets `capUsd` unless the user opens Settings and types one.
-> (raised 2026-08-22)
+> ✔ **Resolved (2026-08-22, Stefan):** off by design — the cap is opt-in; no
+> default value is owed. (`session.ts:139-141` still calls the guard the thing
+> that "curbs runaway audio spend"; that only holds once the user sets a cap.)
 
 - **The confirm check matches a substring, so a negation passes.**
   `confirmAccepted('don\'t kill Jim', 'kill')` returns true — the regex only asks
@@ -383,9 +381,9 @@ must not get the mic opened.
   but "yes, kill him" is accepted, which is the intent), but no negation screening
   exists.
 
-> ⚠ **INTENT UNVERIFIED:** Was negation screening in `confirmAccepted()`
-> considered and rejected, on the grounds that the model is instructed to only
-> call `confirm_action` after a clear confirmation? (raised 2026-08-22)
+> ✔ **Resolved (2026-08-22, Stefan):** never considered — a real gap in
+> `confirmAccepted()` (`realtimeActions.ts:314`). Fix owed: D1 in
+> `docs/goals/2026-08-22-intent-interview-decisions.md`.
 
 - **The mic gate is disk state, not session state.** `setMicGate()` opens the
   Electron permission gate by *persisting* `realtimeVoiceEnabled: true`, because

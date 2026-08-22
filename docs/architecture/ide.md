@@ -254,10 +254,10 @@ than a placeholder.
 > `design/theme.ts` only — not the design-system cards or the v0.3.x planning
 > docs. (raised 2026-08-22)
 
-> ⚠ **INTENT UNVERIFIED:** Why does the CHANGES list stay on the agent's `root`
-> when HISTORY and COMPARE were deliberately built against `gitRoot` in the same
-> commit (`7797d20`)? Showing the worktree's own dirty files is defensible, but
-> the decision is not recorded anywhere. (raised 2026-08-22)
+> ✔ **Resolved (2026-08-22, Stefan):** oversight — CHANGES should follow
+> `gitRoot` like HISTORY and COMPARE (both deliberately built against it in
+> `7797d20`). Fix owed: D2 in
+> `docs/goals/2026-08-22-intent-interview-decisions.md`.
 
 > ⚠ **VERIFY:** Nothing in `test/` exercises this slice — `test/commit-graph.test.cjs`
 > covers `layoutGraph` in `components/git/graph.ts`, which is one seam away. The

@@ -343,11 +343,10 @@ behind the tunnel; only the webhook and Slack event ports are forwarded.
   siblings that hold equivalent material are explicit: `slack-reply.json` is
   written `{ mode: 0o600 }` and `integration-secrets.json` likewise.
 
-  > ⚠ **INTENT UNVERIFIED:** Was the omitted `mode: 0o600` on
-  > `telegram-reply.json` a decision or an oversight? Commit `b587365`
-  > ("add Telegram trigger") describes the loopback token design but says nothing
-  > about file permissions, and nothing in the tests or later commits touches it.
-  > (raised 2026-08-22)
+  > ✔ **Resolved (2026-08-22, Stefan):** oversight — `telegram-reply.json`
+  > should be written `mode: 0o600` like its two siblings. (Commit `b587365`
+  > described the loopback token design without a word on file permissions.)
+  > Fix owed: D6 in `docs/goals/2026-08-22-intent-interview-decisions.md`.
 
 - **An unparseable endpoint schema disables schema validation entirely.**
   `parseSchema` returns `undefined` on a JSON parse failure, and
@@ -381,12 +380,12 @@ behind the tunnel; only the webhook and Slack event ports are forwarded.
   webhook's `RATE_LIMIT` / `PER_ENDPOINT_RATE_LIMIT` fixed windows — despite both
   being tunnel-exposed public surfaces.
 
-  > ⚠ **INTENT UNVERIFIED:** Why does the generic webhook carry fixed-window rate
-  > limits while the Slack server, on the same public tunnel shape, carries none?
-  > `0357ab0`, which introduced `RATE_LIMIT`, describes the surface as *"modeled
-  > on the Slack webhook"* and adds a *"body cap + fixed-window rate limit ahead
-  > of any parse/crypto"* — without a word about why the model it copied has
-  > neither. (raised 2026-08-22)
+  > ✔ **Resolved (2026-08-22, Stefan — no prior decision existed):** gap. The
+  > Slack server should carry the same fixed-window budget the generic webhook
+  > got in `0357ab0` (*"body cap + fixed-window rate limit ahead of any
+  > parse/crypto"* — a surface explicitly *"modeled on the Slack webhook"*,
+  > which itself had neither). Fix owed: D7 in
+  > `docs/goals/2026-08-22-intent-interview-decisions.md`.
 
 - **`registryClient.ts`'s header comment is stale.** It says *"⚠️ The preload
   bridge is NOT landed yet (Jim owns it)"* and describes an in-memory mock
