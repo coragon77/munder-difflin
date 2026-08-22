@@ -4,9 +4,10 @@
 - **Depends on:** [Munder Difflin Spec](docs/architecture/spec.md)
 - **Last Updated:** 2026-08-22
 
-> How Munder Difflin turns a room full of independent `claude`
-> processes into a collaborating, self-coordinating team with persistent memory,
-> a shared blackboard, and a "god" orchestrator that runs the floor.
+> How Munder Difflin turns a room full of independent agent processes —
+> `claude` or `pi` CLI engines — into a collaborating, self-coordinating team
+> with persistent memory, a shared blackboard, and a "god" orchestrator that
+> runs the floor.
 
 This document is the design source of truth for the agent-collaboration layer. It
 sits alongside [`SPEC.md`](./SPEC.md) (terminal/event plane) and
@@ -17,8 +18,9 @@ sits alongside [`SPEC.md`](./SPEC.md) (terminal/event plane) and
 
 ## 1. What we're building (and what it's called)
 
-Each spawned agent is a real `claude` CLI process with a filesystem, a system
-prompt, and a hook lifecycle. We layer four classic patterns on top:
+Each spawned agent is a real CLI process — engine `claude` or `pi`, carried
+on every roster surface — with a filesystem, a system prompt, and a hook
+lifecycle. We layer four classic patterns on top:
 
 | Behaviour the user asked for | Pattern (the name) |
 | --- | --- |
