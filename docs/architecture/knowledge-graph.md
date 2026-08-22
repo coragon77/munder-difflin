@@ -1,7 +1,7 @@
 # Knowledge Graph — Enterprise Multimodal Context for Agents (Design, v1)
 
 - **Coverage:** `src/main/knowledge.ts`, `src/main/kg-core.cjs`, `resources/kg.cjs`
-- **Last Updated:** 2026-08-21
+- **Last Updated:** 2026-08-22
 
 **Feature:** Knowledge Graph (enterprise context store + agent access)
 **Branch:** `feat/knowledge-graph` · **Author:** Stanley · **Status:** design + v1 vertical slice in this pass
