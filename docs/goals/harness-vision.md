@@ -89,9 +89,10 @@ Out:
 
 Each chapter is the input to the next — docs feed the discussion, the discussion feeds the review. That order is the point ("It won't work any other way").
 
-- [ ] **V1. Architecture docs correct**
+- [x] **V1. Architecture docs correct**
   - done = the drift report meets the gate in Decided: staleness/integrity/canon clean, zero open INTENT markers each answered by Stefan, every `src/` cluster documented or deliberately driftignored.
   - Detail tracked in `2026-08-21-asol-docs-update-burndown.md` (C1, C2 done; C3 running), plus a coverage-gap resolution round after it.
+  - 2026-08-22: **done** — drift report green as of eb6b679: staleness/integrity/canon clean, 0 open INTENT (17 closed across the run, each on Stefan's word), 0 coverage gaps. Fix decisions from the intent interview in `2026-08-22-intent-interview-decisions.md` (D1–D8, harness-card intake). 13 VERIFY markers remain as investigation debt; the gate as Decided does not count them.
 - [ ] **V2. Vision discussion with a fresh Fable session**
   - done = this document's Why/Scope/Decided rewritten as the full vision; divergences from the original creator's vision enumerated with keep/change/drop dispositions.
 - [ ] **V3. Code-vs-intent review**
