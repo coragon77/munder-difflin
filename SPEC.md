@@ -461,9 +461,9 @@ we wire real Claude Code hooks"*. That is stale — the hooks have been wired si
 the parser was kept because it produces something hooks do not: the *argument*
 of the tool call, which becomes the human-readable status line under the avatar.
 
-> ⚠ **INTENT UNVERIFIED:** Why is the idle-drift window 4000 ms
-> (`usePtyParser.ts:89`)? Nothing in the code, commits or tests records how the
-> value was picked. (raised 2026-08-22)
+Owner's answer (Stefan, 2026-08-22): the 4000 ms window
+(`usePtyParser.ts:89`) was "eyeballed until it looked right" — a tuned
+constant with no deeper rationale, and it needs further work.
 
 Blocked detection deliberately does **not** match the bare word "permission":
 the Claude TUI footer permanently reads "bypass permissions on (shift+tab to
