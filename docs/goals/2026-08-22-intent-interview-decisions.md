@@ -101,8 +101,10 @@ card exists. Each doc's closed marker points here by D-number.
   (`3ad2089`, 2026-06-16 vs `f062dab`, 2026-06-22).
 - **Decision:** oversight — add `qwen`.
 
-## Still open (not in this intake)
+## Decided without a card
 
-`lifecycle.md:84` — branch retirement kill-switch. Under discussion (options:
-config switch default-on / default-off / leave as-is); the marker stays open
-until Stefan decides.
+`lifecycle.md:84` — branch retirement kill-switch: **leave as-is, deliberate**
+(Stefan, 2026-08-22, after discussion). The merge-watcher arming is the
+pipeline's opt-in and retirement only deletes proven-landed branches with a
+pushed archive tag; no code change owed. Rationale recorded in the marker's
+resolution in `docs/architecture/lifecycle.md`.
