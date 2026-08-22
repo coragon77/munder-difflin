@@ -1,7 +1,7 @@
 # Telemetry
 
-- **Coverage:** `src/main/analytics.ts`, `src/main/telemetry.ts`
-- **Last Updated:** 2026-08-21
+- **Coverage:** `src/main/analytics.ts`
+- **Last Updated:** 2026-08-22
 
 Munder Difflin collects a small set of **anonymous** usage events so we can
 understand adoption (how many people launch the app, which features get used)
@@ -11,17 +11,13 @@ it.** The implementation lives in [`src/main/analytics.ts`](src/main/analytics.t
 and enforces this list as a hard allowlist — the code and this file are kept in
 lockstep, and because the repo is open source you can verify that yourself.
 
-> ⚠ **INTENT UNVERIFIED:** Should this contract also cover `src/main/telemetry.ts`?
-> It is named in Coverage, but nothing here describes it, and no other doc in the
-> set claims it either. It is the loopback-only OTLP collector — checked: no
-> outbound call, so nothing it holds is "sent" in the sense used below — and
-> `fe49af8a` added a second ingest plane to it (hook-plane rows for non-Claude
-> providers, feeding `fleet.json` and the renderer). Either this doc grows a
-> mechanism section for it, or the file belongs to a doc of its own.
-> (raised 2026-08-21)
-> (owner 2026-08-21: a doc of its own — `TelemetryCollector` gets a separate
-> architecture doc (OTLP seam, hook plane, breaker/ledger boundary), and this
-> doc's Coverage narrows to `analytics.ts` when it lands. Open until then.)
+Resolved (2026-08-22): `src/main/telemetry.ts` is the loopback-only OTLP
+collector and is owned by
+[`telemetry-collector.md`](docs/architecture/telemetry-collector.md) as of the
+coverage-gap round — the owner's 2026-08-21 decision ("a doc of its own"),
+now landed. This doc's Coverage is `analytics.ts` alone; the outbound
+contract above is unchanged (checked in C1: the collector makes no outbound
+call, so nothing it holds is "sent" in the sense used here).
 
 ## What is sent
 

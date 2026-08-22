@@ -58,8 +58,14 @@ Before exploring code, you **MUST** read the relevant documentation (blocking):
 | Terminal/event planes — PTY spawn/teardown/env, hook socket events, IPC surface, renderer stores; "avatar stuck", "terminal shows no output", spawn/PATH failures, hook events not arriving, roster blank after reload | `docs/architecture/spec.md` |
 | Any UI or visual change — components, tokens, pixel scene, panels | `docs/architecture/design.md` |
 | Memory graph panel, who-talks-to-whom visualization | `docs/architecture/memory-graph-spec.md` |
-| Telemetry, analytics events, usage stats | `docs/architecture/telemetry.md` |
+| Product analytics — anonymous adoption events, "what does the app send home" | `docs/architecture/telemetry.md` |
 | Knowledge graph, `kg` CLI, enterprise context store, ingestion | `docs/architecture/knowledge-graph.md` |
+| Voice — "voice Michael" won't connect, push-to-talk / hold-Option dictation, mic/speaker devices, voice session cost or spend cap, voice confirms ("Michael won't accept my confirmation") | `docs/architecture/realtime.md` |
+| Work arriving from outside — webhooks, Telegram from the phone, Slack messages becoming tasks, held/approval queue, scheduled standup/missions, integration secrets ("give a worker an API key without showing it the key") | `docs/architecture/remote.md` |
+| Adding or running a provider CLI, auto-approve flag not reaching the agent, model picker empty/wrong, hire manifests (`munderdifflin://hire`), Prerequisites page, installing codex/node, resume after an engine switch | `docs/architecture/providers.md` |
+| The in-app editor — IDE overlay, diff views, git history/compare panes, markdown preview, saving files from the app | `docs/architecture/ide.md` |
+| Park/vacation/recall, graceful shutdown (closing time), orphaned agents or leaked worktrees at boot, automatic branch retirement | `docs/architecture/lifecycle.md` |
+| Cost ceilings / circuit breaker / runaway agents, token burn windows, OTLP spans and the tool waterfall, model pricing, "agent shows 0 tokens" | `docs/architecture/telemetry-collector.md` |
 
 **This is not optional.** Only explore code if the documentation is insufficient
 after reading the relevant docs. Note: `hive.md`, `spec.md`, `design.md`,
@@ -141,9 +147,15 @@ reader stops looking and now believes something false about the codebase.
 - `spec.md` (→ `SPEC.md`) — the app spine: both data planes (terminal + event), IPC surface, renderer state, plus the inception decisions and their fates
 - `design.md` (→ `DESIGN.md`) — the visual design system; every component derives from its tokens
 - `memory-graph-spec.md` (→ `MEMORY_GRAPH_SPEC.md`) — hive message-graph visualization panel
-- `telemetry.md` (→ `TELEMETRY.md`) — the complete anonymous-events contract
+- `telemetry.md` (→ `TELEMETRY.md`) — the complete anonymous-events contract (product analytics only)
 - `message-queue.md` — who may type into an agent's terminal, and when
 - `knowledge-graph.md` — enterprise context store + `kg` agent CLI (flag-gated)
+- `realtime.md` — the voice plane: Realtime Michael (speech-to-speech) + Free Flow dictation
+- `remote.md` — the outside-world plane: inbound triggers (webhook/Slack/Telegram, scheduled missions) + integrations registry/secret broker
+- `providers.md` — the provider layer: CLI dialects, hire manifests, machine setup
+- `ide.md` — the in-app editor: Monaco, diff, git panes, markdown preview
+- `lifecycle.md` — agent & workspace lifecycle: vacation, closing time, orphan sweep, worktree adoption, branch retirement
+- `telemetry-collector.md` — the local cost plane: OTLP collector, usage seam, circuit breaker, burn window, price table
 
 ### Claude-Specific (`docs/claude/`)
 
